@@ -438,6 +438,23 @@ describe('Scroll zoom preference', () => {
     scrollZoom()
     expect(hint()).toBe('Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan')
   })
+
+  it('words the hint for touch on a touch-only screen, with no wheel to scroll', () => {
+    const matchMedia = vi.fn((query: string) => ({
+      matches: query === '(hover: none) and (pointer: coarse)',
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    vi.stubGlobal('matchMedia', matchMedia)
+    try {
+      const { view } = setup(240)
+      expect(view.container.querySelector('.hx-chart-navigator__hint')?.textContent)
+        .toBe('Tap + or − to zoom · Drag the purple bar to pick a span')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
 
 describe('wheelZoneContains', () => {

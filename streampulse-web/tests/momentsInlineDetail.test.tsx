@@ -2,9 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AnalyticsMomentsPage from '../src/routes/analytics/AnalyticsMomentsPage'
-import * as availabilityTransport from '../src/lib/discoveryAvailability'
 import * as minuteWindow from '../src/lib/momentMinuteWindow'
-import { clearRankedFeatureCheckForTests } from '../src/hooks/useRankedFeatureAvailability'
 import { fromHubMoment } from '../src/lib/discoveryMoments'
 import { toggleSavedMoment } from '../src/lib/savedDiscoveryMoments'
 import { MomentRow } from '../src/ui/components/moments/MomentRow'
@@ -17,7 +15,7 @@ const { hub, row } = vi.hoisted(() => {
     login, displayName: login, streamId, offsetSeconds, label, kind: 'chat_spike', chatPerMin: 200, emotesPerMin: 40, category, at: at - minutesAgo * 60_000, score: 80,
   })
   return { row, hub: {
-    data: { generatedAt: new Date().toISOString(), livePulseMoments: [row('xqc', 's1', 60, 'Chat spike', 'Just Chatting', 0), row('sodapoppin', 's2', 240, 'Emote spike', 'Minecraft', 5)] } as { generatedAt: string; livePulseMoments: ReturnType<typeof row>[] },
+    data: { generatedAt: new Date().toISOString(), livePulseMoments: [row('xqc', 's1', 660, 'Chat spike', 'Just Chatting', 0), row('sodapoppin', 's2', 840, 'Emote spike', 'Minecraft', 5)] } as { generatedAt: string; livePulseMoments: ReturnType<typeof row>[] },
     loading: false, refreshing: false, error: null as string | null, loadSource: 'network', hubEndpointOk: true, refresh: (() => {}) as () => void,
   } }
 })
@@ -67,14 +65,12 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn()
   // No test here may touch a network: every transport fails fast.
   vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network disabled in tests') }))
-  vi.spyOn(availabilityTransport, 'fetchRankedAvailability').mockReturnValue(new Promise(() => {}))
   vi.spyOn(minuteWindow, 'loadMomentMinuteWindow').mockResolvedValue(null)
 })
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
-  clearRankedFeatureCheckForTests()
   stepBack.mode = 'real'
   stepBack.held.length = 0
   window.getSelection()?.removeAllRanges()
@@ -86,15 +82,15 @@ describe('moments open in line', () => {
     expect(primary(0).getAttribute('aria-expanded')).toBe('false')
     // Nothing is open, so no row points at the detail slot.
     expect(rows().map((_, index) => primary(index).hasAttribute('aria-controls'))).toEqual([false, false])
-    expect(primary(0).getAttribute('aria-label')).toBe('Chat spike — Open moment for xqc at 1:00 into broadcast')
+    expect(primary(0).getAttribute('aria-label')).toBe('Chat spike — Open moment for xqc at 11:00 into broadcast')
     fireEvent.click(primary(0))
     await waitFor(() => expect(openDetail()).not.toBeNull())
     expect(rows()[0]!.nextElementSibling?.id).toBe('moments-selected-detail')
     // Pressed again, the open row closes its moment: its name says so, with aria-expanded.
-    expect(primary(0).getAttribute('aria-label')).toBe('Chat spike — Close moment for xqc at 1:00 into broadcast')
-    expect(primary(1).getAttribute('aria-label')).toBe('Emote spike — Open moment for sodapoppin at 4:00 into broadcast')
+    expect(primary(0).getAttribute('aria-label')).toBe('Chat spike — Close moment for xqc at 11:00 into broadcast')
+    expect(primary(1).getAttribute('aria-label')).toBe('Emote spike — Open moment for sodapoppin at 14:00 into broadcast')
     // In line it has no heading, so the region itself is named for its moment.
-    expect(openDetail()!.getAttribute('aria-label')).toBe('Selected moment: Chat spike, xqc, 1:00 into broadcast')
+    expect(openDetail()!.getAttribute('aria-label')).toBe('Selected moment: Chat spike, xqc, 11:00 into broadcast')
     expect(rows()[0]!.nextElementSibling?.contains(openDetail())).toBe(true)
     expect(primary(0).getAttribute('aria-expanded')).toBe('true')
     expect(primary(0).getAttribute('aria-controls')).toBe('moments-selected-detail')
@@ -106,7 +102,7 @@ describe('moments open in line', () => {
     expect(document.querySelector('.moments-workspace')!.className).toBe('moments-workspace')
     expect(screen.getByRole('searchbox', { name: 'Find loaded moments' })).toBeTruthy()
     expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Latest', 'Saved (0)'])
-    expect(currentUrl).toContain('login=xqc&stream=s1&offset=60')
+    expect(currentUrl).toContain('login=xqc&stream=s1&offset=660')
     const detail = openDetail()!
     expect(detail.querySelector('.moments-detail-head')!.textContent).toContain('1 of 2 loaded moments')
     expect(detail.querySelector('h2, .moments-identity, time')).toBeNull()
@@ -169,7 +165,7 @@ describe('moments open in line', () => {
     fireEvent.click(document.querySelector('.moments-workspace')!)
     await act(() => new Promise(resolve => setTimeout(resolve, 60)))
     expect(openDetail()).not.toBeNull()
-    expect(currentUrl).toContain('login=xqc&stream=s1&offset=60')
+    expect(currentUrl).toContain('login=xqc&stream=s1&offset=660')
     // The same click with the press outside is a click away.
     fireEvent.pointerDown(document.querySelector('.moments-workspace')!)
     fireEvent.click(document.querySelector('.moments-workspace')!)
@@ -202,7 +198,7 @@ describe('moments open in line', () => {
     expect(rows()[1]!.nextElementSibling?.id).toBe('moments-selected-detail')
     fireEvent.click(rows()[1]!.querySelector('.moments-result-evidence')!)
     await waitFor(() => expect(openDetail()).toBeNull())
-    expect(primary(1).getAttribute('aria-label')).toBe('Emote spike — Open moment for sodapoppin at 4:00 into broadcast')
+    expect(primary(1).getAttribute('aria-label')).toBe('Emote spike — Open moment for sodapoppin at 14:00 into broadcast')
     fireEvent.click(primary(1))
     await waitFor(() => expect(openDetail()).not.toBeNull())
     fireEvent.keyDown(document.body, { key: 'Escape' })
@@ -234,7 +230,7 @@ describe('moments open in line', () => {
     expect(screen.getAllByRole('region', { name: /^Selected moment: / })).toHaveLength(1)
     expect(primary(0).getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(screen.getByRole('button', { name: 'Previous moment' }))
-    await waitFor(() => expect(currentUrl).toContain('login=xqc&stream=s1&offset=60'))
+    await waitFor(() => expect(currentUrl).toContain('login=xqc&stream=s1&offset=660'))
     // Previous/Next swap at once: no collapsing copy is left behind.
     expect(document.querySelectorAll('.moments-inline')).toHaveLength(1)
     expect(rows()[0]!.nextElementSibling?.id).toBe('moments-selected-detail')
@@ -246,7 +242,7 @@ describe('moments open in line', () => {
     const seen: MutationRecord[] = []
     const classes = new MutationObserver(records => { seen.push(...records) })
     classes.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true })
-    renderMoments('/analytics/moments?login=sodapoppin&stream=s2&offset=240')
+    renderMoments('/analytics/moments?login=sodapoppin&stream=s2&offset=840')
     await waitFor(() => expect(openDetail()).not.toBeNull())
     expect(rows()[1]!.nextElementSibling?.id).toBe('moments-selected-detail')
     await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'start' }))
@@ -271,9 +267,12 @@ describe('moments open in line', () => {
       view.rerender(<MemoryRouter initialEntries={['/analytics/moments?login=forsen&stream=s9&offset=600']}><AnalyticsMomentsPage /><UrlProbe /></MemoryRouter>)
       expect(document.querySelector('.moments-inline')!.className).toContain('is-open')
       expect(document.querySelector('.moments-inline.is-closing')).toBeNull()
-      // The loading state that returns with each poll renders below the card, never above it.
+      // The failure notice stays below the card through each poll, in the skeleton's place.
       const card = document.getElementById('moments-selected-detail')!
-      expect(card.compareDocumentPosition(document.querySelector('.moments-loading')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      const notice = screen.getByRole('heading', { name: 'Moments could not be refreshed' }).closest('.moments-notice')!
+      expect(card.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(document.querySelector('.moments-loading')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Retrying…' })).toBeTruthy()
     } finally {
       Object.assign(hub, saved)
     }
@@ -290,8 +289,10 @@ describe('moments open in line', () => {
     expect(card.previousElementSibling?.getAttribute('role')).toBe('status')
     const detail = openDetail()!
     expect(detail.textContent).toContain('Selection outside loaded matches')
-    expect(detail.querySelector('.moments-identity')).not.toBeNull()
-    expect(detail.querySelector('h2')!.textContent).toBe('Selected reaction')
+    // C1 (10-22): the streamer's name leads the heading and opens the stream's page at this moment
+    expect(detail.querySelector('h2')!.textContent).toBe('forsen · Selected reaction')
+    expect(detail.querySelector('h2 a.moments-detail-name')!.getAttribute('href')).toMatch(/^\/analytics\/forsen\/s9\?returnTo=.*#t=600$/)
+    expect(detail.querySelector('.moments-detail-meta')!.textContent).toContain('10:00 in')
     await waitFor(() => expect(document.activeElement).toBe(detail.querySelector('h2')))
     expect(rows()).toHaveLength(2)
     expect(rows().every(row => row.querySelector('.moments-card-primary')!.getAttribute('aria-expanded') === 'false')).toBe(true)
@@ -301,12 +302,56 @@ describe('moments open in line', () => {
   })
 })
 
+describe('the feed notice sits in the results slot', () => {
+  const original = { ...hub }
+  afterEach(() => { Object.assign(hub, original) })
+  const results = () => screen.getByRole('region', { name: 'Moment results' })
+  const headings = () => [...results().querySelectorAll('h2')].map(heading => heading.textContent)
+
+  it('replaces the skeleton, heading and count when nothing is listed', () => {
+    Object.assign(hub, { data: undefined, loading: false, error: 'The hub took too long to respond.' })
+    renderMoments()
+    const notice = within(results()).getByRole('heading', { name: 'Moments could not be refreshed' }).closest('.moments-notice')!
+    expect(notice.parentElement).toBe(results())
+    expect(headings()).toEqual(['Moments could not be refreshed'])
+    expect(results().textContent).not.toContain('0 shown')
+    expect(results().querySelector('.moments-loading')).toBeNull()
+    expect(screen.queryByText('Loading measured activity…')).toBeNull()
+    expect(screen.queryByText('No available moments.')).toBeNull()
+    expect(within(notice as HTMLElement).getByText('The hub took too long to respond.')).toBeTruthy()
+  })
+
+  it('takes focus back from a closed selection in place of the results heading', async () => {
+    Object.assign(hub, { data: undefined, loading: false, error: 'The hub took too long to respond.' })
+    renderMoments('/analytics/moments?login=forsen&stream=s9&offset=600')
+    await waitFor(() => expect(openDetail()).not.toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Moments could not be refreshed' })))
+  })
+
+  it('keeps the six-card skeleton under the results heading for a real load', () => {
+    Object.assign(hub, { data: undefined, loading: true, error: null })
+    renderMoments()
+    expect(headings()).toEqual(['Moments Loading…'])
+    expect(results().querySelectorAll('.moments-loading__card')).toHaveLength(6)
+    expect(screen.queryByText('Loading measured activity…')).toBeNull()
+    expect(document.querySelector('.moments-notice')).toBeNull()
+  })
+
+  it('keeps the heading and count above listed moments when a refresh fails', () => {
+    Object.assign(hub, { error: 'The hub took too long to respond.' })
+    renderMoments()
+    expect(headings()).toEqual(['Moments 2 shown', 'Moments could not be refreshed'])
+    expect(rows()).toHaveLength(2)
+  })
+})
+
 describe('a row that does not open in line', () => {
   it('keeps naming its press as opening the moment while it is the selected one', () => {
     // A broadcast's rows select into a separate review; pressing the selected one does not close it.
-    render(<MemoryRouter><MomentRow moment={fromHubMoment(row('xqc', 's1', 60, 'Chat spike', 'Just Chatting', 0))!} selected onSelect={() => {}} /></MemoryRouter>)
+    render(<MemoryRouter><MomentRow moment={fromHubMoment(row('xqc', 's1', 660, 'Chat spike', 'Just Chatting', 0))!} selected onSelect={() => {}} /></MemoryRouter>)
     const button = document.querySelector('.moments-card-primary')!
-    expect(button.getAttribute('aria-label')).toBe('Chat spike — Open moment for xqc at 1:00 into broadcast')
+    expect(button.getAttribute('aria-label')).toBe('Chat spike — Open moment for xqc at 11:00 into broadcast')
     expect(button.hasAttribute('aria-expanded')).toBe(false)
     expect(button.getAttribute('aria-current')).toBe('true')
   })
@@ -329,7 +374,7 @@ describe('the open moment stays where it opened', () => {
   afterEach(() => { Object.assign(hub, original); resetSaved() })
 
   it('keeps the open moment, its row and focus in place when it is un-saved in Saved', async () => {
-    save(row('xqc', 's1', 60, 'Chat spike', 'Just Chatting', 0), row('sodapoppin', 's2', 240, 'Emote spike', 'Minecraft', 5), row('forsen', 's3', 480, 'Laugh spike', 'Just Chatting', 10))
+    save(row('xqc', 's1', 660, 'Chat spike', 'Just Chatting', 0), row('sodapoppin', 's2', 840, 'Emote spike', 'Minecraft', 5), row('forsen', 's3', 1080, 'Laugh spike', 'Just Chatting', 10))
     renderMoments('/analytics/moments?view=saved')
     await waitFor(() => expect(rows()).toHaveLength(3))
     fireEvent.click(primary(2))
@@ -342,7 +387,7 @@ describe('the open moment stays where it opened', () => {
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Saved (2)' })).toBeTruthy())
     await settle()
     // The row stays listed with the same detail under it: not moved, not remounted.
-    expect(rows().map(key)).toEqual(['["xqc","s1",60]', '["sodapoppin","s2",240]', '["forsen","s3",480]'])
+    expect(rows().map(key)).toEqual(['["xqc","s1",660]', '["sodapoppin","s2",840]', '["forsen","s3",1080]'])
     expect(document.getElementById('moments-selected-detail')).toBe(slot)
     expect(openDetail()).toBe(detail)
     expect(rows()[2]!.nextElementSibling).toBe(slot)
@@ -364,8 +409,8 @@ describe('the open moment stays where it opened', () => {
   })
 
   it('keeps the measurements a deep-linked saved moment showed after it is un-saved', async () => {
-    save(row('xqc', 's1', 60, 'Chat spike', 'Just Chatting', 0))
-    renderMoments('/analytics/moments?view=saved&login=xqc&stream=s1&offset=60')
+    save(row('xqc', 's1', 660, 'Chat spike', 'Just Chatting', 0))
+    renderMoments('/analytics/moments?view=saved&login=xqc&stream=s1&offset=660')
     await waitFor(() => expect(openDetail()).not.toBeNull())
     const detail = openDetail()!
     expect(detail.querySelector('.moments-measurement dd')!.textContent).toBe('200')
@@ -378,8 +423,8 @@ describe('the open moment stays where it opened', () => {
   })
 
   it('keeps a standalone card in place when its moment is saved into the open list', async () => {
-    save(row('xqc', 's1', 60, 'Chat spike', 'Just Chatting', 0))
-    renderMoments('/analytics/moments?view=saved&login=sodapoppin&stream=s2&offset=240')
+    save(row('xqc', 's1', 660, 'Chat spike', 'Just Chatting', 0))
+    renderMoments('/analytics/moments?view=saved&login=sodapoppin&stream=s2&offset=840')
     await waitFor(() => expect(openDetail()).not.toBeNull())
     const card = document.getElementById('moments-selected-detail')!
     expect(card.className).toContain('moments-inline--standalone')
@@ -392,7 +437,7 @@ describe('the open moment stays where it opened', () => {
     expect(card.inert).toBe(false)
     expect(document.querySelectorAll('.moments-inline')).toHaveLength(1)
     // The newly listed row stands for the open card, and pressing it closes the card.
-    const listed = rows().find(element => key(element) === '["sodapoppin","s2",240]')!
+    const listed = rows().find(element => key(element) === '["sodapoppin","s2",840]')!
     const button = listed.querySelector('.moments-card-primary')!
     expect(button.getAttribute('aria-expanded')).toBe('true')
     expect(button.getAttribute('aria-controls')).toBe('moments-selected-detail')
@@ -403,13 +448,13 @@ describe('the open moment stays where it opened', () => {
 
   it('keeps a standalone card in place when a late feed lists its row', async () => {
     Object.assign(hub, { data: { generatedAt: new Date().toISOString(), livePulseMoments: [] } })
-    const view = renderMoments('/analytics/moments?login=sodapoppin&stream=s2&offset=240')
+    const view = renderMoments('/analytics/moments?login=sodapoppin&stream=s2&offset=840')
     await waitFor(() => expect(openDetail()).not.toBeNull())
     const card = document.getElementById('moments-selected-detail')!
     const detail = openDetail()!
     await waitFor(() => expect(document.activeElement).toBe(detail.querySelector('h2')))
     Object.assign(hub, { data: original.data })
-    view.rerender(tree('/analytics/moments?login=sodapoppin&stream=s2&offset=240'))
+    view.rerender(tree('/analytics/moments?login=sodapoppin&stream=s2&offset=840'))
     await waitFor(() => expect(rows()).toHaveLength(2))
     await settle()
     expect(document.getElementById('moments-selected-detail')).toBe(card)
@@ -421,24 +466,24 @@ describe('the open moment stays where it opened', () => {
 
   it('moves a cached row the live feed dropped to a standalone card, in view and focused', async () => {
     Object.assign(hub, { loadSource: 'cache' })
-    const view = renderMoments('/analytics/moments?login=xqc&stream=s1&offset=60')
+    const view = renderMoments('/analytics/moments?login=xqc&stream=s1&offset=660')
     await waitFor(() => expect(rows()[0]!.nextElementSibling?.id).toBe('moments-selected-detail'))
     vi.mocked(Element.prototype.scrollIntoView).mockClear()
     // The network answer replaces the cached snapshot and no longer has the open row.
     Object.assign(hub, { loadSource: 'network', data: { generatedAt: new Date().toISOString(), livePulseMoments: [original.data.livePulseMoments[1]!] } })
-    view.rerender(tree('/analytics/moments?login=xqc&stream=s1&offset=60'))
+    view.rerender(tree('/analytics/moments?login=xqc&stream=s1&offset=660'))
     await waitFor(() => expect(rows()).toHaveLength(1))
     const card = document.getElementById('moments-selected-detail')!
     expect(card.className).toContain('moments-inline--standalone')
     // A cached row was never a live collection: it is not kept listed.
-    expect(rows().map(key)).toEqual(['["sodapoppin","s2",240]'])
+    expect(rows().map(key)).toEqual(['["sodapoppin","s2",840]'])
     expect(openDetail()!.textContent).toContain('Selection outside loaded matches')
     await waitFor(() => expect(document.activeElement).toBe(openDetail()!.querySelector('h2')))
     expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts[0]).toBe(card)
   })
 
   it('keeps focus on the Previous or Next control just used while both still move', async () => {
-    Object.assign(hub, { data: { generatedAt: new Date().toISOString(), livePulseMoments: [...original.data.livePulseMoments, row('forsen', 's3', 480, 'Laugh spike', 'Just Chatting', 10)] } })
+    Object.assign(hub, { data: { generatedAt: new Date().toISOString(), livePulseMoments: [...original.data.livePulseMoments, row('forsen', 's3', 1080, 'Laugh spike', 'Just Chatting', 10)] } })
     renderMoments()
     await waitFor(() => expect(rows()).toHaveLength(3))
     fireEvent.click(primary(0))
@@ -458,28 +503,28 @@ describe('the open moment stays where it opened', () => {
     expect(head()).toContain('2 of 3 loaded moments')
     await waitFor(() => expect(focused()).toBe('Next moment'))
     // Focus stays on Next, so the moment it opened is announced, from outside the swapped slot.
-    expect(announcement.textContent).toBe('Moment 2 of 3: Emote spike, sodapoppin, 4:00 into broadcast')
-    expect(openDetail()!.getAttribute('aria-label')).toBe('Selected moment: Emote spike, sodapoppin, 4:00 into broadcast')
+    expect(announcement.textContent).toBe('Moment 2 of 3: Emote spike, sodapoppin, 14:00 into broadcast')
+    expect(openDetail()!.getAttribute('aria-label')).toBe('Selected moment: Emote spike, sodapoppin, 14:00 into broadcast')
     expect(document.getElementById('moments-selected-detail')!.contains(announcement)).toBe(false)
     press('Next moment')
     await waitFor(() => expect(rows()[2]!.nextElementSibling?.id).toBe('moments-selected-detail'))
     expect(head()).toContain('3 of 3 loaded moments')
     expect(document.querySelector('[data-review-announcement]')).toBe(announcement)
-    expect(announcement.textContent).toBe('Moment 3 of 3: Laugh spike, forsen, 8:00 into broadcast')
+    expect(announcement.textContent).toBe('Moment 3 of 3: Laugh spike, forsen, 18:00 into broadcast')
     // At the end of the list, the control that still moves.
     await waitFor(() => expect(focused()).toBe('Previous moment'))
     press('Previous moment')
     await waitFor(() => expect(rows()[1]!.nextElementSibling?.id).toBe('moments-selected-detail'))
     expect(head()).toContain('2 of 3 loaded moments')
     await waitFor(() => expect(focused()).toBe('Previous moment'))
-    expect(currentUrl).toContain('login=sodapoppin&stream=s2&offset=240')
-    expect(announcement.textContent).toBe('Moment 2 of 3: Emote spike, sodapoppin, 4:00 into broadcast')
+    expect(currentUrl).toContain('login=sodapoppin&stream=s2&offset=840')
+    expect(announcement.textContent).toBe('Moment 2 of 3: Emote spike, sodapoppin, 14:00 into broadcast')
     // A row press is announced by the row's own button; nothing is left to read out here.
     fireEvent.click(primary(0))
     await waitFor(() => expect(rows()[0]!.nextElementSibling?.id).toBe('moments-selected-detail'))
     expect(announcement.textContent).toBe('')
     press('Next moment')
-    await waitFor(() => expect(announcement.textContent).toBe('Moment 2 of 3: Emote spike, sodapoppin, 4:00 into broadcast'))
+    await waitFor(() => expect(announcement.textContent).toBe('Moment 2 of 3: Emote spike, sodapoppin, 14:00 into broadcast'))
     // Closed, the announcement goes with it, and reopening that row does not repeat it.
     fireEvent.keyDown(document.body, { key: 'Escape' })
     await waitFor(() => expect(openDetail()).toBeNull())
@@ -500,7 +545,7 @@ describe('the open moment stays where it opened', () => {
     expect(other.textContent).toBe('Saved')
     await settle()
     expect(openDetail()).toBe(detail)
-    expect(currentUrl).toContain('login=xqc&stream=s1&offset=60')
+    expect(currentUrl).toContain('login=xqc&stream=s1&offset=660')
   })
 
   it('keeps the open moment while new moments are shown or a failed feed is retried', async () => {
@@ -516,7 +561,7 @@ describe('the open moment stays where it opened', () => {
     await settle()
     expect(openDetail()).toBe(detail)
     // A poll during the review queues its new moment behind a button.
-    Object.assign(hub, { error: null, data: { generatedAt: new Date().toISOString(), livePulseMoments: [...original.data.livePulseMoments, row('forsen', 's3', 30, 'New spike', 'Just Chatting', 20)] } })
+    Object.assign(hub, { error: null, data: { generatedAt: new Date().toISOString(), livePulseMoments: [...original.data.livePulseMoments, row('forsen', 's3', 630, 'New spike', 'Just Chatting', 20)] } })
     view.rerender(tree(currentUrl))
     const more = await screen.findByRole('button', { name: 'Show 1 new moment' })
     fireEvent.pointerDown(more)
@@ -524,12 +569,12 @@ describe('the open moment stays where it opened', () => {
     await waitFor(() => expect(rows()).toHaveLength(3))
     await settle()
     expect(openDetail()).toBe(detail)
-    expect(currentUrl).toContain('login=xqc&stream=s1&offset=60')
-    expect(rows().map(key)).toContain('["forsen","s3",30]')
+    expect(currentUrl).toContain('login=xqc&stream=s1&offset=660')
+    expect(rows().map(key)).toContain('["forsen","s3",630]')
   })
 
   it('leaves focus on the tab when a tab switch closes the open moment', async () => {
-    save(row('xqc', 's1', 60, 'Chat spike', 'Just Chatting', 0))
+    save(row('xqc', 's1', 660, 'Chat spike', 'Just Chatting', 0))
     renderMoments()
     fireEvent.click(primary(0))
     await waitFor(() => expect(openDetail()).not.toBeNull())
@@ -553,7 +598,7 @@ describe('the open moment stays where it opened', () => {
       fireEvent.click(primary(0))
       fireEvent.click(primary(1))
     })
-    await waitFor(() => expect(currentUrl).toContain('login=sodapoppin&stream=s2&offset=240'))
+    await waitFor(() => expect(currentUrl).toContain('login=sodapoppin&stream=s2&offset=840'))
     await waitFor(() => expect(rows()[1]!.nextElementSibling?.id).toBe('moments-selected-detail'))
     fireEvent.keyDown(document.body, { key: 'Escape' })
     await waitFor(() => expect(openDetail()).toBeNull())
@@ -574,9 +619,9 @@ describe('changes made while a close is stepping back', () => {
     fireEvent.click(primary(1))
     // The step back is still in flight: the press waits instead of editing the closing entry.
     expect(stepBack.held).toHaveLength(1)
-    expect(currentUrl).toContain('login=xqc&stream=s1&offset=60')
+    expect(currentUrl).toContain('login=xqc&stream=s1&offset=660')
     act(() => stepBack.held.shift()!())
-    await waitFor(() => expect(currentUrl).toContain('login=sodapoppin&stream=s2&offset=240'))
+    await waitFor(() => expect(currentUrl).toContain('login=sodapoppin&stream=s2&offset=840'))
     await waitFor(() => expect(rows()[1]!.nextElementSibling?.id).toBe('moments-selected-detail'))
     expect(screen.getAllByRole('region', { name: /^Selected moment: / })).toHaveLength(1)
     // It was pushed over the list, so closing it steps back to the list.
@@ -608,9 +653,9 @@ describe('changes made while a close is stepping back', () => {
     fireEvent.keyDown(document.body, { key: 'Escape' })
     fireEvent.click(primary(1))
     await act(() => new Promise(resolve => setTimeout(resolve, 300)))
-    expect(currentUrl).toContain('login=xqc&stream=s1&offset=60')
+    expect(currentUrl).toContain('login=xqc&stream=s1&offset=660')
     await act(() => new Promise(resolve => setTimeout(resolve, 900)))
-    expect(currentUrl).toContain('login=sodapoppin&stream=s2&offset=240')
+    expect(currentUrl).toContain('login=sodapoppin&stream=s2&offset=840')
     await waitFor(() => expect(rows()[1]!.nextElementSibling?.id).toBe('moments-selected-detail'))
   })
 })
@@ -618,7 +663,7 @@ describe('changes made while a close is stepping back', () => {
 describe('a deep link before its list arrives', () => {
   it('keeps the selection through a click or Esc on the page while nothing is shown yet', async () => {
     const original = { data: hub.data, loading: hub.loading }
-    const url = '/analytics/moments?login=sodapoppin&stream=s2&offset=240'
+    const url = '/analytics/moments?login=sodapoppin&stream=s2&offset=840'
     try {
       Object.assign(hub, { data: undefined, loading: true })
       const view = renderMoments(url)
@@ -644,8 +689,8 @@ describe('a deep link before its list arrives', () => {
 
 describe('returning from the stream timeline', () => {
   const list = '/analytics/moments'
-  const xqc = '/analytics/moments?login=xqc&stream=s1&offset=60'
-  const soda = '/analytics/moments?login=sodapoppin&stream=s2&offset=240'
+  const xqc = '/analytics/moments?login=xqc&stream=s1&offset=660'
+  const soda = '/analytics/moments?login=sodapoppin&stream=s2&offset=840'
   let scrollY = 0
   beforeEach(() => {
     vi.spyOn(window, 'scrollY', 'get').mockImplementation(() => scrollY)

@@ -10,6 +10,7 @@ import {
   updateOverlayVodState,
 } from '../src/content/mount.tsx'
 import { EXTENSION_RECONNECT_MESSAGE } from '../src/shared/backgroundResponse.ts'
+import type { ExtensionCoverageTierResponse, PulsePayload } from '../src/shared/messages.ts'
 import type { ExtensionVodPulseResponse } from '../src/types/vodPulseTypes.ts'
 import type { TwitchPageContext } from '../src/content/twitch.ts'
 
@@ -66,6 +67,10 @@ describe('content mount error lane', () => {
     expect(panelText()).not.toContain('Loading Pulse')
     expect(panelText()).not.toContain('pulse 500')
     expect(panelButtons('Retry')).toHaveLength(1)
+    // Hosted, floating panel: no Chat tab to go back to, and Settings can't fix
+    // an outage, so Retry stands alone.
+    expect(panelButtons('Back to chat')).toHaveLength(0)
+    expect(panelButtons('Open settings')).toHaveLength(0)
   })
 
   it('LIFE-1: a first load from an orphaned tab mounts the reconnect card with Reload page', async () => {
@@ -81,6 +86,66 @@ describe('content mount error lane', () => {
     await settle(() => updateOverlayPayload(null, undefined, undefined, { softStaleRefresh: true }))
     expect(panelText()).toContain("Can't reach StreamPulse")
     expect(panelText()).not.toContain('Loading Pulse')
+  })
+
+  it('STATE-1: a failed refresh with no coverage tier keeps a tracked live channel tracked', async () => {
+    const startedAt = new Date(Date.now() - 2 * 3_600_000).toISOString()
+    const live = {
+      login: 'fixturechan',
+      streamId: '320000000001',
+      isLive: true,
+      tracking: true,
+      startedAt,
+      currentOffsetSeconds: 7_200,
+      coverageStartOffsetSeconds: 0,
+      top500Eligible: true,
+      rosterEligible: true,
+      rollups: Array.from({ length: 30 }, (_, index) => ({
+        offsetSeconds: 5_400 + index * 60,
+        chatCount: 40 + index,
+        sevenTvEmoteCount: 10,
+        viewerCount: 20_000,
+      })),
+      lanes: { composite: [], chat: [], seventv: [] },
+      recap: null,
+    } as PulsePayload
+    const tier = {
+      login: 'fixturechan',
+      coverageTier: 'active_live_coverage',
+      hostedCap: { activeCount: 120, activeLimit: 250 },
+    } as unknown as ExtensionCoverageTierResponse
+    // Today's not-charting card titles: hosted (PulseNotChartedPanel) and own
+    // stack (PulseLiveUnavailablePanel). The old "live IRC pool right now"
+    // copy is gone from the source, so checking for it could no longer fail.
+    const notChartingTitles = /Not charted|Not tracked live/
+    await settle(() => mountOverlay('fixturechan', live, CHANNEL, { sessionOpenedAtMs: Date.now(), coverageTier: tier }))
+    expect(panelText()).not.toMatch(notChartingTitles)
+
+    // The worker's error broadcast (and a lapsed 60 s coverage cache) carry a null tier.
+    await settle(() => updateOverlayPayload(live, 'pulse 503', null))
+    expect(panelText()).not.toMatch(notChartingTitles)
+  })
+
+  it('QUAL-2: the cache handing back the same chart does not end "Live refresh paused"', async () => {
+    const live = {
+      login: 'fixturechan',
+      streamId: '320000000001',
+      isLive: true,
+      tracking: true,
+      currentOffsetSeconds: 7_200,
+      rollups: [{ offsetSeconds: 7_140, chatCount: 40, sevenTvEmoteCount: 10 }],
+      lanes: { composite: [], chat: [], seventv: [] },
+      recap: null,
+    } as PulsePayload
+    await settle(() => mountOverlay('fixturechan', live, CHANNEL, { sessionOpenedAtMs: Date.now() }))
+    await settle(() => updateOverlayPayload(null, undefined, undefined, { softStaleRefresh: true }))
+    expect(panelText()).toContain('paused briefly')
+
+    await settle(() => updateOverlayPayload({ ...live }, undefined, null, { authoritative: true }))
+    expect(panelText()).toContain('paused briefly')
+
+    await settle(() => updateOverlayPayload({ ...live, currentOffsetSeconds: 7_260 }, undefined, null))
+    expect(panelText()).not.toContain('paused briefly')
   })
 
   it('UX-2: a replay answer after a failed VOD load clears the outage card', async () => {

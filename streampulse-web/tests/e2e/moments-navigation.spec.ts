@@ -172,46 +172,47 @@ test('tab switches retain each view’s filters and keep the tab row steady', as
   await expect(page).toHaveURL(/view=saved&q=xqc&category=Minecraft&sort=oldest/)
   await expect(page.getByRole('searchbox', { name: 'Find loaded moments' })).toHaveValue('xqc')
   await expect(page.getByRole('combobox', { name: 'Sort loaded results' })).toHaveText('Oldest first')
-
-  await page.getByRole('tab', { name: 'History', exact: true }).click()
-  await expect(page).toHaveURL(/view=history/)
   expect(Math.abs(await tabs.evaluate(element => element.getBoundingClientRect().top) - initialTop)).toBeLessThan(1)
+
+  // History is not a tab while ranked is not deployed; Latest keeps its own filters.
+  await page.getByRole('tab', { name: 'Latest', exact: true }).click()
+  await expect(page).toHaveURL(/view=recent&q=xqc&category=Minecraft&sort=oldest/)
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click()
   await expect(page).toHaveURL(/view=saved&q=xqc&category=Minecraft&sort=oldest/)
 })
 
 test('Moment view tabs support roving keyboard focus and expose the selected panel', async ({ page }) => {
   await installHubUxMock(page)
-  // Deployed but down: all four tabs stay, with their unavailable panels.
+  // Latest offers no ranked tab, so this uses a bookmarked History view's three tabs.
+  // Deployed but down: History keeps its tab with its unavailable panel.
   await page.route(/\/v1\/public\/discovery\/ranked\/availability(?:\?.*)?$/, route => route.fulfill({ status: 503, json: { error: 'discovery_unavailable' } }))
-  await page.goto('/analytics/moments?view=recent')
+  await page.goto('/analytics/moments?view=history')
   const tabs = page.getByRole('tablist', { name: 'Moment views' })
-  await expect(tabs.getByRole('tab')).toHaveCount(4)
+  await expect(tabs.getByRole('tab')).toHaveCount(3)
   await expect(page.getByRole('contentinfo', { name: 'Site information' })).toBeVisible()
-  const latest = tabs.getByRole('tab', { name: 'Latest' })
-  await expect(latest).toHaveAttribute('aria-selected', 'true')
-  await expect(latest).toHaveAttribute('tabindex', '0')
-  await expect(tabs.getByRole('tab', { name: 'History' })).toHaveAttribute('tabindex', '-1')
-  await latest.focus()
-  await latest.press('ArrowRight')
   const history = tabs.getByRole('tab', { name: 'History' })
-  await expect(history).toBeFocused()
   await expect(history).toHaveAttribute('aria-selected', 'true')
-  await expect(page).toHaveURL(/view=history/)
+  await expect(history).toHaveAttribute('tabindex', '0')
+  await expect(tabs.getByRole('tab', { name: 'Latest' })).toHaveAttribute('tabindex', '-1')
   await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'moments-view-tab-history')
-  await history.press('End')
+  await history.focus()
+  await history.press('ArrowRight')
   const saved = tabs.getByRole('tab', { name: /^Saved/ })
   await expect(saved).toBeFocused()
   await expect(saved).toHaveAttribute('aria-selected', 'true')
+  await expect(page).toHaveURL(/view=saved/)
+  await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'moments-view-tab-saved')
   await saved.press('Home')
-  const explore = tabs.getByRole('tab', { name: 'Explore' })
-  await expect(explore).toBeFocused()
-  await expect(explore).toHaveAttribute('aria-selected', 'true')
-  await explore.press('ArrowLeft')
+  const latest = tabs.getByRole('tab', { name: 'Latest' })
+  await expect(latest).toBeFocused()
+  await expect(latest).toHaveAttribute('aria-selected', 'true')
+  await latest.press('End')
   await expect(saved).toBeFocused()
+  await saved.press('ArrowRight')
+  await expect(latest).toBeFocused()
 })
 
-test('Latest hides undeployed ranked views after its first screen; bookmarks keep their panel', async ({ page }, testInfo) => {
+test('Latest and Saved hide undeployed ranked views without an availability read; bookmarks keep their panel', async ({ page }, testInfo) => {
   await page.route('**/v1/**', route => route.fulfill({ json: {} }))
   await installHubUxMock(page)
   const availabilityReads: string[] = []
@@ -225,8 +226,6 @@ test('Latest hides undeployed ranked views after its first screen; bookmarks kee
   // The first screen is Latest + Saved and makes no discovery read.
   expect(availabilityReads).toHaveLength(0)
   await expect(tabs).toHaveText(['Latest', /^Saved/])
-  await expect.poll(() => availabilityReads.length).toBe(1)
-  await expect(tabs).toHaveText(['Latest', /^Saved/])
   await expect(page.getByRole('link', { name: 'History', exact: true })).toHaveCount(0)
   await expect(page.locator('.moments-result').first().getByRole('link', { name: /^All .+ broadcasts$/ })).toHaveAttribute('href', /^\/analytics\/[a-z0-9_]+$/)
   for (const width of [390, 1440]) {
@@ -234,10 +233,10 @@ test('Latest hides undeployed ranked views after its first screen; bookmarks kee
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`moments-two-tabs-${width}.png`) })
   }
-  // One read per session: Saved reuses the answer.
+  // Past the two seconds the removed availability check used to wait: neither view reads it.
   await tabs.filter({ hasText: /^Saved/ }).click()
   await page.waitForTimeout(2_500)
-  expect(availabilityReads).toHaveLength(1)
+  expect(availabilityReads).toHaveLength(0)
   await expect(tabs).toHaveText(['Latest', /^Saved/])
   for (const view of ['explore', 'history']) {
     await page.goto(`/analytics/moments?view=${view}`)

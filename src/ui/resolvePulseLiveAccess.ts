@@ -7,18 +7,18 @@ export const COVERAGE_TIER_ACTIVE_LIVE = 'active_live_coverage'
 export const COVERAGE_TIER_WARMING = 'warming'
 
 export type CoverageTierStatusLabel =
-  | 'Chat tracked (IRC)'
+  | 'Chat tracked'
   | 'Warming'
-  | 'Metadata only — no chat coverage'
+  | 'Viewer counts only'
 
 export function coverageTierStatusLabel(
   coverageTier: string | null | undefined,
   tracking = false,
 ): CoverageTierStatusLabel {
-  if (coverageTier === COVERAGE_TIER_ACTIVE_LIVE) return 'Chat tracked (IRC)'
+  if (coverageTier === COVERAGE_TIER_ACTIVE_LIVE) return 'Chat tracked'
   if (coverageTier === COVERAGE_TIER_WARMING) return 'Warming'
-  if (coverageTier?.trim()) return 'Metadata only — no chat coverage'
-  return tracking ? 'Warming' : 'Metadata only — no chat coverage'
+  if (coverageTier?.trim()) return 'Viewer counts only'
+  return tracking ? 'Warming' : 'Viewer counts only'
 }
 
 export type PulseLiveAccessState =
@@ -35,7 +35,7 @@ export interface PulseLiveAccessInput {
   alwaysTrackedLogins?: readonly string[]
   sessionOpenedAtMs?: number | null
   pageIsLive?: boolean
-  /** When true, only active_live_coverage + tracking yields full_live. */
+  /** When true, only active_live_coverage or warming, with tracking, yields full_live. */
   hosted?: boolean
 }
 
@@ -67,11 +67,17 @@ export function secondsSinceStreamStartAt(
   return Math.max(0, Math.round((openedAtMs - startMs) / 1000))
 }
 
-function isLiveContext(payload: PulsePayload | null, pageIsLive: boolean): boolean {
+/**
+ * Live when Twitch's page shows it live, or the backend is collecting the
+ * stream now (as effectivePulseIsLive). A stream the backend still has open
+ * but no longer collects is not live while the page reads offline: the
+ * panel says Offline there, never Not tracked.
+ */
+export function isPulseLiveContext(payload: PulsePayload | null, pageIsLive: boolean): boolean {
   if (!payload) return pageIsLive
   if (payload.mode === 'live_dvr') return true
   if (payload.recap && !payload.isLive) return false
-  return Boolean(payload.isLive || pageIsLive)
+  return Boolean(pageIsLive || (payload.isLive && payload.tracking))
 }
 
 function trackedFromStreamStart(coverageStartOffsetSeconds: number): boolean {
@@ -129,7 +135,7 @@ function resolveHostedPulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAcc
     return baseResult('not_in_roster', coverageStartOffsetSeconds, coverageTier)
   }
 
-  if (!isLiveContext(payload, pageIsLive)) {
+  if (!isPulseLiveContext(payload, pageIsLive)) {
     return baseResult('offline', coverageStartOffsetSeconds, coverageTier)
   }
 
@@ -138,6 +144,12 @@ function resolveHostedPulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAcc
   }
 
   if (coverageTier?.coverageTier === COVERAGE_TIER_ACTIVE_LIVE && payload.tracking) {
+    return baseResult('full_live', coverageStartOffsetSeconds, coverageTier)
+  }
+
+  // Warming: chat is being read but no minute is saved yet. Same live view as
+  // an active channel (its warm-up card fills in), never the not-tracked card.
+  if (coverageTier?.coverageTier === COVERAGE_TIER_WARMING && payload.tracking) {
     return baseResult('full_live', coverageStartOffsetSeconds, coverageTier)
   }
 
@@ -155,7 +167,7 @@ function resolveLocalPulseLiveAccess(input: PulseLiveAccessInput): PulseLiveAcce
     return baseResult('not_in_roster', coverageStartOffsetSeconds, coverageTier)
   }
 
-  if (!isLiveContext(payload, pageIsLive)) {
+  if (!isPulseLiveContext(payload, pageIsLive)) {
     return baseResult('offline', coverageStartOffsetSeconds, coverageTier)
   }
 

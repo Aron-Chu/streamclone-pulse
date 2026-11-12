@@ -147,13 +147,14 @@ function cancelChatFocusSchedule(): void {
 }
 
 /** Tell chart/rail surfaces to release pointer capture before Chat owns the body. */
-function cancelPulseInteractions(): void {
+function cancelPulseInteractions(keepPageFocus = false): void {
   cancelChatFocusSchedule()
   document.dispatchEvent(new CustomEvent('streampulse:deactivate-interactions'))
   const activeElements = [
     tabsShadowRoot?.activeElement,
     panelShadowRoot?.activeElement,
-    document.activeElement,
+    // An automatic switch never takes focus from Twitch's chat box.
+    keepPageFocus ? null : document.activeElement,
   ]
   for (const element of activeElements) {
     if (element instanceof HTMLElement) element.blur()
@@ -166,6 +167,13 @@ function scheduleNativeChatFocus(): void {
 }
 
 let currentSidebarTab: SidebarTab = 'pulse'
+/**
+ * Chat for this channel visit only: it has nothing to chart, or the reader
+ * chose Back to chat. Never saved, so the next channel opens on the reader's tab.
+ */
+let autoChat = false
+/** Which channel visit autoChat belongs to (login, VOD and session start). */
+let autoChatVisit = ''
 let currentOverlayMode: OverlayMode = 'expanded'
 let currentPayload: PulsePayload | null = null
 let currentError: string | undefined
@@ -181,10 +189,22 @@ function handleSidebarTabChange(
   tab: SidebarTab,
   source: SidebarTabChangeSource = 'sync',
 ): void {
-  if (tab !== currentSidebarTab || source === 'user') cancelPulseInteractions()
-  currentSidebarTab = tab
+  const shown = shownSidebarTab()
+  if (source === 'auto') autoChat = true
+  // A click on the tab already shown changes nothing: an automatic Chat stays
+  // this visit's, and the saved tab stays the reader's.
+  else if (source === 'sync' || tab !== shown) {
+    if (source === 'user') autoChat = false
+    currentSidebarTab = tab
+  }
+  if (shownSidebarTab() !== shown || source === 'user') cancelPulseInteractions(source === 'auto')
   renderOverlay(currentPayload, currentError)
   if (tab === 'chat' && source === 'user') scheduleNativeChatFocus()
+}
+
+/** The tab on screen: the saved one, unless this visit has nothing to chart. */
+function shownSidebarTab(): SidebarTab {
+  return autoChat ? 'chat' : currentSidebarTab
 }
 
 function handleOverlayModeChange(mode: OverlayMode): void {
@@ -192,12 +212,37 @@ function handleOverlayModeChange(mode: OverlayMode): void {
   renderOverlay(currentPayload, currentError)
 }
 
+/**
+ * Each host is stamped with this install's extension id. Two StreamPulse
+ * installs in one browser (a store copy beside an unpacked one) share the host
+ * ids, so without the stamp each purged the other's panel. Read once while the
+ * runtime is valid: an orphaned script loses chrome.runtime.id.
+ */
+let hostOwnerId: string | undefined
+/** Another install's panel was on the page when this one mounted: the first copy keeps the page. */
+let yieldedToOtherInstall = false
+
+function ownHostOwnerId(): string {
+  hostOwnerId ||= typeof chrome === 'undefined' ? undefined : chrome.runtime?.id
+  return hostOwnerId ?? ''
+}
+
+/** Unstamped hosts (builds before the stamp, or an orphan an update left behind) count as this install's. */
+function isOwnHost(node: Element): boolean {
+  const owner = node.getAttribute('data-streampulse-owner')
+  return !owner || owner === ownHostOwnerId()
+}
+
+function otherInstallHostPresent(): boolean {
+  return Array.from(document.documentElement.children).some(node => isOverlayHost(node) && !isOwnHost(node))
+}
+
 // Hosts are only ever appended to <html> (createShadowHost), so duplicates are
 // found among its direct children, never by walking the whole document.
 function purgeExtraHosts(id: string, keep: HTMLElement | null): void {
   // Do not use `#id` selectors — browsers may collapse duplicate IDs to one match.
   for (const node of Array.from(document.documentElement.children)) {
-    if (node.id === id && node !== keep) node.remove()
+    if (node.id === id && node !== keep && isOwnHost(node)) node.remove()
   }
 }
 
@@ -251,6 +296,7 @@ function createShadowHost(id: string): { host: HTMLElement; shadow: ShadowRoot; 
   host.id = id
   host.dataset.streampulseBuild = typeof __EXTENSION_BUILD_ID__ !== 'undefined' ? __EXTENSION_BUILD_ID__ : 'unknown'
   host.dataset.streampulseTarget = typeof __EXTENSION_TARGET__ !== 'undefined' ? __EXTENSION_TARGET__ : 'unknown'
+  host.dataset.streampulseOwner = ownHostOwnerId()
   document.documentElement.appendChild(host)
   // Development builds keep the existing inspection hook for mocked E2E tests.
   // Store targets use a closed root so Twitch page scripts cannot inspect controls.
@@ -351,7 +397,7 @@ function buildDockHostRect(
 function applySidebarSnapLayout(): void {
   if (!sidebarLayout) return
 
-  const pulseTabActive = currentSidebarTab === 'pulse'
+  const pulseTabActive = shownSidebarTab() === 'pulse'
   // Pulse owns the body, so hide Twitch's native message chrome while it is
   // active. Chat owns the body, so remove the style entirely and restore all
   // native banners/messages when the user switches back. The collapsed and mini
@@ -433,7 +479,7 @@ function currentHostVisibility(): OverlayHostVisibility {
     sidebarFallbackToFloat,
     placementResolved,
     chatClosedPulseDockEnabled,
-    sidebarTab: currentSidebarTab,
+    sidebarTab: shownSidebarTab(),
   })
 }
 
@@ -478,6 +524,7 @@ function installMountStorageListener(): void {
   if (chrome.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((message: unknown) => {
       if (message && typeof message === 'object' && 'type' in message && message.type === 'OPEN_PULSE_SIDEBAR') {
+        autoChat = false
         currentSidebarTab = 'pulse'
         currentOverlayMode = 'expanded'
         syncSidebarObserver()
@@ -488,6 +535,8 @@ function installMountStorageListener(): void {
 }
 
 function renderOverlay(payload: PulsePayload | null, error?: string): void {
+  // The other install owns the hosts and Twitch's chat hide style (one shared id).
+  if (yieldedToOtherInstall) return
   const visibility = currentHostVisibility()
   const { effectivePlacement, sidebarSnapped } = visibility
 
@@ -506,7 +555,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
     effectivePlacement,
     sidebarSnapped,
     panelHostWidth: sidebarLayout?.panel.width ?? sidebarLayout?.column.width ?? 0,
-    sidebarTab: currentSidebarTab,
+    sidebarTab: shownSidebarTab(),
     overlayMode: currentOverlayMode,
     onSidebarTabChange: handleSidebarTabChange,
     onOverlayModeChange: handleOverlayModeChange,
@@ -524,7 +573,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
   if (sidebarSnapped) {
     const tabsKey = [
       effectivePlacement,
-      currentSidebarTab,
+      shownSidebarTab(),
       currentOverlayMode,
       sidebarSnapped ? '1' : '0',
     ].join('|')
@@ -539,7 +588,7 @@ function renderOverlay(payload: PulsePayload | null, error?: string): void {
             effectivePlacement={effectivePlacement}
             sidebarSnapped
             sidebarPart="tabs"
-            sidebarTab={currentSidebarTab}
+            sidebarTab={shownSidebarTab()}
             overlayMode={currentOverlayMode}
             onSidebarTabChange={sharedProps.onSidebarTabChange}
             onOverlayModeChange={sharedProps.onOverlayModeChange}
@@ -593,7 +642,17 @@ export function mountOverlay(
   options: OverlayMountOptions = {},
 ): void {
   reconcileOverlayHosts()
+  // First copy wins: stay off the page until the other install's panel leaves
+  // (the next mount after that takes over).
+  yieldedToOtherInstall = !tabsHostEl && !panelHostEl && otherInstallHostPresent()
+  if (yieldedToOtherInstall) return
   const needsDisplayHydration = !tabsHostEl || !panelHostEl
+  // A new channel visit opens on the reader's own tab again.
+  const visit = `${login}:${context.vodId ?? ''}:${options.sessionOpenedAtMs ?? ''}`
+  if (visit !== autoChatVisit) {
+    autoChatVisit = visit
+    autoChat = false
+  }
   currentLogin = login
   currentContext = context
   currentOptions = options
@@ -694,10 +753,17 @@ export function updateOverlayPayload(
     )
     if (streamMismatch) return
     currentPayload = nextPayload
-    currentOptions = { ...currentOptions, softStaleRefreshWarning: false }
+    // Only new data ends "Live refresh paused": the cache handing back the
+    // same chart while offline is not a recovery (QUAL-2).
+    if (nextPayload !== previousPayload) {
+      currentOptions = { ...currentOptions, softStaleRefreshWarning: false }
+    }
   }
   currentError = resolveOverlayErrorState(currentError, payload, error)
-  if (coverageTier !== undefined) {
+  // null only means the worker had no tier to hand (a failed request, or its
+  // 60 s coverage cache lapsed), not that the channel left the pool. Keep the
+  // last one; mountOverlay resets it when the channel changes (STATE-1/QUAL-2).
+  if (coverageTier) {
     currentCoverageTier = coverageTier
   }
   // Identical poll after merge: skip React work (tabs shell never needed chart payloads).
@@ -756,7 +822,8 @@ export function unmountOverlay(): void {
   placementResolved = false
   chatClosedPulseDockEnabled = false
   resetSidebarFallback()
-  applyTwitchSidebarChromeHides(false)
+  if (!yieldedToOtherInstall) applyTwitchSidebarChromeHides(false)
+  yieldedToOtherInstall = false
   tabsRoot?.unmount()
   panelRoot?.unmount()
   tabsRoot = null
@@ -781,6 +848,8 @@ export function unmountOverlay(): void {
   currentError = undefined
   currentCoverageTier = null
   currentSidebarTab = 'pulse'
+  autoChat = false
+  autoChatVisit = ''
   currentOverlayMode = 'expanded'
 }
 

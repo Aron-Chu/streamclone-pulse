@@ -9,6 +9,7 @@ import type {
 import { LIVE_HEAT_MAX_EMOTES } from './liveHeat.ts'
 import { displayMomentReasonLabel } from './momentScore.ts'
 import { resolveEmoteImageUrl } from './emoteImageUrl.ts'
+import { streamEdgesFor, type StreamEdges } from './streamEdges.ts'
 import type {
   LiveStatsInput,
   LiveStatsRollup,
@@ -55,6 +56,8 @@ export interface ExtensionPeakLike {
   refinementStatus?: string
   refinementConfidence?: number
   reactionScoringVersion?: string
+  /** Backend scoring v2: "opening" / "closing" for hello / goodbye spam. */
+  streamEdge?: string
 }
 
 export interface ExtensionPulseLike {
@@ -158,8 +161,32 @@ export function peaksToLiveHeatPoints(
       refinementStatus: peak.refinementStatus,
       refinementConfidence: peak.refinementConfidence,
       reactionScoringVersion: peak.reactionScoringVersion,
+      streamEdge: peak.streamEdge,
     }
   })
+}
+
+/**
+ * A stream's edges for ranking its moments. The closing edge counts back from
+ * the last minute with chat or emotes, as the backend's does
+ * (reactionPeakStreamEdges), and only applies once the stream has ended.
+ */
+export function extensionRollupStreamEdges(rollups: readonly ExtensionRollupLike[], ended: boolean): StreamEdges {
+  let last = -1
+  for (const rollup of rollups) {
+    if (rollup.missing) continue
+    const emotes = (rollup.totalEmoteCount ?? 0) > 0 ? (rollup.totalEmoteCount ?? 0) : (rollup.sevenTvEmoteCount ?? 0)
+    if ((rollup.chatCount ?? 0) > 0 || emotes > 0) last = Math.max(last, rollup.offsetSeconds)
+  }
+  return streamEdgesFor(last, ended)
+}
+
+/** The payload's stream edges, from its longest rollup series. */
+export function extensionPayloadStreamEdges(
+  payload: Pick<ExtensionPulseLike, 'isLive' | 'rollups' | 'fullRollups'>,
+): StreamEdges {
+  const rollups = (payload.fullRollups?.length ?? 0) > 0 ? payload.fullRollups! : payload.rollups
+  return extensionRollupStreamEdges(rollups, !payload.isLive)
 }
 
 /** Rollups used for live stats / Most Reacted — prefer recent window, fall back to full. */

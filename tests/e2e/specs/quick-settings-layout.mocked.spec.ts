@@ -58,12 +58,17 @@ test('quick settings opens on the channel, then Supporter and live controls, wit
   expect(allPage.url()).toContain('#pulse')
   await allPage.close()
 
-  // Your look's link opens the studio in all settings, its preview in view.
+  // Your look's link opens Supporter settings; the nonmember preview stays closed until chosen.
   const opened = extension.context.waitForEvent('page')
   await panel.getByRole('button', { name: 'Wave, sheen and crest in all settings ↗' }).click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
   expect(settings.url()).toContain('#supporter')
+  const previewDisclosure = settings.locator('[data-supporter-preview-disclosure]')
+  await expect(previewDisclosure).toHaveJSProperty('open', false)
+  await expect(settings.locator('[data-supporter-preview]')).toBeHidden()
+  await settings.getByText('Preview Supporter looks', { exact: true }).click()
+  await expect(previewDisclosure).toHaveJSProperty('open', true)
   await expect(settings.locator('[data-supporter-preview]')).toBeVisible()
   await expect(settings.getByRole('group', { name: 'Emote rain' }).getByRole('button')).toHaveCount(3)
 })

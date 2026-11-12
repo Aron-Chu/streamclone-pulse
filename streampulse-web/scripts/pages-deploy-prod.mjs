@@ -4,10 +4,15 @@
  *
  * Auth: CLOUDFLARE_API_TOKEN **or** logged-in wrangler OAuth (`wrangler login`).
  *
- * Account: set CLOUDFLARE_ACCOUNT_ID to the Gmail account that owns apex
- * `streampulse.stream` (Pages project `streampulse-web`). A second same-named
- * project on the ASU account serves `app.streampulse.stream` only — deploying
- * without the apex account ID silently updates the wrong project.
+ * Target: explicitly set CLOUDFLARE_PAGES_PROJECT=streampulse-main,
+ * CLOUDFLARE_ACCOUNT_ID and independently verified PAGES_DEPLOY_EXPECTED_ACCOUNT_ID.
+ * Both account values must match the reviewed account digest. No account ID is
+ * stored or logged. There is no default project or missing-account warning path.
+ * The target still requires its own runtime bindings and release approval.
+ * The migration policy freshness check requires GH_TOKEN or GITHUB_TOKEN at
+ * runtime with read access to the private control-plane repository. Supply it
+ * through an approved secret source; do not put its value in files or logs.
+ * The hosted-route smoke checks the canonical apex after an approved upload.
  *
  * Refuses to build unless every production input in pages-deploy-env.mjs is set
  * and well formed: VITE_SENTRY_DSN, VITE_POSTHOG_PROJECT_TOKEN,
@@ -28,15 +33,20 @@ import { existsSync, readFileSync, readdirSync, unlinkSync, statSync } from 'nod
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { verifyHostedAnalyticsRoutes, verifyHostedAccountRoutes } from './hosted-analytics-route-smoke.mjs'
-import { assertDeploySourceIsOriginMaster, assertEdgeFreeze, describeEdgeFreeze } from './check-edge-freeze.mjs'
+import { MIGRATION_PAGES_PROJECT, assertProductionPagesTarget, assertApexTargetForWorker, assertDeploySourceIsOriginMaster, assertEdgeFreeze, assertRemotePolicyFresh, describeEdgeFreeze } from './check-edge-freeze.mjs'
 import { checkProductionBuildEnv, describeWaivedInputs } from './pages-deploy-env.mjs'
-import { loadEnv } from 'vite'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(root, '..')
 const repoRoot = join(webRoot, '..')
 
-// First, before any check, build or upload: a production build without these
+// Fail before build inputs, remote policy checks, builds or uploads. A legacy
+// default project name now identifies the secondary app in the new account.
+const productionTarget = edgeCheck(() => assertProductionPagesTarget())
+const projectName = productionTarget.project
+const { loadEnv } = await import('vite')
+
+// After target validation, before a build: a production build without these
 // inputs silently drops error reporting, analytics, the form's bot check or the
 // Discord links. What the production Vite build will see is any .env.production
 // file overridden by the shell. Names only; values are never printed.
@@ -61,21 +71,12 @@ function edgeCheck(check) {
   }
 }
 
-// A second same-named Pages project on another account serves app.* only, and
-// the edge-freeze amendment forbids a Worker there. Without an explicit account
-// wrangler may reuse a cached or interactive one, so an admitted Worker needs
-// CLOUDFLARE_ACCOUNT_ID and the apex project name. The account ID is never printed.
-const APEX_PAGES_PROJECT = 'streampulse-web'
+// An admitted Worker needs an explicit account and an approved apex project.
+// The migration target requires a separately verified matching account value.
+// No account value is printed.
 function requireApexTargetForWorker(gate, project) {
-  if (!gate.admitted) return
-  if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
-    console.error('pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID is required when a Pages Worker is admitted; set it to the account that owns apex streampulse.stream')
-    process.exit(1)
-  }
-  if (project !== APEX_PAGES_PROJECT) {
-    console.error(`pages:deploy:prod: a Pages Worker may be deployed only to the apex project ${APEX_PAGES_PROJECT}`)
-    process.exit(1)
-  }
+  if (project === MIGRATION_PAGES_PROJECT) edgeCheck(() => assertRemotePolicyFresh(webRoot))
+  edgeCheck(() => assertApexTargetForWorker(gate, project, webRoot))
 }
 
 const sourceGate = edgeCheck(() => assertEdgeFreeze(webRoot, { sourceOnly: true }))
@@ -90,7 +91,6 @@ if (!backendUrl.includes('api.streampulse.stream')) {
   console.error(`pages:deploy:prod requires VITE_BACKEND_URL=https://api.streampulse.stream (got ${backendUrl})`)
   process.exit(1)
 }
-const projectName = process.env.CLOUDFLARE_PAGES_PROJECT?.trim() || APEX_PAGES_PROJECT
 requireApexTargetForWorker(sourceGate, projectName)
 
 function run(cmd, args, env = {}) {
@@ -236,11 +236,7 @@ if (!hasApiToken) {
 // Wrangler 4+ reads CLOUDFLARE_ACCOUNT_ID from the environment; do not pass
 // --account-id (removed from `pages deploy` and causes a hard failure).
 const deployArgs = ['pages', 'deploy', 'dist', '--project-name', projectName, '--branch', 'master']
-if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) {
-  console.warn(
-    'pages:deploy:prod: CLOUDFLARE_ACCOUNT_ID unset; wrangler may deploy the ASU app.* project instead of apex — set the Gmail account id that owns streampulse.stream',
-  )
-}
+const uploadTarget = edgeCheck(() => assertProductionPagesTarget())
 
 const builtGate = edgeCheck(() => assertEdgeFreeze(webRoot))
 console.log(describeEdgeFreeze(builtGate))
@@ -248,7 +244,7 @@ requireApexTargetForWorker(builtGate, projectName)
 edgeCheck(() => assertDeploySourceIsOriginMaster(webRoot))
 
 console.log(`Deploying dist/ to Cloudflare Pages project ${projectName}`)
-run(localWrangler, deployArgs)
+run(localWrangler, deployArgs, { CLOUDFLARE_ACCOUNT_ID: uploadTarget.account })
 
 if (process.env.SKIP_HOSTED_ROUTE_SMOKE !== '1') {
   console.log('Verifying hosted analytics deep route')

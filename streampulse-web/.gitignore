@@ -16,3 +16,6 @@ coverage/
 
 # Local API dumps / ad-hoc channel captures
 jynxzi_*.json
+
+# Local Pages routing proof state
+.wrangler/

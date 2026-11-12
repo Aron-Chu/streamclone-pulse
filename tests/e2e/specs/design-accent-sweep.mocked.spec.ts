@@ -105,7 +105,7 @@ test.describe('accent sweep across settings surfaces', () => {
     // Both surfaces now read one option list, so the page must show the shared
     // placement labels rather than its own former wording.
     for (const label of ['Sidebar', 'Right dock', 'Bottom dock']) {
-      await expect(page.getByRole('group', { name: 'Overlay placement' }).getByText(label, { exact: true })).toBeVisible()
+      await expect(page.getByRole('group', { name: 'Placement', exact: true }).getByText(label, { exact: true })).toBeVisible()
     }
     for (const accent of ['Aurora', 'Volt', 'Emerald', 'Azure']) {
       await expect(page.getByRole('group', { name: 'Accent theme' }).getByText(accent, { exact: true })).toBeVisible()

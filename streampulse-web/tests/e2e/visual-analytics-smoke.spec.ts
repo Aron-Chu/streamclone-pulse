@@ -18,7 +18,7 @@ test('analytics landing uses hub activity chart', async ({ page }) => {
   const errors = attachConsoleErrorGuard(page)
   await installMockApi(page)
   await page.goto('/analytics')
-  await expect(page.locator('.figma-global-activity__hub-chart .hx-chart2')).toBeVisible()
+  await expect(page.locator('.figma-global-activity__hub-chart [data-hub-chart-state="ready"]')).toBeVisible()
   await assertNoConsoleErrors(page, errors)
 })
 

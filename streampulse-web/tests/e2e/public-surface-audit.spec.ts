@@ -141,8 +141,10 @@ test.describe('public surface audit', () => {
   })
 
   test('cold public entries load no analytics UI or optional demo and report actual font downloads', async ({ page, request }, testInfo) => {
-    const budget = await (await request.get('/public-entry-budget.json')).json() as { staticJavaScript: string[]; analyticsUiModules: string[] }
+    const budget = await (await request.get('/public-entry-budget.json')).json() as { staticJavaScript: string[]; publicPageJavaScript: string[]; analyticsUiModules: string[] }
     expect(budget.analyticsUiModules).toEqual([])
+    // The help and legal pages load on demand, so a cold page may also load its own chunk.
+    const allowed = new Set([...budget.staticJavaScript, ...budget.publicPageJavaScript])
     const receipt: unknown[] = []
     for (const [path, heading] of coldPages) {
       const javascript = new Set<string>()
@@ -156,7 +158,7 @@ test.describe('public surface audit', () => {
       await page.goto(path)
       await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
-      expect([...javascript].filter(file => !budget.staticJavaScript.includes(file))).toEqual([])
+      expect([...javascript].filter(file => !allowed.has(file))).toEqual([])
       expect(fonts.size).toBeLessThanOrEqual(2)
       receipt.push({ path, javascript: [...javascript], fonts: [...fonts] })
       page.off('request', onRequest)
@@ -222,7 +224,7 @@ test.describe('public surface audit', () => {
     await expect(dialog.getByRole('link', { name: 'Support' })).toHaveAttribute('href', '/support')
     await expect(dialog.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
     // The drawer's primary button once inherited the text-link colour (#eee on #fafafa, about 1.06:1).
-    const openAnalytics = dialog.getByRole('link', { name: 'Open Analytics' })
+    const openAnalytics = dialog.getByRole('link', { name: 'Open the Hub' })
     await expect(openAnalytics).toBeVisible()
     const contrast = await openAnalytics.evaluate((element) => {
       const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number)
@@ -245,7 +247,6 @@ test.describe('public surface audit', () => {
     await page.locator('#demo .sl-container > div:nth-child(2)').scrollIntoViewIfNeeded()
     await expect(page.locator('.sl-xtour')).toHaveAttribute('data-static', '')
     await expect(page.getByRole('region', { name: 'StreamPulse Pulse sidebar preview' })).toBeVisible()
-    await expect(page.locator('.lsg')).toHaveAttribute('data-static', '')
     await expectNoHorizontalOverflow(page)
   })
 
@@ -271,7 +272,8 @@ test.describe('public surface audit', () => {
     await expect(page.getByRole('alert')).toContainText(/could not be completed/i)
     await expect(page.getByText('All Systems Operational')).toHaveCount(0)
     await expect(page.getByText('Reported Services Operational')).toHaveCount(0)
-    await expect(page.getByText('Status Unavailable')).toBeVisible()
-    await expect(page.getByText('Operational', { exact: true })).toHaveCount(0)
+    await expect(page.getByTestId('status-overall')).toHaveText('Down')
+    await expect(page.getByText('Down', { exact: true })).toHaveCount(4)
+    await expect(page.getByText('Working', { exact: true })).toHaveCount(0)
   })
 })

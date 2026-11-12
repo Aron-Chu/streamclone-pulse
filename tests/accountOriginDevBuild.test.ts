@@ -63,7 +63,9 @@ describe('account requests use one origin', () => {
 
   it('a store build sends every account request to production', async () => {
     const { reads, sign, bookmarks } = await accountOrigins(true)
-    expect(reads.every(key => key === PRODUCTION)).toBe(true)
+    // The credential, plus the key-only check before any bookmark leaves the browser.
+    expect(reads.every(key => key === PRODUCTION || key === 'supporter-installation-key')).toBe(true)
+    expect(reads).toContain(PRODUCTION)
     expect(sign.apiOrigin).toBe(PRODUCTION)
     expect(await sign.hosted()).toBe(true)
     expect(bookmarks).toEqual([PRODUCTION])

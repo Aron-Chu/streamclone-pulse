@@ -262,8 +262,8 @@ export function coverageCardCopy(source: PulseCoverageSource): CoverageCardCopy 
     const missingLabel = missingEnd != null ? formatHeatOffset(missingEnd) : start
     return {
       title: 'Partial coverage',
-      body: `Live IRC tracking from ${start} → now`,
-      detail: `Chat before ${missingLabel} needs a Twitch VOD archive — not IRC. Use “From stream start” to seek the player (DVR); it does not fill the chart without a VOD.`,
+      body: `Live tracking from ${start} → now`,
+      detail: `Chat before ${missingLabel} comes from the Twitch replay once it’s linked. “From stream start” only moves the player; it doesn’t fill the chart.`,
     }
   }
 
@@ -272,8 +272,8 @@ export function coverageCardCopy(source: PulseCoverageSource): CoverageCardCopy 
       title: 'Partial coverage',
       body: 'Fill missing start from Twitch VOD',
       detail: missingMinutes
-        ? `Missing first ${missingMinutes.replace(/^00:/, '')} — loads Twitch VOD chat, not live IRC.`
-        : `Missing first ${start.replace(/^00:/, '')} — loads Twitch VOD chat, not live IRC.`,
+        ? `Missing first ${missingMinutes.replace(/^00:/, '')} — loads chat from the Twitch replay.`
+        : `Missing first ${start.replace(/^00:/, '')} — loads chat from the Twitch replay.`,
     }
   }
 

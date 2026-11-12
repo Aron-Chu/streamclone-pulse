@@ -1,16 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { isHubNetworkDegraded, resolveHubStatus, resolveHubUiState } from '../src/lib/hubUiState'
+import { resolveHubUiState } from '../src/lib/hubUiState'
 import { normalizePublicHub } from '../src/lib/publicHub'
 
 describe('resolveHubUiState', () => {
-  it('never presents failed or unverified hub health as live', () => {
-    expect(resolveHubStatus({ loading: true, data: null, error: null, hubEndpointOk: false, loadSource: null }))
-      .toEqual({ value: 'Checking', tone: 'checking' })
-    expect(resolveHubStatus({ loading: false, data: null, error: 'failed', hubEndpointOk: false, loadSource: null }))
-      .toEqual({ value: 'Unavailable', tone: 'offline' })
-    expect(resolveHubStatus({ loading: false, data: normalizePublicHub({}), error: 'failed', hubEndpointOk: false, loadSource: 'cache' }))
-      .toEqual({ value: 'Stale data', tone: 'degraded' })
-  })
   it('is loading when no data yet', () => {
     expect(
       resolveHubUiState({
@@ -72,21 +64,5 @@ describe('resolveHubUiState', () => {
         loadSource: 'stats-fallback',
       }),
     ).toBe('ready')
-  })
-})
-
-describe('isHubNetworkDegraded', () => {
-  it('does not treat initial hubEndpointOk=false as unavailable', () => {
-    expect(isHubNetworkDegraded(null, false)).toBe(false)
-    expect(isHubNetworkDegraded('cache', false)).toBe(false)
-  })
-
-  it('treats stats-fallback as degraded', () => {
-    expect(isHubNetworkDegraded('stats-fallback', false)).toBe(true)
-  })
-
-  it('treats confirmed full load without hub endpoint as degraded', () => {
-    expect(isHubNetworkDegraded('full', false)).toBe(true)
-    expect(isHubNetworkDegraded('full', true)).toBe(false)
   })
 })

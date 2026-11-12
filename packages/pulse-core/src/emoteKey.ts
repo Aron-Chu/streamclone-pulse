@@ -11,3 +11,18 @@ export function parseEmoteKey(key: string): { provider: EmoteProviderKind; id: s
   }
   return { provider: 'unknown', id: '', name: key }
 }
+
+/**
+ * Whether two emote keys name the same emote. Minute rollups key an emote as
+ * "seventv:LOL:LOL" while summaries use "seventv:<id>:LOL", so ids may differ;
+ * the name must match, and so must the provider (7TV and BTTV can both have a
+ * "Clap"). A key without a provider matches on name alone.
+ */
+export function sameEmoteKey(a: string, b: string): boolean {
+  if (a === b) return true
+  const left = parseEmoteKey(a)
+  const right = parseEmoteKey(b)
+  const name = left.name.trim().toLowerCase()
+  if (!name || name !== right.name.trim().toLowerCase()) return false
+  return left.provider === 'unknown' || right.provider === 'unknown' || left.provider === right.provider
+}

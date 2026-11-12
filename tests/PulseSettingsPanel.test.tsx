@@ -50,7 +50,7 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html).not.toContain('Panel title')
     // Moments: two switches and the way to My Moments.
     expect(html).toContain('Moment pictures')
-    expect(html).toContain('Captured in this tab, never uploaded.')
+    expect(html).toContain('Kept on this device with your saves, never uploaded.')
     expect(html).toContain('Mark VOD jumps on the chart')
     expect(html).toContain('My Moments')
     expect(html).toContain('data-settings-host-cta="moments"')
@@ -134,9 +134,9 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('gives everyone else the lab’s Your Line · Anatomy copy and an empty stage the card script fills, with no emotes in this bundle', () => {
     const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(html).toContain('Explore Supporter')
-    expect(describedCopy(html)).toBe('Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
-    expect(describedCopy(html)).toBe(`Supporter perks: ${SUPPORTER_PERKS.names.join(', ')}. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.`)
-    expect(html).toContain(`title="Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged."`)
+    expect(describedCopy(html)).toBe('Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.')
+    expect(describedCopy(html)).toBe(`Supporter perks: ${SUPPORTER_PERKS.names.join(', ')}. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.`)
+    expect(html).toContain(`title="Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free."`)
     // Only the title row and the stage show; nothing covers the stage.
     expect(html).not.toContain('<small')
     expect(html).toMatch(/<span class="pulse-supporter-cta-head"><strong>Pulse Supporter<\/strong><span>Explore Supporter <span aria-hidden="true">›<\/span><\/span><\/span><span id="[^"]+" hidden="">[^<]*<\/span><span class="pulse-supporter-stage"/)
@@ -151,7 +151,7 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(verified).toContain('data-finish="etched"')
     expect(verified).toContain('Manage Supporter')
     expect(verified).not.toContain('Explore Supporter')
-    expect(describedCopy(verified)).toBe('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
+    expect(describedCopy(verified)).toBe('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.')
     expect(verified).not.toContain('<small')
     const neutral = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(neutral).toContain('Explore Supporter')
@@ -161,7 +161,7 @@ describe('PulseSettingsPanel quick workspace', () => {
     const member = renderToStaticMarkup(<SupporterHero appearance={{ finish: null, tenure: '3m', perks: true }} onOpen={() => {}} />)
     expect(member).toContain('data-supporter-verified="true"')
     expect(member).toContain('Manage Supporter')
-    expect(member).toContain('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.')
+    expect(member).toContain('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.')
     expect(member).not.toContain('Explore Supporter')
     expect(member).not.toContain('data-finish')
   })
@@ -169,11 +169,12 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('groups quick controls into titled cards', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel />)
     expect(html.match(/class="pulse-quick-group-card"/g)).toHaveLength(5)
-    for (const title of ['Moments', 'Live data', 'Layout', 'Appearance']) {
+    for (const title of ['Moments', 'Live behavior', 'Layout', 'Appearance']) {
       expect(html).toContain(`<h2 class="pulse-quick-group-title">${title}</h2>`)
     }
-    // Your look tells everyone without the perk that trying is free.
-    expect(html).toContain('<h2 class="pulse-quick-group-title">Your look<span class="pulse-quick-chip">Supporter · try free</span></h2>')
+    // Your look says it is a Supporter preview, without promising anything is free to keep.
+    expect(html).toContain('<h2 class="pulse-quick-group-title">Your look<span class="pulse-quick-chip">Supporter · preview</span></h2>')
+    expect(html).not.toContain('try free')
   })
 
   /**

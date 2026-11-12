@@ -88,7 +88,7 @@ export default function LiveCollectionWarmup({
         {!reducedMotion ? (
           <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-violet-500/30 border-t-violet-400" />
         ) : null}
-        <h3 className="text-base font-black text-zinc-100">{COLLECTING_FIRST_MINUTES_MESSAGE}</h3>
+        <h2 className="text-base font-black text-zinc-100">{COLLECTING_FIRST_MINUTES_MESSAGE}</h2>
       </div>
 
       <p className="mt-2 text-sm font-semibold text-zinc-400">
@@ -96,7 +96,7 @@ export default function LiveCollectionWarmup({
       </p>
 
       <div className="mt-4">
-        <div className="mb-1.5 flex justify-between text-xs font-bold uppercase tracking-wide text-zinc-500">
+        <div className="mb-1.5 flex justify-between text-xs font-bold uppercase tracking-wide text-zinc-400">
           <span>Minute buckets</span>
           <span>
             {progress.readyMinutes} / {progress.targetMinutes}
@@ -125,7 +125,7 @@ export default function LiveCollectionWarmup({
         </div>
       </div>
 
-      <ul className="mt-4 space-y-1 text-left text-xs font-semibold text-zinc-500">
+      <ul className="mt-4 space-y-1 text-left text-xs font-semibold text-zinc-400">
         <li className="flex items-start gap-2">
           <span className="mt-0.5 text-violet-300">•</span>
           <span>Polls Twitch for live viewer counts (~every 15s).</span>

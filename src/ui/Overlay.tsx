@@ -19,9 +19,9 @@ import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { useSupporterAppearanceDetails } from './useSupporterAppearance.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
-import { useKeepPressedInPlace } from './keepPressedInPlace.ts'
+import { revealCardBelow, useKeepPressedInPlace } from './keepPressedInPlace.ts'
 import { AnalyticsHubCta } from './AnalyticsHubCta.tsx'
-import { rollupToRecapHeatPoint } from './recapChartPeaks.ts'
+import { recapStreamDurationSeconds, rollupToRecapHeatPoint } from './recapChartPeaks.ts'
 import { buildRecapEmoteCatalog } from './recapEmotes.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PanelErrorBoundary } from './PanelErrorBoundary.tsx'
@@ -29,15 +29,18 @@ import type { ExtensionClip, ExtensionCoverageTierResponse, ExtensionRollup, Pul
 import { buildHubAnalyticsUrl, defaultWebAnalyticsBaseUrlForApi, openStreamAnalytics, resolveStreamAnalyticsHref } from '../shared/analyticsLinks.ts'
 import {
   DEFAULT_BACKEND_URL,
+  FIRST_RUN_LINE_DISMISSED_KEY,
   getAutoUpdateEnabled,
   getBackendUrl,
   densityFromStorageChange,
   getDensityPreference,
+  getFirstRunLineDismissed,
   getVodJumpChartPinEnabled,
   getOverlayDisplayPreferences,
   getSidebarTab,
   isHostedBackendUrl,
   isLocalStackBackendUrl,
+  setFirstRunLineDismissed,
   setOverlayMode,
   setSidebarTab,
   type DensityPreference,
@@ -48,6 +51,9 @@ import {
 } from '../shared/storage.ts'
 import { buildTwitchVodUrl } from '../shared/pastVods.ts'
 import { rememberVodAnalyticsBridge } from '../shared/vodAnalyticsBridge.ts'
+import { rememberMomentArrival, takeMomentArrival, type MomentArrival } from '../shared/momentArrival.ts'
+import { keptVodOriginDelta } from '../shared/vodOriginAlignment.ts'
+import { jumpHistoryReference, keptMomentSecond } from './keptMoment.ts'
 import {
   pulseSurfaceStatusLabel,
   resolvePulsePanelSections,
@@ -57,6 +63,7 @@ import {
 import { theme } from './theme.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
+import { NOT_CHARTED_TITLE } from '../shared/notCharted.ts'
 import {
   activationFromOverlay,
   createBackfillOperationController,
@@ -83,8 +90,7 @@ import { SIDEBAR_COMPACT_WIDTH } from '../content/resolveOverlayHostVisibility.t
 import { effectivePulseIsLive, pulsePayloadForDisplay } from './effectivePulseLive.ts'
 import { isPulseTop500Supported } from './pulseEligibility.ts'
 import { PulseLiveUnavailablePanel } from './PulseLiveUnavailablePanel.tsx'
-import { PulseNotTrackedPanel } from './PulseNotTrackedPanel.tsx'
-import { PulseRosterUnsupportedPanel } from './PulseRosterUnsupportedPanel.tsx'
+import { PulseNotChartedPanel } from './PulseNotChartedPanel.tsx'
 import { PulseSidebarSkeleton } from './PulseSidebarSkeleton.tsx'
 import { coverageTierStatusLabel, resolvePulseLiveAccess } from './resolvePulseLiveAccess.ts'
 import { PULSE_STREAM_START_TOLERANCE_SEC } from './coverageStartHint.ts'
@@ -97,8 +103,9 @@ import {
   canShowVodBackfillCTA,
 } from './missedMoments.ts'
 import { initPulseDebug, pulseDebug } from '../shared/pulseDebug.ts'
-import { resolveMostReactedHeat } from './mostReacted.ts'
-import { useMomentCapture } from './momentPicture.ts'
+import { resolveMostReactedHeat, sortLiveHeatPoints } from './mostReacted.ts'
+import { MomentBookmarkToast, MomentBookmarksProvider, endedStreamVodId } from './momentBookmarks.tsx'
+import { useArchiveVodId, useLiveVodId, useMomentCapture } from './momentPicture.ts'
 import { StreamRecapSection } from './StreamRecapSection.tsx'
 import { resolveRecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
@@ -106,16 +113,29 @@ import { resolveJumpMomentAction } from './jumpMomentAction.ts'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
 import { resolveVodPulseState, MAX_VOD_SECONDS } from '../vod/normalizeVodPulseFetch.ts'
+import { vodFullHistoryUpdate } from '../vod/vodPulseToChannelPayload.ts'
 import { PulseSidebarTabs } from './PulseSidebarTabs.tsx'
 import { safeImageUrl, safeTwitchNavigationUrl } from '../shared/safeUrl.ts'
-import { mergePulsePayload } from '../background/pulsePayloadMerge.ts'
+import { layFullHistoryUnderPoll } from '../background/pulsePayloadMerge.ts'
 import type { LivePollController } from '../content/livePoll.ts'
+
+/** An arrival locks the nearest minute within this, as saves and pins match. */
+const ARRIVAL_MATCH_SECONDS = 90
+/** Scrubbing further than this from the arrival's moment unlocks it. */
+const ARRIVAL_UNLOCK_SECONDS = 180
+const ARRIVAL_LABEL: Record<MomentArrival['source'], string> = {
+  library: 'From My Moments',
+  popup: 'From My Moments',
+  panel: 'From Pulse',
+  link: 'From link',
+}
 
 function coverageErrorMessage(raw: string | null | undefined, fallback: string): string {
   return formatPulseApiError(raw) ?? fallback
 }
 
-export type SidebarTabChangeSource = 'user' | 'sync'
+/** 'auto': Chat for this channel visit only, never saved as the reader's tab. */
+export type SidebarTabChangeSource = 'user' | 'sync' | 'auto'
 
 interface OverlayProps {
   login: string
@@ -248,12 +268,15 @@ function OverlayTabsShell({
       await setOverlayMode('expanded')
       onOverlayModeChange?.('expanded')
     }
+    const changed = next !== resolvedSidebarTab
     setSidebarTabState(next)
     // The content mount must hide/show the panel synchronously on a direct
     // click. Waiting for sync storage here leaves the old Pulse host intercepting
     // Twitch chat during the transition window.
     onSidebarTabChange?.(next, 'user')
-    await setSidebarTab(next)
+    // A click on the tab already shown is no new choice, so an automatic Chat
+    // (a channel with nothing to chart) is never saved through it.
+    if (changed) await setSidebarTab(next)
   }
 
   if (resolvedPlacement === 'hidden') {
@@ -280,7 +303,7 @@ function OverlayMain({
   pendingTrackPrompt = false,
   onTrackStarted,
   sessionOpenedAtMs = null,
-  coverageTier: coverageTierProp = null,
+  coverageTier = null,
   effectivePlacement,
   sidebarSnapped = false,
   sidebarPart = 'full',
@@ -342,14 +365,13 @@ function OverlayMain({
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
   const [vodJumpChartPinEnabled, setVodJumpChartPinEnabled] = useState(true)
+  // Hidden until storage says the reader hasn't dismissed it.
+  const [firstRunLine, setFirstRunLine] = useState(false)
   const [mostReactedPinOffset, setMostReactedPinOffset] = useState<number | null>(null)
   const [mostReactedPreviewOffset, setMostReactedPreviewOffset] = useState<number | null>(null)
   const [chartMinuteSelection, setChartMinuteSelection] = useState<ExtensionRollup | null>(null)
   const jumpBusyRef = useRef(false)
   const [alwaysTrackedLogins, setAlwaysTrackedLogins] = useState<string[]>([])
-  const [coverageTierState, setCoverageTierState] = useState<ExtensionCoverageTierResponse | null>(
-    coverageTierProp,
-  )
   // Route/session identity is deliberately separate from payload.vodId. A
   // channel payload can gain its linked VOD asynchronously without becoming a
   // new UI surface, while a real channel/VOD/stream transition must clear all
@@ -373,10 +395,6 @@ function OverlayMain({
   const mountedRef = useRef(true)
 
   useEffect(() => {
-    setCoverageTierState(coverageTierProp)
-  }, [coverageTierProp, login])
-
-  useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
@@ -385,11 +403,18 @@ function OverlayMain({
   }, [])
 
   useEffect(() => {
-    backfillOpsRef.current.invalidate()
+    // The chart's effects run before this one, so when a VOD's first payload
+    // arrives its Full request has already begun for the new stream. Only end
+    // operations that belong to another stream (VOD-5).
+    const op = backfillOpsRef.current.current()
+    if (!op || !sameFullHistoryActivation(op.activation, currentActivation())) {
+      backfillOpsRef.current.invalidate()
+    }
     setMissedBusy(false)
     setMissedJob(null)
     setFullTimeline(false)
     setFullHistoryPayload(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset per identity; currentActivation reads this render
   }, [login, payload?.streamId, context.vodId])
 
   useEffect(() => {
@@ -452,12 +477,16 @@ function OverlayMain({
     return null
   }
 
-  /** Transport only — does not mutate busy/Full/payload. `latest` asks for the channel's current stream. */
-  async function fetchPulseTransport(full = false, latest = false): Promise<{
+  /**
+   * Transport only — does not mutate busy/Full/payload. `latest` asks for the
+   * channel's current stream; `fresh` skips the worker's cache (a viewer's Retry).
+   */
+  async function fetchPulseTransport(full = false, latest = false, fresh = false): Promise<{
     response: unknown
     payload: PulsePayload | null
   }> {
     if (context.kind === 'vod' && context.vodId) {
+      if (full) return fetchVodFullTransport(context.vodId)
       await onPulseRefresh?.()
       return { response: null, payload }
     }
@@ -467,12 +496,33 @@ function OverlayMain({
       watch: false,
       window: full ? 'full' : 'recent',
       streamId: latest ? undefined : payload?.streamId,
+      ...(fresh ? { fresh: true } : {}),
     })
     const next =
       response && typeof response === 'object' && 'type' in response && response.type === 'PULSE_UPDATE'
         ? (response as PulseUpdateMessage).payload
         : null
     return { response, payload: next }
+  }
+
+  /**
+   * A VOD's Full request asks for the VOD's own full window and hands it back
+   * shaped like the channel's Full answer. The VOD refresh only polls the
+   * recent window, so a growing VOD's Full chart started late (VOD-5).
+   */
+  async function fetchVodFullTransport(vodId: string): Promise<{
+    response: PulseUpdateMessage | null
+    payload: PulsePayload | null
+  }> {
+    const response = await sendBackgroundMessage({
+      type: 'GET_PULSE_VOD',
+      vodId,
+      streamId: payload?.streamId ?? undefined,
+      window: 'full',
+      login,
+    })
+    const update = vodFullHistoryUpdate(response, login)
+    return { response: update, payload: update?.payload ?? null }
   }
 
   function handleChartWindowChange(window: ChartTimelineWindow): void {
@@ -529,25 +579,47 @@ function OverlayMain({
         setNotice({ kind: 'warn', text: 'This clip could not be matched to this stream.' })
         return
       }
-      const findBucket = (data: PulsePayload) => (data.fullRollups?.length ? data.fullRollups : data.rollups ?? [])
-        .find(row => !row.missing && row.offsetSeconds <= offset && offset < row.offsetSeconds + 60)
-      let bucket = findBucket(source)
-      if (!bucket) {
-        const result = await requestFullTimeline()
-        if (!isCurrent()) return
-        if (result.ok) { source = result.payload; bucket = findBucket(source) }
-      }
-      if (!bucket) {
-        setNotice({ kind: 'warn', text: 'No chart data is available for this clip minute.' })
-        return
-      }
-      setNotice(null)
-      setClipPoint(rollupToRecapHeatPoint(bucket, source.startedAt, buildRecapEmoteCatalog(source)))
-      handleChartPin(bucket.offsetSeconds)
-      handleChartMinuteSelect(bucket)
+      const locked = await lockMinuteAt(offset, source, isCurrent)
+      if (locked === null) return
+      setNotice(locked ? null : { kind: 'warn', text: 'No chart data is available for this clip minute.' })
     } catch {
       if (isCurrent()) setNotice({ kind: 'warn', text: 'Could not load this clip moment. Try again.' })
     }
+  }
+
+  /**
+   * Locks the chart minute holding a stream second, with its card open, as a
+   * picked clip does. An arrival also takes the nearest minute within 90 s
+   * when none holds it. True once locked, false with no chart data there, and
+   * null when the panel moved on meanwhile.
+   */
+  async function lockMinuteAt(offset: number, from: PulsePayload, isCurrent: () => boolean, nearest = false): Promise<boolean | null> {
+    let source = from
+    // Buckets start where the stream's wall-clock minutes fall, often
+    // mid-minute, and the chart files each under its floored minute. Match on
+    // that grid so the card and readout show the minute the second is in.
+    const minute = (seconds: number) => Math.floor(seconds / 60) * 60
+    const findBucket = (data: PulsePayload) => {
+      const rows = (data.fullRollups?.length ? data.fullRollups : data.rollups ?? []).filter(row => !row.missing)
+      const inside = rows.find(row => minute(row.offsetSeconds) === minute(offset))
+      if (inside || !nearest) return inside
+      const gap = (row: ExtensionRollup) => {
+        const start = minute(row.offsetSeconds)
+        return offset < start ? start - offset : offset - start - 59
+      }
+      return rows.filter(row => gap(row) <= ARRIVAL_MATCH_SECONDS).sort((a, b) => gap(a) - gap(b))[0]
+    }
+    let bucket = findBucket(source)
+    if (!bucket) {
+      const result = await requestFullTimeline()
+      if (!isCurrent()) return null
+      if (result.ok) { source = result.payload; bucket = findBucket(source) }
+    }
+    if (!bucket) return false
+    setClipPoint(rollupToRecapHeatPoint(bucket, source.startedAt, buildRecapEmoteCatalog(source)))
+    handleChartPin(bucket.offsetSeconds)
+    handleChartMinuteSelect(bucket)
+    return true
   }
 
   useEffect(() => {
@@ -607,6 +679,9 @@ function OverlayMain({
       void getVodJumpChartPinEnabled().then(value => {
         if (mounted) setVodJumpChartPinEnabled(value)
       })
+      void getFirstRunLineDismissed().then(dismissed => {
+        if (mounted) setFirstRunLine(!dismissed)
+      })
       if (backendId === backendRequestId) setBackendUrlState(storedBackend)
       if (!controlledSidebarTab && storedSidebarTab != null && tabId === tabRequestId) {
         setSidebarTabState(storedSidebarTab)
@@ -649,6 +724,8 @@ function OverlayMain({
           if (mounted) setVodJumpChartPinEnabled(value)
         })
       }
+      // Dismissed in another tab: gone here too.
+      if (changes[FIRST_RUN_LINE_DISMISSED_KEY]?.newValue === true) setFirstRunLine(false)
     }
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       chrome.storage.onChanged.addListener(storageHandler)
@@ -698,7 +775,7 @@ function OverlayMain({
 
   const chartSourcePayload = useMemo(() => {
     if (!payload || !fullHistoryPayload) return payload
-    return mergePulsePayload(payload, fullHistoryPayload, { source: 'full' })
+    return layFullHistoryUnderPoll(payload, fullHistoryPayload)
   }, [fullHistoryPayload, payload])
   const displayPayload = chartSourcePayload ? pulsePayloadForDisplay(chartSourcePayload, pageIsLive, context) : null
   const uiIsLive = effectivePulseIsLive(payload, pageIsLive, context)
@@ -707,7 +784,7 @@ function OverlayMain({
   const localStackBackend = isLocalStackBackendUrl(backendUrl)
   const pulseLiveAccess = resolvePulseLiveAccess({
     payload,
-    coverageTier: coverageTierState,
+    coverageTier,
     alwaysTrackedLogins,
     sessionOpenedAtMs,
     pageIsLive,
@@ -715,11 +792,18 @@ function OverlayMain({
   })
   const mostReactedHeat = displayPayload ? resolveMostReactedHeat(displayPayload) : null
   const warming = Boolean(uiIsLive && mostReactedHeat && !mostReactedHeat.visible)
+  // An ended stream's payload names no VOD; its pictures and cover need it.
+  const archiveVodId = useArchiveVodId(context.login, payload?.streamId, context.kind === 'channel' && !uiIsLive && !payload?.vodId)
+  // A live stream's payload names no VOD either; exact frames read the one Twitch is recording.
+  const liveVodId = useLiveVodId(context.login, payload?.streamId, context.kind === 'channel' && uiIsLive && !payload?.vodId)
   // Moment pictures: frames of this tab's player, kept around ranked moments.
   // A VOD's frames count only on the VOD the analytics belong to.
   useMomentCapture(
     {
       key: payload?.streamId,
+      api: backendUrl,
+      login: context.login,
+      vodId: payload?.vodId ?? archiveVodId ?? liveVodId,
       live: context.kind === 'channel' && uiIsLive,
       startedAt: payload?.startedAt,
       vod: context.kind === 'vod' && Boolean(payload?.vodId) && context.vodId === payload?.vodId,
@@ -731,6 +815,16 @@ function OverlayMain({
       ...(payload?.peaks ?? []).map(peak => peak.offsetSeconds),
     ],
     getPrimaryVideo,
+  )
+  // The listed moments, so a bookmark near two shows on the nearer one.
+  const bookmarkMomentsKey = [
+    ...(mostReactedHeat?.points ?? []),
+    ...(payload?.recap?.topMoments ?? []),
+    ...(payload?.peaks ?? []),
+  ].map(point => reactionAnalyticalOffset(point)).join(',')
+  const bookmarkMomentOffsets = useMemo(
+    () => (bookmarkMomentsKey ? [...new Set(bookmarkMomentsKey.split(',').map(Number))] : []),
+    [bookmarkMomentsKey],
   )
   const panelSections = payload
     ? resolvePulsePanelSections(payload, {
@@ -753,7 +847,18 @@ function OverlayMain({
     pulseLiveAccess: pulseLiveAccess.state,
     pulseSupported,
   })
-  const recapCoverageTier = coverageTierState
+  // Nothing to chart on this channel (off the list, or live while StreamPulse
+  // isn't reading its chat): the mount shows Chat, once per visit, unsaved.
+  const nothingToChart = context.kind === 'channel' && (panelSurfaceState === 'unsupported'
+    || (hostedBackend && panelSurfaceState === 'live_untracked' && !payload?.tracking))
+  const autoChatVisitRef = useRef('')
+  useEffect(() => {
+    if (!nothingToChart || autoChatVisitRef.current === loadKey) return
+    autoChatVisitRef.current = loadKey
+    onSidebarTabChange?.('chat', 'auto')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per channel visit
+  }, [nothingToChart, loadKey])
+  const recapCoverageTier = coverageTier
   const recapUiState = payload
     ? resolveRecapUiState({
         isLive: uiIsLive,
@@ -785,6 +890,108 @@ function OverlayMain({
     && !hasRecapPanel,
   )
   const canRenderPayload = Boolean(payload && panelSurfaceState !== 'identity_mismatch')
+  // A replay of a stream that is still live shows the live chart: its minute card opens under it.
+  const liveChartShown = canRenderPayload && pulseSupported && pulseLiveAccess.state === 'full_live' && Boolean(panelSections?.showLiveStatsBand)
+
+  // Board E: a Watch link that opened this VOD locks its moment's minute, with
+  // its card open, and says where the viewer came from until they unlock it.
+  const [pendingArrival, setPendingArrival] = useState<MomentArrival | null>(null)
+  const [arrival, setArrival] = useState<{ source: MomentArrival['source']; at: number; vodSecond: number } | null>(null)
+  const [arrivalNotice, setArrivalNotice] = useState<{ key: number; text: string } | null>(null)
+  const arrivalWatchRef = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    setPendingArrival(null)
+    setArrival(null)
+    if (context.kind !== 'vod' || !context.vodId) return
+    let active = true
+    void takeMomentArrival(context.vodId).then(found => { if (active && found) setPendingArrival(found) })
+    return () => { active = false }
+  }, [context.kind, context.vodId])
+  useEffect(() => () => arrivalWatchRef.current?.(), [])
+
+  useEffect(() => {
+    const found = pendingArrival
+    const source = chartSourcePayload
+    if (!found || !source || !canRenderPayload || !(isVodPage || liveChartShown)) return
+    if (source.vodId && source.vodId !== found.vodId) return
+    // Wait for the chart: the first payload can come without its minutes.
+    if (!(source.fullRollups?.length || source.rollups?.length)) return
+    setPendingArrival(null)
+    const surface = surfaceIdentity
+    const isCurrent = () => mountedRef.current && jumpSurfaceRef.current === surface
+    const delta = Number.isFinite(source.vodOriginDeltaSeconds) ? source.vodOriginDeltaSeconds! : 0
+    const at = found.clock === 'stream' ? found.offsetSeconds : found.offsetSeconds + delta
+    void lockMinuteAt(at, source, isCurrent, true).then(locked => {
+      if (!locked || !isCurrent()) return
+      setArrival({ source: found.source, at, vodSecond: Math.max(0, at - delta) })
+      // Only a Pulse link counts toward History; any other timestamped link
+      // is just where the player started.
+      if (found.source !== 'link') watchArrival(found, at, Math.max(0, at - delta), source.vodId === found.vodId ? keptVodOriginDelta(source.vodOriginDeltaSeconds) : undefined)
+    }).catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lockMinuteAt reads this render's state
+  }, [pendingArrival, chartSourcePayload, canRenderPayload, isVodPage, liveChartShown, surfaceIdentity])
+
+  /**
+   * History counts an arrival once 10 s of it plays, as after a jump in this
+   * tab. `vodOriginDeltaSeconds`: this VOD's, so the entry's link lands there too.
+   */
+  function watchArrival(found: MomentArrival, at: number, vodSecond: number, vodOriginDeltaSeconds?: number): void {
+    arrivalWatchRef.current?.()
+    const start = Math.max(0, vodSecond - 5)
+    const end = start + 60
+    const deadline = Date.now() + 30_000
+    // Twitch applies ?t= once its player loads; capture starts when it has.
+    const timer = setInterval(() => {
+      const video = getPrimaryVideo()
+      if (!mountedRef.current || Date.now() > deadline) { clearInterval(timer); return }
+      if (!video || video.currentTime < start - 10 || video.currentTime > end) return
+      clearInterval(timer)
+      void observeMomentPlayback(video, { id: 'moment', channel: found.login ?? payload?.login ?? login, title: found.title ?? 'Moment',
+        vodId: found.vodId, streamId: found.streamId ?? payload?.streamId, offsetSeconds: at,
+        ...(vodOriginDeltaSeconds === undefined ? {} : { vodOriginDeltaSeconds }), availability: 'unresolved' }, start, end, () => {
+        if (mountedRef.current) setArrivalNotice({ key: Date.now(), text: `Added to History · ${formatHeatOffset(at)}` })
+      })
+    }, 500)
+    arrivalWatchRef.current = () => clearInterval(timer)
+  }
+
+  const unlockArrival = useCallback(() => {
+    setArrival(null)
+    setClipPoint(null)
+    handleChartPin(null)
+  }, [handleChartPin])
+
+  // Scrubbing far from the moment unlocks it too. Seeks before the player
+  // first reaches the moment are Twitch applying ?t=, not the viewer.
+  useEffect(() => {
+    if (!arrival) return
+    const video = getPrimaryVideo()
+    if (!video) return
+    let reached = false
+    const seeked = () => {
+      const away = Math.abs(video.currentTime - arrival.vodSecond) > ARRIVAL_UNLOCK_SECONDS
+      if (!away) reached = true
+      else if (reached) unlockArrival()
+    }
+    seeked()
+    video.addEventListener('seeked', seeked)
+    return () => video.removeEventListener('seeked', seeked)
+  }, [arrival, unlockArrival])
+
+  // The chip and card open below the chart, often past the panel's fold:
+  // scroll them into view once, on arrival only. The chip can move to the
+  // card that opens once the recap matches its minute, so the reveal reads
+  // the ref on every frame.
+  const arrivalChipRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (arrival && arrivalChipRef.current) return revealCardBelow(() => arrivalChipRef.current)
+  }, [arrival])
+  const arrivalNote = arrival ? (
+    <div ref={arrivalChipRef} className="pulse-arrival" data-moment-arrival={arrival.source} data-chart-action="true">
+      <span>{ARRIVAL_LABEL[arrival.source]} · {formatHeatOffset(arrival.at)}</span>
+      <button type="button" aria-label="Unlock this moment" title="Unlock" onClick={unlockArrival}>×</button>
+    </div>
+  ) : null
   const sidebarChatOnly = showSidebarTabs && resolvedSidebarTab === 'chat'
   const metricsCompact = sidebarSnapped && (panelHostWidth ?? 0) > 0 && (panelHostWidth ?? 0) < SIDEBAR_COMPACT_WIDTH
   const shellClass = [
@@ -872,9 +1079,13 @@ function OverlayMain({
     if (!op) setTrackBusy(true)
     try {
       // Retry (not Full) asks for the channel's current stream, so it can leave an earlier one.
-      const { response, payload: next } = await fetchPulseTransport(full, !full)
+      // A viewer's Retry skips the worker cache and applies what comes back:
+      // the cached answer was what failed to refresh (STATE-2).
+      const { response, payload: next } = await fetchPulseTransport(full, !full, !op && !full)
       if (op && !tokenIsLive(op)) return null
-      if (full && response) {
+      if (!full && !op && response) {
+        applyPulseResponse(response as PulseUpdateMessage)
+      } else if (full && response) {
         const applied = applyPulseResponse(response as PulseUpdateMessage, op)
         if ((!op || tokenIsLive(op)) && hasValidatedFullHistory(applied, currentActivation())) {
           setFullTimeline(true)
@@ -935,7 +1146,7 @@ function OverlayMain({
     if (!canShowVodBackfillCTA(activePayload, pageHint)) {
       setNotice({
         kind: 'info',
-        text: 'No validated archive is linked yet — live IRC tracking continues. Try again later.',
+        text: 'No Twitch replay is linked yet — live tracking continues. Try again later.',
       })
       return
     }
@@ -992,9 +1203,9 @@ function OverlayMain({
     setNotice({ kind: 'warn', text: 'Backfill is taking longer than expected — try again shortly.' })
   }
 
-  async function submitPageVodHint(token?: BackfillOperationToken | null): Promise<string | null> {
-    const op = token ?? backfillOpsRef.current.current()
-    if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
+  /** The live archive's id for this stream: the page, then Twitch GQL, then stream history. */
+  async function discoverPageVodId(op: BackfillOperationToken | null): Promise<string | null> {
+    if (!payload?.streamId) return null
     const domHint = discoverLiveVodIdFromDom(payload.streamId)
     await pulseDebug('vod.discover.dom', domHint ? 'found archive id in page' : 'no archive id in page html', {
       login,
@@ -1058,7 +1269,15 @@ function OverlayMain({
       }, hint ? 'info' : 'warn')
     }
     if (op && !tokenIsLive(op)) return null
-    if (!hint) return null
+    return hint
+  }
+
+  async function submitPageVodHint(token?: BackfillOperationToken | null): Promise<string | null> {
+    const op = token ?? backfillOpsRef.current.current()
+    if (!payload?.streamId || payload.vodId) return payload?.vodId ?? null
+    const hint = await discoverPageVodId(op)
+    if (op && !tokenIsLive(op)) return null
+    if (!hint || !payload?.streamId) return null
     try {
       const res = await sendBackgroundMessage({
         type: 'HINT_VOD',
@@ -1357,12 +1576,16 @@ function OverlayMain({
     if (vodId) {
       const vodUrl = buildTwitchVodUrl(vodId, offset)
       if (context.kind === 'vod' && context.vodId === vodId) {
-        const result = seekPlaybackOffset(getPrimaryVideo(), offset, { isLive: false })
-        setNotice({
-          kind: 'ok',
-          text: result.ok
-            ? 'Jumped to stream start in the VOD player.'
-            : 'Scrub the VOD player to stream start.',
+        // Twitch's player can take currentTime = 0 and then snap a growing VOD
+        // back to its end, so aim one second in and confirm it held (VOD-3).
+        void seekPlaybackOffsetVerified(getPrimaryVideo(), 1, { isLive: false }).then(result => {
+          if (!mountedRef.current) return
+          setNotice({
+            kind: result.ok ? 'ok' : 'warn',
+            text: result.ok
+              ? 'Jumped to stream start in the VOD player.'
+              : 'Scrub the VOD player to stream start.',
+          })
         })
         return
       }
@@ -1517,8 +1740,9 @@ function OverlayMain({
         if (point.estimated || point.collecting) return
         const window = reactionMomentWindow(point)
         const start = target + window.startSeconds - reactionLeadInOffset(point, 5)
-        void observeMomentPlayback(getPrimaryVideo(), { id: 'moment', channel: login, title: point.reasonLabel,
-          vodId: jumpVodId ?? context.vodId, streamId: payload?.streamId, offsetSeconds: point.offsetSeconds, availability: 'unresolved' }, start, start + window.durationSeconds)
+        // Kept at the second its bookmark keeps, so My Moments shows one row for both.
+        void observeMomentPlayback(getPrimaryVideo(), jumpHistoryReference(point, { login, vodId: jumpVodId ?? context.vodId, streamId: payload?.streamId,
+          payloadVodId: payload?.vodId, payloadVodOriginDeltaSeconds: payload?.vodOriginDeltaSeconds }), start, start + window.durationSeconds)
       }
       if (action.kind === 'seek-vod') {
         const result = await seekPlaybackOffsetVerified(getPrimaryVideo(), action.offsetSeconds, { isLive: false })
@@ -1534,6 +1758,9 @@ function OverlayMain({
       }
 
       if (action.kind === 'open-vod-tab') {
+        // The new tab's panel locks this moment (board E).
+        void rememberMomentArrival({ vodId: action.vodId, offsetSeconds: keptMomentSecond(point), source: 'panel',
+          login, streamId: payload?.streamId, title: point.reasonLabel })
         if (payload?.streamId) {
           void rememberVodAnalyticsBridge({
             vodId: action.vodId,
@@ -1621,6 +1848,11 @@ function OverlayMain({
   }
 
   if (resolvedMode === 'mini') {
+    // The first row the panel's Top moments list would show, ranked as it ranks.
+    const dockTopMoment = !isVodPage && canRenderPayload && pulseSupported && pulseLiveAccess.state === 'full_live'
+      && panelSections?.showMostReacted && mostReactedHeat?.visible
+      ? sortLiveHeatPoints(mostReactedHeat.points, 'reaction')[0] ?? null
+      : null
     return (
       <section className={shellClass} data-pulse-density={density} style={sidebarBodyOnly ? styles.miniHost : undefined} aria-label="StreamPulse mini overlay">
         <MiniDock
@@ -1634,6 +1866,8 @@ function OverlayMain({
           onSettings={openInlineSettings}
           onHide={() => void hideOverlay()}
           onTrack={localStackBackend ? () => void startTracking() : undefined}
+          topMoment={dockTopMoment}
+          onJumpTopMoment={point => jumpToOffset(reactionAnalyticalOffset(point))}
         />
       </section>
     )
@@ -1675,11 +1909,11 @@ function OverlayMain({
             // An unresolved VOD page has only the internal placeholder, which is not a channel name.
             channel={login.startsWith('__vod__:') ? undefined : {
               login,
-              displayName: coverageTierState?.displayName,
+              displayName: coverageTier?.displayName,
               isLive: uiIsLive,
-              category: payload?.category ?? coverageTierState?.liveMetadata?.category,
+              category: payload?.category ?? coverageTier?.liveMetadata?.category,
               viewerCount: currentViewerCount(payload, uiIsLive),
-              startedAt: payload?.startedAt ?? coverageTierState?.liveMetadata?.startedAt,
+              startedAt: payload?.startedAt ?? coverageTier?.liveMetadata?.startedAt,
               surface: panelSurfaceState,
             }}
           />
@@ -1693,9 +1927,25 @@ function OverlayMain({
               : 'pulse-workspace pulse-panel-view-stack'
           }
         >
+      <MomentBookmarksProvider
+        login={payload && canRenderPayload ? payload.login : ''}
+        streamId={payload?.streamId}
+        vodId={payload?.vodId ?? undefined}
+        vodOriginDeltaSeconds={payload?.vodOriginDeltaSeconds}
+        // Lookup only: linking the VOD mid-save would re-key the bookmark row and drop the save.
+        // Live, the live archive; an ended stream's recap, its row in stream history.
+        resolveVodId={context.kind !== 'channel' ? undefined
+          : uiIsLive ? () => discoverPageVodId(null)
+            : () => (payload?.streamId ? endedStreamVodId(payload.login, payload.streamId) : Promise.resolve(null))}
+        momentOffsets={bookmarkMomentOffsets}
+        notice={arrivalNotice}
+      >
       <StreamPulseHeader
         personalTitle={banner.value.title}
-        replayLead={isVodPage ? replayLead(vodPulse) : undefined}
+        replayLead={isVodPage ? replayLead(
+          vodPulse,
+          payload && vodPulse?.streamId && payload.streamId === vodPulse.streamId ? recapStreamDurationSeconds(payload) : undefined,
+        ) : undefined}
         isLive={uiIsLive}
         surfaceState={panelSurfaceState}
         pulseLiveAccess={pulseLiveAccess.state}
@@ -1712,6 +1962,17 @@ function OverlayMain({
         onHide={() => void hideOverlay()}
         onSupporterPerks={setSupporterPerks}
       />
+
+      {/* Once, in the sidebar where the Chat tab is: what Pulse is, and the way back to chat. */}
+      {firstRunLine && (sidebarBodyOnly || showSidebarTabs) && !sidebarChatOnly && !nothingToChart ? (
+        <p className="pulse-state-text" data-pulse-first-run="true">
+          Pulse charts this stream’s chat. Click Chat for Twitch chat.{' '}
+          <button type="button" className="pulse-link-btn" onClick={() => {
+            setFirstRunLine(false)
+            void setFirstRunLineDismissed().catch(() => undefined)
+          }}>Dismiss</button>
+        </p>
+      ) : null}
 
       {panelView === 'pulse' && !sidebarChatOnly ? (
         <AnalyticsHubCta backendUrl={backendUrl} compact />
@@ -1732,7 +1993,7 @@ function OverlayMain({
 
       {awaitingTrack && !isVodPage && localStackBackend && pulseSupported && !payload?.tracking ? (
         <section className="pulse-track-prompt">
-          <p className="pulse-state-text">Track <strong>{login}</strong> to collect live chat and 7TV rollups from your StreamPulse stack.</p>
+          <p className="pulse-state-text">Track <strong>{login}</strong> to chart live chat and 7TV emotes from your StreamPulse stack.</p>
           <div className="pulse-footer-actions">
             <button type="button" className="pulse-primary-button" disabled={trackBusy} onClick={() => void startTracking()}>
               {trackBusy ? 'Starting…' : 'Track this channel'}
@@ -1743,7 +2004,13 @@ function OverlayMain({
       ) : null}
 
       {error && !payload && !(isVodPage && error !== EXTENSION_RECONNECT_MESSAGE) ? (
-        <BackendError backendUrl={backendUrl} error={error} onRetry={() => void refreshPulse()} onSettings={openInlineSettings} />
+        <BackendError
+          backendUrl={backendUrl}
+          error={error}
+          onRetry={() => void refreshPulse()}
+          onSettings={openInlineSettings}
+          onBackToChat={sidebarBodyOnly ? () => onSidebarTabChange?.('chat', 'auto') : undefined}
+        />
       ) : null}
 
       {error && payload && panelSurfaceState !== 'identity_mismatch' ? (
@@ -1760,16 +2027,8 @@ function OverlayMain({
         </div>
       ) : null}
 
-      {payload && !pulseSupported ? (
-        <PulseRosterUnsupportedPanel login={login} />
-      ) : null}
-
-      {!isVodPage && hostedBackend && uiIsLive && pulseSupported && panelSurfaceState === 'live_untracked' ? (
-        <PulseNotTrackedPanel
-          login={login}
-          hostedActiveCount={pulseLiveAccess.hostedActiveCount}
-          hostedActiveLimit={pulseLiveAccess.hostedActiveLimit}
-        />
+      {payload && (!pulseSupported || (!isVodPage && hostedBackend && uiIsLive && panelSurfaceState === 'live_untracked')) ? (
+        <PulseNotChartedPanel onBackToChat={sidebarBodyOnly ? () => onSidebarTabChange?.('chat', 'auto') : undefined} />
       ) : null}
 
       {!isVodPage && !hostedBackend && payload && pulseSupported && panelSurfaceState === 'live_untracked' ? (
@@ -1814,7 +2073,6 @@ function OverlayMain({
                   onLoadFromStart={() => void loadStreamFromStart()}
                   onJumpToOffset={jumpToOffset}
                   onOpenAnalytics={openAnalytics}
-                  onOpenFullAnalytics={() => openAnalytics()}
                   onRequestFullTimeline={requestFullTimeline}
                   onChartWindowChange={handleChartWindowChange}
                   onPinOffset={handleChartPin}
@@ -1828,8 +2086,9 @@ function OverlayMain({
                   // shows in the Top Moments card; the chart keeps minutes.
                   cardInList={panelSections?.showMostReacted}
                   hasVodContext={Boolean(payload?.vodId ?? context.vodId)}
-                  coverageTier={coverageTierState?.coverageTier ?? null}
-                  liveMetadata={coverageTierState?.liveMetadata ?? null}
+                  coverageTier={coverageTier?.coverageTier ?? null}
+                  liveMetadata={coverageTier?.liveMetadata ?? null}
+                  arrivalNote={arrivalNote}
                 />
               ) : null}
 
@@ -1872,7 +2131,7 @@ function OverlayMain({
               count={mostReactedHeat?.completedRollupCount ?? 0}
               coverageStart={coverageStart}
               tracking={payload?.tracking ?? false}
-              coverageTier={coverageTierState?.coverageTier}
+              coverageTier={coverageTier?.coverageTier}
             />
           ) : null}
         </>
@@ -1900,6 +2159,7 @@ function OverlayMain({
           {panelSections?.showRecap && payload ? (
             <StreamRecapSection
               externalPoint={clipPoint}
+              arrivalNote={arrivalNote}
               payload={payload}
               backendUrl={backendUrl}
               uiState={recapUiState === 'partial' ? 'ready' : (recapUiState ?? 'ready')}
@@ -1909,6 +2169,8 @@ function OverlayMain({
               sidebarFill={sidebarSnapped}
               hideHubLink
               vodPage={isVodPage}
+              followVod={isVodPage && payload.vodId === context.vodId}
+              archiveVodId={archiveVodId}
               onJump={jumpMoment}
               onAnalytics={openAnalyticsForMoment}
               onOpenAnalytics={openAnalytics}
@@ -1957,6 +2219,8 @@ function OverlayMain({
           ) : null}
         </>
       ) : null}
+      <MomentBookmarkToast />
+      </MomentBookmarksProvider>
         </div>
       )}
       </PanelErrorBoundary>
@@ -2066,9 +2330,7 @@ function StreamPulseHeader({
       </div>
       <div className={sidebarFill ? 'pulse-header-actions-sidebar' : 'pulse-header-actions'} style={hostedBackend && hideUtilityActions ? { display: 'none' } : undefined}>
         {!pulseSupported && !hostedBackend ? (
-          <span className={trackingPillClass} aria-label="Limited tracked roster">
-            Limited roster
-          </span>
+          <span className={trackingPillClass}>{NOT_CHARTED_TITLE}</span>
         ) : hostedBackend ? null : pulseLiveAccess === 'full_live' ? (
           <span className={trackingPillClass} aria-label="Tracking this streamer">
             Tracking
@@ -2117,10 +2379,14 @@ const PERMANENT_VOD_STATES = new Set(['stream_not_collected', 'duration_implausi
  * Games played strip is the one place that names games, so the header never
  * names one the recap says it doesn't know. A length over 48 h is not a real
  * stream (see parseExtensionVodPulseResponse) and is left out.
+ *
+ * `recapSeconds` is the recap's own length for this stream: a stream whose
+ * close was recorded hours late (Oct 16 xQc: 19h 43m, a 9h 22m VOD) is cut to
+ * where its chat ends, so the header and the recap say the same length.
  */
-export function replayLead(vod: ExtensionVodPulseResponse | null): string {
+export function replayLead(vod: ExtensionVodPulseResponse | null, recapSeconds?: number): string {
   const started = Date.parse(vod?.startedAt ?? '')
-  const seconds = vod?.durationSeconds ?? 0
+  const seconds = recapSeconds != null && recapSeconds > 0 ? recapSeconds : vod?.durationSeconds ?? 0
   const hours = Math.floor(seconds / 3600)
   return [
     Number.isFinite(started) ? new Date(started).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
@@ -2286,6 +2552,7 @@ function SidebarHeaderBar({
     const id = window.setInterval(sync, 600)
     return () => window.clearInterval(id)
   }, [])
+  const chattersLabel = chattersOpen && active === 'chat' ? 'Close chatters list' : 'Open chatters list'
 
   return (
     <div className="pulse-sidebar-header-row">
@@ -2305,11 +2572,18 @@ function SidebarHeaderBar({
       <button
         type="button"
         className={`pulse-sidebar-header-edge${chattersOpen ? ' pulse-sidebar-header-edge-active' : ''}`}
-        aria-label={chattersOpen ? 'Close chatters list' : 'Open chatters list'}
+        aria-label={chattersLabel}
         aria-pressed={chattersOpen}
-        title={chattersOpen ? 'Close chatters list' : 'Open chatters list'}
+        title={chattersLabel}
         onClick={() => {
-          toggleTwitchChatters()
+          // Twitch draws the list in its chat column, so it is only seen on CHAT:
+          // from PULSE the button switches tabs and opens the list, never closes it.
+          if (active !== 'chat') {
+            onChange('chat')
+            if (!isTwitchChattersOpen()) toggleTwitchChatters()
+          } else {
+            toggleTwitchChatters()
+          }
           window.setTimeout(() => setChattersOpen(isTwitchChattersOpen()), 120)
         }}
       >
@@ -2355,7 +2629,7 @@ function WarmingState({
   coverageTier?: string
 }) {
   const statusLabel = coverageTierStatusLabel(coverageTier, tracking)
-  if (statusLabel === 'Metadata only — no chat coverage') {
+  if (statusLabel === 'Viewer counts only') {
     return (
       <section className="pulse-state-block">
         <h2 className="pulse-state-title">{statusLabel}</h2>
@@ -2376,7 +2650,7 @@ function WarmingState({
         {firstMinutePending
           ? 'Chat is counted once a minute. The chart and Top Moments fill in on their own.'
           : lateTracking
-            ? `StreamPulse is tracking this broadcast (${formatHeatOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes of chat rollups.`
+            ? `StreamPulse is tracking this broadcast (${formatHeatOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} full minutes of chat.`
             : `Collecting chat and emote activity. Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes.`}
       </p>
       <div className="pulse-shimmer pulse-progress-track"><span className="pulse-progress-fill" style={{ width: `${progress * 100}%` }} /></div>
@@ -2385,7 +2659,14 @@ function WarmingState({
   )
 }
 
-function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: string; error?: string; onRetry: () => void; onSettings: () => void }) {
+function BackendError({ backendUrl, error, onRetry, onSettings, onBackToChat }: {
+  backendUrl: string
+  error?: string
+  onRetry: () => void
+  onSettings: () => void
+  /** Shows Chat again for this visit. Absent where there is no Chat tab. */
+  onBackToChat?: () => void
+}) {
   // A disconnected tab is not an unreachable backend. Retrying and opening
   // settings both go through the same dead port, so a reload is the only thing
   // worth offering.
@@ -2400,17 +2681,26 @@ function BackendError({ backendUrl, error, onRetry, onSettings }: { backendUrl: 
       </section>
     )
   }
+  // A hosted viewer can't fix an outage in Settings, so the second way out is
+  // back to chat, as on the Not charted card; the floating panel has no Chat
+  // tab, so it keeps Retry alone. An own stack keeps Open settings, since its
+  // fix may be the backend URL.
+  const hosted = isHostedBackendUrl(backendUrl)
   return (
     <section className="pulse-error-block">
       <h2 className="pulse-error-title">Can&apos;t reach StreamPulse</h2>
       <p className="pulse-state-text">
-        {isHostedBackendUrl(backendUrl)
+        {hosted
           ? 'StreamPulse isn’t responding right now. Try again in a minute.'
           : `No response from ${backendUrl}.`}
       </p>
       <div className="pulse-footer-actions">
         <button type="button" className="pulse-secondary-button" onClick={onRetry}>Retry</button>
-        <button type="button" className="pulse-text-button-large" onClick={onSettings}>Open settings</button>
+        {!hosted ? (
+          <button type="button" className="pulse-text-button-large" onClick={onSettings}>Open settings</button>
+        ) : onBackToChat ? (
+          <button type="button" className="pulse-text-button-large" onClick={onBackToChat}>Back to chat</button>
+        ) : null}
       </div>
     </section>
   )

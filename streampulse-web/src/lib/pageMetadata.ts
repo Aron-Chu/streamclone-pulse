@@ -1,4 +1,6 @@
 import { isChannelRouteLogin } from './channelRoute'
+import { GROWTH_PAGES } from './growthPages'
+import reviewedRecapMetadata from '../generated/recap-page-metadata.json'
 
 export interface PageMetadata {
   title: string
@@ -8,7 +10,7 @@ export interface PageMetadata {
 }
 
 const DEFAULT_DESCRIPTION =
-  'StreamPulse finds Twitch moments through coverage-honest chat, emote, viewer, and VOD analytics.'
+  'StreamPulse adds free chat and emote stats beside Twitch chat, with Top Moments, pictures, and Stream Recap.'
 
 function channelTitle(pathname: string): string | null {
   const match = pathname.match(/^\/analytics\/([^/]+)(?:\/(?:s\/)?[^/]+)?$/)
@@ -25,14 +27,38 @@ function channelTitle(pathname: string): string | null {
 
 function resolveBasePageMetadata(pathname: string): PageMetadata {
   if (pathname.replace(/\/+$/, '') === '/account/restore') return { title: 'Restore Supporter — StreamPulse', description: 'Confirm a requested Supporter restore for your extension.', canonicalPath: '/account/restore', robots: 'noindex,nofollow' }
-  if (pathname.startsWith('/account/')) return { title: 'Your account — StreamPulse', description: 'Manage your StreamPulse account and connected extension.', canonicalPath: pathname.split(/[?#]/)[0], robots: 'noindex,nofollow' }
+  // The Account page itself (/account) exists only with My Moments on (VITE_ACCOUNT_MOMENTS=1).
+  if (pathname.startsWith('/account/') || (import.meta.env.VITE_ACCOUNT_MOMENTS === '1' && pathname.replace(/\/+$/, '') === '/account')) {
+    const accountPath = pathname.split(/[?#]/)[0]
+    const accountTitles: Record<string, string> = {
+      '/account/sign-in': 'Sign in',
+      '/account/confirm': 'Confirm sign-in',
+      '/account/link-device': 'Link extension',
+      '/account/settings': 'Account & devices',
+    }
+    const accountTitle = accountTitles[accountPath.replace(/\/+$/, '')]
+    return { title: accountTitle ? `${accountTitle} — StreamPulse` : 'Your account — StreamPulse', description: 'Manage your StreamPulse account and connected extension.', canonicalPath: accountPath, robots: 'noindex,nofollow' }
+  }
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname
+
+  const growthPage = GROWTH_PAGES.find(page => page.canonicalPath === normalizedPath)
+  if (growthPage) {
+    const { path: _path, ...metadata } = growthPage
+    return metadata
+  }
+
+  const reviewedPath = normalizedPath
+    .replace(/^\/s\/([^/]+)(\/[^/]+)?$/, '/analytics/$1$2')
+    .replace(/^\/analytics\/([^/]+)\/s\/([^/]+)$/, '/analytics/$1/$2')
+  const reviewed = Object.prototype.hasOwnProperty.call(reviewedRecapMetadata, reviewedPath)
+    ? (reviewedRecapMetadata as Record<string, PageMetadata>)[reviewedPath] : undefined
+  if (reviewed) return reviewed
 
   switch (normalizedPath) {
     case '/':
       return {
-        title: 'StreamPulse — Twitch reaction analytics',
-        description: DEFAULT_DESCRIPTION,
+        title: 'StreamPulse: Twitch Chat Stats & Top Moments',
+        description: 'Explore Twitch chat stats, top emotes and reaction moments for tracked streams. Add the free Chrome, Edge or Firefox extension beside Twitch chat.',
         canonicalPath: '/',
         robots: 'index,follow',
       }
@@ -42,8 +68,8 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/analytics/streams':
     case '/atlas':
       return {
-        title: 'StreamPulse Analytics',
-        description: 'Explore aggregate live Twitch activity, Pulse moments, emote signals, and tracked channels.',
+        title: 'Live Twitch Chat Stats & Top Emotes — StreamPulse',
+        description: 'Live Twitch chat stats for the channels StreamPulse tracks: chat per minute, top Twitch and 7TV emotes, and the reaction moments when chat jumps.',
         canonicalPath: '/analytics',
         robots: 'index,follow',
       }
@@ -79,6 +105,8 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
       return { title: 'Terms of Use — StreamPulse', description: 'Terms of use for the StreamPulse website, the StreamPulse browser extension and the optional Pulse Supporter subscription.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/refunds':
       return { title: 'Cancellation and Refunds — StreamPulse', description: 'Manage cancellation, paid access, and refund requests for Pulse Supporter.', canonicalPath: normalizedPath, robots: 'index,follow' }
+    case '/withdraw':
+      return { title: 'Withdraw from your contract — StreamPulse', description: 'Send a withdrawal request for your Pulse Supporter subscription.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/support':
       return {
         title: 'Support — StreamPulse',
@@ -96,6 +124,16 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
       // The retired Explorer only redirects, so it names the page it sends people to.
       if (normalizedPath === '/analytics/moments' || normalizedPath === '/analytics/explore' || /^\/analytics\/explore\/[^/]+$/.test(normalizedPath)) {
         return { title: 'Moments — StreamPulse', description: 'Discover measured reactions, review exact sources, and save moments on this device.', canonicalPath: '/analytics/moments', robots: 'noindex,nofollow' }
+      }
+      // A clip's own page, only in a build that has it; the page names the clip once it has read it.
+      // Without the page every clip address is not found, never a channel named "clips".
+      const clips = import.meta.env.VITE_PUBLIC_NATIVE_CLIPS
+      const clipsOn = clips === 'on' || clips === '1'
+      if (clipsOn && /^\/analytics\/clips\/[^/]+$/.test(normalizedPath)) {
+        return { title: 'Clip — StreamPulse', description: 'A Twitch clip StreamPulse made when chat reacted strongly, with why it was clipped.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
+      }
+      if (!clipsOn && /^\/analytics\/clips(?:\/|$)/.test(normalizedPath)) {
+        return { title: 'Page not found — StreamPulse', description: DEFAULT_DESCRIPTION, canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
       }
       if (normalizedPath === '/analytics/newsroom' || /^\/analytics\/newsroom\/[^/]+$/.test(normalizedPath)) {
         return {

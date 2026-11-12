@@ -335,6 +335,16 @@ export const LIVE_READING_HOLD_MS = 7_000
 let liveReadingLogin: string | null | undefined
 let liveReadingAt = 0
 
+/**
+ * The channel header's viewer count and LIVE badge. They stay up through an ad
+ * or a player error, when the player's duration stops reading live, and the
+ * stream card above no longer exists on Twitch (BRW-1, QUAL-2).
+ */
+function liveHeaderShowing(): boolean {
+  if (document.querySelector('[data-a-target="animated-channel-viewers-count"]')) return true
+  return /^\s*LIVE\s*$/i.test(document.querySelector('.tw-channel-status-text-indicator')?.textContent ?? '')
+}
+
 /** True when the Twitch channel page is showing a live broadcast (not offline/VOD). */
 export function detectTwitchChannelLive(context: TwitchPageContext, now = Date.now()): boolean {
   if (context.kind !== 'channel' || context.vodId) return false
@@ -352,7 +362,11 @@ export function detectTwitchChannelLive(context: TwitchPageContext, now = Date.n
   // Live HLS reports Infinity in Chromium, but Firefox can expose an unbounded
   // duration as 9223372036854.775 seconds. Anything above 1e12 seconds (31,000+
   // years) is a live sentinel, not a real VOD or ad duration.
-  if ((video && (video.duration === Infinity || video.duration > 1e12)) || /\bLIVE\b/i.test(streamCard?.textContent ?? '')) {
+  if (
+    (video && (video.duration === Infinity || video.duration > 1e12))
+    || /\bLIVE\b/i.test(streamCard?.textContent ?? '')
+    || liveHeaderShowing()
+  ) {
     liveReadingLogin = context.login
     liveReadingAt = now
     return true

@@ -2,7 +2,6 @@ import { expect, type Page, type Route, type Request } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { seedBetaKey } from './auth'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const FIXTURE_DIR = join(__dirname, '../fixtures/portal-acceptance')
@@ -18,6 +17,12 @@ export const SYSTEM_TIME_ISO = '2026-07-26T12:00:00.000Z'
 
 const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
+// Twitch's grey "?" cover (ttv-static/404_boxart-*) is its own picture. The page
+// compares covers against it, so it must not draw the same pixels as TINY_PNG.
+const PLACEHOLDER_BOX_ART_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNISUkBAAJcAS1bGyRYAAAAAElFTkSuQmCC',
   'base64',
 )
 
@@ -600,8 +605,6 @@ export async function installPortalAcceptanceHarness(
       ((window as Window & { __SP_PORTAL_MOUNT_COUNT?: number }).__SP_PORTAL_MOUNT_COUNT ?? 0) + 1
   })
 
-  await seedBetaKey(page)
-
   // Count mock API / asset hits only in the route handler below — do not
   // double-count via page.on('request') (that broke catalog/summary spam asserts).
   page.on('request', (request: Request) => {
@@ -646,7 +649,7 @@ export async function installPortalAcceptanceHarness(
       await route.fulfill({
         status: 200,
         contentType: 'image/png',
-        body: TINY_PNG,
+        body: parsed.pathname.startsWith('/ttv-static/404_boxart') ? PLACEHOLDER_BOX_ART_PNG : TINY_PNG,
       })
       return
     }
@@ -908,9 +911,8 @@ export async function openEmotesRail(page: Page): Promise<void> {
 }
 
 /**
- * Six of buildSummary()'s emotes across Twitch, 7TV and FFZ. Emotes on chart and
- * the chart match an emote by name, so the 7TV and BTTV Clap rows share one
- * trace; six traces need six names.
+ * Six of buildSummary()'s emotes across Twitch, 7TV and FFZ (the BTTV Clap is
+ * left out so the six-emote snapshots keep six names).
  */
 export const SIX_SESSION_EMOTE_KEYS = [
   'twitch:KEKW:KEKW',

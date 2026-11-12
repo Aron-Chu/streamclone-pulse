@@ -125,13 +125,6 @@ export function hasBucketMomentsCache(
   return readEntry(bucketT, activityWindow) != null
 }
 
-export function readBucketMomentsCache(
-  bucketT: number,
-  activityWindow: PublicHubActivityWindow,
-): FigmaMomentRow[] | undefined {
-  return readEntry(bucketT, activityWindow)?.moments
-}
-
 export function writeBucketMomentsCache(
   bucketT: number,
   activityWindow: PublicHubActivityWindow,
@@ -151,6 +144,45 @@ export function writeBucketMomentsCache(
   const key = bucketMomentsCacheKey(bucketT, activityWindow)
   memory.set(key, entry)
   writeStorageEntry(entry)
+  for (const listener of [...writeListeners]) listener()
+}
+
+const writeListeners = new Set<() => void>()
+
+/** Hear each bucket answer as it is cached (Top moments today's busiest-minute fill). Returns the unsubscribe function. */
+export function onBucketMomentsWrite(listener: () => void): () => void {
+  writeListeners.add(listener)
+  return () => {
+    writeListeners.delete(listener)
+  }
+}
+
+/**
+ * Every fresh cached answer for `activityWindow` on this backend, in memory or
+ * this tab's sessionStorage, oldest bucket first. Reads only; nothing is moved
+ * into memory.
+ */
+export function readBucketMomentsResponses(activityWindow: PublicHubActivityWindow): PublicHubMomentsResponse[] {
+  const prefix = `${normalizeBackendUrl(getBackendUrl())}:${activityWindow}:`
+  const byKey = new Map<string, BucketMomentsCacheEntry>()
+  for (const [key, entry] of memory) if (key.startsWith(prefix) && entryFresh(entry)) byKey.set(key, entry)
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      for (let i = 0; i < window.sessionStorage.length; i++) {
+        const raw = window.sessionStorage.key(i)
+        if (!raw?.startsWith(STORAGE_PREFIX + prefix)) continue
+        const key = raw.slice(STORAGE_PREFIX.length)
+        if (byKey.has(key)) continue
+        const entry = parseStorageEntry(window.sessionStorage.getItem(raw) ?? '')
+        if (entry && entry.activityWindow === activityWindow && entryFresh(entry)) byKey.set(key, entry)
+      }
+    } catch {
+      /* storage blocked */
+    }
+  }
+  return [...byKey.values()]
+    .sort((a, b) => a.bucketT - b.bucketT)
+    .flatMap((entry) => (entry.response ? [entry.response] : []))
 }
 
 export function readBucketMomentsResponse(bucketT: number, activityWindow: PublicHubActivityWindow) {

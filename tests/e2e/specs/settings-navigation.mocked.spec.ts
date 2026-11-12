@@ -126,7 +126,9 @@ test('Supporter leads settings and section navigation remains consistent at ever
         // the 390 px layout look as designed, one line each for the label and the subline.
         if (process.platform === 'win32' && width >= 390) expect(fit.lines, `${width}px`).toEqual([1, 1])
       }
-      if (section !== 'supporter') await expect(banner).toBeVisible()
+      // The banner stays off its own section and the working My Moments page.
+      if (section === 'supporter' || section === 'moments') await expect(banner).toHaveCount(0)
+      else await expect(banner).toBeVisible()
     }
     await page.screenshot({ path: info.outputPath(`settings-navigation-${width}.png`), fullPage: true, animations: 'disabled' })
   }

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './helpers/portalMockedTest'
 import {
   CHART_SURFACES,
   resetZoom,
@@ -24,8 +24,12 @@ import {
 // Owner rule (2026-10-13): the wheel zooms anywhere over a chart card, so the
 // card's header rows (readout, games strip, focus rows) and the navigator's
 // buttons and hint zoom too. Only outside the card does the page keep the
-// wheel. The stream chart follows it; on the hub only the shared navigator
-// does until the hub's d3 port brings its header rows along.
+// wheel. The stream chart follows it.
+//
+// Owner rule (2026-10-15): on the hub "scroll should only work on the graph not
+// like headers or the heatmap below". The hub zooms over the graph only: its
+// header row, range tabs and the provider lanes below the navigator give the
+// page the wheel.
 
 interface Zone {
   top: number
@@ -42,7 +46,7 @@ interface Zone {
  * bar at the bottom. It does not read the implementation's wheel surface.
  */
 async function zoneOf(page: Page, surface: ChartSurface): Promise<Zone> {
-  return page.evaluate((name): Zone => {
+  return page.evaluate(({ name }): Zone => {
     const box = (selector: string) => {
       const element = document.querySelector(selector)
       const rect = element?.getBoundingClientRect()
@@ -75,22 +79,21 @@ async function zoneOf(page: Page, surface: ChartSurface): Promise<Zone> {
       }
     }
     const plot = must('[data-hub-chart-wheel-surface]')
-    const labels = box('.hx-chart-axis-labels') ?? must('.hx-chart-series-labels')
+    // The hub's graph starts at the plot: its series chips sit in the header row.
     const axis = must('.hx-axis')
     const bar = must('.figma-global-activity__hub-chart .hx-chart-navigator__bar')
     return {
-      top: labels.top,
+      top: plot.top,
       bottom: bar.bottom,
       left: plot.left,
       right: plot.right,
       rows: {
-        'label band (series labels)': middle(labels),
         'plot centre': middle(plot),
         'time-axis row': middle(axis),
         'navigator bar': middle(bar),
       },
     }
-  }, surface.name)
+  }, { name: surface.name })
 }
 
 /** Scrolls the page so the whole zone sits in the middle of the viewport; returns scrollY. */
@@ -175,8 +178,10 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
       const surface = await open(page)
       await resetZoom(surface)
       const zone = await zoneOf(page, surface)
-      for (const row of ['label band', 'time-axis row', 'navigator bar']) {
-        const [label, pageY] = Object.entries(zone.rows).find(([key]) => key.startsWith(row))!
+      const rows = Object.entries(zone.rows).filter(([key]) => /^(label band|time-axis row|navigator bar)/.test(key))
+      // The hub has no label band in its graph.
+      expect(rows).toHaveLength(name === 'hub' ? 2 : 3)
+      for (const [label, pageY] of rows) {
         // Let the scroll-through guard forget the previous page scroll.
         await page.waitForTimeout(450)
         const scrollY = await centerZone(page, zone)
@@ -193,7 +198,7 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
       await resetZoom(surface)
       const zone = await zoneOf(page, surface)
       const spots = Object.entries(zone.rows).filter(([key]) => key.startsWith('label band') || key.startsWith('time-axis'))
-      expect(spots).toHaveLength(2)
+      expect(spots).toHaveLength(name === 'hub' ? 1 : 2)
 
       await setScrollZoom(surface, false)
       for (const [label, pageY] of spots) {
@@ -233,9 +238,9 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
     if (name === 'stream') {
       test('the rest of the card zooms too: its header rows, the navigator buttons and the hint', async ({ page }) => {
         const surface = await open(page)
-        // The focus rows, games strip and hover hint, and the navigator's (i) and Zoom in button below the bar.
+        // The stream page's focus rows, games strip and hover hint; the navigator's (i), which holds
+        // its hint (d3-v2 session-original), and its Zoom in button below the bar.
         const selectors = ['[data-chart-focus-bar]', '[data-games-played]', '[data-chart-selection-hint]',
-          // The stream chart's hint lives in the navigator's (i) (d3-v2 session-original).
           '[data-session-chart-navigator] [data-chart-navigator-info]', '[data-session-chart-navigator] .hx-chart-navigator__zoom-buttons button']
         for (const selector of selectors) {
           await resetZoom(surface)
@@ -279,13 +284,15 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
         await expect(surface.navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
       })
     } else {
-      // The hub's readout and summary keep the release-1 rule (they give the page the wheel)
-      // until the hub's d3 port lands; that port brings the hub under the card rule above.
-      test('above the chart the page keeps the wheel', async ({ page }) => {
+      // On the hub the wheel zooms over the graph only (owner, 2026-10-15).
+      test('outside the graph the page keeps the wheel: the header rows above it and the lanes below', async ({ page }) => {
         const surface = await open(page)
         await resetZoom(surface)
-        // The hub's hover readout and summary line.
-        const selectors = ['.figma-global-activity__hub-chart .hx-chart-header__readout', '.figma-global-activity__hub-chart .hx-chart-summary']
+        // The hub's hover readout and summary line, its window seg and series chips
+        // in the header row, and the provider lanes below the navigator.
+        const selectors = ['.hx-chart-header__readout', '.hx-chart-summary',
+          '[data-hub-window-seg] button', '[data-hub-series-chip]', '[data-hub-provider-lanes]']
+          .map(selector => `.figma-global-activity__hub-chart ${selector}`)
         const zone = await zoneOf(page, surface)
         for (const selector of selectors) {
           const target = page.locator(selector).first()
@@ -300,7 +307,7 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
           await page.mouse.wheel(0, -120)
           await expect.poll(() => scrollYOf(page), { message: `${selector} scrolls the page` }).toBeLessThan(before)
           await surface.settle()
-          await expect(surface.navigator).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
+          await expect(surface.navigator, `${selector} leaves the chart alone`).toHaveAttribute('data-hub-chart-navigator-window', `0:${surface.full - 1}`)
         }
       })
     }

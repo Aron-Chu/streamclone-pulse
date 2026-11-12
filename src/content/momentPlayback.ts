@@ -18,13 +18,18 @@ export function watchedProgress(start: number, end: number, source: unknown) {
 let cancel: (() => void) | undefined
 /** What the video plays: its URL, or the object Twitch attaches through srcObject (currentSrc is then empty). */
 const sourceOf = (video: HTMLVideoElement): unknown => video.currentSrc || video.srcObject
-/** Called only by an explicit, verified Pulse seek. No page events can start capture. */
-export async function observeMomentPlayback(video: HTMLVideoElement | null, reference: MomentReference, start: number, end: number): Promise<void> {
+/**
+ * Called only by an explicit, verified Pulse seek, or on arrival from a Pulse
+ * Watch link. No page events can start capture.
+ */
+export async function observeMomentPlayback(video: HTMLVideoElement | null, reference: MomentReference, start: number, end: number,
+  onRecorded?: () => void): Promise<void> {
   cancel?.()
   let cancelled = false
   cancel = () => { cancelled = true }
   if (!video || !Number.isFinite(start) || !Number.isFinite(end) || end - start < 10 || end - start > 120 || !sourceOf(video)) return
-  const status = await chrome.runtime.sendMessage({ type: 'MOMENT_CAPTURE', action: 'status' }).catch(() => null)
+  // The reference lets the worker keep this moment's picture for a save that has none.
+  const status = await chrome.runtime.sendMessage({ type: 'MOMENT_CAPTURE', action: 'status', reference }).catch(() => null)
   if (cancelled || !status?.enabled) return
   const source = sourceOf(video)
   const url = location.href
@@ -39,7 +44,8 @@ export async function observeMomentPlayback(video: HTMLVideoElement | null, refe
     if (cancelled || !video.isConnected || location.href !== url || performance.now() >= deadline || result === 'stop' || result === 'watched') {
       clearInterval(timer)
       if (!cancelled && video.isConnected && location.href === url && result === 'watched') {
-        void chrome.runtime.sendMessage({ type: 'MOMENT_CAPTURE', action: 'record', epoch: status.epoch, reference, watchedSeconds: 10 }).catch(() => undefined)
+        void chrome.runtime.sendMessage({ type: 'MOMENT_CAPTURE', action: 'record', epoch: status.epoch, reference, watchedSeconds: 10 })
+          .then(result => { if (result?.ok === true) onRecorded?.() }).catch(() => undefined)
       }
     }
   }, 500)

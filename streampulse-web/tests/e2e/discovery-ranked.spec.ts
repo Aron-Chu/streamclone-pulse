@@ -139,7 +139,8 @@ for (const width of [390, 768, 1440]) test(`ranked Explore filters, review, snap
   await page.reload()
   await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toBeVisible()
   await expect(page.locator('.moments-result .moments-card-primary')).toHaveAttribute('data-discovery-key', savedKey!)
-  await page.getByRole('tab', { name: 'Explore', exact: true }).click()
+  // Saved offers no Explore tab (the site hides the ranked views), so open Explore by its URL.
+  await page.goto('/analytics/moments?view=explore')
   await expect(page.locator('.moments-result')).toHaveCount(50)
   state.changed = true
   await page.getByRole('button', { name: 'Load more moments (50)' }).click()

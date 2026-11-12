@@ -1,6 +1,6 @@
 /**
- * Canonical public StreamPulse site + Chrome Web Store identifiers.
- * Website install CTAs must use CHROME_WEB_STORE_LISTING_URL only (never chrome://).
+ * Canonical public StreamPulse site and verified browser-store listings.
+ * Website install CTAs must use these public listings (never chrome://).
  */
 export const STREAM_PULSE_HOSTED_API_URL = 'https://api.streampulse.stream' as const
 
@@ -11,9 +11,47 @@ export const STREAM_PULSE_PRIVACY_URL = 'https://streampulse.stream/privacy' as 
 /** Published Chrome Web Store extension id. */
 export const CHROME_WEB_STORE_EXTENSION_ID = 'nifgoonpcgmdhiffcpmhndjgkgahnelg' as const
 
-/** Canonical public listing — sole install destination for website CTAs. */
+/** Canonical public Chrome listing. */
 export const CHROME_WEB_STORE_LISTING_URL =
   `https://chromewebstore.google.com/detail/streampulse/${CHROME_WEB_STORE_EXTENSION_ID}` as const
+
+/** Published Firefox listing, verified against the extension's Gecko id. */
+export const FIREFOX_ADDONS_LISTING_URL = 'https://addons.mozilla.org/en-US/firefox/addon/streampulse/' as const
+
+/** Published Edge Add-ons listing (read live 10-31: StreamPulse 0.2.6, publisher Streampulse). */
+export const EDGE_ADDONS_LISTING_URL =
+  'https://microsoftedge.microsoft.com/addons/detail/streampulse-twitch-chat-/cnakgkalmjbhelabgjkbinlgjeflebjd' as const
+
+/**
+ * Fixed utm_content values for store links. Only the kind of page goes to the store, never the path,
+ * so a channel or stream id in the URL never reaches Google.
+ */
+const STORE_LINK_PAGES = [
+  'home', 'analytics', 'account', 'docs', 'status', 'privacy', 'terms', 'refunds',
+  'tools', 'guides', 'supporter', 'support', 'feedback', 'discord', 'changelog', 'site',
+] as const
+export type StoreLinkPage = (typeof STORE_LINK_PAGES)[number]
+
+function isStoreLinkPage(value: string): value is StoreLinkPage {
+  return (STORE_LINK_PAGES as readonly string[]).includes(value)
+}
+
+/** The store-link page kind for a site path: '/' is 'home', /s/* is 'analytics', a listed first segment is itself, else 'site'. */
+export function storeLinkPageForPath(pathname: string): StoreLinkPage {
+  const first = pathname.split('/').find(Boolean) ?? ''
+  if (!first) return 'home'
+  if (first === 's') return 'analytics'
+  return isStoreLinkPage(first) ? first : 'site'
+}
+
+export function chromeWebStoreUrlForPage(page: StoreLinkPage): string {
+  const url = new URL(CHROME_WEB_STORE_LISTING_URL)
+  url.searchParams.set('utm_source', 'streampulse.stream')
+  url.searchParams.set('utm_medium', 'referral')
+  url.searchParams.set('utm_campaign', 'website_install')
+  url.searchParams.set('utm_content', isStoreLinkPage(page) ? page : 'site')
+  return url.toString()
+}
 
 export const PUBLIC_SITE = {
   hostedApiUrl: STREAM_PULSE_HOSTED_API_URL,
@@ -22,6 +60,8 @@ export const PUBLIC_SITE = {
   privacyUrl: STREAM_PULSE_PRIVACY_URL,
   chromeWebStoreListingUrl: CHROME_WEB_STORE_LISTING_URL,
   chromeWebStoreExtensionId: CHROME_WEB_STORE_EXTENSION_ID,
+  firefoxAddonsListingUrl: FIREFOX_ADDONS_LISTING_URL,
+  edgeAddonsListingUrl: EDGE_ADDONS_LISTING_URL,
 } as const
 
 export type PublicSiteConfig = typeof PUBLIC_SITE

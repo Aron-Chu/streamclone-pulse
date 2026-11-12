@@ -272,11 +272,19 @@ export const CHAT_HEADER_SELECTORS: readonly string[] = [
   'header[data-a-target="chat-room-header"]',
 ]
 
-/** Collapse / expand chat column control on the header left. */
+/**
+ * Collapse / expand chat column control on the header left. A plain
+ * "Collapse" label only counts inside the chat header: the pinned-message
+ * card in the message list has a "Collapse" button of its own, and taking it
+ * as a header control stretched the header row and pushed the Pulse tabs and
+ * panel down while a message was pinned.
+ */
 export const CHAT_HEADER_COLLAPSE_SELECTORS: readonly string[] = [
   '[data-a-target="right-column__toggle-collapse-btn"]',
   '[data-a-target="collapse-chat"]',
-  'button[aria-label*="Collapse" i]',
+  '.stream-chat-header button[aria-label*="Collapse" i]',
+  '[data-a-target="chat-room-header"] button[aria-label*="Collapse" i]',
+  '[data-test-selector="chat-room-header"] button[aria-label*="Collapse" i]',
 ]
 
 /** Community / chatters control on the header right. */

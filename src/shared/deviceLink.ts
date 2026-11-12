@@ -4,9 +4,9 @@
  * (`/v1/account/device-links`).
  *
  * Chrome, Edge and development builds keep it. Firefox builds leave it out
- * (owner decision D20 for 0.2.2): the Firefox manifest declares only
- * `browsingActivity` data collection, and a linked account would send more
- * than that. The switch is fixed at build time from `__EXTENSION_TARGET__`, so
+ * (owner decision D20 for 0.2.2): the Firefox manifest declares no website
+ * content or activity collection, and a linked account would sync bookmarks
+ * and history. The switch is fixed at build time from `__EXTENSION_TARGET__`, so
  * the Firefox bundles hold none of the link's screens or requests, not just a
  * hidden button. `scripts/validate-extension-package.mjs` checks the packaged
  * files of every store target.

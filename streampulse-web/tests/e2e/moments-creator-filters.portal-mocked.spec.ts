@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './helpers/portalMockedTest'
 
 const DAY = 86_400_000
 const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10)

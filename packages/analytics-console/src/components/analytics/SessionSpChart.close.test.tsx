@@ -84,7 +84,7 @@ function clickMinute(svg: SVGSVGElement, minute: number) {
   const clientX = xOfMinute(minute)
   fireEvent.pointerDown(svg, { clientX, clientY: 200, pointerType: 'mouse' })
   fireEvent.click(svg, { clientX, clientY: 200 })
-  // A detail opened from the plot mounts after the frame that paints the click.
+  // A first plot detail is released by a later animation-frame callback.
   frames!.flush()
 }
 
@@ -116,7 +116,7 @@ describe('SessionSpChart selection closes (A3)', () => {
     expect(document.activeElement).toBe(svg)
   })
 
-  it('a detail opened from the plot mounts after the click frame; a swap keeps it mounted', () => {
+  it('a first plot detail waits for the animation-frame callback; a swap keeps it mounted', () => {
     const { container, svg } = renderConsole({ minutes: 90 })
     const pointAt = (minute: number) => {
       const clientX = xOfMinute(minute)
@@ -131,6 +131,18 @@ describe('SessionSpChart selection closes (A3)', () => {
     pointAt(40)
     expect(container.querySelector('[data-session-readout]')?.textContent).toMatch(/^Pinned 0:40:00 · /)
     expect(detailShown(container)).toBe(true)
+  })
+
+  it('closing before the deferred frame never mounts the detail later', () => {
+    const { container, svg } = renderConsole({ minutes: 90 })
+    const clientX = xOfMinute(20)
+    fireEvent.pointerDown(svg, { clientX, clientY: 200, pointerType: 'mouse' })
+    fireEvent.click(svg, { clientX, clientY: 200 })
+    expect(detailShown(container)).toBe(false)
+    fireEvent.keyDown(svg, { key: 'Escape' })
+    frames!.flush()
+    expect(detailShown(container)).toBe(false)
+    expect(container.querySelector('[data-session-readout-clear]')?.hasAttribute('hidden')).toBe(true)
   })
 
   it("the readout line's Clear shows while a minute is pinned, closes it, and focus goes back to the plot", () => {

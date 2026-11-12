@@ -194,9 +194,12 @@ test.describe('VOD replay: the live bridge only for the stream that is live now'
     await waitForPulseRoot(extension.page)
 
     await expect.poll(() => headerStatus(extension.page)).toBe('Replay')
-    // The replay's own length; no game in the header (Games played is the one place that names games).
-    await expect.poll(() => pulseShadowText(extension.page)).toContain('8h 25m')
+    // The replay's own length, the one its recap gives (the stream says 8h 25m,
+    // its chat ends at 3m); no game in the header (Games played is the one place that names games).
+    await expect.poll(() => pulseShadowText(extension.page)).toMatch(/Replay[A-Z][a-z]{2} \d{1,2} · 3m/)
     const text = await pulseShadowText(extension.page)
+    expect(text).toContain('3m · 130 messages')
+    expect(text).not.toContain('8h 25m')
     expect(text).not.toMatch(/Marvel Rivals|Live now|Live chart|50h/i)
     expect(model.vodRequests().length).toBeGreaterThan(0)
     for (const url of model.vodRequests()) expect(url.searchParams.get('allowLiveBridge')).toBeNull()
@@ -233,7 +236,9 @@ test.describe('VOD replay: the live bridge only for the stream that is live now'
 
     await expect.poll(() => headerStatus(extension.page)).toBe('Replay')
     await expect.poll(() => pulseShadowText(extension.page)).toContain('Stream Recap')
-    expect(await pulseShadowText(extension.page)).toContain('1h 0m')
+    // Header and recap give one length: the recap's (the stream says 1h 0m, its chat ends at 3m).
+    expect(await pulseShadowText(extension.page)).toMatch(/Replay[A-Z][a-z]{2} \d{1,2} · 3m/)
+    expect(await pulseShadowText(extension.page)).toContain('3m · 130 messages')
     for (const url of model.vodRequests()) expect(url.searchParams.get('allowLiveBridge')).toBeNull()
 
     await captureDarkAndLight(extension.page, theme => info.outputPath(`ordinary-past-vod-${theme}.png`))

@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent } from 'react'
 import { MAX_PLOTTED_EMOTES } from '@streampulse/pulse-charts'
+import { sameEmoteKey } from '@streampulse/pulse-core'
 import type { AnalyticsTopEmote } from '../../api.ts'
 import { parseEmoteKey } from '../../emoteUtils.ts'
 import { getEmoteImageUrl } from '../../utils/consoleFormat.ts'
@@ -16,8 +17,6 @@ import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
 import { fullInt } from './sessionSpChartModel.ts'
 
 const swatch = (color: string | null): CSSProperties => ({ ['--c' as string]: color ?? 'transparent' })
-
-const nameOfKey = (key: string) => parseEmoteKey(key).name.trim().toLowerCase()
 
 export function SessionEmotesOnChart({
   topEmotes,
@@ -39,16 +38,12 @@ export function SessionEmotesOnChart({
   const full = plotted.length >= MAX_PLOTTED_EMOTES
   // Plotted keys can come from the minute rollups ("seventv:LOL:LOL") while the
   // list comes from the summary ("seventv:<id>:LOL"). The chart matches the two
-  // by emote name (pulse-charts chartSeries resolveEmoteMinuteCount); so does this line.
+  // by provider and name (pulse-charts chartSeries resolveEmoteMinuteCount); so
+  // does this line, so a 7TV and a BTTV "Clap" stay two emotes.
   const byKey = new Map(topEmotes.map(emote => [emote.key, emote]))
-  const byName = new Map<string, AnalyticsTopEmote>()
-  for (const emote of topEmotes) {
-    const name = emote.name.trim().toLowerCase()
-    if (!byName.has(name)) byName.set(name, emote)
-  }
-  const emoteOf = (key: string) => byKey.get(key) ?? byName.get(nameOfKey(key))
+  const emoteOf = (key: string) => byKey.get(key) ?? topEmotes.find(emote => sameEmoteKey(key, emote.key))
   const plottedKeyOf = (emote: AnalyticsTopEmote) =>
-    plotted.find(key => key === emote.key) ?? plotted.find(key => nameOfKey(key) === emote.name.trim().toLowerCase())
+    plotted.find(key => key === emote.key) ?? plotted.find(key => sameEmoteKey(key, emote.key))
   const close = useCallback((focus: boolean) => {
     setOpen(false)
     if (focus) addRef.current?.focus()

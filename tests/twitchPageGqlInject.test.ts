@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { gqlDiscoverVodInPage, scrapePageVodState } from '../src/background/twitchPageInject.ts'
 import { mainWorldExecuteScriptOptions } from '../src/background/twitchPageGql.ts'
 
@@ -25,5 +25,27 @@ describe('mainWorldExecuteScriptOptions', () => {
     const options = mainWorldExecuteScriptOptions(1, gqlDiscoverVodInPage, [login])
     expect(options.func).not.toBe(bad)
     expect(options.func).toBe(gqlDiscoverVodInPage)
+  })
+})
+
+describe('gqlDiscoverVodInPage', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it("sends Twitch's public web Client-ID on both queries", async () => {
+    // A wrong id gets HTTP 400 "The Client-ID header is invalid." and the lookup never finds a VOD.
+    const sent: Array<{ clientId: string | null, body: { query: string, variables: { login: string } } }> = []
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      sent.push({ clientId: new Headers(init?.headers).get('Client-ID'), body: JSON.parse(String(init?.body)) })
+      return Response.json({ data: { user: null } })
+    }))
+
+    const result = await gqlDiscoverVodInPage(' Forsen ')
+
+    expect(sent.map(request => request.clientId)).toEqual(['kimne78kx3ncx6brgo4mv6wki5h1ko', 'kimne78kx3ncx6brgo4mv6wki5h1ko'])
+    expect(sent.map(request => request.body.variables.login)).toEqual(['forsen', 'forsen'])
+    expect(sent[0].body.query).toContain('PulseLiveArchiveVod')
+    expect(sent[1].body.query).toContain('PulseArchiveVod')
+    expect(result.live.status).toBe(200)
+    expect(result.list.status).toBe(200)
   })
 })

@@ -3,7 +3,6 @@ import { DEFAULT_BACKEND_URL, DEFAULT_PRODUCTION_BACKEND_URL } from '../src/lib/
 import {
   chatPerMinuteRange,
   chartPointsFromMinutes,
-  featuredSessionFromPublicHub,
   isValidPeakOffsetSeconds,
   livePulseMomentsFromPublicHub,
   mapHubPulseMoment,
@@ -127,42 +126,6 @@ describe('backend URL defaults', () => {
   it('defaults to hosted API when VITE_BACKEND_URL is unset', () => {
     expect(DEFAULT_BACKEND_URL).toBe(DEFAULT_PRODUCTION_BACKEND_URL)
     expect(DEFAULT_PRODUCTION_BACKEND_URL).toBe('https://api.streampulse.stream')
-  })
-})
-
-describe('featuredSessionFromPublicHub', () => {
-  const baseHub = samplePublicHub
-
-  it('maps ready featured session without client scoring', () => {
-    const hub = samplePublicHub()
-    hub.featuredSession = {
-      state: 'ready',
-      login: 'xqc',
-      displayName: 'xQc',
-      streamId: 'stream-1',
-      category: 'Just Chatting',
-      viewers: 12000,
-      chatPerMin: 420,
-      peakCount: 3,
-      topMoments: [
-        { offsetSeconds: 120, score: 88, label: 'Chat spike', chatPerMin: 200, topEmoteCode: 'KEKW' },
-      ],
-      chartPoints: [{ offsetSeconds: 60, chatNorm: 40, viewersNorm: 30, emotesNorm: 50, heat: 70 }],
-      topEmoteBursts: [{ code: 'KEKW', count: 42, peakOffset: '02:00', peakOffsetSeconds: 120 }],
-      coverageTruth: [{ label: 'VOD available', value: 'Yes', ok: true }],
-    }
-    const model = featuredSessionFromPublicHub(hub)
-    expect(model.state).toBe('ready')
-    expect(model.moments[0].score).toBe(88)
-    expect(model.sessionHref).toBe('/analytics/xqc/stream-1')
-    expect(model.moments[0].href).toContain('#t=120')
-    expect(model.bursts[0].peakOffsetSeconds).toBe(120)
-  })
-
-  it('returns honest empty state when hub has no qualifying session', () => {
-    const model = featuredSessionFromPublicHub(baseHub())
-    expect(model.state).toBe('empty')
-    expect(model.moments).toHaveLength(0)
   })
 })
 

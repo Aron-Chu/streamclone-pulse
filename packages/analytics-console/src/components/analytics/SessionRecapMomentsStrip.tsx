@@ -15,14 +15,23 @@
  * `reel` (strip mode only; the page passes SESSION_OWNER_SWITCHES.momentsReel):
  * the top three are the highlight reel (MomentReel.tsx, recap-r1 C1, Aron
  * 2026-10-16) instead of rows: #1 large, #2 and #3 side by side, each the
- * moment's VOD preview frame or the game's blurred box art. Rows #4 on open
- * under it, and the cards lock, release and play exactly as the rows do.
+ * moment's VOD preview frame or, without one, the game's box art as a sharp
+ * cover (candidate, 10-30, PIC-2; blurred and zoomed until 10-30). Rows #4 on
+ * open under it, and the cards lock, release and play exactly as the rows do.
+ *
+ * `recording` (fix, 10-30, PIC-3): the page's one flag for "this is the
+ * channel's current live stream". The reel's note and the bar picture's note
+ * (SelectedMomentCompactCard `vodRecording`) both read it, so they say the
+ * same line.
+ *
+ * `liveNowLogin` (candidate, 10-30, PIC-4): set by the page only while this
+ * stream is the channel's live one; a "Live now" tile with Twitch's own live
+ * picture tops the list (LiveNowTile.tsx). Never on a moment card or the bar.
  */
 import {
   useCallback,
   useEffect,
   useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -31,6 +40,7 @@ import {
 import {
   recapMomentAnalyticalOffset,
   recapMomentReasonLabel,
+  type StreamEdges,
 } from '@streampulse/pulse-core'
 import type {
   AnalyticsMinuteRollup,
@@ -64,13 +74,14 @@ import {
 } from '../../utils/sessionStripMoments.ts'
 import { alignedVodOffset } from '../../utils/twitchVodUrl.ts'
 import { useVodFrame } from '../../utils/vodFrames.ts'
+import { sessionCanPlay } from '../../utils/sessionState.ts'
 import { gameArtCandidates, isKnownGenericTwitchArtwork } from './GamesPlayedStrip.tsx'
-import { MomentReelCard, REEL_SIZE, reelNote } from './MomentReel.tsx'
+import { LiveNowTile } from './LiveNowTile.tsx'
+import { MomentReelCard, REEL_SIZE, reelCardEmote, reelNote } from './MomentReel.tsx'
 import {
   SessionMomentDetail,
   SessionMomentPlayer,
   SessionMomentRow,
-  shadeSessionMomentRows,
   type SessionMomentRowModel,
 } from './MomentRow.tsx'
 
@@ -125,9 +136,13 @@ export function SessionRecapMomentsStrip({
   vodId,
   vodAlignSeconds,
   vodDurationSeconds,
-  vodRecording = false,
+  recording,
+  vodRecording,
   onPlayOffset,
   reel = false,
+  streamEdges,
+  liveNowLogin,
+  liveNowMinuteMs,
 }: {
   recap: PulseStreamRecap
   streamStartedAt?: string
@@ -143,29 +158,42 @@ export function SessionRecapMomentsStrip({
   /** The locked row clicked again: release that moment's chart lock. */
   onReleaseOffset?: (offsetSeconds: number) => void
   lockMode?: MomentLockMode
-  /** The stream's game segments: each row's game and the blurred box-art backdrop. */
+  /** The stream's game segments: each row's game and its box art (the cover by the name, the reel's cover). */
   games?: MomentRowGameSegment[] | null
   vodId?: string | null
   vodAlignSeconds?: number | null
   vodDurationSeconds?: number | null
-  /** The VOD is still recording (row mode's frame note). */
+  /**
+   * The page's flag: this is the channel's current live stream, still recording (fix, 10-30, PIC-3). The reel
+   * note and row mode's player note read it; pass the same value as SelectedMomentCompactCard's `vodRecording`.
+   * Unset: the reel falls back to the frame answer's own reason.
+   */
+  recording?: boolean
+  /** The older name for `recording` (row mode's frame note); `recording` wins when both are set. */
   vodRecording?: boolean
   /** Strip mode: the row's play button was pressed (after it locks the moment). */
   onPlayOffset?: (offsetSeconds: number) => void
   /** Strip mode: the top three as the highlight reel (MomentReel.tsx) instead of rows. */
   reel?: boolean
+  /** The session's stream edges (sessionStreamEdges): hello / goodbye spam ranks last. */
+  streamEdges?: StreamEdges
+  /** The channel's Twitch login while this stream is live: shows the "Live now" tile (candidate, 10-30, PIC-4). */
+  liveNowLogin?: string | null
+  /** The newest measured minute (ms): the tile hides once it is over 10 minutes old (LiveNowTile.tsx). */
+  liveNowMinuteMs?: number | null
 }) {
   // Shared with the session chart pins (utils/sessionStripMoments.ts): pin N
   // is row N.
   const hasReactionCoverage = useMemo(() => stripHasReactionCoverage(recap), [recap])
   const moments = useMemo(
-    () => sessionStripMoments({ recap, hasReactionCoverage, heatmapPoints, streamStartedAt, topEmotesCatalog }),
-    [recap, hasReactionCoverage, heatmapPoints, streamStartedAt, topEmotesCatalog],
+    () => sessionStripMoments({ recap, hasReactionCoverage, heatmapPoints, streamStartedAt, topEmotesCatalog, streamEdges }),
+    [recap, hasReactionCoverage, heatmapPoints, streamStartedAt, topEmotesCatalog, streamEdges],
   )
   const offsets = useMemo(() => moments.map(recapMomentAnalyticalOffset), [moments])
   const pinHover = useStripPinHover()
   const detailId = `${useId()}-moment-detail`
   const validVodId = vodId && VOD_ID_PATTERN.test(String(vodId).trim()) ? String(vodId).trim() : null
+  const pageRecording = recording ?? vodRecording
 
   // ---- the row-mode detail ----
   const [open, setOpen] = useState<{ offset: number; play: boolean } | null>(null)
@@ -234,7 +262,7 @@ export function SessionRecapMomentsStrip({
       const reasonLabel = momentRowReasonLabel(recapMomentReasonLabel(moment))
       const series = momentRowSeries(moment.reasons?.[0])
       const exactRollup = resolveMomentRowRollup({ moment, rollups, streamStartedAt })
-      const { exact, emotes } = stripMomentEmotes({ moment, rollups, streamStartedAt, topEmotesCatalog })
+      const { exact, fromRecap, emotes } = stripMomentEmotes({ moment, rollups, streamStartedAt, topEmotesCatalog })
       const rawScore = moment.reactionScore ?? moment.score
       const game = momentRowGameAt(games, offsetSeconds)
       return {
@@ -257,7 +285,8 @@ export function SessionRecapMomentsStrip({
           }
           : null,
         emotes,
-        namesNotCaptured: momentRowNamesNotCaptured(exactRollup),
+        // the recap's names stand in when the minute named too few; then nothing is missing to say
+        namesNotCaptured: fromRecap ? null : momentRowNamesNotCaptured(exactRollup),
         snapshotOnly: !exact,
       }
     }),
@@ -266,6 +295,8 @@ export function SessionRecapMomentsStrip({
   // ---- the reel: the top three as pictures (strip mode only) ----
   const reelOn = reel && lockMode === 'strip'
   const align = typeof vodAlignSeconds === 'number' && Number.isFinite(vodAlignSeconds) ? vodAlignSeconds : null
+  // Play shows only when the moment can play: a VOD and its verified alignment (never a dead Play icon).
+  const canPlay = sessionCanPlay({ vodId: validVodId, vodAlignSeconds: align })
   // A frame needs the VOD and its verified alignment (PORT-PLAN §2.4); the tile is the one under the
   // middle of the moment's minute (sessionBarStrip frameMid).
   const vodAt = (offset: number) => (validVodId && align != null
@@ -275,36 +306,8 @@ export function SessionRecapMomentsStrip({
   const listRows = reelOn ? rows.slice(REEL_SIZE) : rows
   const heroFrame = useVodFrame(validVodId, reelRows[0] ? vodAt(reelRows[0].offsetSeconds + 30) : null)
 
-  // ---- shading: each backdrop row's gradient follows its own text (moment-rows.js shadeRows) ----
-  const listRef = useRef<HTMLDivElement | null>(null)
+  // No per-row shading since 10-30: the rows have no backdrop to shade (candidate, 10-30, PIC-2).
   const hasMoments = moments.length > 0
-  // Shaded in the frame before its paint, not in React's commit, where reading the rows' boxes forced the
-  // page's layout into that task (mobile TBT, PR #122 bench).
-  useLayoutEffect(() => {
-    const list = listRef.current
-    if (!list) return
-    const frame = requestAnimationFrame(() => shadeSessionMomentRows(list))
-    return () => cancelAnimationFrame(frame)
-  })
-  useEffect(() => {
-    const list = listRef.current
-    if (!list) return
-    const observer = typeof ResizeObserver === 'function'
-      ? new ResizeObserver(() => shadeSessionMomentRows(list))
-      : null
-    observer?.observe(list)
-    let live = true
-    const fonts = typeof document !== 'undefined' ? document.fonts : undefined
-    // Only while a face is still loading: reading `fonts.ready` forces the page's style and layout
-    // into this commit (mobile TBT, PR #122 bench), and the frame's shading already ran.
-    if (fonts?.status === 'loading') fonts.ready.then(() => {
-      if (live) shadeSessionMomentRows(list)
-    }).catch(() => {})
-    return () => {
-      live = false
-      observer?.disconnect()
-    }
-  }, [hasMoments])
 
   if (!hasMoments) return null
 
@@ -382,7 +385,7 @@ export function SessionRecapMomentsStrip({
       artUrl={artFor(model)}
       locked={lockedOffset === model.offsetSeconds}
       ghost={pinHover === model.offsetSeconds}
-      showPlay={Boolean(validVodId)}
+      showPlay={canPlay}
       pop={pop?.offset === model.offsetSeconds ? pop.token : 0}
       vodId={validVodId}
       frameVodOffset={vodAt(model.offsetSeconds + 30)}
@@ -398,7 +401,9 @@ export function SessionRecapMomentsStrip({
       frame: heroFrame.result?.frame ?? null,
       reason: heroFrame.result?.reason ?? null,
       loading: heroFrame.loading,
-      hasArt: reelRows.some((model) => Boolean(artFor(model))),
+      // a Just Chatting / IRL card shows its top emote, not the cover, so it never counts as box art
+      hasArt: reelRows.some((model) => Boolean(artFor(model)) && !reelCardEmote(model)),
+      recording: pageRecording,
     })
     : null
   const footerLabel = listExpanded
@@ -414,7 +419,7 @@ export function SessionRecapMomentsStrip({
       {/* Inside the Moments tab the tab is the heading; kept for screen readers.
           The explainer moved into the tab's (i) (F17). */}
       <div className={isRightRail ? 'ssr-vh' : 'ssr-h'}>
-        <h3>Pulse Moments</h3>
+        <h2>Pulse Moments</h2>
       </div>
       <p className="ssr-vh">Ranked by how strongly chat reacted, not by clip quality. Select one to watch it.</p>
 
@@ -424,7 +429,8 @@ export function SessionRecapMomentsStrip({
         </div>
       ) : null}
 
-      <div className="ssr-list" ref={listRef} data-moment-list>
+      <div className="ssr-list" data-moment-list>
+        {liveNowLogin ? <LiveNowTile login={liveNowLogin} lastMinuteMs={liveNowMinuteMs ?? null} /> : null}
         {reelRows.length > 0 ? (
           <div className="ssr-reel" data-moment-reel>
             {reelCard(reelRows[0]!, 'hero')}
@@ -451,14 +457,14 @@ export function SessionRecapMomentsStrip({
               isClosing={isClosing}
               detailId={detailId}
               ghost={pinHover === model.offsetSeconds}
-              showPlay={Boolean(validVodId)}
+              showPlay={canPlay}
               pop={pop?.offset === model.offsetSeconds ? pop.token : 0}
               autoPlay={isOpen && Boolean(open?.play)}
               selectedDetail={selectedDetail}
               vodId={validVodId}
               vodAlignSeconds={vodAlignSeconds}
               vodDurationSeconds={vodDurationSeconds}
-              vodRecording={vodRecording}
+              vodRecording={pageRecording ?? false}
               onActivate={(play) => activateRow(model.offsetSeconds, play)}
               onHover={(hovering) => onPreviewOffset?.(hovering ? model.offsetSeconds : null)}
               onArtError={handleArtError}

@@ -15,6 +15,8 @@ import { waitForPulseRoot } from '../helpers/assertions.ts'
  */
 
 const SIDEBAR = { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } as const
+/** A 1×1 PNG, for box art. */
+const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
 
 interface Box { x: number; y: number; width: number; height: number }
 
@@ -90,8 +92,8 @@ async function openPanel(page: Page, height: number) {
 }
 
 /**
- * A recap with eight moments: Catch me up shows the best three, and Top
- * Moments lists the other five once unfolded. Registered before the panel opens.
+ * A recap with eight moments: Top Moments lists five, and the other three
+ * once unfolded. Registered before the panel opens.
  */
 async function routeLongRecap(context: BrowserContext): Promise<void> {
   const offline = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-offline.json', import.meta.url), 'utf8'))
@@ -106,10 +108,10 @@ async function routeLongRecap(context: BrowserContext): Promise<void> {
   })
 }
 
-/** Unfolds the recap's Top Moments, which start folded under Catch me up. */
+/** Unfolds the recap's Top Moments past their first five. */
 async function unfoldRecapList(root: Locator): Promise<void> {
   await root.locator('button', { hasText: /^Show \d+ more moments/ }).click()
-  await expect(root.locator('.pulse-moment-row-button').nth(2)).toBeVisible()
+  await expect(root.locator('.pulse-moment-row-button').nth(5)).toBeVisible()
 }
 
 /**
@@ -124,8 +126,7 @@ for (const surface of [
     await prepare({ scenario: surface.scenario, twitchKind: surface.twitchKind, storage: SIDEBAR })
     const { root, rows, card, anyCard } = await openPanel(extension.page, 1000)
     const chart = root.locator('svg[data-testid="pulse-overview-chart"]')
-    // A recap's best moments sit in Catch me up, above its list.
-    const pick = surface.name === 'live' ? rows.first() : root.locator('.pcu-mini').first()
+    const pick = rows.first()
     await expect(chart).toBeVisible()
     await expect(pick).toBeVisible()
     const expectNothingPicked = async () => {
@@ -135,14 +136,14 @@ for (const surface of [
       await expect(chart).not.toHaveAttribute('data-chart-locked-index')
       await expect(root.locator('[data-chart-readout-state="selected"]')).toHaveCount(0)
       await expect(root.locator('[data-chart-moment-marker-state="active"]')).toHaveCount(0)
-      await expect(root.locator('.pcu-mini[aria-pressed="true"]')).toHaveCount(0)
       await expect(root.locator('.pulse-moment-slot')).toHaveCount(0)
     }
     await expectNothingPicked()
     // Still nothing a few seconds in, after the panel has settled.
     await extension.page.waitForTimeout(2_000)
     await expectNothingPicked()
-    if (surface.name === 'live') await expect(root.locator('[data-featured-moment="true"]')).toContainText('Biggest moment so far')
+    // The Biggest-moment strip is gone (panel-first board, 2026-11-11).
+    if (surface.name === 'live') await expect(root.locator('[data-featured-moment]')).toHaveCount(0)
 
     // A pick selects, highlights and locks; picking it again releases all of it.
     await pick.click()
@@ -206,9 +207,13 @@ test('live: the card opens to one height for moments with no, one or three top e
     { ...three, offsetSeconds: 3420, score: 80, topEmotes: three.topEmotes.slice(0, 1) },
     three,
   ]
+  // A game Twitch has box art of, as a real stream's has: every card opens on
+  // the same art top, whatever its emotes.
+  const games = live.games.map((game: { gameName: string }) => (game.gameName === 'League of Legends' ? { ...game, categoryId: '21779' } : game))
+  await extension.context.route('https://static-cdn.jtvnw.net/ttv-boxart/**', route => route.fulfill({ contentType: 'image/png', body: PIXEL }))
   await extension.context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', async route => {
     if (new URL(route.request().url()).pathname.endsWith('/fixturechan')) {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...live, rollups, peaks }) })
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...live, rollups, peaks, games }) })
     } else {
       await route.fallback()
     }
@@ -378,9 +383,10 @@ test('live: ranked picks show in the Top Moments card, chart minutes keep the ch
   await expect(chart).toBeVisible()
   await expect(card).toHaveCount(0)
 
-  // The strongest-moment shortcut sits with the chart, but a ranked moment
-  // shows in the Top Moments card, not under the chart.
-  await root.locator('[data-featured-moment="true"]').click()
+  // A ranked moment picked on the chart (its spike marker) shows in the Top
+  // Moments card, not under the chart.
+  await root.getByRole('button', { name: 'Show spike markers' }).click()
+  await root.locator('[data-chart-moment-marker="true"]').first().click()
   await expect(card).toHaveCount(1)
   await expect(row).toHaveAttribute('aria-pressed', 'true')
   await expect(chartCard).toHaveCount(0)
@@ -436,8 +442,9 @@ test('live: ranked picks show in the Top Moments card, chart minutes keep the ch
  */
 test('live: a chart card opening above a pressed clip stays in view and moves the clip as little as possible', async ({ extension, prepare }) => {
   await prepare({ scenario: 'live-ready', twitchKind: 'live', storage: SIDEBAR })
-  // Tall enough to keep the clips in view below the chart and Top Moments.
-  await extension.page.setViewportSize({ width: 1440, height: 1100 })
+  // Tall enough to keep the clips in view below the chart and Top Moments,
+  // short enough that the panel can still scroll the chart up to its top.
+  await extension.page.setViewportSize({ width: 1440, height: 960 })
   const live = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-live-ready.json', import.meta.url), 'utf8'))
   await extension.context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', async route => {
     if (new URL(route.request().url()).pathname.endsWith('/fixturechan')) {

@@ -55,6 +55,7 @@ export function ChartMinuteInspectCard({
       onClose={onClose}
       picture={interactionState === 'selected' ? minutePictureView('card', canonicalOffsetSeconds) : undefined}
       game={interactionState === 'selected' ? gameAtOffset(games, canonicalOffsetSeconds) : undefined}
+      bookmark={interactionState === 'selected' ? { kind: 'minute', offsetSeconds: canonicalOffsetSeconds, label: 'Minute activity' } : undefined}
     />
   )
 }

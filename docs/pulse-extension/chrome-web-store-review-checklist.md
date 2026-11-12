@@ -1,6 +1,9 @@
 # Chrome Web Store review checklist (StreamPulse)
 
 Product name (user-facing): **StreamPulse**
+October 31 source candidate: **0.2.7**, unreleased and not submitted. The
+last recorded public Chrome version was 0.2.6 on October 29; the publisher
+dashboard and separate owner upload approval remain required.
 Privacy policy URL: `https://streampulse.stream/privacy`
 Support URL: `https://streampulse.stream/support`
 Backend (hosted): `https://api.streampulse.stream`
@@ -57,7 +60,7 @@ Build a **new** candidate only after RPR-2 validation gates. Every gate below st
 - [ ] `https://streampulse.stream/feedback` is deployed (portal before extension) and returns 200. The private feedback form may stay off (owner decision D19): the page then says the form is closed and offers public alternatives, each labelled public. While the form is off, the build keeps `FEEDBACK_FORM_LIVE` false (`src/shared/feedbackPolicy.ts`), so the Settings Community card's "Send feedback" link reads "Ideas or problems" and makes no privacy promise. Only a build made after the form is on may set it true, which changes that subline to "Private to the team"
 - [ ] Contact disclosures use only verified mailboxes (today: `privacy@streampulse.stream`)
 - [ ] Screenshots match the packaged `dist/` for that SHA
-- [ ] Owner authorizes upload; candidate `0.2.2` exceeds the confirmed dashboard version (the public listing reported `0.2.1` on 2026-09-24; verify the dashboard and the owner-reviewed candidate scope)
+- [ ] Owner authorizes upload; candidate `0.2.7` exceeds the confirmed dashboard version (last recorded public version 0.2.6 on October 29; recheck the dashboard and the owner-reviewed candidate scope)
 - [ ] Published `0.2.1` source revision is **unverified** (no commit or tag sets 0.2.1; no attested 0.2.x artifact). Do not present any commit or local ZIP as that package
 - [ ] Support URL / dashboard state rechecked by owner (do not claim dashboard changes from this checklist)
 - [ ] Real unpacked-extension Twitch smoke recorded for the release SHA (mocked Playwright is not live evidence)
@@ -70,8 +73,10 @@ Required `permissions`: `storage`, `scripting`
 Required `host_permissions` (store):
 
 - `https://api.streampulse.stream/*`
-- `https://cdn.7tv.app/*`, `https://static-cdn.jtvnw.net/*`, `https://cdn.frankerfacez.com/*`
 - `https://*.twitch.tv/*` (covers Twitch page hosts used for injection/messaging; GQL discovery runs in page MAIN world — there is no separate `https://gql.twitch.tv/*` entry)
+
+No emote or image CDN hosts: the panel shows those images as plain `<img>`
+elements, which need no host permission.
 
 **Must not appear** in the store artifact:
 
@@ -89,7 +94,7 @@ Required `host_permissions` (store):
 - [ ] Data use disclosure matches Privacy page (current behavior)
 - [ ] Disclose optional one-time Protect enrollment: beta key is discarded, device token is local/trusted-only, and the token is revocable
 - [ ] Distinguish browser-sync saved watchlist entries from server-confirmed Protect rows, including pending DELETE tombstones and backend retention
-- [ ] Disclose separate default-off product analytics consent + PostHog server processing (no identity; ~180-day target) **without claiming activation**
+- [ ] Disclose separate default-off product analytics consent + PostHog server processing (no identity; six-calendar-month event window, expired events permanently deleted at the following monthly cleanup) **without claiming activation**; reverify the intended project setting
 - [ ] Limited Use affirmed
 - [ ] Listing name / screenshots say **StreamPulse**
 - [ ] Listing / submission / Google approval — owner action only

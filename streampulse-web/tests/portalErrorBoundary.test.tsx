@@ -8,6 +8,8 @@ describe('portal page-load recovery', () => {
     'Importing a module script failed.',
     'Loading chunk 12 failed.',
     'error loading dynamically imported module',
+    // A tab open across a deploy: the old page's CSS is gone (Pages answers 404 text/html).
+    'Unable to preload CSS for /assets/AnalyticsMomentsPage-DSHyL4nX.css',
   ])('recognizes a module-load failure: %s', message => {
     expect(isModuleLoadError(new TypeError(message))).toBe(true)
     expect(PortalErrorBoundary.getDerivedStateFromError(new Error(message))).toEqual({ hasError: true, moduleLoadFailed: true })

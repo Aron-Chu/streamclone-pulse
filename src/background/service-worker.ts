@@ -1,5 +1,6 @@
-import { handleDeviceBookmarks, handleMyMoments } from './myMoments.ts'
+import { bindReplayLookups, handleDeviceBookmarks, handleMyMoments, handlePicture, keepSaveDelta, removePanelBookmark, restoreRemovedNote, wantSavedPicture } from './myMoments.ts'
 import { loadHubSnapshot } from './hubSnapshot.ts'
+import { loadMomentMinute } from './momentMinute.ts'
 import {
   addPulseWatchlist,
   createPulseBookmark,
@@ -42,6 +43,7 @@ import { openSettingsHost } from './settingsHost.ts'
 import { resumePendingLink, supporterAccount, supporterPayFirst, watchPendingLink } from './supporterAccountRuntime.ts'
 import { supporterAppearanceReply } from './supporterAppearance.ts'
 import { injectSupporterCard } from './supporterCardScript.ts'
+import { chatBadgeList, chatBadgeOptIn, installChatBadges, reconcileChatBadges } from './chatBadgeRuntime.ts'
 import { injectMomentFrames } from './momentFramesScript.ts'
 import { injectCatchMeUp } from './catchMeUpScript.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
@@ -77,7 +79,7 @@ import {
   pulseDebug,
 } from '../shared/pulseDebug.ts'
 import { isExtensionPageSender, isSenderAuthorizedForMessage, isSupportedTwitchUrl, isTrustedTwitchTopFrameSender, tabUrlMatchesPulseLogin } from './pulseBroadcastTargets.ts'
-import { discoverLiveVodIdFromGqlInTab } from './twitchPageGql.ts'
+import { discoverLiveVodIdFromGqlInTab, vodFrameInTab, vodPicturesInTab } from './twitchPageGql.ts'
 import {
   awaitPulsePrefetchInFlight,
   handleTwitchTabUpdate,
@@ -97,9 +99,12 @@ import {
   protectStatusMessage,
 } from './alwaysTrackedSync.ts'
 import {
+  EXTENSION_ANALYTICS_INGEST_ENABLED,
   emitAnalyticsEvents,
   type AnalyticsEmitEventName,
 } from '../shared/extensionAnalytics.ts'
+import { issueAnalyticsConsentGrantTicket, setAnalyticsConsentGranted } from '../shared/analyticsConsent.ts'
+import { FIREFOX_TECHNICAL_DATA_PERMISSION } from '../shared/firefoxDataConsent.ts'
 import { createExtensionHealthCache } from './extensionHealthCache.ts'
 import { COMMUNITY_LINKS } from '../shared/portalLinks.ts'
 import { getUpdateCheckCapability, requestBrowserUpdateCheck } from './extensionUpdateCheck.ts'
@@ -509,6 +514,8 @@ function messageLogin(message: BackgroundRequest): string | undefined {
       return message.login
     case 'SAVE_BOOKMARK':
       return message.bookmark.login
+    case 'REMOVE_BOOKMARK':
+      return message.login
     default:
       return undefined
   }
@@ -517,8 +524,9 @@ function messageLogin(message: BackgroundRequest): string | undefined {
 function isAuthorizedRuntimeSender(message: BackgroundRequest, sender: chrome.runtime.MessageSender): boolean {
   const vodId = message.type === 'SAVE_BOOKMARK' ? message.bookmark.vodId
     : message.type === 'LIST_BOOKMARKS' ? message.contextVodId ?? message.vodId
-      : message.type === 'GET_CLIP' ? message.vodId
-        : message.type === 'LIST_PAST_VODS' ? message.contextVodId : undefined
+      : message.type === 'REMOVE_BOOKMARK' ? message.contextVodId ?? message.vodId
+        : message.type === 'GET_CLIP' ? message.vodId
+          : message.type === 'LIST_PAST_VODS' ? message.contextVodId : undefined
   return isSenderAuthorizedForMessage(message.type, messageLogin(message), sender, chrome.runtime.id, vodId)
 }
 
@@ -687,6 +695,16 @@ async function listPastVods(
   return rows
 }
 
+// Stream-only bookmarks get their replay when My Moments opens: stream history,
+// then DISCOVER_LIVE_VOD's lookup in an open tab of that channel, if any.
+bindReplayLookups({
+  pastVods: login => listPastVods(login),
+  liveArchive: async (login, streamId) => {
+    const tab = (await chrome.tabs.query({ url: ['*://*.twitch.tv/*'] })).find(item => item.id && tabUrlMatchesPulseLogin(item.url, login))
+    return tab?.id ? discoverLiveVodIdFromGqlInTab(tab.id, login, streamId) : null
+  },
+})
+
 if (chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, areaName) => {
     // autoUpdateEnabled is read by content livePoll; SW does not own recurring timers.
@@ -695,6 +713,16 @@ if (chrome.storage?.onChanged) {
     void syncWatchlistStorageDelta(changes.watchlist.oldValue, changes.watchlist.newValue)
   })
 }
+
+// Firefox users can withdraw this browser-owned permission outside Settings.
+// Deny synchronously in this worker and remove its separate analytics grant.
+chrome.permissions?.onRemoved?.addListener(removed => {
+  const dataCollection = (removed as unknown as { data_collection?: unknown }).data_collection
+  if (!Array.isArray(dataCollection) || !dataCollection.includes(FIREFOX_TECHNICAL_DATA_PERMISSION)) return
+  void setAnalyticsConsentGranted(false).catch(() => {
+    // The worker remains denied in memory if storage fails.
+  })
+})
 
 chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   void (async () => {
@@ -750,6 +778,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
               streamId: message.streamId,
               allowWatch,
               explicitFull: window === 'full',
+              fresh: message.fresh === true,
             },
             pulseFetchDeps(),
             pulseCoord,
@@ -973,7 +1002,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SUPPORTER_BILLING': {
           const billing = await supporterPayFirst.billing(message.action)
-          if (await supporterPayFirst.hasPending()) watchPendingLink()
+          if (message.action !== 'connect' && await supporterPayFirst.hasPending()) watchPendingLink()
           sendResponse({ type: 'SUPPORTER_BILLING', billing } satisfies BackgroundResponse)
           return
         }
@@ -990,11 +1019,27 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SUPPORTER_FINISH_INTENT': {
           const finish = message.finish === undefined ? await supporterAccount.finishIntent() : await supporterAccount.setFinishIntent(message.finish)
-          sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish } satisfies BackgroundResponse)
+          const details = finish === null ? null : await supporterAccount.finishIntentDetails()
+          sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish, ...(details && details.finish === finish ? { setAt: details.setAt } : {}) } satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_CARD_SCRIPT': {
           sendResponse({ type: 'SUPPORTER_CARD_SCRIPT', ok: await injectSupporterCard(chrome.scripting, sender) } satisfies BackgroundResponse)
+          return
+        }
+        case 'CHAT_BADGES': {
+          sendResponse(await chatBadgeList.ask(message.have) satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_CHAT_BADGE': {
+          sendResponse((message.action === 'on' ? await chatBadgeOptIn.on()
+            : message.action === 'off' ? await chatBadgeOptIn.off()
+              : message.action === 'style' ? await chatBadgeOptIn.style(message.wave)
+                : await chatBadgeOptIn.status()) satisfies BackgroundResponse)
+          return
+        }
+        case 'SUPPORTER_TWITCH_LINK': {
+          sendResponse((message.action === 'link' ? await chatBadgeOptIn.linkTwitch() : await chatBadgeOptIn.unlinkTwitch()) satisfies BackgroundResponse)
           return
         }
         case 'MOMENT_FRAMES_SCRIPT': {
@@ -1110,6 +1155,37 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ ok: true })
           return
         }
+        case 'PREPARE_ANALYTICS_CONSENT_GRANT': {
+          if (!EXTENSION_ANALYTICS_INGEST_ENABLED) {
+            sendResponse({ ok: false, error: 'analytics_disabled' })
+            return
+          }
+          sendResponse({ ok: true, grantTicket: await issueAnalyticsConsentGrantTicket() })
+          return
+        }
+        case 'SET_ANALYTICS_CONSENT': {
+          // The settings page requests Firefox permission with the user gesture;
+          // the worker verifies it and owns consent writes and pending sends.
+          if (message.granted && !EXTENSION_ANALYTICS_INGEST_ENABLED) {
+            sendResponse({ ok: false, error: 'analytics_disabled' })
+            return
+          }
+          try {
+            await setAnalyticsConsentGranted(message.granted, undefined, {
+              requireExistingPlatformPermission: true,
+              requireGrantTicket: message.granted,
+              grantTicket: message.grantTicket,
+            })
+          } catch (error) {
+            if (error instanceof Error && error.message === 'analytics_consent_superseded') {
+              sendResponse({ ok: false, error: 'analytics_consent_superseded' })
+              return
+            }
+            throw error
+          }
+          sendResponse({ ok: true })
+          return
+        }
         case 'EMIT_EXTENSION_ANALYTICS': {
           if (sender.id !== chrome.runtime.id) {
             sendResponse({ ok: true })
@@ -1180,6 +1256,14 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           }
           return
         }
+        case 'MOMENT_MINUTE': {
+          try {
+            sendResponse({ type: 'MOMENT_MINUTE', context: await loadMomentMinute(message.streamId, message.offsetSeconds) } satisfies BackgroundResponse)
+          } catch (err) {
+            sendResponse({ type: 'MOMENT_MINUTE', context: null, error: err instanceof Error ? err.message : 'minute_unavailable' } satisfies BackgroundResponse)
+          }
+          return
+        }
         case 'MY_MOMENTS':
         case 'MOMENT_CAPTURE': {
           sendResponse(await handleMyMoments(message, sender))
@@ -1200,14 +1284,37 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'SAVE_BOOKMARK': {
           const device = await handleDeviceBookmarks(message, sender)
-          if (device) { sendResponse(device); return }
-          const item = await createPulseBookmark(message.bookmark)
-          sendResponse({ type: 'BOOKMARK', item } satisfies BackgroundResponse)
+          const saved = device ?? { type: 'BOOKMARK', item: await createPulseBookmark(message.bookmark) } satisfies BackgroundResponse
+          if (message.restoreOf && 'item' in saved) await restoreRemovedNote(message.restoreOf, saved.item, sender)
+          // A device save keeps the delta on its row; an account's keeps it beside its id.
+          if (!device && 'item' in saved) void keepSaveDelta(saved.item, message.bookmark.vodId, message.vodOriginDeltaSeconds, sender)
+          sendResponse(saved)
+          void wantSavedPicture(message.bookmark, sender)
+          return
+        }
+        case 'MOMENT_PICTURE': {
+          if (message.action === 'vod') {
+            // Read in the asking Twitch tab, as Twitch's own page reads them; nothing is kept.
+            const tabId = sender.tab?.id
+            sendResponse({ type: 'MOMENT_PICTURE', vod: tabId == null ? null : await vodPicturesInTab(tabId, message.vodId) } satisfies BackgroundResponse)
+            return
+          }
+          if (message.action === 'vodFrame') {
+            // Read in the asking Twitch tab; the JPEG goes back to that tab only.
+            const tabId = sender.tab?.id
+            sendResponse({ type: 'MOMENT_PICTURE', frame: tabId == null ? null : await vodFrameInTab(tabId, message.vodId, message.seconds, message.height) } satisfies BackgroundResponse)
+            return
+          }
+          sendResponse(await handlePicture(message, sender) satisfies BackgroundResponse)
           return
         }
         case 'DELETE_BOOKMARK': {
           await deletePulseBookmark(message.id)
           sendResponse({ type: 'DELETE_BOOKMARK', ok: true } satisfies BackgroundResponse)
+          return
+        }
+        case 'REMOVE_BOOKMARK': {
+          sendResponse(await removePanelBookmark(message, sender))
           return
         }
         case 'SET_AUTO_UPDATE': {
@@ -1254,6 +1361,10 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     } catch (err) {
       const messageText = err instanceof Error ? err.message : 'error'
       switch (message.type) {
+        case 'PREPARE_ANALYTICS_CONSENT_GRANT':
+        case 'SET_ANALYTICS_CONSENT':
+          sendResponse({ ok: false, error: 'analytics_consent_update_failed' })
+          return
         case 'LOAD_MISSED_MOMENTS':
           sendResponse({ type: 'PULSE_BACKFILL', job: null, error: messageText } satisfies BackgroundResponse)
           return
@@ -1314,6 +1425,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
 void resumePendingLink()
 
 chrome.runtime.onStartup.addListener(() => {
+  void reconcileChatBadges()
   void (async () => {
     await syncWatchlistToBackend()
     if (await hostedBackend()) return
@@ -1324,6 +1436,7 @@ chrome.runtime.onStartup.addListener(() => {
 })
 
 chrome.runtime.onInstalled.addListener(details => {
+  void reconcileChatBadges()
   // The only moment silent Twitch sign-in may later be tried (no-op while the flag is off).
   if (details?.reason === 'install') void twitchSignIn.markFirstInstall().catch(() => undefined)
   void syncWatchlistToBackend().catch(() => undefined)
@@ -1336,6 +1449,7 @@ chrome.runtime.onInstalled.addListener(details => {
 // reads go through worker messages.
 
 installBackgroundDiagnosticsEmitters()
+installChatBadges()
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   handleTwitchTabUpdate(changeInfo, tab)

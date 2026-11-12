@@ -1,7 +1,8 @@
 @config "../../tailwind.public.config.js";
 
-/* No global preflight, console theme, or second font stack. */
-.app-shell :where(*, *::before, *::after) {
+/* No global preflight, console theme, or second font stack. Zero specificity, so any
+   component rule that sets a border wins over this reset. */
+:where(.app-shell *, .app-shell *::before, .app-shell *::after) {
   border-width: 0;
   border-style: solid;
 }

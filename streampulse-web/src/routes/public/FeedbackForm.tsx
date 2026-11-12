@@ -61,6 +61,7 @@ type TurnstileAPI = {
     el: HTMLElement,
     opts: {
       sitekey: string
+      action?: string
       size?: 'normal' | 'flexible' | 'compact'
       appearance?: 'always' | 'execute' | 'interaction-only'
       callback: (token: string) => void

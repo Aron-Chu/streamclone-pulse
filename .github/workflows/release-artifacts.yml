@@ -177,10 +177,20 @@ jobs:
           [[ "${extension_count}" == "1" ]] || { echo "::error::exact-SHA CI did not execute one extension job"; exit 1; }
           extension_conclusion="$(jq -r '[.jobs[] | select(.name == "extension") | .conclusion][0] // empty' <<<"${jobs_json}")"
           [[ "${extension_conclusion}" == "success" ]] || { echo "::error::extension job conclusion=${extension_conclusion}"; exit 1; }
-          for required_step in "Force-full dispatch proof" "Mocked extension E2E" "Firefox packaged-extension runtime smoke"; do
-            step_conclusion="$(jq -r --arg step "${required_step}" '[.jobs[] | select(.name == "extension") | .steps[] | select(.name == $step) | .conclusion][0] // empty' <<<"${jobs_json}")"
+          # CI runs extension work as "extension checks" plus "extension e2e (i/N)"
+          # shards; the "extension" job above joins them.
+          checks_count="$(jq '[.jobs[] | select(.name == "extension checks")] | length' <<<"${jobs_json}")"
+          [[ "${checks_count}" == "1" ]] || { echo "::error::exact-SHA CI did not execute one extension checks job"; exit 1; }
+          for required_step in "Force-full dispatch proof" "Firefox packaged-extension runtime smoke"; do
+            step_conclusion="$(jq -r --arg step "${required_step}" '[.jobs[] | select(.name == "extension checks") | .steps[] | select(.name == $step) | .conclusion][0] // empty' <<<"${jobs_json}")"
             [[ "${step_conclusion}" == "success" ]] || { echo "::error::required extension step ${required_step} conclusion=${step_conclusion}"; exit 1; }
           done
+          shards_json="$(jq -c '[.jobs[] | select(.name | test("^extension e2e \\([0-9]+/[0-9]+\\)$"))]' <<<"${jobs_json}")"
+          shard_total="$(jq -r '[.[].name | capture("/(?<n>[0-9]+)\\)$").n] | unique | if length == 1 then .[0] else "" end' <<<"${shards_json}")"
+          shard_count="$(jq '[.[].name] | unique | length' <<<"${shards_json}")"
+          [[ -n "${shard_total}" && "${shard_count}" == "${shard_total}" && "$(jq length <<<"${shards_json}")" == "${shard_total}" ]] || { echo "::error::exact-SHA CI did not execute every extension e2e shard (${shard_count} of ${shard_total:-?})"; exit 1; }
+          failed_shards="$(jq -r '.[] | select(.conclusion != "success" or ([.steps[] | select(.name == "Mocked extension E2E" and .conclusion == "success")] | length) != 1) | .name' <<<"${shards_json}")"
+          [[ -z "${failed_shards}" ]] || { echo "::error::required extension step Mocked extension E2E did not pass in: ${failed_shards}"; exit 1; }
           echo "Verified package version ${VERSION} and full CI run ${CI_RUN_ID} for ${EXPECTED_SHA}"
 
       # actions/setup-node@v4

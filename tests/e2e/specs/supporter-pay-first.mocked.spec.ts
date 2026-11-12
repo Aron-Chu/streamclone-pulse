@@ -13,11 +13,9 @@ function snapshot(status: 'none' | 'pending' | 'active', cosmetics = { enabled: 
   return { schemaVersion: 1, accountId, environment: 'live', revision: paid ? 2 : 1, status, checkoutEnabled: true, installationAccountsEnabled: true, accountKind: 'installation', restoreEligible: status === 'none', serverTime: new Date().toISOString(), accessFrom: new Date(Date.now() - 60_000).toISOString(), accessUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(), cacheUntil: new Date(Date.now() + 60_000).toISOString(), supportPeriods: paid ? 1 : 0, features: { 'supporter.banner.v1': paid, 'supporter.finish.v1': paid, 'supporter.recognition.v1': paid }, cosmetics }
 }
 /**
- * The options page no longer starts an installation account or an email
- * restore (account journey spec, closeout 2026-10-08b: the page never sends
- * SUPPORTER_RESTORE and never asks for an installation). The worker paths are
- * kept, so these packaged proofs start them through the same extension-page
- * message the page used to send, then observe the page and the mock server.
+ * The first proof follows the actual one-click Become a Supporter button.
+ * The remaining worker recovery proofs use extension-page messages directly;
+ * additional proofs exercise the extension's customer-facing restore flow.
  */
 const workerCheckout = (page: Page) => page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'checkout' }))
 const workerRestore = (page: Page, email = 'payer@example.test') => page.evaluate(address => chrome.runtime.sendMessage({ type: 'SUPPORTER_RESTORE', action: 'start', email: address }), email)
@@ -44,7 +42,46 @@ async function finish(cdp: CDPSession) {
   return banner ? attr(banner, 'data-supporter-finish') ?? null : undefined
 }
 
-test('worker installation Checkout opens only Stripe, delayed payment activates a chosen finish on an already-open Twitch tab without reload', async ({ extension, prepare }, info) => {
+test('a customer restores an existing membership by email without starting checkout', async ({ extension, prepare }, info) => {
+  await prepare()
+  let approved = false, restoreStarts = 0, checkouts = 0, restoreKey = ''
+  const restoredAccount = '55555555-5555-4555-8555-555555555555'
+  await extension.context.route('https://api.streampulse.stream/v1/account/installations', route => route.fulfill({ status: 201, json: credential() }))
+  await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => {
+    const isRestored = route.request().headers().authorization === `Bearer ${'d'.repeat(64)}`
+    return route.fulfill({ json: snapshot(isRestored ? 'active' : 'none', undefined, isRestored ? restoredAccount : ACCOUNT) })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/billing/checkout', route => { checkouts++; return route.fulfill({ status: 500, json: {} }) })
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores', route => {
+    restoreStarts++
+    const body = route.request().postDataJSON()
+    expect(body).toMatchObject({ email: 'payer@example.test', restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) })
+    restoreKey = body.restoreKey
+    return route.fulfill({ status: 201, json: { restoreId: RESTORE, pollingSecret: 'c'.repeat(64), expiresAt: new Date(Date.now() + 900_000).toISOString(), intervalSeconds: 5, comparisonCode: 'A3B4C5' } })
+  })
+  await extension.context.route('https://api.streampulse.stream/v1/account/restores/poll', route => {
+    expect(route.request().postDataJSON()).toEqual({ restoreId: RESTORE, pollingSecret: 'c'.repeat(64), restoreKey })
+    return route.fulfill({ json: approved ? { state: 'approved', ...credential(restoredAccount, 'd'.repeat(64)) } : { state: 'pending' } })
+  })
+  const page = extension.page
+  await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  await page.getByRole('button', { name: 'Restore with Stripe email', exact: true }).click()
+  await page.getByLabel('Stripe email').fill('payer@example.test')
+  await page.getByRole('button', { name: 'Send restore link', exact: true }).click()
+  await expect(page.getByText('A3B4C5', { exact: true })).toBeVisible()
+  await expect(page.getByText('payer@example.test')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath('restore-comparison.png'), fullPage: true, animations: 'disabled' })
+  approved = true // Stand-in for confirming the emailed link with the matching code.
+  await expect(page.locator('[data-journey-state="active"]')).toBeVisible({ timeout: 20_000 })
+  expect(restoreStarts).toBe(1)
+  expect(checkouts).toBe(0)
+  const account = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ACCOUNT', action: 'status' }))
+  expect(account.account.accountId).toBe(restoredAccount)
+  expect(JSON.stringify(account)).not.toContain(restoreKey)
+})
+
+test('one click saves a key, checks availability and opens Checkout; delayed payment activates a chosen finish without reload', async ({ extension, prepare }, info) => {
   test.setTimeout(100_000)
   await prepare()
   const context = extension.context
@@ -77,14 +114,23 @@ test('worker installation Checkout opens only Stripe, delayed payment activates 
   await expect.poll(() => finish(cdp)).toBe(null)
   const initialNavigations = twitchNavigations
   await settings.bringToFront()
-  await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
-  await settings.getByRole('button', { name: 'Save for when Supporter opens', exact: true }).click()
+  await settings.getByText('Preview Supporter looks', { exact: true }).click()
+  await expect(settings.locator('.pulse-supporter-studio .pulse-account-link-actions')).toHaveCount(0)
   expect(calls).toEqual([])
   const tabs = await recordTabs(extension.serviceWorker)
-  // A signed-out page offers no purchase; the kept worker path is started directly.
-  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
-  await workerCheckout(settings)
+  // One click: the worker saves the key, reads fresh server capability, and
+  // opens Checkout only because the fixture says sales are open.
+  await expect(settings.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
+  await settings.screenshot({ path: info.outputPath('one-button-before.png'), fullPage: true, animations: 'disabled' })
+  await settings.getByRole('button', { name: 'Become a Supporter', exact: true }).click()
   await expect(settings.locator('[data-journey-state="stripe-open"]')).toBeVisible()
+  expect(calls).toEqual(['installation', 'checkout'])
+  // The created fixture installation has a ready, explicitly open entitlement.
+  // Keep the choice through the real worker rather than a closed try-on control.
+  await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+  await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
+  await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
+  await expect(settings.getByText('We keep this choice for 7 days.', { exact: true })).toBeVisible()
   expect(await tabs()).toEqual(['https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR'])
   await settings.getByRole('button', { name: 'Return to Stripe checkout', exact: true }).click()
   await expect.poll(tabs).toEqual(['https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR', 'https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR'])
@@ -168,7 +214,7 @@ test('the kept worker restore completes privately after email approval even when
     pollTimes.push(Date.now())
     if (approved) approvalCollectedAt = Date.now()
     else pendingPollTimes.push(Date.now())
-    expect(route.request().postDataJSON()).toEqual({ restoreId: RESTORE, pollingSecret: 'c'.repeat(64) })
+    expect(route.request().postDataJSON()).toEqual({ restoreId: RESTORE, pollingSecret: 'c'.repeat(64), restoreKey: expect.stringMatching(/^[a-f0-9]{64}$/) })
     return route.fulfill({ json: approved ? { state: 'approved', ...credential(recoveredAccount, 'd'.repeat(64)) } : { state: 'pending' } })
   })
   await extension.context.route('https://api.streampulse.stream/v1/billing/supporter', route => route.fulfill({ json: snapshot(route.request().headers().authorization === `Bearer ${'d'.repeat(64)}` ? 'active' : 'none', undefined, route.request().headers().authorization === `Bearer ${'d'.repeat(64)}` ? recoveredAccount : ACCOUNT) }))
@@ -322,9 +368,9 @@ test('uncertain installation refresh retains its identity and restores after ren
   expect(installations).toBe(1)
   expect(restoreStarts).toBe(1)
   approved = true
-  await expect(page.getByText('Supporter active', { exact: true })).toBeVisible({ timeout: 20_000 })
-  // The Account card's billing row carries its own Manage subscription; this is the footer's.
-  await expect(page.locator('.pulse-journey').getByRole('button', { name: 'Manage subscription', exact: true })).toBeVisible()
+  await expect(page.locator('[data-journey-state="active"]')).toBeVisible({ timeout: 20_000 })
+  // Stripe is the card's one door; the Account card has no billing row.
+  await expect(page.locator('.pulse-journey').getByRole('button', { name: 'Manage on Stripe', exact: true })).toBeVisible()
 })
 
 test('a 429 try_later from Checkout names the wait and the worker sends nothing until it ends', async ({ extension, prepare }) => {
@@ -378,7 +424,7 @@ test('slow Checkout and Portal responses survive the former twelve-second deadli
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_BILLING', action: 'check' }))
   await page.reload()
   await expect(page.locator('[data-journey-state="active"]')).toBeVisible()
-  await page.locator('.pulse-journey').getByRole('button', { name: 'Manage subscription', exact: true }).click()
+  await page.locator('.pulse-journey').getByRole('button', { name: 'Manage on Stripe', exact: true }).click()
   await expect.poll(tabs, { timeout: 30_000 }).toContain('https://billing.stripe.com/p/session/slow-fixture')
 })
 

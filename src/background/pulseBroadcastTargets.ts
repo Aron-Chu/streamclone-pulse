@@ -63,8 +63,13 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   SUPPORTER_FINISH_INTENT: 'extension-page',
   // A Twitch tab's quick settings asks for the card script in its own frame only.
   SUPPORTER_CARD_SCRIPT: 'twitch-any',
+  SUPPORTER_CHAT_BADGE: 'extension-page',
+  SUPPORTER_TWITCH_LINK: 'extension-page',
+  CHAT_BADGES: 'twitch-any',
   // A Twitch tab showing Pulse asks for the moment-pictures script in its own frame only.
   MOMENT_FRAMES_SCRIPT: 'twitch-any',
+  // The frames script answers the worker's picture requests for its own tab; the worker checks each (momentPictures.ts).
+  MOMENT_PICTURE: 'twitch-any',
   // A Twitch tab's stream recap asks for the Catch me up script in its own frame only.
   CATCH_ME_UP_SCRIPT: 'twitch-any',
   ENROLL_DEVICE: 'extension-page',
@@ -78,6 +83,7 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   DELETE_BOOKMARK: 'extension-page',
   MY_MOMENTS: 'extension-page',
   HUB_SNAPSHOT: 'extension-page',
+  MOMENT_MINUTE: 'extension-page',
   MOMENT_CAPTURE: 'twitch-any',
   GET_PULSE_DEBUG_LOG: 'extension-page',
   CLEAR_PULSE_DEBUG_LOG: 'extension-page',
@@ -95,6 +101,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   LIST_PAST_VODS: 'twitch-channel-or-vod',
   LIST_BOOKMARKS: 'twitch-channel-or-vod',
   SAVE_BOOKMARK: 'twitch-channel-or-vod',
+  // Only a bookmark of that channel, stream or VOD; the worker checks (removePanelBookmark).
+  REMOVE_BOOKMARK: 'twitch-channel-or-vod',
   HEALTH: 'twitch-any',
   GET_UPDATE_CHECK_CAPABILITY: 'twitch-any',
   CHECK_FOR_UPDATE: 'twitch-any',
@@ -102,6 +110,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   OPEN_COMMUNITY_LINK: 'twitch-any',
   REPORT_EXTENSION_DIAGNOSTIC: 'twitch-any',
   EMIT_EXTENSION_ANALYTICS: 'twitch-any',
+  PREPARE_ANALYTICS_CONSENT_GRANT: 'extension-page',
+  SET_ANALYTICS_CONSENT: 'extension-page',
   SET_AUTO_UPDATE: 'twitch-any',
   FETCH_EMOTE_IMAGE: 'twitch-any',
   GET_PULSE_VOD: 'twitch-any',

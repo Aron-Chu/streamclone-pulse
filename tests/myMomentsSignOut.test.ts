@@ -28,6 +28,7 @@ vi.mock('../src/background/supporterAccountRuntime.ts', () => ({
   supporterAccount: {
     run: (action: 'status') => f.coordinator.run(action),
     localAccountId: () => f.coordinator.localAccountId(),
+    isInstallationIdentity: () => f.coordinator.isInstallationIdentity(),
     withCredential: (operation: (token: string) => Promise<{ status: number }>, id?: string) => f.coordinator.withCredential(operation, id),
   },
 }))

@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import {
   deriveLiveStats,
   formatHeatOffset,
@@ -26,7 +26,6 @@ import { ChartReadoutBand, type ChartReadoutMode } from './ChartReadoutBand.tsx'
 import { ChartMinuteInspectCard } from './ChartMinuteInspectCard.tsx'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { MomentCardSlot } from './MomentCardSlot.tsx'
-import { SavedMoments } from './SavedMoments.tsx'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import {
@@ -45,7 +44,6 @@ import {
   findChartIndexByOffset,
   fullRollupsMissingStreamPrefix,
   MAX_PLOTTED_EMOTES,
-  mergeRecentRollupTail,
   PLOT_PICKER_EMOTE_LIMIT,
   prepareChartRollups,
   resolveChartCoverageStartSeconds,
@@ -53,7 +51,6 @@ import {
   type ChartTimelineWindow,
 } from './chatActivityEmotes.ts'
 import { downsampleRollupsForChart } from './extensionChartPoints.ts'
-import { momentStrength } from './momentStrength.ts'
 import {
   chartHighlightedGameKey,
   chartVisibleRangeFromRollups,
@@ -63,7 +60,7 @@ import {
 import { firstViewerOffsetSeconds, firstActiveRollupOffset, minuteEmoteTotal } from './chartRollupUtils.ts'
 import { LiveMetricIcon } from './liveMetricIcons.tsx'
 import { emoteSyncStatusLabel, emoteSyncStatusTone } from './emoteSync.ts'
-import { overlayGhostChipButton, overlayTextLinkButton } from './momentReasonStyles.ts'
+import { overlayTextLinkButton } from './momentReasonStyles.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { resolveMostReactedHeat, sortLiveHeatPoints } from './mostReacted.ts'
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
@@ -108,7 +105,6 @@ export interface LiveStatsBandProps {
   onLoadFromStart?: () => void
   onJumpToOffset?: (offsetSeconds: number) => void
   onOpenAnalytics?: (offsetSeconds: number) => void
-  onOpenFullAnalytics?: () => void
   onRequestFullTimeline?: () => Promise<FullHistoryRequestResult>
   onChartWindowChange?: (window: ChartTimelineWindow) => void
   onPinOffset?: (offsetSeconds: number | null) => void
@@ -134,6 +130,8 @@ export interface LiveStatsBandProps {
   liveMetadata?: LiveViewerMetadata | null
   /** Marketing landing — read-only panel with no navigation or chart pinning. */
   demoMode?: boolean
+  /** Over the minute card: where the viewer came from, on a replay of a stream still live. */
+  arrivalNote?: ReactNode
 }
 
 const CONFIDENCE_STYLES: Record<
@@ -260,7 +258,6 @@ export function LiveStatsBand({
   onLoadFromStart,
   onJumpToOffset,
   onOpenAnalytics,
-  onOpenFullAnalytics,
   onRequestFullTimeline,
   onChartWindowChange,
   onPinOffset,
@@ -275,6 +272,7 @@ export function LiveStatsBand({
   coverageTier = null,
   liveMetadata = null,
   demoMode = false,
+  arrivalNote,
 }: LiveStatsBandProps) {
   const statsInput = useMemo(
     () => ({
@@ -709,23 +707,13 @@ export function LiveStatsBand({
       refinementStatus: point.refinementStatus,
       refinementConfidence: point.refinementConfidence,
       reactionScoringVersion: point.reactionScoringVersion,
+      streamEdge: point.streamEdge,
     }))
     return {
       chartPeakMarkers: selected,
       chartPeakMarkerTotal: ranked.length,
     }
   }, [payload])
-  const featuredMoment = chartPeakMarkers[0]
-  // Validated full history only, so the pill never shows a recent-window
-  // number first and jumps once the full timeline arrives. The coverage marks
-  // viewer-only rows in missing chat ranges as unmeasured, not quiet.
-  const featuredStrength = useMemo(
-    () => (hasFullRollups && featuredMoment
-      ? momentStrength(mergeRecentRollupTail(payload.fullRollups ?? [], payload.rollups), featuredMoment, payload.coverage)
-      : null),
-    [featuredMoment, hasFullRollups, payload.coverage, payload.fullRollups, payload.rollups],
-  )
-  const featuredTime = featuredMoment ? formatHeatOffset(featuredMoment.offsetSeconds) : ''
 
   const chartRailRollups = useMemo(
     () => (hasFullRollups ? payload.fullRollups ?? [] : rollups),
@@ -1119,8 +1107,9 @@ export function LiveStatsBand({
   const viewerEndOffsetSeconds = viewerSamples[viewerSamples.length - 1]?.offsetSeconds ?? null
   const viewerPaused = viewerAvailability === 'paused'
   // The chart itself is the healthy-state proof. Keep the header badge for
-  // actionable or degraded states where it tells the user what changed.
-  const showConfidenceBadge = viewerPaused || stats.confidence !== 'Synced'
+  // actionable or degraded states where it tells the user what changed. A
+  // viewer delay has one notice, in the status lane below, not here too.
+  const showConfidenceBadge = stats.confidence !== 'Synced'
   const viewerTimelineHint = viewerSamplesAvailable && viewerEndOffsetSeconds != null
     ? isLive
       ? `Viewer data from ${formatHeatOffset(viewerStartOffsetSeconds)} · ${!autoUpdate || viewerPaused ? 'latest sample ' + formatHeatOffset(viewerEndOffsetSeconds) : 'sampling now'}`
@@ -1184,7 +1173,12 @@ export function LiveStatsBand({
   const viewerMetricValue = stats.viewerState === 'stale' ? null : stats.currentViewers
   const viewerMetricMeta = stats.viewerState === 'stale' && liveMetadata?.viewerCount != null
     ? `Last known ${formatNumber(liveMetadata.viewerCount)} · ${formatFreshnessAge(liveMetadata.freshnessSeconds)}`
-    : `${formatSignedDelta(stats.viewerDelta5m)} · 5m${stats.viewerState === 'unknown' ? ' · unavailable' : ''}`
+    // A count of unknown age has no 5m change; saying only "unavailable" under
+    // the count read as if the count itself were missing.
+    : stats.viewerState === 'unknown' && stats.currentViewers != null
+      ? '5m change unknown'
+      // While viewer data is delayed a 5m change of 0 means no data, not no change.
+      : `${formatSignedDelta(viewerPaused ? null : stats.viewerDelta5m)} · 5m${stats.viewerState === 'unknown' ? ' · unavailable' : ''}`
 
   return (
     <PulseSectionCard
@@ -1193,11 +1187,6 @@ export function LiveStatsBand({
       style={{ marginBottom: sidebarFill ? 10 : 14, width: '100%' }}
       meta={
         <span style={styles.headerMeta}>
-          {onOpenFullAnalytics && !demoMode ? (
-            <button type="button" style={styles.analyticsHeaderLink} onClick={onOpenFullAnalytics}>
-              Stream analytics →
-            </button>
-          ) : null}
           {showConfidenceBadge ? (
             <span
               style={{
@@ -1205,13 +1194,13 @@ export function LiveStatsBand({
                 border: `1px solid ${confidenceStyle.border}`,
                 borderRadius: 999,
                 color: confidenceStyle.color,
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: 800,
                 padding: '3px 8px',
               }}
               data-chart-confidence={stats.confidence}
             >
-              {viewerPaused ? 'Viewer history delayed' : stats.confidence}
+              {stats.confidence}
             </span>
           ) : null}
         </span>
@@ -1249,30 +1238,6 @@ export function LiveStatsBand({
         </div>
       </div>
 
-      {!demoMode && featuredMoment && onMomentSelect ? (
-        <button type="button" data-featured-moment="true" data-chart-action="true"
-          // Same pairing SavedMoments uses: the chip styles already carry the
-          // transition and accent hover, this button just never had the class.
-          className="pulse-action-chip pulse-action-chip-primary"
-          style={{ ...overlayGhostChipButton, display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', whiteSpace: 'normal' }}
-          title={featuredStrength ? `${featuredStrength.value} ${featuredStrength.emotes ? 'emotes' : 'chats'} in the minute at ${featuredTime}. The ${featuredStrength.minutes} measured minutes before it averaged ${featuredStrength.mean < 5 ? 'under 5' : Math.round(featuredStrength.mean)} a minute.` : undefined}
-          onClick={() => onMomentSelect(featuredMoment)}>
-          {featuredStrength ? (
-            // Two fixed-height lines inside the chip's 40px minimum, so the
-            // row never grows when the pill appears.
-            <span style={{ flex: 1 }} className="pulse-strength-two">
-              <span>Biggest moment so far · {featuredTime}</span>
-              <span className="pulse-strength-line2">
-                <span className="pulse-strength-pill" data-lvl={featuredStrength.level}>{featuredStrength.label} usual</span>
-              </span>
-            </span>
-          ) : (
-            <span style={{ flex: 1 }}>Biggest moment so far · {featuredTime}</span>
-          )}
-          {featuredMoment.topEmotes?.slice(0, 3).map(emote => <span key={emote.name} title={emote.name} style={{ width: 20, height: 20, overflow: 'hidden', flexShrink: 0 }}><PulseEmoteImg emote={emote} backendUrl={backendUrl} width={20} height={20} /></span>)}
-          <span aria-hidden="true">→</span>
-        </button>
-      ) : null}
       <div
         style={styles.chartStatusLane}
         data-chart-status-lane="true"
@@ -1492,9 +1457,11 @@ export function LiveStatsBand({
               emoteSyncTone={emoteSyncTone}
             />
           </div>
+          {arrivalNote}
           {inspectorHold.point ? (
             <MomentCardSlot
               exiting={inspectorHold.exiting}
+              momentKey={inspectorHold.point.rollup.offsetSeconds}
               style={styles.chartInspector}
               data-chart-inspector-owner="activity-chart"
               data-chart-inspector-kind={inspectorHold.point.moment ? 'moment' : 'minute'}
@@ -1597,15 +1564,6 @@ export function LiveStatsBand({
             }
           />
         ) : null}
-        {!demoMode ? (
-          <SavedMoments
-            login={payload.login}
-            streamId={payload.streamId}
-            vodId={payload.vodId ?? undefined}
-            selected={selectedMomentPoint}
-            minuteOffsetSeconds={inspectorInput && !inspectorInput.moment ? inspectorInput.rollup.offsetSeconds : null}
-          />
-        ) : null}
         {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
         {topEmotesForChips.length > 0 ? (
           <div data-chart-action="true">
@@ -1638,7 +1596,9 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     marginBottom: 10,
     width: '100%',
-    alignItems: 'end',
+    // Tops line up, so a two-line meta under one value leaves the other labels
+    // and values where they are.
+    alignItems: 'start',
   },
   metricsSidebar: { gap: 6, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
   metricsCompact: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
@@ -1646,35 +1606,37 @@ const styles: Record<string, CSSProperties> = {
   metricValueSidebar: { fontSize: 18, lineHeight: 1.05 },
   metricLabel: {
     color: theme.textMuted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: 800,
-    letterSpacing: '0.04em',
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    textTransform: 'uppercase',
     whiteSpace: 'nowrap',
   },
   metricValue: { fontSize: 22, fontWeight: 900, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' },
   metricValueRow: { alignItems: 'flex-end', display: 'flex', gap: 5, minWidth: 0, overflow: 'hidden' },
+  // Up to two lines, so "5m change unknown" reads in full in a narrow column;
+  // the ellipsis only comes past line two.
   metricMeta: {
     color: theme.textSecondary,
-    display: 'block',
-    fontSize: 10,
+    display: '-webkit-box',
+    fontSize: 11,
     fontWeight: 600,
     lineHeight: '14px',
+    maxHeight: 28,
     minHeight: 14,
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
   },
   trendArrow: { fontSize: 11, fontWeight: 900 },
   chartStatusLane: {
     alignItems: 'center',
     color: theme.textMuted,
     display: 'flex',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 700,
     lineHeight: '14px',
     minHeight: 14,
@@ -1696,7 +1658,7 @@ const styles: Record<string, CSSProperties> = {
   timelineHintSep: { color: theme.textMuted },
   streamStartLink: {
     ...overlayTextLinkButton,
-    fontSize: 10,
+    fontSize: 11,
   },
   chartSurface: {
     minWidth: 0,
@@ -1726,7 +1688,7 @@ const styles: Record<string, CSSProperties> = {
   },
   gapNotice: {
     color: theme.textSecondary,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 600,
     lineHeight: 1.35,
     margin: 0,
@@ -1753,27 +1715,15 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     justifyContent: 'flex-end',
   },
-  analyticsHeaderLink: {
-    background: 'transparent',
-    border: 0,
-    color: '#c4b5fd',
-    cursor: 'pointer',
-    fontSize: 10,
-    fontWeight: 800,
-    padding: '2px 0',
-    whiteSpace: 'nowrap',
-  },
   expandButton: {
     background: 'rgba(255, 255, 255, 0.05)',
     border: '1px solid rgba(255, 255, 255, 0.12)',
     borderRadius: 8,
     color: theme.textSecondary,
     cursor: 'pointer',
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: 800,
-    letterSpacing: '0.03em',
     padding: '5px 8px',
-    textTransform: 'uppercase',
     whiteSpace: 'nowrap',
   },
   expandButtonActive: {

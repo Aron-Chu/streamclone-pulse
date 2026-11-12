@@ -11,7 +11,7 @@ import { parseMyMoments } from '../src/shared/myMoments.ts'
  */
 const f = vi.hoisted(() => ({ accountId: null as string | null, pages: vi.fn(), save: vi.fn(), remove: vi.fn(), data: new Map<string, PersonalData>() }))
 vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ bindAccountDataForget: () => undefined,
-  supporterAccount: { run: async () => f.accountId ? { state: 'linked', accountId: f.accountId } : { state: 'signed_out' } } }))
+  supporterAccount: { isInstallationIdentity: async () => false, run: async () => f.accountId ? { state: 'linked', accountId: f.accountId } : { state: 'signed_out' } } }))
 vi.mock('../src/background/api.ts', () => ({ fetchPulseBookmarks: f.pages, createPulseBookmark: f.save, deletePulseBookmark: f.remove }))
 vi.mock('../src/background/myMomentsStore.ts', async original => ({ ...await original<object>(), personalTransaction: async (scope: string, update?: (value: PersonalData) => PersonalData) => {
   const value = f.data.get(scope) ?? emptyPersonalData()
@@ -82,6 +82,15 @@ describe('Add saves made on this device to the account', () => {
     f.save.mockResolvedValueOnce(hosted('acct-a', 120)).mockRejectedValueOnce(new Error('bookmark 503'))
     await expect(add()).rejects.toThrow('Added 1 of 2 to your account. The rest stay on this device')
     expect(f.data.get(localScope)!.bookmarks.map(b => b.label)).toEqual(['Second'])
+  })
+
+  it('keeps a save whose answer names no bookmark, and its note', async () => {
+    const { second } = await twoDeviceSaves()
+    f.pages.mockResolvedValue({ items: [] })
+    f.save.mockResolvedValueOnce(hosted('acct-a', 120)).mockResolvedValueOnce({})
+    await expect(add()).rejects.toThrow('Added 1 of 2 to your account. The rest stay on this device')
+    expect(f.data.get(localScope)!.bookmarks.map(b => b.label)).toEqual(['Second'])
+    expect(f.data.get(localScope)!.notes[second]).toBe('my device note')
   })
 
   it('posts nothing and keeps everything when the account bookmarks cannot be read', async () => {

@@ -1,4 +1,6 @@
+import { extensionPayloadStreamEdges, momentStreamEdge, OPENING_STREAM_EDGE } from '@streampulse/pulse-core'
 import type { ExtensionCoverageTierResponse, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
+import { NOT_CHARTED_REASON, NOT_CHARTED_TITLE } from '../shared/notCharted.ts'
 
 /** What the active tab is, as far as the toolbar popup cares. */
 export type PopupTabView =
@@ -128,6 +130,11 @@ export interface PopupChannelSummary {
   endedAt: number | null
 }
 
+/** Why a channel has no chart, in place of a button into a panel with nothing in it. */
+export function notChartedNote(summary: PopupChannelSummary | null): { title: string; reason: string } | null {
+  return summary && !summary.tracked ? { title: NOT_CHARTED_TITLE, reason: NOT_CHARTED_REASON } : null
+}
+
 const SPARK_LIVE_MINUTES = 30
 const SPARK_MAX_POINTS = 48
 const BUCKET_SECONDS = 60
@@ -223,11 +230,20 @@ function latestChatPerMinute(rollups: ExtensionRollup[], currentOffsetSeconds: n
 }
 
 function biggestMoment(payload: PulsePayload | null, isLive: boolean): PopupMoment | null {
-  let best: { score: number; offsetSeconds: number; label: string } | null = null
+  let best: { score: number; edge: boolean; at: number; offsetSeconds: number; label: string } | null = null
+  const edges = payload ? extensionPayloadStreamEdges(payload) : OPENING_STREAM_EDGE
   for (const peak of payload?.peaks ?? []) {
     const score = peak.compositeScore ?? peak.score
-    if (!Number.isFinite(score) || (best && score <= best.score)) continue
-    best = { score, offsetSeconds: peak.seekOffsetSeconds ?? peak.offsetSeconds, label: peak.reasonLabel || 'Chat spike' }
+    if (!Number.isFinite(score)) continue
+    // Hello / goodbye spam at the stream's edges only wins when there is nothing else.
+    const edge = momentStreamEdge(peak, edges) !== undefined
+    if (best && edge !== best.edge) {
+      if (edge) continue
+    } else if (best && (score < best.score || (score === best.score && peak.offsetSeconds >= best.at))) {
+      // A tie goes to the earlier peak, like the panel, whatever order the peaks arrive in.
+      continue
+    }
+    best = { score, edge, at: peak.offsetSeconds, offsetSeconds: peak.seekOffsetSeconds ?? peak.offsetSeconds, label: peak.reasonLabel || 'Chat spike' }
   }
   if (!best || !payload) return null
   return {

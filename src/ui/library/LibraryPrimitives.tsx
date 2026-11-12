@@ -1,7 +1,7 @@
 import { PulseThemedSelect } from '../PulseThemedSelect.tsx'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { LibraryCollection, LibraryMoment, LibrarySnapshot, MomentReference } from './model.ts'
-import { NOTE_LIMIT, replayUrl, timestamp, validateNote } from './model.ts'
+import { NOTE_LIMIT, replayUrl, rowReplay, timestamp, validateNote, videoUrl } from './model.ts'
 import { LibraryIcon } from './LibraryIcon.tsx'
 import { buildAnalyticsUrl, DEFAULT_WEB_ANALYTICS_BASE_URL } from '../../shared/analyticsLinks.ts'
 import { MomentMedia, type MomentPresentation } from './MomentMedia.tsx'
@@ -13,14 +13,17 @@ export function MomentSaveButton({ moment, busy = false, onSave }: {
 }) {
   const saved = moment.savedAt !== undefined
   return <button type="button" className="pl-button" disabled={busy || saved} onClick={() => onSave(moment)}
-    aria-label={saved ? `Bookmarked: ${moment.title}` : `Bookmark: ${moment.title}`}>
-    <LibraryIcon name={saved ? 'check' : 'bookmark'} />{saved ? 'Bookmarked' : busy ? 'Working…' : 'Bookmark'}
+    aria-label={saved ? `Saved: ${moment.title}` : `Save: ${moment.title}`}>
+    <LibraryIcon name={saved ? 'check' : 'bookmark'} />{saved ? 'Saved' : busy ? 'Working…' : 'Save'}
   </button>
 }
 
-/** Native modal supplies focus containment and Escape. Restore focus explicitly for unmount. */
-export function LibraryDialog({ title, children, onClose, canClose = true }: {
-  title: string; children: ReactNode; onClose: () => void; canClose?: boolean
+/**
+ * Native modal supplies focus containment and Escape. Restore focus explicitly for unmount.
+ * `bare` leaves out the title row for a dialog that draws its own header and Close; `title` still names it.
+ */
+export function LibraryDialog({ title, children, onClose, canClose = true, bare = false, className }: {
+  title: string; children: ReactNode; onClose: () => void; canClose?: boolean; bare?: boolean; className?: string
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const id = useId()
@@ -32,10 +35,10 @@ export function LibraryDialog({ title, children, onClose, canClose = true }: {
     dialog?.showModal()
     return () => { dialog?.close(); if (before?.isConnected) before.focus(); else fallback?.focus() }
   }, [])
-  return <dialog ref={ref} className="pl-dialog pl-library" aria-labelledby={id}
+  return <dialog ref={ref} className={`pl-dialog pl-library${className ? ` ${className}` : ''}`} aria-labelledby={bare ? undefined : id} aria-label={bare ? title : undefined}
     onCancel={event => { event.preventDefault(); if (canClose) closeRef.current() }}>
-    <div className="pl-row pl-between"><h2 id={id}>{title}</h2>
-      <button className="pl-button" type="button" disabled={!canClose} onClick={onClose} aria-label={`Close ${title}`}>Close</button></div>
+    {bare ? null : <div className="pl-row pl-between"><h2 id={id}>{title}</h2>
+      <button className="pl-button" type="button" disabled={!canClose} onClick={onClose} aria-label={`Close ${title}`}>Close</button></div>}
     {children}
   </dialog>
 }
@@ -74,12 +77,21 @@ export function MomentEditor({ moment, personalWorkspace = false, collections, s
   </LibraryDialog>
 }
 
+/**
+ * One row for Saved and History (H2): a chip says whether the replay still
+ * plays, and the main button follows it: Watch a replay that plays, Preview
+ * one not linked yet, open the channel when it may be gone. Notes and
+ * Analytics sit under ⋯; ✕ removes, with Undo on the page.
+ */
 export function MomentListItem({ moment, personalWorkspace = false, analyticsOrigin = DEFAULT_WEB_ANALYTICS_BASE_URL, recent, busy, onSave, onEdit, onRemove, onOpenLink, onPreview, presentation, context }: {
   personalWorkspace?: boolean
   /** Portal origin for the Analytics link, derived from the configured API (dev → local portal). */
   analyticsOrigin?: string
   moment: LibraryMoment; recent: boolean; busy: boolean; onSave: (reference: MomentReference) => void
-  onEdit: (moment: LibraryMoment) => void; onRemove: (moment: LibraryMoment) => void; onOpenLink?: (reference: MomentReference) => void
+  onEdit: (moment: LibraryMoment) => void
+  /** ✕: drops the save, or on History the visit. Absent: the row cannot be removed here. */
+  onRemove?: (moment: LibraryMoment) => void
+  onOpenLink?: (reference: MomentReference) => void
   onPreview?: (moment: LibraryMoment) => void
   presentation?: MomentPresentation
   context?: MomentContextState
@@ -88,28 +100,36 @@ export function MomentListItem({ moment, personalWorkspace = false, analyticsOri
   // replay as available. Keep the list consistent with MomentPreview and
   // never turn an unresolved reference into a playable link.
   const url = replayUrl(moment)
+  const replay = rowReplay(moment)
+  const saved = moment.savedAt !== undefined
   const date = recent ? moment.jumpedAt : moment.savedAt
   const analytics = personalWorkspace && moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
-  return <li className="pl-moment" data-moment-id={moment.id}>
-    <MomentMedia moment={moment} presentation={presentation} compact />
+  // A replay that may be gone can still be tried; it is not offered as Watch.
+  const tryUrl = replay.main === 'channel' ? videoUrl(moment) : null
+  const more = [
+    replay.main !== 'preview' && onPreview ? <button key="preview" type="button" className="pl-button" onClick={() => onPreview(moment)} aria-label={`Preview: ${moment.title}`}><LibraryIcon name="preview" />Preview</button> : null,
+    tryUrl ? <a key="try" className="pl-button" href={tryUrl} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Try the replay: ${moment.title} (new tab)`}>Try the replay ↗</a> : null,
+    saved ? <button key="note" type="button" className="pl-button" disabled={busy} onClick={() => onEdit(moment)} aria-label={`${moment.note ? 'Edit note' : 'Add note'}: ${moment.title}`}>{moment.note ? 'Edit note' : 'Add note'}</button> : null,
+    analytics ? <a key="analytics" className="pl-button" href={analytics} target="_blank" rel="noopener noreferrer" aria-label={`Open analytics for ${moment.title} (new tab)`}>Analytics</a> : null,
+  ].filter(Boolean)
+  return <li className="pl-moment" data-moment-id={moment.id} data-replay={replay.tone}>
+    <MomentMedia moment={moment} presentation={presentation} />
     <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong>
-      {recent && moment.savedAt !== undefined ? <span className="pl-tag">Bookmarked</span> : null}</div>
+      {recent && saved ? <span className="pl-tag">Saved</span> : null}</div>
       <p className="pl-moment-identity">{moment.channel}{presentation?.gameAtMoment ? ` · ${presentation.gameAtMoment}` : ''}</p>
-      <p className="pl-muted">{recent ? personalWorkspace ? 'Watched' : 'Jumped' : 'Bookmarked'} {date === undefined ? '—' : <time dateTime={new Date(date).toISOString()}>{new Date(date).toLocaleString()}</time>}</p>
+      <p className="pl-muted">{recent ? personalWorkspace ? 'Watched' : 'Jumped' : 'Saved'} {date === undefined ? '—' : <time dateTime={new Date(date).toISOString()}>{new Date(date).toLocaleString()}</time>}</p>
       {moment.note ? <p className="pl-note">{moment.note}</p> : null}
       {presentation?.signal ? <span className="pl-inline-signal" title={presentation.signal.basis}>{presentation.signal.illustrative ? 'Example · ' : ''}{presentation.signal.label}</span> : null}
       {context?.kind === 'ready' ? <MomentGlance context={context.value} /> : context?.kind === 'loading' ? <p className="pl-muted">Moment stats loading…</p> : null}
+      <span className={`pl-chip pl-chip-${replay.tone}`}>{replay.chip}</span>
       <div className="pl-row pl-actions" role="group" aria-label={`Actions for ${moment.title}`}>
-        {onPreview ? <button className="pl-button pl-primary" type="button" onClick={() => onPreview(moment)} aria-label={`Preview: ${moment.title}`}><LibraryIcon name="preview" />Preview</button> : null}
-        {url ? <a className="pl-button" href={url} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Watch moment: ${moment.title} (new tab)`}>{personalWorkspace ? 'Open saved Twitch link' : 'Watch moment ↗'}</a>
-          : null}
-        {analytics ? <a className="pl-button" href={analytics} target="_blank" rel="noopener noreferrer" aria-label={`Open analytics for ${moment.title} (new tab)`}>Analytics</a> : null}
-        {moment.savedAt === undefined ? <MomentSaveButton moment={moment} busy={busy} onSave={onSave} /> : <>
-          <details className="pl-moment-more"><summary aria-label="More actions" title="More actions">More</summary><div className="pl-row">
-            <button type="button" className="pl-button" disabled={busy} onClick={() => onEdit(moment)} aria-label={`Edit note: ${moment.title}`}>Edit note</button>
-            <button type="button" className="pl-button pl-quiet" disabled={busy} onClick={() => onRemove(moment)} aria-label={`Remove bookmark: ${moment.title}`}>Remove bookmark</button>
-          </div></details>
-        </>}
+        {replay.main === 'watch' && url ? <a className="pl-button pl-primary" href={url} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Watch: ${moment.title} (new tab)`}><LibraryIcon name="play" />Watch</a>
+          : replay.main === 'preview' && onPreview ? <button className="pl-button" type="button" onClick={() => onPreview(moment)} aria-label={`Preview: ${moment.title}`}><LibraryIcon name="preview" />Preview</button>
+            : replay.main === 'channel' ? <a className="pl-button" href={`https://www.twitch.tv/${moment.channel}`} target="_blank" rel="noopener noreferrer" aria-label={`Open channel: ${moment.channel} (new tab)`}>Open channel</a> : null}
+        {saved ? null : <MomentSaveButton moment={moment} busy={busy} onSave={onSave} />}
+        {more.length ? <details className="pl-moment-more"><summary aria-label={`More actions: ${moment.title}`} title="More actions">⋯</summary><div className="pl-row">{more}</div></details> : null}
+        {onRemove ? <button type="button" className="pl-button pl-quiet pl-icon-button" disabled={busy} onClick={() => onRemove(moment)}
+          aria-label={recent ? `Remove from History: ${moment.title}` : `Remove: ${moment.title}`} title={recent ? 'Remove from History' : 'Remove'}>✕</button> : null}
       </div>
     </div>
   </li>
@@ -131,15 +151,19 @@ export function DeviceSaveItem({ moment, analyticsOrigin = DEFAULT_WEB_ANALYTICS
   onOpenLink?: (reference: MomentReference) => void
 }) {
   const url = replayUrl(moment)
+  const replay = rowReplay(moment)
+  // A replay that may be gone is still offered, as a try (H2).
+  const tryUrl = replay.main === 'channel' ? videoUrl(moment) : null
   const analytics = moment.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin, channelLogin: moment.channel, streamId: moment.streamId, offsetSeconds: moment.offsetSeconds ?? undefined }) : null
-  return <li className="pl-moment pl-moment-device" data-moment-id={moment.id} data-device-save="true">
+  return <li className="pl-moment pl-moment-device" data-moment-id={moment.id} data-device-save="true" data-replay={replay.tone}>
     <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong><span className="pl-tag">On this device</span></div>
       <p className="pl-moment-identity">{moment.channel} · {timestamp(moment.offsetSeconds)}</p>
-      <p className="pl-muted">Bookmarked {moment.savedAt === undefined ? '—' : <time dateTime={new Date(moment.savedAt).toISOString()}>{new Date(moment.savedAt).toLocaleString()}</time>}</p>
+      <p className="pl-muted">Saved {moment.savedAt === undefined ? '—' : <time dateTime={new Date(moment.savedAt).toISOString()}>{new Date(moment.savedAt).toLocaleString()}</time>}</p>
       {moment.note ? <p className="pl-note">{moment.note}</p> : null}
+      <span className={`pl-chip pl-chip-${replay.tone}`}>{replay.chip}</span>
       <div className="pl-row pl-actions" role="group" aria-label={`Actions for ${moment.title}`}>
-        {url ? <a className="pl-button" href={url} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Watch moment: ${moment.title} (new tab)`}>Open saved Twitch link</a>
-          : null}
+        {url ? <a className="pl-button pl-primary" href={url} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Watch: ${moment.title} (new tab)`}><LibraryIcon name="play" />Watch</a>
+          : tryUrl ? <a className="pl-button" href={tryUrl} target="_blank" rel="noopener noreferrer" onClick={() => onOpenLink?.(moment)} aria-label={`Try the replay: ${moment.title} (new tab)`}>Try the replay ↗</a> : null}
         {analytics ? <a className="pl-button" href={analytics} target="_blank" rel="noopener noreferrer" aria-label={`Open analytics for ${moment.title} (new tab)`}>Analytics</a> : null}
         {onImport ? <button type="button" className="pl-button" disabled={busy} onClick={() => onImport(moment)} aria-label={`Add to your account: ${moment.title}`}>Add to account</button> : null}
         <button type="button" className="pl-button pl-quiet" disabled={busy} onClick={() => onRemove(moment)} aria-label={`Remove from this device: ${moment.title}`}>Remove</button>

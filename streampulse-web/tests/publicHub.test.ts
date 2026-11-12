@@ -1,20 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  buildTopMoversFromLiveChannels,
-  enrichTopMoversWithAvatars,
   fetchPublicHub,
   fetchPublicHubBase,
   fetchPublicHubStatsFallback,
   fetchHistoricalHubMoments,
   hasPublicHubResponseShape,
-  HUB_TOP_MOVERS_CAP,
   normalizePublicHub,
   normalizePublicHubMoments,
-  resolveHubTopMovers,
   sanitizeHubProfileImageUrl,
 } from '../src/lib/publicHub'
 import { coverageMeta, formatStreamUptime } from '../src/ui/components/analytics/hubFormat'
 import { loadedCategories } from '../src/ui/components/moments/MomentCategoryBrowser'
+import { HUB_READ_HARD_CAP_MS, primePublicHub, resetPrimedPublicHubForTests } from '../src/lib/hubEarlyFetch'
+import { screenerUsual } from '../src/lib/channelScreenerContract'
 
 it('rejects future and sentinel starts and peaks instead of fabricating a zero uptime', () => {
   for (const time of ['2099-01-01T00:00:00Z', '0001-01-01T00:00:00Z']) {
@@ -307,66 +305,6 @@ describe('normalizePublicHub', () => {
       viewerCoverage: 'partial',
     })
     expect(hub.activity.points[1]?.viewerCoverage).toBe('unknown')
-  })
-
-  it('enrichTopMoversWithAvatars joins avatars from live channels', () => {
-    const movers = enrichTopMoversWithAvatars(
-      [{ login: 'xqc', displayName: 'xQc', viewers: 1, seventvPerMin: 1, chatPerMin: 1, trendPct: 0 }],
-      [{
-        login: 'xqc',
-        displayName: 'xQc',
-        viewers: 1,
-        chatPerMin: 1,
-        emotesPerMin: 1,
-        seventvPerMin: 1,
-        coverageState: 'synced',
-        trendPct: 0,
-        profileImageUrl: 'https://cdn.example/xqc.png',
-      }],
-    )
-    expect(movers[0]?.profileImageUrl).toBe('https://cdn.example/xqc.png')
-  })
-
-  it('buildTopMoversFromLiveChannels returns up to the hub cap sorted by emote velocity', () => {
-    const liveChannels = Array.from({ length: 14 }, (_, index) => ({
-      login: `ch${index}`,
-      displayName: `Ch ${index}`,
-      viewers: 1000 - index,
-      chatPerMin: 100 - index,
-      emotesPerMin: 200 - index * 10,
-      seventvPerMin: 50 - index,
-      coverageState: 'synced' as const,
-      trendPct: 0,
-    }))
-    const movers = buildTopMoversFromLiveChannels(liveChannels, HUB_TOP_MOVERS_CAP)
-    expect(movers).toHaveLength(HUB_TOP_MOVERS_CAP)
-    expect(movers[0]?.login).toBe('ch0')
-    expect(movers[11]?.login).toBe('ch11')
-  })
-
-  it('resolveHubTopMovers prefers live-channel rows over legacy 8-row API payloads', () => {
-    const liveChannels = Array.from({ length: 12 }, (_, index) => ({
-      login: `ch${index}`,
-      displayName: `Ch ${index}`,
-      viewers: 1000,
-      chatPerMin: 80,
-      emotesPerMin: 150 - index * 5,
-      seventvPerMin: 40,
-      coverageState: 'synced' as const,
-      trendPct: 0,
-    }))
-    const apiMovers = liveChannels.slice(0, 8).map((channel) => ({
-      login: channel.login,
-      displayName: channel.displayName,
-      viewers: channel.viewers,
-      emotesPerMin: channel.emotesPerMin,
-      seventvPerMin: channel.seventvPerMin,
-      chatPerMin: channel.chatPerMin,
-      trendPct: channel.trendPct,
-    }))
-    const movers = resolveHubTopMovers(apiMovers, liveChannels)
-    expect(movers).toHaveLength(HUB_TOP_MOVERS_CAP)
-    expect(movers[8]?.login).toBe('ch8')
   })
 
   it('promotes critical collector state into coverage', () => {
@@ -696,5 +634,85 @@ describe('fetchHistoricalHubMoments', () => {
     expect(payload.source).toBe('corpus_historical')
     expect(payload.hubGeneratedAt).toBe('')
     expect(payload.moments).toEqual([])
+  })
+})
+
+describe('screener v1 on hub channel rows (plan §1.5)', () => {
+  const v1 = {
+    version: 1,
+    streamId: '100000000001',
+    measuredAt: 1_791_754_110_000,
+    baselineKind: 'current_stream_measured_average',
+    state: 'ready',
+    currentWindow: { start: 1_791_753_780_000, end: 1_791_754_080_000, expectedMinutes: 5, measuredMinutes: 5, coveragePct: 100 },
+    baselineWindow: { start: 1_791_736_620_000, end: 1_791_753_780_000, expectedMinutes: 286, measuredMinutes: 285, coveragePct: 99.65 },
+    evidence: { ircBound: true, chatObservedLast5m: true, rollupAvailable: true, metadataAgeSeconds: 124 },
+    chat: { state: 'ready', currentPerMin: 120, baselinePerMin: 40, absoluteDeltaPerMin: 80, changePct: 200, multiplier: 3, currentMeasuredMinutes: 5, currentExpectedMinutes: 5, baselineMeasuredMinutes: 285, baselineExpectedMinutes: 286, baselineCoveragePct: 99.65 },
+    emotes: { state: 'ready', currentPerMin: 9, baselinePerMin: 9.35, absoluteDeltaPerMin: -0.35, changePct: -3.74, multiplier: 0.96, currentMeasuredMinutes: 5, currentExpectedMinutes: 5, baselineMeasuredMinutes: 285, baselineExpectedMinutes: 286, baselineCoveragePct: 99.65 },
+  }
+  const row = { login: 'example', displayName: 'Example', viewers: 4_200, chatPerMin: 120, emotesPerMin: 9, seventvPerMin: 3, trendPct: 12 }
+  const channelOf = (extra: Record<string, unknown>) =>
+    normalizePublicHub({ liveChannels: [{ ...row, ...extra }] } as unknown as Parameters<typeof normalizePublicHub>[0]).liveChannels[0]
+
+  it('adds screenerV1 beside the legacy fields and leaves the rest of the row unchanged', () => {
+    const plain = channelOf({})
+    const withV1 = channelOf({ screener: v1 })
+    expect(withV1.screener).toBeUndefined()
+    expect(withV1.screenerV1).toMatchObject({ version: 1, state: 'ready', baselineMeasuredMinutes: 285, chat: { multiplier: 3, currentPerMin: 120 } })
+    expect({ ...withV1, screenerV1: undefined }).toEqual({ ...plain, screenerV1: undefined })
+    expect(screenerUsual(withV1.screenerV1)).toEqual({ metric: 'chat', multiplier: 3, currentPerMin: 120 })
+
+    const legacy = channelOf({ screener: { chatAcceleration: 2, emoteAcceleration: 1.5 } })
+    expect(legacy.screener).toEqual({ chatAcceleration: 2, emoteAcceleration: 1.5 })
+    expect(legacy.screenerV1).toBeUndefined()
+
+    const invented = channelOf({ screener: { ...v1, pulseScore: 99 } })
+    expect(invented.screener).toBeUndefined()
+    expect(invented.screenerV1).toBeUndefined()
+  })
+
+  it('keeps screenerV1 through a second normalization (cache hydrate)', () => {
+    const once = normalizePublicHub({ liveChannels: [{ ...row, screener: v1 }] } as unknown as Parameters<typeof normalizePublicHub>[0])
+    const twice = normalizePublicHub(once)
+    expect(twice.liveChannels[0].screenerV1).toEqual(once.liveChannels[0].screenerV1)
+    expect(twice.liveChannels[0].screener).toBeUndefined()
+  })
+})
+
+describe('fetchPublicHubBase adopts the primed request (plan §2.6)', () => {
+  const body = () => ({
+    generatedAt: new Date().toISOString(),
+    poolSize: 3,
+    corpus: { streamsTracked: 1, momentsDetected: 1, chatMessagesProcessed: 1, emotesIndexed: 1, vodsAnalyzed: 0 },
+    coverage: { databaseOk: true, state: 'operational' },
+    activity: { points: [], windowMinutes: 7 * 24 * 60, channelCount: 1 },
+    liveChannels: [],
+    moments: [],
+    topEmotes: [],
+    topMovers: [],
+  })
+
+  beforeEach(() => {
+    apiClient.mockReset()
+    resetPrimedPublicHubForTests()
+  })
+
+  it('reuses the primed promise for the same path, so the hub is requested once', async () => {
+    apiClient.mockResolvedValue({ data: body(), status: 200 })
+    expect(primePublicHub({ pathname: '/analytics', search: '?window=7d' })).toBe('/v1/public/hub?activityWindow=7d')
+    const result = await fetchPublicHubBase(new AbortController().signal, '7d')
+    expect(result.hubEndpointOk).toBe(true)
+    expect(result.data.poolSize).toBe(3)
+    expect(apiClient).toHaveBeenCalledTimes(1)
+    expect(apiClient).toHaveBeenCalledWith('/v1/public/hub?activityWindow=7d', expect.objectContaining({ timeoutMs: HUB_READ_HARD_CAP_MS, slowOrigin: true }))
+  })
+
+  it('requests on its own for any other path, with its own signal and deadline', async () => {
+    apiClient.mockResolvedValue({ data: body(), status: 200 })
+    primePublicHub({ pathname: '/analytics', search: '' })
+    const controller = new AbortController()
+    await fetchPublicHubBase(controller.signal, '30m')
+    expect(apiClient).toHaveBeenCalledTimes(2)
+    expect(apiClient).toHaveBeenLastCalledWith('/v1/public/hub?activityWindow=30m', { signal: controller.signal, timeoutMs: undefined, slowOrigin: true })
   })
 })

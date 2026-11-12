@@ -1,5 +1,11 @@
 import { displayMomentReasonLabel } from "./momentScore.ts";
 import { reactionAnalyticalOffset } from "./reactionIdentity.ts";
+import {
+  compareStreamEdgeLast,
+  momentStreamEdge,
+  OPENING_STREAM_EDGE,
+  type StreamEdges,
+} from "./streamEdges.ts";
 
 export interface RecapMomentLike {
   offsetSeconds: number;
@@ -18,6 +24,8 @@ export interface RecapMomentLike {
   chatCount?: number;
   emoteCount?: number;
   topEmotes?: Array<{ code: string; count: number; provider?: string }>;
+  /** "opening" / "closing" for hello / goodbye spam, ranked last (see streamEdges.ts). */
+  streamEdge?: string;
 }
 
 export interface RecapPeakLike {
@@ -37,6 +45,7 @@ export interface RecapPeakLike {
   chatCount?: number;
   emoteCount?: number;
   topEmotes?: Array<{ name: string; count: number; provider?: string }>;
+  streamEdge?: string;
 }
 
 const MOMENT_DEDUPE_TOLERANCE_SECONDS = 60;
@@ -91,6 +100,9 @@ function compareMomentRank(
     const rankB = momentHasReactionData(b) ? 0 : 1;
     if (rankA !== rankB) return rankA - rankB;
   }
+  // Hello / goodbye spam at the stream's edges ranks after every other moment.
+  const edge = compareStreamEdgeLast(a, b);
+  if (edge !== 0) return edge;
   const rankScoreA = Number.isFinite(a.reactionScore)
     ? (a.reactionScore ?? 0)
     : a.score;
@@ -110,7 +122,12 @@ function sortMomentsByRank(
   );
 }
 
-/** Merge recap moments, clip candidates, and optional peaks into one ranked list. */
+/**
+ * Merge recap moments, clip candidates, and optional peaks into one ranked list.
+ *
+ * Each moment is tagged with its stream edge: the backend's flag, else from
+ * `edges` (the opening edge alone unless the caller knows the stream ended).
+ */
 export function mergeRecapMoments(
   recap:
     | {
@@ -122,16 +139,23 @@ export function mergeRecapMoments(
   peaks: readonly RecapPeakLike[] | undefined,
   limit = 20,
   hasReactionCoverage = false,
+  edges: StreamEdges = OPENING_STREAM_EDGE,
 ): RecapMomentLike[] {
   const candidates: RecapMomentLike[] = [];
+  const push = (moment: RecapMomentLike) => {
+    const streamEdge = momentStreamEdge(moment, edges);
+    candidates.push(
+      streamEdge === moment.streamEdge ? moment : { ...moment, streamEdge },
+    );
+  };
   for (const moment of recap?.topMoments ?? []) {
-    candidates.push(moment);
+    push(moment);
   }
   for (const moment of recap?.clipCandidates ?? []) {
-    candidates.push(moment);
+    push(moment);
   }
   for (const peak of peaks ?? []) {
-    candidates.push({
+    push({
       offsetSeconds: Math.max(0, Math.round(peak.offsetSeconds)),
       score: peak.score,
       compositeScore: peak.compositeScore,
@@ -154,6 +178,7 @@ export function mergeRecapMoments(
         count: emote.count,
         provider: emote.provider,
       })),
+      streamEdge: peak.streamEdge,
     });
   }
 
@@ -171,6 +196,10 @@ export function mergeRecapMoments(
         momentDedupeTolerance(existing, moment),
     );
     if (duplicate) {
+      // One moment seen twice (recap, clip candidate, peak or heatmap point):
+      // keep the edge flag from whichever copy carries it.
+      const streamEdge = duplicate.streamEdge ?? moment.streamEdge;
+      const index = merged.indexOf(duplicate);
       if (
         compareMomentRank(
           moment,
@@ -178,8 +207,10 @@ export function mergeRecapMoments(
           streamHasReactionCoverage(hasReactionCoverage),
         ) < 0
       ) {
-        const index = merged.indexOf(duplicate);
         merged[index] = moment;
+      }
+      if (streamEdge && merged[index].streamEdge !== streamEdge) {
+        merged[index] = { ...merged[index], streamEdge };
       }
       continue;
     }

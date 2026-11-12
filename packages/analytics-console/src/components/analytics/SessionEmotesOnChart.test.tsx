@@ -60,7 +60,7 @@ describe('SessionEmotesOnChart (d3-v2 session-original Emotes on chart)', () => 
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Add emote' }))
   })
 
-  it('matches a rollup key to its summary emote by name, as the chart does', () => {
+  it('matches a rollup key to its summary emote by provider and name, as the chart does', () => {
     const topEmotes = [
       { key: 'seventv:9ceb7717:LOL', name: 'LOL', count: 900, provider: 'seventv', imageUrl: 'https://cdn.7tv.app/emote/x/4x.webp' },
       { key: 'seventv:328172f0:LO', name: 'LO', count: 800, provider: 'seventv' },
@@ -81,6 +81,30 @@ describe('SessionEmotesOnChart (d3-v2 session-original Emotes on chart)', () => 
     expect(keys()).toBe('')
     fireEvent.click(lol)
     expect(keys()).toBe('seventv:9ceb7717:LOL')
+  })
+
+  it('keeps a 7TV and a BTTV emote with the same name as two checkboxes that toggle apart', () => {
+    const topEmotes = [
+      { key: 'seventv:62a3bf57:Clap', name: 'Clap', count: 900, provider: 'seventv' },
+      { key: 'bttv:55b6f480:Clap', name: 'Clap', count: 700, provider: 'bttv' },
+    ] as unknown as AnalyticsTopEmote[]
+    const { container } = render(<Harness initial={['bttv:Clap:Clap']} topEmotes={topEmotes} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add emote' }))
+    const panel = screen.getByRole('group', { name: 'Emotes on chart' })
+    const seventv = panel.querySelector<HTMLInputElement>('[data-session-emote="seventv:62a3bf57:Clap"]')!
+    const bttv = panel.querySelector<HTMLInputElement>('[data-session-emote="bttv:55b6f480:Clap"]')!
+    // The plotted rollup key is the BTTV one only.
+    expect(seventv.checked).toBe(false)
+    expect(bttv.checked).toBe(true)
+    fireEvent.click(seventv)
+    expect(keys()).toBe('bttv:Clap:Clap,seventv:62a3bf57:Clap')
+    expect(seventv.checked).toBe(true)
+    expect(bttv.checked).toBe(true)
+    expect(container.querySelectorAll('[data-session-emote-token]')).toHaveLength(2)
+    fireEvent.click(bttv)
+    expect(keys()).toBe('seventv:62a3bf57:Clap')
+    expect(seventv.checked).toBe(true)
+    expect(bttv.checked).toBe(false)
   })
 
   it('renders nothing without top emotes or plotted emotes', () => {

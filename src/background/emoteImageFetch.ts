@@ -1,7 +1,13 @@
 /**
  * Hardened emote-image fetch for the extension service worker.
  * Content scripts must not fetch CDN bytes directly — they message the SW.
+ *
+ * Development builds only: store builds never proxy emote images
+ * (src/shared/emoteImageProxy.ts), so their worker approves no URL and the
+ * store manifests request no emote CDN host.
  */
+
+import { isDevLoopbackHostname } from '../shared/devHosts.ts'
 
 /** Reject declared or buffered bodies larger than this (5 MiB). */
 export const EMOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024
@@ -18,9 +24,6 @@ const APPROVED_EMOTE_HOSTS = new Set([
   'cdn.frankerfacez.com',
 ])
 const LOCAL_EMOTE_PATH = /^\/emotes\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(?:1x|2x|4x)\.webp$/i
-const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
-const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
-const LOOPBACK_IPV6 = '::1'
 
 interface CachedEmoteBytes {
   mimeType: string
@@ -38,17 +41,15 @@ export interface EmoteImageBytes {
 }
 
 export function isApprovedEmoteImageUrl(raw: string): boolean {
+  if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) return false
   try {
     const url = new URL(raw)
     if (url.username || url.password) return false
     if (url.protocol === 'https:' && !url.port) {
       return APPROVED_EMOTE_HOSTS.has(url.hostname.toLowerCase())
     }
-    if (typeof __EXTENSION_STORE_BUILD__ !== 'undefined' && __EXTENSION_STORE_BUILD__) return false
     if (url.protocol !== 'http:') return false
-    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-    return (hostname === LOCALHOST || hostname === LOOPBACK_IPV4 || hostname === LOOPBACK_IPV6)
-      && LOCAL_EMOTE_PATH.test(url.pathname)
+    return isDevLoopbackHostname(url.hostname) && LOCAL_EMOTE_PATH.test(url.pathname)
   } catch {
     return false
   }

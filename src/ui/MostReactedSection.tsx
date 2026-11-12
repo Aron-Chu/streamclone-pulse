@@ -9,12 +9,16 @@ import type { PulsePayload } from '../shared/messages.ts'
 import type { ExtensionRollup } from '../shared/messages.ts'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
 import {
+  MOMENT_SORT_OPTIONS,
   MOST_REACTED_VISIBLE_COUNT,
+  TOP_MOMENTS_SUBTITLE,
+  TOP_MOMENTS_TITLE,
   liveHeatPointKey,
   resolveMostReactedHeat,
   sortLiveHeatPoints,
   type MomentSortMode,
 } from './mostReacted.ts'
+import { MyMomentsLink } from './momentBookmarks.tsx'
 import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
@@ -42,15 +46,6 @@ export interface MostReactedSectionProps {
   demoMode?: boolean
 }
 
-const SORT_OPTIONS: ReadonlyArray<{ value: MomentSortMode; label: string }> = [
-  { value: 'reaction', label: 'Strongest reaction' },
-  { value: 'chat', label: 'Chat activity' },
-  { value: 'emotes', label: 'Emote activity' },
-]
-
-const TOP_MOMENTS_TITLE = 'Top moments'
-const TOP_MOMENTS_SUBTITLE = 'Chat and emote spikes'
-
 function resolveJumpLabel(payload: PulsePayload, hasVodContext?: boolean): string {
   if (hasVodContext || payload.vodId) return 'Jump in VOD'
   return 'Jump in player'
@@ -75,6 +70,11 @@ export function MostReactedSection({
   const sortedPoints = useMemo(
     () => sortLiveHeatPoints(heat.points, sortMode),
     [heat.points, sortMode],
+  )
+  // The top 3 by reaction show the exact frame from the VOD, as in a recap.
+  const exactKeys = useMemo(
+    () => new Set(sortLiveHeatPoints(heat.points, 'reaction').slice(0, 3).map(point => liveHeatPointKey(payload.streamId, point))),
+    [heat.points, payload.streamId],
   )
 
   const pinnedMomentPoint = useMemo(
@@ -117,6 +117,7 @@ export function MostReactedSection({
     <PulseSectionCard
       title={TOP_MOMENTS_TITLE}
       subtitle={TOP_MOMENTS_SUBTITLE}
+      titleAction={demoMode ? undefined : <MyMomentsLink />}
       stackMeta
       meta={
         heat.visible ? (
@@ -127,7 +128,7 @@ export function MostReactedSection({
             <PulseThemedSelect
               label="Sort"
               value={sortMode}
-              options={SORT_OPTIONS}
+              options={MOMENT_SORT_OPTIONS}
               ariaLabel="Sort most reacted moments"
               disabled={demoMode}
               onChange={setSortMode}
@@ -182,6 +183,7 @@ export function MostReactedSection({
                 backendUrl={backendUrl}
                 selected={selected}
                 controls={cardPoint ? cardId : undefined}
+                exact={exactKeys.has(liveHeatPointKey(payload.streamId, point))}
                 onHighlight={demoMode ? () => undefined : handleHighlight}
                 // Picking the picked row again closes its card.
                 onSelect={demoMode ? () => undefined : next => {
@@ -226,7 +228,7 @@ export function MostReactedSection({
 }
 
 const styles: Record<string, CSSProperties> = {
-  momentCount: { color: theme.textMuted, fontSize: 9, fontVariantNumeric: 'tabular-nums', marginRight: 6 },
+  momentCount: { color: theme.textMuted, fontSize: 11, fontVariantNumeric: 'tabular-nums', marginRight: 6 },
   momentList: { display: 'grid', gap: 4 },
   status: {
     background: 'rgba(255, 255, 255, 0.035)',
@@ -237,7 +239,7 @@ const styles: Record<string, CSSProperties> = {
     padding: '10px 12px',
   },
   statusTitle: { color: theme.textSecondary, fontSize: 11, fontWeight: 800 },
-  statusText: { color: theme.textMuted, fontSize: 10, lineHeight: 1.4 },
+  statusText: { color: theme.textMuted, fontSize: 11, lineHeight: 1.4 },
   expandButton: {
     alignItems: 'center',
     background: 'transparent',
@@ -245,7 +247,7 @@ const styles: Record<string, CSSProperties> = {
     color: theme.accentSoft,
     cursor: 'pointer',
     display: 'flex',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 700,
     gap: 4,
     // The section's 12 px grid gap, plus its own 2 px.
@@ -253,5 +255,5 @@ const styles: Record<string, CSSProperties> = {
     padding: '4px 0',
     width: '100%',
   },
-  expandChevron: { fontSize: 9, lineHeight: 1 },
+  expandChevron: { fontSize: 11, lineHeight: 1 },
 }

@@ -8,39 +8,26 @@ export interface PulseLiveUnavailablePanelProps {
   variant: Extract<PulseLiveAccessState, 'not_irc_tracked' | 'late_session'>
   login: string
   coverageStartOffsetSeconds: number
-  hostedActiveCount: number | null
-  hostedActiveLimit: number | null
+  /** Hosted pool counts. Unused: this panel only shows against your own stack, which has no hosted pool. */
+  hostedActiveCount?: number | null
+  hostedActiveLimit?: number | null
   onOpenSettings?: () => void
-}
-
-function formatPoolLabel(activeCount: number | null, activeLimit: number | null): string {
-  if (activeCount != null && activeLimit != null && activeLimit > 0) {
-    return `${activeCount}/${activeLimit}`
-  }
-  if (activeLimit != null && activeLimit > 0) {
-    return `up to ${activeLimit}`
-  }
-  return 'a limited number of'
 }
 
 export function PulseLiveUnavailablePanel({
   variant,
   login,
   coverageStartOffsetSeconds,
-  hostedActiveCount,
-  hostedActiveLimit,
   onOpenSettings,
 }: PulseLiveUnavailablePanelProps) {
-  const poolLabel = formatPoolLabel(hostedActiveCount, hostedActiveLimit)
-
   const title =
     variant === 'not_irc_tracked'
-      ? 'Not in live IRC pool'
+      ? 'Not tracked live'
       : 'Pulse Live starts from stream open'
 
   const body =
     variant === 'not_irc_tracked'
-      ? `${login} is live, but StreamPulse is not collecting IRC chat for this channel right now. Hosted Pulse tracks ${poolLabel} live channels at a time — chat and emote rollups are unavailable here.`
+      ? `${login} is live, but your StreamPulse stack isn’t reading this channel’s chat, so there’s no chart or moments here.`
       : `StreamPulse is tracking this stream from ${formatHeatOffset(coverageStartOffsetSeconds)}, but you opened the channel late. Full live charts are available for protected watchlist channels or when you open a stream within the first 2 minutes.`
 
   return (

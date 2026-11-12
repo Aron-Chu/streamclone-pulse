@@ -8,6 +8,8 @@ export interface PulseSectionCardProps {
   /** Heading level for callers that provide a higher-level page heading. */
   headingLevel?: 2 | 3
   meta?: ReactNode
+  /** A small link on the title's line, at its end. */
+  titleAction?: ReactNode
   /** Stack controls below the heading for narrow sidebar cards. */
   stackMeta?: boolean
   children: ReactNode
@@ -21,12 +23,16 @@ export function PulseSectionCard({
   titleTone = 'default',
   headingLevel = 3,
   meta,
+  titleAction,
   stackMeta = false,
   children,
   style,
   className,
 }: PulseSectionCardProps) {
   const classes = ['pulse-section-card', className].filter(Boolean).join(' ')
+  const heading = headingLevel === 2
+    ? <h2 style={titleTone === 'muted' ? styles.titleMuted : styles.title}>{title}</h2>
+    : <h3 style={titleTone === 'muted' ? styles.titleMuted : styles.title}>{title}</h3>
   return (
     <section className={classes} style={{ ...styles.card, ...style }}>
       {title ? (
@@ -35,11 +41,12 @@ export function PulseSectionCard({
           data-pulse-section-heading={stackMeta ? 'stacked' : 'inline'}
         >
           <div style={styles.headingMain}>
-            {headingLevel === 2 ? (
-              <h2 style={titleTone === 'muted' ? styles.titleMuted : styles.title}>{title}</h2>
-            ) : (
-              <h3 style={titleTone === 'muted' ? styles.titleMuted : styles.title}>{title}</h3>
-            )}
+            {titleAction ? (
+              <div className="pulse-section-title-row">
+                {heading}
+                {titleAction}
+              </div>
+            ) : heading}
             {subtitle ? <p style={styles.subtitle}>{subtitle}</p> : null}
           </div>
           {meta ? (

@@ -35,20 +35,26 @@ function publicEntryBoundaryPlugin(): Plugin {
       assertBuildOnlyBracesRuntimeBoundary(bundle)
       const visited = new Set<string>()
       const forbidden = new Set<string>()
-      const visit = (fileName: string) => {
-        if (visited.has(fileName)) return
-        visited.add(fileName)
+      const visit = (fileName: string, into = visited) => {
+        if (into.has(fileName)) return
+        into.add(fileName)
         const chunk = bundle[fileName]
         if (!chunk || chunk.type !== 'chunk') return
         for (const id of Object.keys(chunk.modules)) {
           if (/\/packages\/(?:analytics-console|pulse-charts)\//.test(id.replaceAll('\\', '/'))) forbidden.add(id)
         }
-        for (const dependency of chunk.imports) visit(dependency)
+        for (const dependency of chunk.imports) visit(dependency, into)
       }
       for (const chunk of Object.values(bundle)) if (chunk.type === 'chunk' && chunk.isEntry) visit(chunk.fileName)
-      if (forbidden.size) this.error(`Public entry eagerly imports analytics UI:\n${[...forbidden].join('\n')}`)
+      // The help and legal pages load on demand; their chunks stay free of analytics UI too.
+      const publicPages = new Set<string>()
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type === 'chunk' && chunk.isDynamicEntry && /\/src\/routes\/public\/[^/]+\.tsx$/.test((chunk.facadeModuleId ?? '').replaceAll('\\', '/'))) visit(chunk.fileName, publicPages)
+      }
+      if (forbidden.size) this.error(`Public entry or page imports analytics UI:\n${[...forbidden].join('\n')}`)
       this.emitFile({ type: 'asset', fileName: 'public-entry-budget.json', source: JSON.stringify({
         staticJavaScript: [...visited].filter(name => name.endsWith('.js')).sort(),
+        publicPageJavaScript: [...publicPages].filter(name => name.endsWith('.js') && !visited.has(name)).sort(),
         analyticsUiModules: [...forbidden],
       }, null, 2) })
     },
@@ -69,11 +75,22 @@ function devConnectSrcPlugin(): Plugin {
   const fixtureHosts = Number.isFinite(fixturePort) && fixturePort > 0
     ? [`http://localhost:${fixturePort}`, `http://127.0.0.1:${fixturePort}`]
     : []
-  const devConnect = [...devHosts, ...fixtureHosts].join(' ')
+  let devConnect = [...devHosts, ...fixtureHosts].join(' ')
   const devImg = devHosts.join(' ')
   return {
     name: 'streampulse-dev-connect-src',
     apply: 'serve',
+    // scripts/dev-fake-twitch.mjs stands in for id.twitch.tv and api.twitch.tv
+    // when VITE_DEV_FAKE_TWITCH names it (src/lib/twitchFollows.ts). Read from
+    // the resolved env, which has the .env files' VITE_ values as the page does.
+    configResolved(config) {
+      try {
+        const fake = new URL(String(config.env.VITE_DEV_FAKE_TWITCH ?? ''))
+        if (fake.protocol === 'http:' && (fake.hostname === 'localhost' || fake.hostname === '127.0.0.1')) devConnect += ` ${fake.origin}`
+      } catch {
+        // unset: Twitch itself
+      }
+    },
     transformIndexHtml(html) {
       return html
         .replace(

@@ -11,6 +11,7 @@ import {
   getKeepLocalCache,
   getMomentPicturesEnabled,
   getVodJumpChartPinEnabled,
+  MOMENT_PICTURES_KEY,
   setKeepLocalCache,
   setMomentPicturesEnabled,
   setVodJumpChartPinEnabled,
@@ -20,7 +21,8 @@ import {
   isDiagnosticsConsentEnabled,
   setDiagnosticsConsentEnabled,
 } from '../shared/diagnosticsConsent.ts'
-import { isAnalyticsConsentGranted, setAnalyticsConsentGranted } from '../shared/analyticsConsent.ts'
+import { momentPictures } from '../shared/momentPictureStore.ts'
+import { ANALYTICS_CONSENT_STORAGE, parseAnalyticsConsent, prepareAnalyticsConsentGrant, readAnalyticsConsentState, requestAnalyticsConsentChange } from '../shared/analyticsConsent.ts'
 import { EXTENSION_ANALYTICS_INGEST_ENABLED } from '../shared/extensionAnalytics.ts'
 import { installedExtensionVersion } from '../shared/releaseManifest.ts'
 import { compactViewerSamplingLabel, summarizeViewerSampling } from '../shared/viewerSamplingStatus.ts'
@@ -28,11 +30,14 @@ import { ChangelogCard, WhatsNewCard } from './ChangelogCard.tsx'
 import { ACCENT_THEME_OPTIONS } from './overlayTheme.ts'
 import { ChoicePicker } from './ChoicePicker.tsx'
 import { DENSITY_OPTIONS, PLACEMENT_OPTIONS } from './preferenceOptions.ts'
+import { AUTO_UPDATE_LABEL, DENSITY_LABEL, DOCK_LABEL, LIVE_SETTINGS_TITLE, PLACEMENT_LABEL, VOD_JUMP_PIN_LABEL } from './settingLabels.ts'
 import { withDescriptions } from '../options/preferenceDescriptions.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { usePulseHealth } from './usePulseHealth.ts'
 import { usePulsePreferences } from './usePulsePreferences.ts'
 import { PulseBannerControls } from './PulseBanner.tsx'
+import { CHAT_CRESTS_KEY, CHAT_PAINT_MOTION_KEY, DEFAULT_CHAT_CRESTS, DEFAULT_CHAT_PAINT_MOTION } from '../shared/chatBadges.ts'
+import { useChatBadgeListReceived } from '../options/useChatBadges.ts'
 
 type UpdateCapability = 'loading' | 'supported' | 'browser' | 'development'
 
@@ -59,24 +64,84 @@ function useAdministrativeSettings() {
   const [cacheEntryCount, setCacheEntryCount] = useState(0)
   const [cacheBusy, setCacheBusy] = useState(false)
   const [analyticsConsent, setAnalyticsConsentState] = useState(false)
+  const [analyticsBusy, setAnalyticsBusy] = useState(false)
+  const [analyticsAvailability, setAnalyticsAvailability] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+  const [analyticsGrantPreparation, setAnalyticsGrantPreparation] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle')
+  const analyticsSaving = useRef(false)
+  const analyticsRevision = useRef(0)
+  const analyticsMounted = useRef(false)
+  const analyticsTicket = useRef<string | null>(null)
+  const analyticsTicketRevision = useRef(0)
   const [diagnosticsConsent, setDiagnosticsConsentState] = useState(false)
   const [updateCapability, setUpdateCapability] = useState<UpdateCapability>('loading')
   const [updateStatus, setUpdateStatus] = useState('')
   const [savedStatus, showSavedStatus] = useTransientStatus()
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  const clearAnalyticsGrantPreparation = useCallback(() => {
+    analyticsTicketRevision.current += 1
+    analyticsTicket.current = null
+    setAnalyticsGrantPreparation('idle')
+  }, [])
+
+  const prepareAnalyticsGrant = useCallback(() => {
+    if (!EXTENSION_ANALYTICS_INGEST_ENABLED) return
+    const revision = ++analyticsTicketRevision.current
+    analyticsTicket.current = null
+    setAnalyticsGrantPreparation('loading')
+    void prepareAnalyticsConsentGrant().then(ticket => {
+      if (!analyticsMounted.current || analyticsTicketRevision.current !== revision) return
+      analyticsTicket.current = ticket
+      setAnalyticsGrantPreparation('ready')
+    }).catch(() => {
+      if (analyticsMounted.current && analyticsTicketRevision.current === revision) {
+        setAnalyticsGrantPreparation('unavailable')
+      }
+    })
+  }, [])
+
   useEffect(() => {
     let mounted = true
+    analyticsMounted.current = true
+    const loadRevision = analyticsRevision.current
+    const readAnalytics = async (revision: number) => {
+      const state = await readAnalyticsConsentState().catch(() => 'unavailable' as const)
+      if (!mounted || analyticsRevision.current !== revision) return
+      if (state === 'unavailable') {
+        clearAnalyticsGrantPreparation()
+        setAnalyticsAvailability('unavailable')
+        return
+      }
+      setAnalyticsConsentState(state === 'granted')
+      setAnalyticsAvailability('ready')
+      if (state === 'denied') prepareAnalyticsGrant()
+      else clearAnalyticsGrantPreparation()
+    }
+    const onStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
+      if (area !== 'local' || !changes[ANALYTICS_CONSENT_STORAGE]) return
+      const revision = ++analyticsRevision.current
+      if (parseAnalyticsConsent(changes[ANALYTICS_CONSENT_STORAGE].newValue)?.granted !== true) {
+        setAnalyticsConsentState(false)
+        setAnalyticsAvailability('ready')
+        prepareAnalyticsGrant()
+        return
+      }
+      clearAnalyticsGrantPreparation()
+      setAnalyticsAvailability('loading')
+      void readAnalytics(revision)
+    }
+    chrome.storage.onChanged?.addListener?.(onStorageChange)
+    // Consent must load independently: a failed or stalled cache/diagnostics
+    // lookup must never make an existing analytics grant appear switched off.
+    void readAnalytics(loadRevision)
     void Promise.all([
       getKeepLocalCache(),
       countSessionPulseEntries(),
-      isAnalyticsConsentGranted(),
       isDiagnosticsConsentEnabled(),
-    ]).then(([storedCache, cacheCount, storedAnalyticsConsent, storedDiagnosticsConsent]) => {
+    ]).then(([storedCache, cacheCount, storedDiagnosticsConsent]) => {
       if (!mounted) return
       setKeepCacheState(storedCache)
       setCacheEntryCount(cacheCount)
-      setAnalyticsConsentState(storedAnalyticsConsent)
       setDiagnosticsConsentState(storedDiagnosticsConsent)
     }).catch(() => { if (mounted) showSavedStatus('Could not load privacy settings') })
     void sendBackgroundMessage({ type: 'GET_UPDATE_CHECK_CAPABILITY' })
@@ -89,8 +154,14 @@ function useAdministrativeSettings() {
           setUpdateCapability('browser')
         }
       })
-    return () => { mounted = false }
-  }, [showSavedStatus])
+    return () => {
+      mounted = false
+      analyticsMounted.current = false
+      analyticsTicketRevision.current += 1
+      analyticsTicket.current = null
+      chrome.storage.onChanged?.removeListener?.(onStorageChange)
+    }
+  }, [clearAnalyticsGrantPreparation, prepareAnalyticsGrant, showSavedStatus])
 
   async function persistSetting<T>(
     setter: (val: T) => void,
@@ -116,6 +187,9 @@ function useAdministrativeSettings() {
     cacheEntryCount,
     cacheBusy,
     analyticsConsent,
+    analyticsBusy,
+    analyticsAvailability,
+    analyticsGrantPreparation,
     diagnosticsConsent,
     savedStatus,
     saveError,
@@ -134,13 +208,38 @@ function useAdministrativeSettings() {
       )
     },
     setAnalytics(enabled: boolean) {
-      void persistSetting(
-        setAnalyticsConsentState,
-        analyticsConsent,
-        enabled,
-        setAnalyticsConsentGranted(enabled),
-        'Could not update analytics sharing. Changes were reverted.',
-      )
+      if (analyticsSaving.current) return
+      const ticket = enabled ? analyticsTicket.current : undefined
+      if (enabled && !ticket) return
+      clearAnalyticsGrantPreparation()
+      analyticsSaving.current = true
+      const revision = ++analyticsRevision.current
+      const previousAvailability = analyticsAvailability
+      setAnalyticsBusy(true)
+      setAnalyticsConsentState(enabled)
+      setSaveError(null)
+      void requestAnalyticsConsentChange(enabled, ticket ?? undefined).then(() => {
+        if (analyticsRevision.current === revision) {
+          setAnalyticsConsentState(enabled)
+          setAnalyticsAvailability('ready')
+          if (!enabled) prepareAnalyticsGrant()
+        }
+        showSavedStatus('Saved')
+      }).catch(() => {
+        if (analyticsRevision.current === revision) {
+          setAnalyticsConsentState(analyticsConsent)
+          setAnalyticsAvailability(previousAvailability === 'ready' ? 'ready' : 'unavailable')
+          if (!analyticsConsent && previousAvailability === 'ready') prepareAnalyticsGrant()
+        }
+        setSaveError('Could not save analytics sharing. Please try again.')
+        showSavedStatus('Could not save')
+      }).finally(() => {
+        analyticsSaving.current = false
+        setAnalyticsBusy(false)
+      })
+    },
+    retryAnalyticsGrant() {
+      prepareAnalyticsGrant()
     },
     setDiagnostics(enabled: boolean) {
       void persistSetting(
@@ -265,8 +364,8 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
         <div className="pulse-settings-host-connection">
           <span className={`pulse-settings-status-dot pulse-settings-status-dot-${apiStatus}`} aria-hidden="true" />
           <span>
-            <strong data-api-status={apiStatus}>{reachable ? 'Hosted API connected' : health.checking ? 'Checking connection' : health.error ? 'Extension disconnected' : 'API unreachable'}</strong>
-            <small data-sampler-status={sampler.state}>Viewer sampler · {reachable ? compactViewerSamplingLabel(sampler) : 'Unknown'}</small>
+            <strong data-api-status={apiStatus}>{reachable ? 'Connected to StreamPulse' : health.checking ? 'Checking connection' : health.error ? 'Extension disconnected' : 'API unreachable'}</strong>
+            <small data-sampler-status={sampler.state}>Viewer counts · {reachable ? compactViewerSamplingLabel(sampler) : 'Unknown'}</small>
           </span>
           <button type="button" className="pulse-secondary-btn" disabled={health.checking} onClick={() => void health.refresh(true)}>
             {health.checking ? 'Testing…' : 'Test connection'}
@@ -275,17 +374,17 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
         {health.error ? <p className="pulse-settings-hint" role="status">{health.error}</p> : null}
       </PulseSectionCard>
 
-      <PulseSectionCard title="Live behavior" headingLevel={3}>
+      <PulseSectionCard title={LIVE_SETTINGS_TITLE} headingLevel={3}>
         <ToggleRow
           id="settings-auto-update"
-          label="Refresh live data automatically"
+          label={AUTO_UPDATE_LABEL}
           hint="Auto-update live activity and viewer metrics continuously on open channels."
           checked={preferences.autoUpdate}
           onChange={preferences.setAutoUpdate}
         />
         <ToggleRow
           id="settings-chat-dock"
-          label="Dock when chat is closed"
+          label={DOCK_LABEL}
           hint={preferences.placement === 'sidebar' ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking needs Sidebar placement.'}
           checked={preferences.dock}
           disabled={preferences.placement !== 'sidebar'}
@@ -293,7 +392,7 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
         />
         <StoredToggleRow
           id="settings-vod-jump-chart-pin"
-          label="Show VOD jumps on the chart"
+          label={VOD_JUMP_PIN_LABEL}
           hint="Keep playback seeking enabled while optionally pinning the jumped-to offset in the activity chart."
           read={getVodJumpChartPinEnabled}
           write={setVodJumpChartPinEnabled}
@@ -302,6 +401,7 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
 
       <PulseSectionCard title="Appearance & placement" headingLevel={3}>
         <PulseBannerControls perks={supporterPerks} />
+        <ChatCrestToggles />
         <div className="pulse-settings-field">
           <span className="pulse-settings-label">Accent</span>
           <ChoicePicker
@@ -314,22 +414,22 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
           />
         </div>
         <div className="pulse-settings-field">
-          <span className="pulse-settings-label">Density</span>
+          <span className="pulse-settings-label">{DENSITY_LABEL}</span>
           <ChoicePicker
             kind="density"
             variant="detailed"
-            groupLabel="Density"
+            groupLabel={DENSITY_LABEL}
             options={withDescriptions('density', DENSITY_OPTIONS)}
             value={preferences.density}
             onChange={next => void preferences.setDensity(next)}
           />
         </div>
         <div className="pulse-settings-field">
-          <span className="pulse-settings-label">Overlay placement</span>
+          <span className="pulse-settings-label">{PLACEMENT_LABEL}</span>
           <ChoicePicker
             kind="placement"
             variant="detailed"
-            groupLabel="Overlay placement"
+            groupLabel={PLACEMENT_LABEL}
             options={withDescriptions('placement', PLACEMENT_OPTIONS).map(option => ({
               ...option,
               icon: <span className="pulse-placement-icon" data-placement={option.value} aria-hidden="true" />,
@@ -344,6 +444,50 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
 }
 
 /** A switch stored on its own key: loads before it can be flipped, and reverts if saving fails. */
+/** Viewer controls only appear after this build receives a verified public list. */
+export function ChatCrestToggles() {
+  const [received] = useChatBadgeListReceived()
+  const [crests, setCrests] = useState(DEFAULT_CHAT_CRESTS)
+  const [motion, setMotion] = useState(DEFAULT_CHAT_PAINT_MOTION)
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState('')
+  useEffect(() => {
+    let mounted = true
+    void chrome.storage.sync.get([CHAT_CRESTS_KEY, CHAT_PAINT_MOTION_KEY]).then(stored => {
+      if (!mounted) return
+      setCrests((stored[CHAT_CRESTS_KEY] ?? DEFAULT_CHAT_CRESTS) !== false)
+      setMotion((stored[CHAT_PAINT_MOTION_KEY] ?? DEFAULT_CHAT_PAINT_MOTION) === true)
+    }).catch(() => undefined)
+    return () => { mounted = false }
+  }, [])
+  if (!received) return null
+  async function save(key: string, next: boolean, apply: (value: boolean) => void, previous: boolean) {
+    setSaving(true)
+    setStatus('')
+    apply(next)
+    try {
+      await chrome.storage.sync.set({ [key]: next })
+      setStatus('Saved')
+    } catch {
+      apply(previous)
+      setStatus('Could not save; changes were reverted.')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <div data-settings-chat-crests="true">
+      <ToggleRow id="settings-chat-crests" label="Show Supporter crests in chat"
+        hint="Show crests and name paints for Supporters who chose to be visible. The public list is downloaded without the chat name."
+        checked={crests} disabled={saving} onChange={next => save(CHAT_CRESTS_KEY, next, setCrests, crests)} />
+      <ToggleRow id="settings-chat-paint-motion" label="Animate paints in chat"
+        hint="Always still when your system asks for reduced motion."
+        checked={motion} disabled={saving || !crests} onChange={next => save(CHAT_PAINT_MOTION_KEY, next, setMotion, motion)} />
+      {status ? <span className="pulse-settings-hint" role="status">{status}</span> : null}
+    </div>
+  )
+}
+
 function StoredToggleRow({ id, label, hint, read, write }: {
   id: string
   label: string
@@ -392,6 +536,41 @@ function StoredToggleRow({ id, label, hint, read, write }: {
   )
 }
 
+/**
+ * Turning Moment pictures off keeps no new ones; the pictures already kept
+ * with saves and History stay until removed here (or with their moment).
+ */
+function KeptPicturesOffer() {
+  const [kept, setKept] = useState(0)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let mounted = true
+    const refresh = () => void Promise.all([getMomentPicturesEnabled(), momentPictures.count()])
+      .then(([on, count]) => { if (mounted) setKept(on ? 0 : count) }).catch(() => undefined)
+    const changed = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'sync' && MOMENT_PICTURES_KEY in changes) refresh()
+    }
+    refresh()
+    chrome.storage?.onChanged?.addListener(changed)
+    return () => {
+      mounted = false
+      chrome.storage?.onChanged?.removeListener(changed)
+    }
+  }, [])
+  if (!kept) return null
+  return (
+    <div className="pulse-settings-cache-meta" data-kept-pictures>
+      <span>{kept} saved picture{kept === 1 ? ' is' : 's are'} still kept.</span>
+      <button type="button" className="pulse-link-btn" disabled={busy} onClick={() => {
+        setBusy(true)
+        void momentPictures.clear().then(() => setKept(0)).catch(() => undefined).finally(() => setBusy(false))
+      }}>
+        {busy ? 'Removing…' : 'Remove pictures'}
+      </button>
+    </div>
+  )
+}
+
 function PrivacySection({ settings }: { settings: AdministrativeSettings }) {
   return (
     <section data-settings-section="privacy" className="pulse-settings-page-section">
@@ -427,14 +606,31 @@ function PrivacySection({ settings }: { settings: AdministrativeSettings }) {
         <StoredToggleRow
           id="settings-moment-pictures"
           label="Moment pictures"
-          hint="Keep small frames of what you watch so Top Moments can show what happened. They stay in that tab's memory, are never uploaded, and are gone when you close it. Turning it on applies to Twitch tabs you open or reload after."
+          hint="Frames of what you watch, for Top Moments and kept with your saves and History. On this device only, never uploaded."
           read={getMomentPicturesEnabled}
           write={setMomentPicturesEnabled}
         />
+        <KeptPicturesOffer />
       </PulseSectionCard>
       {(EXTENSION_ANALYTICS_INGEST_ENABLED || EXTENSION_DIAGNOSTICS_INGEST_ENABLED) ? (
         <PulseSectionCard title="Optional sharing" headingLevel={3}>
-          {EXTENSION_ANALYTICS_INGEST_ENABLED ? <ToggleRow label="Share anonymous product usage" checked={settings.analyticsConsent} onChange={settings.setAnalytics} /> : null}
+          {EXTENSION_ANALYTICS_INGEST_ENABLED ? (
+            <>
+              <ToggleRow label="Share anonymous product usage" hint="Shares when Pulse receives data without a reported error and when a panel rendering error is shown. StreamPulse sends aggregate counts to PostHog to improve the extension. Turning this off stops new events from this browser. Events already sent to StreamPulse may still be added to totals sent to PostHog. PostHog keeps these events for six calendar months, then permanently deletes expired events at the following monthly cleanup." checked={settings.analyticsConsent} disabled={settings.analyticsBusy || settings.analyticsAvailability !== 'ready' || (!settings.analyticsConsent && settings.analyticsGrantPreparation !== 'ready')} onChange={settings.setAnalytics} />
+              {settings.analyticsAvailability !== 'ready' ? (
+                <div>
+                  <p role="status">{settings.analyticsAvailability === 'loading' ? 'Checking your saved analytics choice…' : 'Unable to check your saved analytics choice.'}</p>
+                  <button type="button" className="pulse-link-btn" disabled={settings.analyticsBusy} onClick={() => settings.setAnalytics(false)}>Turn off sharing</button>
+                </div>
+              ) : null}
+              {settings.analyticsAvailability === 'ready' && !settings.analyticsConsent && settings.analyticsGrantPreparation !== 'ready' ? (
+                <div>
+                  <p role="status">{settings.analyticsGrantPreparation === 'unavailable' ? 'Unable to prepare the sharing control.' : 'Preparing the sharing control…'}</p>
+                  {settings.analyticsGrantPreparation === 'unavailable' ? <button type="button" className="pulse-link-btn" disabled={settings.analyticsBusy} onClick={settings.retryAnalyticsGrant}>Try again</button> : null}
+                </div>
+              ) : null}
+            </>
+          ) : null}
           {EXTENSION_DIAGNOSTICS_INGEST_ENABLED ? <ToggleRow label="Share crash diagnostics" checked={settings.diagnosticsConsent} onChange={settings.setDiagnostics} /> : null}
         </PulseSectionCard>
       ) : null}

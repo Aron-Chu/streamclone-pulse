@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './helpers/portalMockedTest'
 import {
   assertNoUnexpected,
   buildDetail,
@@ -95,13 +95,15 @@ async function openSessionPage(page: Page, width: number, height = 900) {
   await page.setViewportSize({ width, height })
   const harness = await installSessionPage(page)
   await openAnalyticsSession(page)
-  await expect(page.getByRole('heading', { level: 1, name: 'Deterministic portal acceptance fixture' })).toBeVisible()
+  // C1 (11-11): the channel's name is the headline; the stream title is one grey line under the header.
+  await expect(page.getByRole('heading', { level: 1, name: 'xQc' })).toBeVisible()
+  await expect(page.locator('[data-session-header] [data-session-title]')).toHaveText('Deterministic portal acceptance fixture')
   await expect(page.locator('[data-session-meta] [data-session-watch-vod]')).toBeVisible()
   return harness
 }
 
 test.describe('analytics session page shell, d3-v2 session-original (mocked)', () => {
-  test('header: no badges, one meta line, the two actions at the top right, plain stat labels', async ({ page }) => {
+  test('header: the name, then Ended and the facts on one meta line, the two actions at the top right, plain stat labels', async ({ page }) => {
     const harness = await openSessionPage(page, 1440)
     const header = page.locator('[data-session-header]')
     await expect(header.locator('[data-session-header-badges]')).toHaveCount(0)
@@ -110,10 +112,13 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     const items = page.locator('[data-session-meta] .ssp-meta > .mi')
     await expect(items).toHaveCount(7)
     const texts = (await items.allTextContents()).map(text => text.trim())
-    expect(texts[0]).toBe('xQc')
+    expect(texts[0]).toBe('Ended')
+    await expect(items.nth(0)).toHaveAttribute('data-session-state', 'ended')
     expect(texts[1]).toBe('Just Chatting')
-    expect(texts[2]).toMatch(/^Started /)
-    expect(texts[3]).toMatch(/^(Updated|Refreshed) /)
+    // An ended stream says when it streamed and for how long ("Streamed Jul 25 · 2h 30m");
+    // the read time ("Updated …") is for live and unknown sessions, so it leaves only the refresh icon.
+    expect(texts[2]).toMatch(/^Streamed [A-Z][a-z]{2} \d{1,2} · \d+(h|m|h \d+m)/)
+    expect(texts[3]).toBe('')
     expect(texts[4]).toBe('First 54s not tracked')
     expect(texts[5]).toBe('Watch VOD')
     expect(texts[6]).toMatch(/^Data: (Good|Limited|Partial|No data)$/)
@@ -126,7 +131,7 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     await expect(vod).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}`)
     await expect(vod).toHaveAttribute('target', '_blank')
 
-    // "Refresh data" is the icon beside "Updated", not a text button.
+    // "Refresh data" is an icon (beside "Updated" while live), not a text button.
     const refresh = page.getByRole('button', { name: 'Refresh data' })
     await expect(refresh).toHaveCount(1)
     await expect(refresh).toHaveText('')
@@ -141,7 +146,8 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     expect(Math.abs(actionsBox!.y - titleBox!.y)).toBeLessThanOrEqual(12)
 
     const labels = await page.locator('[data-session-stat-row] .sc-stat-card__label').allTextContents()
-    expect(labels).toEqual(['Latest viewers', 'Average viewers', 'Peak viewers', 'Chat messages', 'Emote uses', 'Time tracked'])
+    // This fixture is an ended stream, so its first figure is the viewers at the end.
+    expect(labels).toEqual(['Viewers at end', 'Average viewers', 'Peak viewers', 'Chat messages', 'Emote uses', 'Time tracked'])
 
     await expect(page.getByText('Up to 100 recent stored streams')).toHaveCount(0)
     await expect(page.getByText(/Synced only/)).toHaveCount(0)
@@ -239,8 +245,9 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     expect(overflow).toBeLessThanOrEqual(1)
     const columns = await page.locator('[data-session-stat-row]').evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length)
     expect(columns).toBe(3)
+    // The channel's name: one line beside its picture (C1).
     const h1Size = await page.getByRole('heading', { level: 1 }).evaluate(node => getComputedStyle(node).fontSize)
-    expect(h1Size).toBe('21.6px')
+    expect(h1Size).toBe('26px')
     await assertNoUnexpected(harness)
   })
 })

@@ -6,7 +6,8 @@
  * Each picture is the moment's VOD preview frame (a Twitch storyboard tile, AC/utils/vodFrames.ts) from the tile
  * that holds the moment's minute, so it is near the moment, never the exact second. Moving the pointer across a
  * picture steps through the tiles either side (when the answer says how far apart they are). Without a frame:
- * the game's blurred box art, never a stand-in or a live frame.
+ * a plain dark card with the game's cover whole and sharp in its corner, never a stand-in or a live frame
+ * (candidate, 10-30, PIC-2; until 10-30 the box art filled the card, zoomed and blurred).
  *
  * Evidence follows F8: the backend reason label and reaction score, no client "× usual".
  * A card is the row's toggle (`aria-pressed`, `data-moment-row`): a click locks the moment on the chart, the
@@ -14,6 +15,11 @@
  * Styles: WEB/src/ui/charts/sp-session-rows.css (`.ssr-reel`, `.ssr-rc*`).
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
+import { boxArtAtSize } from '../../utils/boxArtSize.ts'
+import { getEmoteImageUrl } from '../../utils/consoleFormat.ts'
+import { sanitizeConsoleEmoteUrl } from '../../utils/emoteImageUrl.ts'
+import { isChattingCategory } from '../../utils/streamSidebarGames.ts'
+import { sessionHasFrame } from '../../utils/sessionState.ts'
 import { momentRowHms } from '../../utils/momentRowDisplay.ts'
 import {
   frameBackgroundStyle,
@@ -23,6 +29,7 @@ import {
   useVodFrame,
   type VodFrame,
 } from '../../utils/vodFrames.ts'
+import { previewMissLine } from './MomentPreviewTile.tsx'
 import { MomentPlayIcon, SessionMomentToken, type SessionMomentRowModel } from './MomentRow.tsx'
 
 /** How many tiles a scrub reaches either side of the moment's own. */
@@ -69,7 +76,7 @@ export function reelScrubStep(position: number): number {
 export interface MomentReelCardProps {
   model: SessionMomentRowModel
   size: 'hero' | 'small'
-  /** The game's box art: the backdrop under (or instead of) the frame. */
+  /** The game's box art: a sharp cover in the corner when there is no frame. */
   artUrl: string | null
   locked: boolean
   /** A chart pin for this moment is under the pointer. */
@@ -87,6 +94,20 @@ export interface MomentReelCardProps {
   onActivate: (play: boolean) => void
   onHover?: (hovering: boolean) => void
   onArtError?: (url: string) => void
+}
+
+/**
+ * Just Chatting / IRL has no gameplay to picture (Aron's pick 4): the card shows the moment's top emote,
+ * large, in the cover's place. Null for a game, or when no emote has a picture. Payload URLs are untrusted:
+ * only an https allowlisted CDN/proxy URL is returned for the <img>, as in ConsoleEmoteImg.
+ */
+export function reelCardEmote(model: Pick<SessionMomentRowModel, 'game' | 'emotes'>): { emote: SessionMomentRowModel['emotes'][number]; src: string } | null {
+  if (!isChattingCategory(model.game?.name)) return null
+  for (const emote of model.emotes) {
+    const src = sanitizeConsoleEmoteUrl(getEmoteImageUrl(emote))
+    if (src) return { emote, src }
+  }
+  return null
 }
 
 export function MomentReelCard({
@@ -148,10 +169,15 @@ export function MomentReelCard({
     })
   }
 
+  const bigEmote = shown ? null : reelCardEmote(model)
+  // No frame means no box: a compact card (rank, cover or top emote, words), never an empty 16:9 box.
+  // The 16:9 picture comes back on its own once a frame loads.
+  const flat = !sessionHasFrame(shown)
   const className = [
     'ssr-rc',
     hero ? 'ssr-rc--hero' : 'ssr-rc--sm',
-    shown ? 'has-fr' : artUrl ? 'has-art' : '',
+    shown ? 'has-fr' : bigEmote ? 'has-emote' : artUrl ? 'has-art' : '',
+    flat ? 'flat' : '',
     locked ? 'lk sc-moment-row-selected' : '',
     ghost ? 'ghost' : '',
     scrub ? 'scrubbing' : '',
@@ -195,18 +221,32 @@ export function MomentReelCard({
       onBlur={() => onHover?.(false)}
     >
       <span className="ssr-rc-pic" aria-hidden="true">
-        {artUrl ? (
-          <img
-            className="ssr-rc-art"
-            src={artUrl}
-            alt=""
-            decoding="async"
-            referrerPolicy="no-referrer"
-            onError={() => onArtError?.(artUrl)}
-          />
-        ) : null}
         {shown ? <span className="ssr-rc-fr" style={frameBackgroundStyle(shown)} data-moment-card-frame /> : null}
       </span>
+      {/* the cover whole and sharp in the corner, no blur, no zoom (candidate, 10-30, PIC-2); asked at ~2x the
+          drawn size (hero up to 144 px tall, small up to 96 px); a failed load still reports the games answer's URL */}
+      {bigEmote ? (
+        <img
+          className="ssr-rc-emote"
+          src={bigEmote.src}
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          loading="lazy"
+          data-moment-card-emote={bigEmote.emote.name}
+        />
+      ) : null}
+      {!shown && !bigEmote && artUrl ? (
+        <img
+          className="ssr-rc-cover"
+          src={boxArtAtSize(artUrl, hero ? 216 : 144, hero ? 288 : 192)}
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => onArtError?.(artUrl)}
+        />
+      ) : null}
       {canScrub ? (
         <span className="ssr-rc-bar" aria-hidden="true">
           <i style={{ left: `${((scrub?.position ?? 0.5) * 100).toFixed(1)}%` }} />
@@ -236,7 +276,7 @@ export function MomentReelCard({
             {' '}
             <span className="ssr-rc-l3">
               {model.namesNotCaptured ? (
-                <span className="ssr-nn" title={model.namesNotCaptured}>emote names not captured</span>
+                <span className="ssr-nn" title={model.namesNotCaptured}>names not in this update</span>
               ) : model.emotes.length > 0 ? (
                 <span
                   className="ssr-toks"
@@ -275,20 +315,24 @@ export function MomentReelCard({
   )
 }
 
-/** The line under the reel: what the pictures are (null while the answer is out, or with no pictures at all). */
+/** The line under the reel: what the pictures are (null while the answer is out). */
 export function reelNote(args: {
   frame: VodFrame | null
   reason: string | null
   loading: boolean
   hasArt: boolean
+  /** The page's flag (the channel's current live stream). Without it, the frame answer's own reason. */
+  recording?: boolean
 }): string | null {
-  const { frame, reason, loading, hasArt } = args
+  const { frame, reason, loading, hasArt, recording } = args
   if (loading) return null
   if (frame) {
     return frame.intervalSec
       ? `Pictures are Twitch's VOD preview frames, one every ${reelIntervalLabel(frame.intervalSec)}. Move across one to step through them.`
       : "Pictures are Twitch's VOD preview frames from near each moment, not the exact second."
   }
-  if (reason === 'recording') return 'Twitch publishes preview frames when the VOD finishes.'
-  return hasArt ? "Pictures are the game's box art: no VOD preview frames for this stream." : null
+  // (fix, 10-30, PIC-3) the bar picture's line, from the same flag. Until 10-30 this read only the backend's
+  // reason, which is no_storyboard for every VOD (F6, live ones too), so a live stream's reel said "no VOD
+  // preview frames for this stream" while the bar said frames come when the VOD finishes.
+  return previewMissLine({ recording: recording ?? reason === 'recording', hasArt })
 }

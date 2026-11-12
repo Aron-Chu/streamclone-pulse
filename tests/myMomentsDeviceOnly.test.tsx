@@ -2,7 +2,7 @@
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DEVICE_ONLY_COPY, DEVICE_ONLY_INTRO, HistorySyncCard, LibraryWorkspace } from '../src/ui/library/LibraryWorkspace.tsx'
+import { ACCOUNT_INTRO, DEVICE_ONLY_COPY, DEVICE_ONLY_INTRO, HistorySyncCard, LibraryWorkspace } from '../src/ui/library/LibraryWorkspace.tsx'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { LibraryRepository } from '../src/ui/library/model.ts'
 import type { MyMomentsSnapshot } from '../src/shared/myMoments.ts'
@@ -63,10 +63,12 @@ describe('My Moments with sign-in compiled off', () => {
     } finally { view.cleanup() }
   })
 
+  // An account linked before (F15): its intro speaks to the account, still without a sign-up to promise.
   it.each<BookmarksState>(['ready', 'error', 'expired'])('never promises a free account in the %s state', async state => {
     const view = await render(state)
     try {
-      expect(view.text()).toContain(DEVICE_ONLY_INTRO)
+      expect(view.text()).toContain(ACCOUNT_INTRO)
+      expect(view.text()).not.toContain(DEVICE_ONLY_INTRO)
       expect(view.text()).not.toMatch(/free Pulse account/)
     } finally { view.cleanup() }
   })
@@ -93,11 +95,9 @@ describe('My Moments with sign-in on (tester and public builds)', () => {
 })
 
 describe('History sync card (history sync builds)', () => {
-  it('offers no account while sign-in is compiled off, and says where history stays', () => {
+  it('offers no account while sign-in is compiled off: Saved already says accounts are coming (F15)', () => {
     const html = renderToStaticMarkup(createElement(HistorySyncCard, { sync: { state: 'signed_out' }, busy: false, onChange: () => {} }))
-    expect(html).toContain('History stays in this browser.')
-    expect(html).toContain('coming with Continue with Twitch')
-    expect(html).not.toMatch(/free Pulse account|Connect account|href="#supporter"/)
+    expect(html).toBe('')
   })
 
   it('keeps Connect account for a signed-out browser when sign-in is on', () => {

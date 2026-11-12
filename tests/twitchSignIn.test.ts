@@ -88,7 +88,7 @@ describe('Sign in with Twitch worker flow', () => {
     const f = fixture()
     const response = await f.signIn.signIn('interactive')
     expect(response.outcome).toBe('signed_in')
-    expect(response.account).toEqual({ state: 'linked', accountId: ACCOUNT_ID, expiresAt: pair().expiresAt })
+    expect(response.account).toEqual({ state: 'linked', accountId: ACCOUNT_ID, expiresAt: pair().expiresAt, twitch: true })
     expect(f.bodyOf('/v1/account/auth/twitch/start-device')).toEqual({ surface: 'chrome', purpose: 'signin', mode: 'interactive', forceVerify: false })
     const [, init] = f.calls('/v1/account/auth/twitch/start-device')[0]
     expect(init).toMatchObject({ method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store' })
@@ -287,6 +287,33 @@ describe('Sign in with Twitch worker flow', () => {
     expect(f.stored()).toMatchObject({ accountId: '44444444-4444-4444-8444-444444444444' })
     expect(response.status.profile).toEqual({ displayName: 'OtherFan' })
     expect(f.meta()).toMatchObject({ signedOutByUser: false })
+  })
+
+  it('"Not you?" sends unsent changes before it signs the current identity out', async () => {
+    const order: string[] = []
+    const f = fixture({ stored: linkedRecord, ports: { flushAccount: async () => { order.push('flush') } } })
+    f.accountRequest.mockImplementation(async path => { order.push(path); return { status: 204, body: null } })
+    const response = await f.signIn.signIn('interactive', true)
+    expect(response.outcome).toBe('signed_in')
+    expect(order[0]).toBe('flush')
+    expect(order).toContain('/v1/account/devices/disconnect')
+  })
+
+  it('"Not you?" still signs out when sending unsent changes fails', async () => {
+    const f = fixture({ stored: linkedRecord, ports: { flushAccount: async () => { throw new Error('offline') } } })
+    const response = await f.signIn.signIn('interactive', true)
+    expect(response.outcome).toBe('signed_in')
+    expect(f.accountRequest).toHaveBeenCalledWith('/v1/account/devices/disconnect', { token: 'c'.repeat(64) })
+  })
+
+  it('a plain sign-in sends nothing first, and each account that signs in is noted for this browser', async () => {
+    const flushAccount = vi.fn(async () => {})
+    const accountSeen = vi.fn(async (_accountId: string) => {})
+    const f = fixture({ ports: { flushAccount, accountSeen } })
+    const response = await f.signIn.signIn('interactive')
+    expect(response.outcome).toBe('signed_in')
+    expect(flushAccount).not.toHaveBeenCalled()
+    expect(accountSeen).toHaveBeenCalledWith((f.stored() as { accountId: string }).accountId)
   })
 
   it('leaves the user signed out when "Not you?" is cancelled', async () => {

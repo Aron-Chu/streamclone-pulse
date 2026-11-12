@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from '../src/background/supporterAccount.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
 import { MESSAGE_SENDER_SCOPE } from '../src/background/pulseBroadcastTargets.ts'
+import { FINISH_INTENT_TTL_MS } from '../src/shared/supporterAccount.ts'
 
 const now = Date.parse('2026-09-09T12:00:00Z')
 const iso = (seconds: number) => new Date(now + seconds * 1000).toISOString()
@@ -69,6 +70,76 @@ describe('private supporter account coordinator', () => {
     expect(f.request).toHaveBeenCalledTimes(2)
     await f.coordinator.run('disconnect')
     expect(f.key()).toBeNull()
+  })
+  it('a Twitch device keeps its credentials after a lost refresh reply', async () => {
+    const old = { ...creds, twitch: true, expiresAt: iso(0) }
+    const f = fixture(old)
+    f.request.mockImplementationOnce(async () => {
+      expect(f.stored()).toMatchObject({ kind: 'refreshing', credentials: { refreshToken: old.refreshToken, twitch: true } })
+      throw new TypeError('Failed to fetch')
+    })
+    const waiting = { state: 'unavailable', reason: 'temporarily_unavailable', linked: true }
+    expect(await f.coordinator.run('status')).toEqual(waiting)
+    expect(f.stored()).not.toHaveProperty('installation')
+    expect(await f.coordinator.localAccountId()).toBe(creds.accountId)
+    expect(await f.coordinator.localDeviceId()).toBe(creds.deviceId)
+    expect(await f.coordinator.isInstallationIdentity()).toBe(false)
+    expect(f.identityChanged).not.toHaveBeenCalled()
+    // The worker stopped; a new one waits out the 30 s, then sends the same refresh.
+    const restarted = fixture(f.stored())
+    expect(await restarted.coordinator.run('status')).toEqual(waiting)
+    expect(restarted.request).not.toHaveBeenCalled()
+    restarted.advance(30_000)
+    const next = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64) }
+    restarted.request.mockResolvedValueOnce({ status: 200, body: next })
+    expect(await restarted.coordinator.run('status')).toMatchObject({ state: 'linked', accountId: creds.accountId, twitch: true })
+    expect(restarted.request).toHaveBeenCalledExactlyOnceWith('/v1/account/devices/refresh', { refreshToken: old.refreshToken })
+    expect(restarted.stored()).toMatchObject({ kind: 'linked', token: next.token, refreshToken: next.refreshToken, twitch: true })
+  })
+  it('a Twitch device keeps its credentials through a 503, and relinks only after an authoritative rejection', async () => {
+    const f = fixture({ ...creds, twitch: true, expiresAt: iso(0) })
+    f.request.mockResolvedValueOnce({ status: 503, body: null })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable', linked: true })
+    expect(f.stored()).toMatchObject({ kind: 'refreshing', credentials: { token: creds.token, twitch: true } })
+    f.advance(30_000)
+    f.request.mockResolvedValueOnce({ status: 401, body: null })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'relink_required' })
+    expect(f.request).toHaveBeenCalledTimes(2)
+  })
+  it('a sign-out during a Twitch refresh retry disconnects the pair the server holds', async () => {
+    // The lost reply rotated the pair, so the kept token is dead: resend the
+    // refresh, then disconnect the pair it answers with.
+    const f = fixture({ ...creds, twitch: true, expiresAt: iso(0) })
+    f.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await f.coordinator.run('status')
+    const current = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64) }
+    f.request.mockResolvedValueOnce({ status: 200, body: current })
+    f.request.mockResolvedValueOnce({ status: 204, body: null })
+    expect(await f.coordinator.run('disconnect')).toEqual({ state: 'signed_out' })
+    expect(f.request.mock.calls.slice(1)).toEqual([
+      ['/v1/account/devices/refresh', { refreshToken: creds.refreshToken }],
+      ['/v1/account/devices/disconnect', { token: current.token }],
+    ])
+    expect(f.stored()).toBeNull()
+  })
+  it('a sign-out during a refresh retry trusts a refused resend, and falls back to the kept token when the resend fails', async () => {
+    // Refused: the server revoked the device (a late replay) or it was gone.
+    const refused = fixture({ ...creds, twitch: true, expiresAt: iso(0) })
+    refused.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await refused.coordinator.run('status')
+    refused.request.mockResolvedValueOnce({ status: 401, body: null })
+    expect(await refused.coordinator.run('disconnect')).toEqual({ state: 'signed_out' })
+    expect(refused.request).toHaveBeenCalledTimes(2)
+    expect(refused.stored()).toBeNull()
+    // Unreachable: disconnect the kept token, which is live if the lost request never arrived.
+    const offline = fixture({ ...creds, twitch: true, expiresAt: iso(0) })
+    offline.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await offline.coordinator.run('status')
+    offline.request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    offline.request.mockResolvedValueOnce({ status: 204, body: null })
+    expect(await offline.coordinator.run('disconnect')).toEqual({ state: 'signed_out' })
+    expect(offline.request).toHaveBeenLastCalledWith('/v1/account/devices/disconnect', { token: creds.token })
+    expect(offline.stored()).toBeNull()
   })
   it('serializes bookmark credentials with refresh and binds operations to their account', async () => {
     const f = fixture({ ...creds, expiresAt: iso(0) })
@@ -272,6 +343,24 @@ describe('private supporter account coordinator', () => {
     expect((await restarted.coordinator.run('status')).state).toBe('relink_required')
     expect(restarted.request).not.toHaveBeenCalled()
   })
+  it('marks a Continue with Twitch pair, and keeps the mark through renewal and a worker restart', async () => {
+    const f = fixture(null)
+    expect(await f.coordinator.adopt(creds, f.coordinator.identityGeneration, 'twitch')).toMatchObject({ adopted: true, account: { state: 'linked', twitch: true } })
+    expect(f.stored()).toMatchObject({ kind: 'linked', twitch: true })
+    f.advance(10_000_000)
+    const successor = { ...creds, token: 'e'.repeat(64), refreshToken: 'f'.repeat(64), expiresAt: iso(20_000) }
+    f.request.mockResolvedValueOnce({ status: 200, body: successor })
+    expect(await f.coordinator.run('status')).toEqual({ state: 'linked', accountId: creds.accountId, expiresAt: successor.expiresAt, twitch: true })
+    expect(f.stored()).toMatchObject({ kind: 'linked', twitch: true, token: successor.token })
+    const restarted = fixture(f.stored())
+    restarted.advance(10_000_000)
+    expect(await restarted.coordinator.run('status')).toMatchObject({ state: 'linked', twitch: true })
+    // A device link and a stored record without the mark stay unmarked.
+    const linkedByCode = fixture(null)
+    expect((await linkedByCode.coordinator.adopt(creds, linkedByCode.coordinator.identityGeneration)).account).not.toHaveProperty('twitch')
+    expect(await fixture(creds).coordinator.run('status')).not.toHaveProperty('twitch')
+    expect(await fixture({ ...creds, twitch: 'yes' }).coordinator.run('status')).not.toHaveProperty('twitch')
+  })
   it('never accepts a refresh for another account', async () => {
     const f = fixture({ ...creds, expiresAt: iso(0) })
     f.request.mockResolvedValueOnce({ status: 200, body: { ...creds, accountId: '33333333-3333-4333-8333-333333333333' } })
@@ -472,6 +561,7 @@ describe('worker-owned journey completion', () => {
       [{ finish: 'halo', setAt: now - 1000 }, snapshot('active', { cacheUntil: iso(-1) }), 'kept'],
       [{ finish: 'halo', setAt: now - 1000, accountId: '33333333-3333-4333-8333-333333333333' }, snapshot('active'), null],
       [{ finish: 'halo', setAt: now - 8 * 86_400_000 }, snapshot('active'), null],
+      [{ finish: 'halo', setAt: Number.NaN }, snapshot('active'), null],
       [{ finish: 'chrome', setAt: now - 1000 }, snapshot('active'), null],
     ]
     for (const [intent, body, expected] of cases) {
@@ -503,6 +593,7 @@ describe('worker-owned journey completion', () => {
     expect(await f.coordinator.setFinishIntent('halo')).toBe('halo')
     expect(f.intent()).toMatchObject({ finish: 'halo', accountId: creds.accountId })
     expect(await f.coordinator.finishIntent()).toBe('halo')
+    expect(await f.coordinator.finishIntentDetails()).toEqual({ finish: 'halo', setAt: now })
     f.request.mockResolvedValueOnce({ status: 200, body: { enabled: true, finish: 'glass' } })
     expect(await f.coordinator.saveCosmetics({ enabled: true, finish: 'glass' })).toBe(true)
     expect(f.intent()).toBeNull()
@@ -514,6 +605,47 @@ describe('worker-owned journey completion', () => {
     const unlinked = journey()
     await unlinked.coordinator.setFinishIntent('halo')
     expect(unlinked.intent()).toEqual({ finish: 'halo', setAt: now })
+  })
+
+  it('projects the original save time without the private account binding, until the seven-day boundary passes', async () => {
+    const intent = { finish: 'etched', setAt: now - 1000, accountId: creds.accountId }
+    const f = journey(creds, intent)
+    expect(await f.coordinator.finishIntentDetails()).toEqual({ finish: 'etched', setAt: now - 1000 })
+    f.advance(FINISH_INTENT_TTL_MS - 1000)
+    expect(await f.coordinator.finishIntentDetails()).toEqual({ finish: 'etched', setAt: now - 1000 })
+    f.advance(1)
+    expect(await f.coordinator.finishIntentDetails()).toBeNull()
+    expect(await f.coordinator.finishIntent()).toBeNull()
+    expect(f.intent()).toEqual(intent)
+    expect(f.request).not.toHaveBeenCalled()
+  })
+
+  it('does not project a missing, malformed, future or expired saved choice', async () => {
+    for (const intent of [
+      null,
+      { finish: 'chrome', setAt: now },
+      { finish: 'halo', setAt: String(now) },
+      { finish: 'halo', setAt: Number.NaN },
+      { finish: 'halo', setAt: Number.POSITIVE_INFINITY },
+      { finish: 'halo', setAt: now + 1 },
+      { finish: 'halo', setAt: now - FINISH_INTENT_TTL_MS - 1 },
+      { finish: 'halo', setAt: now, accountId: 'invalid' },
+    ]) {
+      const f = journey(creds, intent)
+      expect(await f.coordinator.finishIntentDetails()).toBeNull()
+      expect(await f.coordinator.finishIntent()).toBeNull()
+      expect(f.request).not.toHaveBeenCalled()
+    }
+  })
+
+  it('returns null for a failed save even when an earlier choice remains stored', async () => {
+    const earlier = { finish: 'etched', setAt: now - 1000, accountId: creds.accountId }
+    const coordinator = new SupporterAccountCoordinator({
+      read: async () => creds, write: async () => {}, request: vi.fn(), now: () => now,
+      readIntent: async () => earlier, writeIntent: async () => { throw new Error('storage unavailable') },
+    })
+    expect(await coordinator.setFinishIntent('halo')).toBeNull()
+    expect(await coordinator.finishIntentDetails()).toEqual({ finish: 'etched', setAt: now - 1000 })
   })
 
   it('accepts the finish-choice message only in its exact shapes, from extension pages', () => {

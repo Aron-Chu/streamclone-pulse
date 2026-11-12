@@ -1,0 +1,350 @@
+import { describe, expect, it } from 'vitest'
+import type { HubLiveChannel, HubLivePulseMoment } from '../src/lib/publicHub'
+import type { HubChannelScreenerV1, HubScreenerMetric } from '../src/lib/channelScreenerContract'
+import {
+  boxArtAt,
+  busiestCue,
+  busiestShowsPictures,
+  busiestTip,
+  channelRows,
+  channelVs,
+  formatHubMultiplier,
+  formatHubRate,
+  gameInitials,
+  hubCategoryArt,
+  hubEmoteHref,
+  hubGameHref,
+  hubSearchEmotes,
+  hubSearchGames,
+  hubClock,
+  hubSavedAt,
+  hubSavedClock,
+  hubAvatarTone,
+  hubMonogram,
+  isLowMultiplier,
+  measuredFacts,
+  momentHref,
+  momentReasonLabel,
+  momentRowsV5,
+  multiplierWords,
+  rackFoot,
+  rankBusiest,
+  searchChannels,
+  searchEmotes,
+  searchGames,
+  topEmoteRows,
+  typedLogin,
+  whereChatIs,
+} from '../src/ui/components/hub/v5/hubV5Model'
+
+const W0 = Date.UTC(2026, 9, 19, 17, 45)
+const W1 = W0 + 5 * 60_000
+
+function metric(over: Partial<HubScreenerMetric> = {}): HubScreenerMetric {
+  return {
+    state: 'ready',
+    currentPerMin: 120,
+    baselinePerMin: 60,
+    absoluteDeltaPerMin: 60,
+    changePct: 100,
+    multiplier: 2,
+    currentMeasuredMinutes: 5,
+    currentExpectedMinutes: 5,
+    baselineMeasuredMinutes: 40,
+    baselineExpectedMinutes: 40,
+    baselineCoveragePct: 100,
+    ...over,
+  }
+}
+
+function screener(chat: Partial<HubScreenerMetric> | null, window: { start?: number; end?: number; measured?: number } = {}): HubChannelScreenerV1 {
+  return {
+    version: 1,
+    measuredAt: W1,
+    baselineKind: 'current_stream_measured_average',
+    state: 'ready',
+    currentWindow: { start: window.start ?? W0, end: window.end ?? W1, expectedMinutes: 5, measuredMinutes: window.measured ?? 5, coveragePct: 100 },
+    baselineWindow: null,
+    baselineMeasuredMinutes: 40,
+    evidence: null,
+    chat: chat ? metric(chat) : null,
+    emotes: null,
+  }
+}
+
+function channel(login: string, over: Partial<HubLiveChannel> = {}, chat: Partial<HubScreenerMetric> | null = {}, window = {}): HubLiveChannel {
+  return {
+    login,
+    displayName: login.toUpperCase(),
+    category: 'Just Chatting',
+    streamId: `s-${login}`,
+    viewers: 1000,
+    chatPerMin: 0,
+    seventvPerMin: 0,
+    coverageState: 'synced',
+    trendPct: 0,
+    screenerV1: screener(chat, window),
+    ...over,
+  } as HubLiveChannel
+}
+
+describe('hub v5 formatting', () => {
+  it('formats rates, multipliers and words like the mockup', () => {
+    expect(formatHubRate(4.26)).toBe('4.3')
+    expect(formatHubRate(1234.4)).toBe('1,234')
+    expect(formatHubRate(null)).toBe('—')
+    expect(formatHubMultiplier(1.66)).toBe('1.7×')
+    expect(formatHubMultiplier(12)).toBe('10×+')
+    expect(isLowMultiplier(0.94)).toBe(true)
+    expect(isLowMultiplier(0.96)).toBe(false)
+    expect(multiplierWords(14)).toBe('at least 10')
+  })
+
+  it('gives every login a stable tone and a two-letter monogram', () => {
+    expect(hubAvatarTone('xqc')).toBe(hubAvatarTone('xqc'))
+    expect(hubMonogram('Kai Cenat', 'kaicenat')).toBe('KA')
+    expect(hubMonogram(undefined, '__')).toBe('?')
+  })
+})
+
+describe('a saved copy’s time (N1, 10-28)', () => {
+  const at = (d: number, h: number, m: number, s = 0) => new Date(2026, 9, d, h, m, s).getTime()
+
+  it('keeps today’s plain clock', () => {
+    expect(hubSavedClock(at(28, 10, 50), at(28, 11, 5))).toBe(hubClock(at(28, 10, 50)))
+    expect(hubSavedClock(at(28, 10, 50), at(28, 11, 5))).toMatch(/^10:50\sAM$/)
+  })
+
+  it('says the day when it is not today', () => {
+    expect(hubSavedClock(at(27, 23, 30), at(28, 2, 0))).toBe(`yesterday, ${hubClock(at(27, 23, 30))}`)
+    expect(hubSavedClock(at(27, 23, 30), at(28, 2, 0))).toMatch(/^yesterday, 11:30\sPM$/)
+    expect(hubSavedClock(at(26, 10, 50), at(28, 9, 0))).toBe(`Oct 26, ${hubClock(at(26, 10, 50))}`)
+    // across a year end
+    const nye = new Date(2026, 11, 31, 23, 0).getTime()
+    expect(hubSavedClock(nye, new Date(2027, 0, 1, 1, 0).getTime())).toBe(`yesterday, ${hubClock(nye)}`)
+  })
+
+  it('takes the day and minute it was saved, never a time later than now', () => {
+    expect(hubSavedClock(at(27, 23, 59, 40), at(28, 0, 5))).toMatch(/^yesterday, 11:59\sPM$/)
+    expect(hubSavedClock(at(28, 10, 50, 40), at(28, 10, 50, 50))).toMatch(/^10:50\sAM$/)
+    // A copy stamped ahead of this clock reads as now.
+    expect(hubSavedClock(at(28, 10, 52), at(28, 10, 50, 30))).toMatch(/^10:50\sAM$/)
+  })
+
+  it('reads in Channels as "at" a time today, else the day and time', () => {
+    expect(hubSavedAt(at(28, 10, 50), at(28, 11, 5))).toMatch(/^at 10:50\sAM$/)
+    expect(hubSavedAt(at(27, 23, 30), at(28, 2, 0))).toMatch(/^yesterday, 11:30\sPM$/)
+    expect(hubSavedAt(at(26, 21, 5), at(28, 9, 0))).toMatch(/^Oct 26, 9:05\sPM$/)
+  })
+})
+
+describe('Busiest now', () => {
+  it('ranks the shared 5-minute window by chat, then viewers, then login, and leaves out other windows', () => {
+    const live = [
+      channel('b', { viewers: 10 }, { currentPerMin: 300 }),
+      channel('a', { viewers: 10 }, { currentPerMin: 300 }),
+      channel('c', { viewers: 99 }, { currentPerMin: 300 }),
+      channel('d', {}, { currentPerMin: 900 }, { start: W0 - 60_000, end: W1 - 60_000 }),
+      channel('e', {}, { currentPerMin: 100 }, { measured: 4 }),
+      channel('f', { coverageState: 'viewers_only' as HubLiveChannel['coverageState'] }, null),
+    ]
+    const set = rankBusiest(live)
+    expect(set.rows.map((r) => r.login)).toEqual(['c', 'a', 'b'])
+    expect(set.eligible).toBe(4)
+    expect(set.synced).toBe(5)
+    expect(set.noWindow).toBe(1)
+    expect(set.otherWindow).toBe(1)
+    expect(set.rows[0]!.href).toBe('/analytics/c/s-c')
+    expect(busiestCue(set, W1 + 60_000)).toBe('live')
+    expect(busiestCue(set, W1 + 10 * 60_000)).toBe('stale')
+    expect(busiestTip(set, 'stale')).toMatch(/^Not updated since /)
+    expect(busiestTip(set, 'live')).toContain('1 channel reported a different window and is left out.')
+  })
+
+  it('is empty with no full window', () => {
+    const set = rankBusiest([channel('a', {}, {}, { measured: 3 })])
+    expect(set.rows).toEqual([])
+    expect(Number.isNaN(set.windowEnd)).toBe(true)
+    expect(busiestCue(set, W1)).toBe('stale')
+  })
+
+  it('shows Twitch live pictures only beside live 5-minute numbers (mockup §5, 10-31)', () => {
+    const set = rankBusiest([channel('a', {}, { currentPerMin: 300 })])
+    expect(busiestShowsPictures(set, busiestCue(set, W1 + 60_000))).toBe(true)
+    expect(busiestShowsPictures(set, busiestCue(set, W1 + 10 * 60_000))).toBe(false)
+    expect(busiestShowsPictures({ ...set, basis: 'avg_35' }, 'live')).toBe(false)
+    expect(busiestTip(set, 'live').split('\n').at(-1)).toBe('Live means numbers under 3 minutes old. While they are, each tile shows Twitch’s live picture, which can be a few minutes old; a channel Twitch has no picture for shows its profile picture.')
+  })
+})
+
+describe('Where chat is', () => {
+  it('sums chat per game from chat-counted rows only', () => {
+    const live = [
+      channel('a', { category: 'Fortnite' }, { currentPerMin: 300 }),
+      channel('b', { category: 'Fortnite' }, { currentPerMin: 100 }),
+      channel('c', { category: '' }, { currentPerMin: 100 }),
+      channel('d', { category: 'Chess' }, { currentPerMin: 999 }, { measured: 2 }),
+    ]
+    const games = whereChatIs(live)
+    expect(games.top.map((g) => g.name)).toEqual(['Fortnite', 'No category'])
+    expect(games.top[0]!.chatShare).toBeCloseTo(80)
+    expect(games.top[0]!.rows.map((c) => c.login)).toEqual(['a', 'b'])
+    expect(games.counted).toBe(3)
+    expect(games.noWindow).toBe(1)
+  })
+})
+
+describe('Channels', () => {
+  const live = [
+    channel('big', { viewers: 9000 }, { currentPerMin: 50, multiplier: 1.2 }),
+    channel('hot', { viewers: 100, category: 'Chess' }, { currentPerMin: 400, multiplier: 3.1 }),
+    channel('young', { viewers: 500 }, { currentPerMin: 80, multiplier: 4, baselineMeasuredMinutes: 6 }),
+    channel('quiet', { viewers: 300 }, { currentPerMin: 3, multiplier: 0.5 }),
+    channel('viewersonly', { viewers: 700, coverageState: 'viewers_only' as HubLiveChannel['coverageState'] }, null),
+  ]
+
+  it('gates vs own avg on ready, the 5/min floor and 10 measured minutes', () => {
+    expect(channelVs(live[0]!)).toEqual({ x: 1.2 })
+    expect(channelVs(live[2]!)).toEqual({ why: 'no comparison' })
+    expect(channelVs(live[3]!)).toEqual({ why: 'no comparison' })
+    expect(channelVs(live[4]!)).toEqual({ why: 'viewers only' })
+    expect(channelVs(channel('w', {}, { state: 'warming', reason: 'baseline_warming', multiplier: null }))).toEqual({ why: 'avg warming up' })
+  })
+
+  it('sorts with nulls last and filters by text and game', () => {
+    const q = { q: '', game: null, sort: 'viewers' as const, dir: -1 as const }
+    expect(channelRows(live, q).map((c) => c.login)).toEqual(['big', 'viewersonly', 'young', 'quiet', 'hot'])
+    expect(channelRows(live, { ...q, sort: 'vs' }).map((c) => c.login)).toEqual(['hot', 'big', 'viewersonly', 'young', 'quiet'])
+    expect(channelRows(live, { ...q, sort: 'vs', dir: 1 }).map((c) => c.login).slice(0, 2)).toEqual(['big', 'hot'])
+    expect(channelRows(live, { ...q, q: 'chess' }).map((c) => c.login)).toEqual(['hot'])
+    expect(channelRows(live, { ...q, game: 'Just Chatting' }).map((c) => c.login)).toEqual(['big', 'young', 'quiet'])
+  })
+})
+
+describe('Moments', () => {
+  const comparison = (chat: object, emotes: object = { state: 'unavailable' }) =>
+    ({ baselineWindow: { start: 0, end: 0, expectedMinutes: 20, measuredMinutes: 20, coveragePct: 100 }, chat, emotes }) as HubLivePulseMoment['comparison']
+
+  it('labels reasons in prod wording', () => {
+    expect(momentReasonLabel('chat', 'Chat spike')).toBe('Chat spike')
+    expect(momentReasonLabel('seventv', '')).toBe('Emote spike')
+    expect(momentReasonLabel('emote_spike', '')).toBe('Emote spike')
+    expect(momentReasonLabel('', 'Big minute')).toBe('Big minute')
+  })
+
+  it('orders newest first, gates the comparison and names the top emote only above 25%', () => {
+    const rows = momentRowsV5([
+      { login: 'old', at: 1, offsetSeconds: 600, score: 1, label: 'Chat spike', kind: 'chat', chatPerMin: 200, comparison: comparison({ state: 'ready', currentPerMin: 200, baselinePerMin: 50, multiplier: 4, baselineMeasuredMinutes: 20 }) },
+      { login: 'new', at: 2, offsetSeconds: 125.7, score: 1, label: 'Emote spike', kind: 'seventv', emotesPerMin: 100, topEmoteCode: 'KEKW', topEmotes: [{ name: 'KEKW', count: 30, sharePct: 30 }], comparison: comparison({ state: 'unavailable' }, { state: 'warming', reason: 'baseline_warming' }) },
+      { login: 'odd', at: 0, offsetSeconds: 60, score: 1, label: 'Chat spike', kind: 'chat', chatPerMin: 150, comparison: comparison({ state: 'ready', currentPerMin: 151, multiplier: 2, baselineMeasuredMinutes: 20 }) },
+      { at: 3, offsetSeconds: 1, score: 1, label: 'x' },
+    ] as HubLivePulseMoment[])
+    expect(rows.map((r) => r.login)).toEqual(['new', 'old', 'odd'])
+    expect(rows[0]!.cmp).toEqual({ why: 'new stream', long: 'Too early to compare: the stream had been live about 2 min, too soon for its own average.' })
+    expect(rows[0]!.topEmoteName).toBe('KEKW')
+    expect(rows[0]!.href).toBe('/analytics/moments?login=new&stream=&offset=125')
+    expect(rows[1]!.cmp).toEqual({ x: 4, avg: 50, mins: 20 })
+    expect('why' in rows[2]!.cmp && rows[2]!.cmp.why).toBe('not compared')
+  })
+
+  it('builds the Moments deep link', () => {
+    expect(momentHref({ login: 'a', streamId: '9', offsetSeconds: 61.9 })).toBe('/analytics/moments?login=a&stream=9&offset=61')
+  })
+})
+
+describe('Top emotes and search', () => {
+  it('scales bars against the top emote', () => {
+    const rows = topEmoteRows([{ name: 'A', count: 10, sharePct: 20 }, { name: 'B', count: 1, sharePct: 0.1 }])
+    expect(rows.map((r) => [r.share, r.width])).toEqual([['20.0%', 100], ['0.1%', 2]])
+  })
+
+  it('reads a login from what was typed and offers the open row', () => {
+    expect(typedLogin('  https://www.twitch.tv/XQC/videos ')).toBe('xqc')
+    expect(typedLogin('@Shroud')).toBe('shroud')
+    const live = [channel('xqc', { viewers: 5 }), channel('xqcow', { viewers: 9 })]
+    const hit = searchChannels(live.slice().sort((a, b) => b.viewers - a.viewers), 'xqc')
+    expect(hit.channels.map((c) => c.login)).toEqual(['xqcow', 'xqc'])
+    expect(hit.openLogin).toBeNull()
+    expect(searchChannels(live, 'someone_else').openLogin).toBe('someone_else')
+    expect(searchChannels(live, 'a b').empty).toBe(true)
+    expect(searchChannels(live, '').heading).toBe('Busiest live channels')
+  })
+})
+
+describe('Search: games and emotes (3A, 11-02)', () => {
+  const share = (name: string, logins: string[]) => ({ name, chat: 1, viewers: 1, chatShare: 1, viewerShare: 1, rows: logins.map((l) => channel(l)) })
+
+  it('offers the games the filter can list, with their chat-counted channels and box art', () => {
+    const games = hubSearchGames(
+      { all: [share('Just Chatting', ['a', 'b', 'c']), share('No category', ['d']), share('VALORANT', ['e']), share('Empty', [])] },
+      new Map([['VALORANT', 'https://art.test/v.jpg']]),
+    )
+    expect(games).toEqual([
+      { name: 'Just Chatting', n: 3, art: undefined },
+      { name: 'VALORANT', n: 1, art: 'https://art.test/v.jpg' },
+    ])
+  })
+
+  it('sums the emotes the intervals counted, one row per provider and name', () => {
+    const emotes = hubSearchEmotes([
+      { topEmotes: [{ name: 'KEKW', provider: 'twitch', count: 5 }, { name: 'OMEGALUL', provider: 'bttv', count: 2 }] },
+      { topEmotes: [{ name: 'KEKW', provider: 'twitch', count: 7 }, { name: 'KEKW', provider: 'seventv', count: 3 }, { name: '', count: 9 }, { name: 'Zero', count: 0 }] },
+      { topEmotes: undefined },
+    ])
+    expect(emotes.map((e) => [e.name, e.provider, e.uses])).toEqual([['KEKW', 'twitch', 12], ['KEKW', 'seventv', 3], ['OMEGALUL', 'bttv', 2]])
+  })
+
+  it('matches names from two letters: whole name, then start, then part; bigger first', () => {
+    const games = [{ name: 'Grand Theft Auto V', n: 40 }, { name: 'GTFO', n: 2 }, { name: 'Just Chatting', n: 90 }, { name: 'Chess', n: 5 }]
+    expect(searchGames(games, 'g')).toEqual([])
+    expect(searchGames(games, 'gt').map((g) => g.name)).toEqual(['GTFO'])
+    expect(searchGames(games, 'ch').map((g) => g.name)).toEqual(['Chess', 'Just Chatting'])
+    expect(searchGames(games, 'just chatting').map((g) => g.name)).toEqual(['Just Chatting'])
+    const emotes = [{ name: 'kekw', uses: 90 }, { name: 'KEKW', uses: 50 }, { name: 'KEKWait', uses: 200 }, { name: 'LUL', uses: 1 }, { name: 'OMEGALUL', uses: 9 }]
+    expect(searchEmotes(emotes, 'KEKW').map((e) => e.name)).toEqual(['KEKW', 'kekw', 'KEKWait'])
+    expect(searchEmotes(emotes, 'lul', 1).map((e) => e.name)).toEqual(['LUL'])
+  })
+
+  it('links to the hub with its game filter or the emote map', () => {
+    expect(hubGameHref('Grand Theft Auto V')).toBe('/analytics?game=Grand%20Theft%20Auto%20V')
+    expect(hubEmoteHref('KEKW')).toBe('/analytics?emote=KEKW')
+  })
+})
+
+describe('How this is measured', () => {
+  it('counts lower-bound intervals and the viewer roster', () => {
+    const facts = measuredFacts({
+      poolSize: 2000,
+      activity: { points: [{ t: 1, providerCountsLowerBound: true, viewerExpectedContributors: 50 }, { t: 2 }] },
+    } as never)
+    expect(facts).toEqual({ poolSize: 2000, lowerBoundBuckets: 1, buckets: 2, roster: 50 })
+  })
+})
+
+describe('hub v5 rack (Where chat is)', () => {
+  const game = (name: string, chatShare: number) => ({ name, chat: chatShare, viewers: 0, chatShare, viewerShare: 0, rows: [] })
+
+  it('sums the games past the rows shown', () => {
+    const all = [game('Game One', 50), game('Game Two', 30), game('Game Three', 12), game('Game Four', 8)]
+    expect(rackFoot({ all }, 2)).toBe('The other 2 games: 20.0% of chat')
+    expect(rackFoot({ all }, 4)).toBe('Every game shown')
+  })
+
+  it('makes initials from the first two words', () => {
+    expect(gameInitials('Synthetic Racing Game')).toBe('SR')
+    expect(gameInitials('puzzler')).toBe('P')
+    expect(gameInitials('  two   spaces ')).toBe('TS')
+  })
+
+  it('takes vetted box art per category, first one wins', () => {
+    const art = hubCategoryArt([
+      { category: 'Game One', boxArtUrl: 'https://img.test/a-52x72.jpg' },
+      { category: 'Game One', boxArtUrl: 'https://img.test/b-52x72.jpg' },
+      { category: 'Game Two', boxArtUrl: 'https://img.test/c-52x72.jpg', categoryMetadataRejected: true },
+      { category: 'Game Three' },
+    ] as Parameters<typeof hubCategoryArt>[0])
+    expect([...art]).toEqual([['Game One', 'https://img.test/a-52x72.jpg']])
+    expect(boxArtAt('https://img.test/a-52x72.jpg', 90, 120)).toBe('https://img.test/a-90x120.jpg')
+    expect(boxArtAt('https://img.test/a.jpg', 90, 120)).toBe('https://img.test/a.jpg')
+  })
+})

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './helpers/portalMockedTest'
 import { buildMinutes, installPortalAcceptanceHarness, openAnalyticsSession } from './helpers/portalAcceptanceHarness'
 
 // U8 (plan §1.2, §3 A2-A6): the session page's chart part is d3's (toolbar,

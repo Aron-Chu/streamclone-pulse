@@ -1,13 +1,34 @@
 import type { LibraryCommand, LibrarySnapshot, MomentReference } from '../ui/library/model.ts'
 import type { PulseBookmark } from './messages.ts'
+import { keptVodOriginDelta } from './vodOriginAlignment.ts'
+import { BACKUP_MAX_HISTORY, BACKUP_MAX_SAVES, validBackupMoment } from './myMomentsBackup.ts'
 
-export type MyMomentsCommand = Extract<LibraryCommand, { kind: 'save' | 'unsave' | 'edit' | 'clear-history' | 'preferences' | 'import-device-saves' | 'history-sync' }>
+export type MyMomentsCommand = Extract<LibraryCommand, { kind: 'save' | 'unsave' | 'edit' | 'clear-history' | 'preferences' | 'import-device-saves' | 'history-sync'
+  | 'remove-visit' | 'restore-visit' | 'import-backup' | 'import-device-history' }>
+/** How a Twitch account answered the one-time "move this browser's saves" ask. */
+export type FirstSignInAnswer = 'move' | 'later' | 'not-mine'
 export type MyMomentsRequest =
   | { type: 'MY_MOMENTS'; action: 'load' }
   | { type: 'MY_MOMENTS'; action: 'recent' }
+  /**
+   * The one-time ask after a Twitch sign-in: whether to ask the signed-in
+   * account, and whether another Twitch account used this browser before.
+   * `answer` records the account's answer; it moves nothing by itself.
+   */
+  | { type: 'MY_MOMENTS'; action: 'first-sign-in'; answer?: FirstSignInAnswer }
   | { type: 'MY_MOMENTS'; action: 'mutate'; scope: string; command: MyMomentsCommand }
-  | { type: 'MOMENT_CAPTURE'; action: 'status' }
+  /** `reference`: the moment a jump or arrival plays, so its picture can be kept (src/background/momentPictures.ts). */
+  | { type: 'MOMENT_CAPTURE'; action: 'status'; reference?: MomentReference }
   | { type: 'MOMENT_CAPTURE'; action: 'record'; epoch: number; reference: MomentReference; watchedSeconds: number }
+export interface MyMomentsFirstSignIn { type: 'MY_MOMENTS_FIRST_SIGN_IN'; ask: boolean; otherAccountSeen: boolean }
+/** The worker tells open extension pages that My Moments changed elsewhere: a watched moment joined History. */
+export const MY_MOMENTS_CHANGED = 'MY_MOMENTS_CHANGED'
+/**
+ * A save kept on this device without an account: the hosted bookmark shape an
+ * import posts, plus the VOD origin delta the panel knew when it was saved
+ * (`MomentReference.vodOriginDeltaSeconds`). The delta never leaves the device.
+ */
+export type DeviceBookmark = PulseBookmark & { vodOriginDeltaSeconds?: number }
 /**
  * Why the hosted bookmark list is missing.
  *
@@ -41,13 +62,15 @@ export interface MyMomentsSnapshot extends LibrarySnapshot {
    * Signed out, they are ordinary rows in `moments` and this is empty. Nothing
    * uploads them except an explicit "Add to account" (`import-device-saves`).
    */
-  deviceBookmarks: PulseBookmark[]
+  deviceBookmarks: DeviceBookmark[]
+  /** History this browser kept before the account was linked; Clear history clears it too. */
+  deviceHistory?: number
 }
 
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
 const keys = (v: Record<string, unknown>, allowed: string[]) => Object.keys(v).every(k => allowed.includes(k))
 export function validMomentReference(v: unknown): v is MomentReference {
-  if (!record(v) || !keys(v, ['id', 'channel', 'title', 'vodId', 'streamId', 'offsetSeconds', 'availability'])) return false
+  if (!record(v) || !keys(v, ['id', 'channel', 'title', 'vodId', 'streamId', 'offsetSeconds', 'vodOriginDeltaSeconds', 'availability'])) return false
   return typeof v.id === 'string' && v.id.length > 0 && v.id.length <= 200
     && typeof v.channel === 'string' && /^[a-z0-9_]{1,25}$/.test(v.channel)
     && typeof v.title === 'string' && v.title.length <= 200
@@ -55,11 +78,14 @@ export function validMomentReference(v: unknown): v is MomentReference {
     && (v.streamId === undefined || typeof v.streamId === 'string' && /^\d{6,20}$/.test(v.streamId))
     && !!(v.vodId || v.streamId) && typeof v.offsetSeconds === 'number' && Number.isFinite(v.offsetSeconds)
     && v.offsetSeconds >= 0 && v.offsetSeconds <= 604800
+    // A delta belongs to the VOD it was reported for: never without one.
+    && (v.vodOriginDeltaSeconds === undefined || v.vodId !== null && keptVodOriginDelta(v.vodOriginDeltaSeconds) !== undefined)
     && ['available', 'unavailable', 'unresolved'].includes(String(v.availability))
 }
 export function parseMyMoments(raw: Record<string, unknown>): MyMomentsRequest | null {
   if (raw.type === 'MOMENT_CAPTURE') {
     if (raw.action === 'status' && keys(raw, ['type', 'action'])) return { type: raw.type, action: raw.action }
+    if (raw.action === 'status' && keys(raw, ['type', 'action', 'reference']) && validMomentReference(raw.reference)) return { type: raw.type, action: raw.action, reference: raw.reference }
     if (raw.action !== 'record' || !keys(raw, ['type','action','epoch','reference','watchedSeconds'])
       || !Number.isSafeInteger(raw.epoch) || !validMomentReference(raw.reference)
       || typeof raw.watchedSeconds !== 'number' || !Number.isFinite(raw.watchedSeconds)
@@ -68,12 +94,21 @@ export function parseMyMoments(raw: Record<string, unknown>): MyMomentsRequest |
   }
   if (raw.type !== 'MY_MOMENTS') return null
   if ((raw.action === 'load' || raw.action === 'recent') && keys(raw, ['type','action'])) return { type: raw.type, action: raw.action }
+  if (raw.action === 'first-sign-in' && keys(raw, ['type','action','answer'])) {
+    if (raw.answer === undefined) return { type: raw.type, action: raw.action }
+    return raw.answer === 'move' || raw.answer === 'later' || raw.answer === 'not-mine' ? { type: raw.type, action: raw.action, answer: raw.answer } : null
+  }
   if (raw.action !== 'mutate' || !keys(raw, ['type','action','scope','command']) || typeof raw.scope !== 'string' || raw.scope.length > 500 || !record(raw.command)) return null
   const c = raw.command
   const valid = c.kind === 'save' ? keys(c, ['kind','reference']) && validMomentReference(c.reference)
-    : c.kind === 'clear-history' ? keys(c, ['kind'])
+    : c.kind === 'clear-history' || c.kind === 'import-device-history' ? keys(c, ['kind'])
       : c.kind === 'import-device-saves' ? keys(c, ['kind', 'id']) && (c.id === undefined || typeof c.id === 'string' && c.id.length > 0 && c.id.length <= 200)
       : c.kind === 'history-sync' ? keys(c, ['kind','enabled']) && typeof c.enabled === 'boolean'
+      : c.kind === 'remove-visit' ? keys(c, ['kind','reference']) && validMomentReference(c.reference)
+      : c.kind === 'restore-visit' ? keys(c, ['kind','reference','jumpedAt']) && validMomentReference(c.reference)
+        && typeof c.jumpedAt === 'number' && Number.isSafeInteger(c.jumpedAt) && c.jumpedAt > Date.now() - 91 * 86_400_000 && c.jumpedAt <= Date.now() + 60_000
+      : c.kind === 'import-backup' ? keys(c, ['kind','saves','history']) && Array.isArray(c.saves) && Array.isArray(c.history)
+        && c.saves.length <= BACKUP_MAX_SAVES && c.history.length <= BACKUP_MAX_HISTORY && [...c.saves, ...c.history].every(m => validBackupMoment(m))
       : c.kind === 'preferences' ? keys(c, ['kind','value']) && record(c.value) && keys(c.value, ['captureHistory','retentionDays']) && typeof c.value.captureHistory === 'boolean' && [7,30,90].includes(c.value.retentionDays as number)
         : c.kind === 'edit' || c.kind === 'unsave' ? keys(c, c.kind === 'edit' ? ['kind','id','note'] : ['kind','id']) && typeof c.id === 'string' && c.id.length <= 200 && c.id.length > 0 && (c.kind !== 'edit' || typeof c.note === 'string' && c.note.length <= 1000)
           : false

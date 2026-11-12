@@ -1,10 +1,13 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { BrandMark } from '../BrandMark'
-import { ChromeInstallCta } from '../ChromeInstallCta'
+import { DiscordMark } from '../DiscordMark'
+import { InstallCta } from '../InstallCta'
 import { discordInviteUrl } from '../../../lib/discord'
 import { FEEDBACK_PATH } from '../../../lib/externalLinks'
+import { AccountEntrySlot, MenuAccountSlot } from '../AccountEntrySlot'
+import { accountHeaderEnabled } from '../../../lib/accountHeaderFlag'
 
 export interface AnalyticsTopNavItem {
   label: string
@@ -12,23 +15,20 @@ export interface AnalyticsTopNavItem {
   end?: boolean
 }
 
-export interface AnalyticsTopNavStatus {
-  label: string
-  value: string
-  detail?: string
-  tone?: 'checking' | 'ready' | 'degraded' | 'offline' | 'syncing' | 'muted'
-}
-
 export interface AnalyticsTopNavProps {
   items: AnalyticsTopNavItem[]
-  status?: AnalyticsTopNavStatus
   navigationLabel?: string
+  /** A page's own search in the bar (the hub's docked search), between the links and the buttons. */
+  dock?: ReactNode
+  /** A page's own install button in place of the bar's (the hub hides it while its card shows). */
+  install?: ReactNode
 }
 
 export function AnalyticsTopNav({
   items,
-  status,
   navigationLabel = 'Analytics navigation',
+  dock,
+  install,
 }: AnalyticsTopNavProps) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -61,7 +61,7 @@ export function AnalyticsTopNav({
   }
 
   return (
-    <header className="analytics-topnav" data-analytics-build="command-center-cws-2026-07-22">
+    <header className={accountHeaderEnabled() ? 'analytics-topnav analytics-topnav--account' : 'analytics-topnav'} data-analytics-build="command-center-cws-2026-07-22">
       <a href="#analytics-main" className="analytics-topnav__skip">
         Skip to analytics content
       </a>
@@ -96,14 +96,15 @@ export function AnalyticsTopNav({
             </button>
             <div ref={panelRef} id={panelId} className="analytics-topnav__more-links" data-state={isOpen ? 'open' : 'closed'} aria-hidden={!isOpen}>
               <Link to={FEEDBACK_PATH} onClick={() => closeMenu()}>Send feedback</Link>
-              {discord ? <a href={discord} target="_blank" rel="noopener noreferrer" aria-label="Discord (opens in a new tab)" onClick={() => closeMenu()}>Discord</a> : null}
               <Link to="/docs" onClick={() => closeMenu()}>Extension guide</Link>
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>
               <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
               <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
               {/* No account entries until Continue with Twitch is public: the sign-in
                   page is the invited-tester bridge, sign-ups are closed, and extension
-                  connection codes are tester-only. Testers reach them from account pages. */}
+                  connection codes are tester-only. Testers reach them from account pages.
+                  The header account entry switch (VITE_ACCOUNT_HEADER=1) adds the one link. */}
+              <MenuAccountSlot onNavigate={() => closeMenu()} />
               <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
               <Link to="/terms" onClick={() => closeMenu()}>Terms</Link>
               <Link to="/refunds" onClick={() => closeMenu()}>Cancellation and refunds</Link>
@@ -112,21 +113,18 @@ export function AnalyticsTopNav({
         </nav>
       ) : null}
 
+      {dock}
+
+      {/* Discord stays on the bar at every width (a 44 px mark below 1280 px); install hides on phones. */}
       <div className="analytics-topnav__actions" aria-label="Analytics utilities">
-        <ChromeInstallCta className="analytics-topnav__install" data-cta="chrome-install-analytics" />
-        {status ? (
-          <div
-            className={`analytics-topnav__status analytics-topnav__status--${status.tone ?? 'muted'}`}
-            aria-label={`${status.label}: ${status.value}${status.detail ? ` - ${status.detail}` : ''}`}
-            aria-live="polite"
-            title={status.detail}
-          >
-            <span aria-hidden="true" />
-            <small>{status.label}</small>
-            <strong>{status.value}</strong>
-          </div>
+        {install ?? <InstallCta className="analytics-topnav__install" label="short" icon="mark" data-cta="chrome-install-analytics" />}
+        {discord ? (
+          <a href={discord} target="_blank" rel="noopener noreferrer" className="analytics-topnav__discord" aria-label="Discord (opens in a new tab)">
+            <DiscordMark size={18} /><span>Discord</span>
+          </a>
         ) : null}
       </div>
+      <AccountEntrySlot variant="analytics" />
     </header>
   )
 }

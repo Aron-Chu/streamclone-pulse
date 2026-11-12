@@ -13,7 +13,7 @@ export function formatPulseApiError(raw: string | null | undefined): string | nu
     case 'pulse_backfill_at_capacity':
       return 'Backfill is at capacity on the server. Live tracking still works; try again in a few minutes.'
     case 'extension_watch_disabled':
-      return 'Hosted StreamPulse manages IRC tracking — use Protect on a channel instead of Track.'
+      return 'Hosted StreamPulse picks which channels it tracks — use Protect on a channel instead of Track.'
     default:
       return raw.trim() === EXTENSION_RECONNECT_MESSAGE ? EXTENSION_RECONNECT_MESSAGE : null
   }

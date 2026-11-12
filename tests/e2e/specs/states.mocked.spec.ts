@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import type { Page } from '@playwright/test'
 import { test, expect } from '../helpers/testFixtures.ts'
 import {
@@ -94,6 +95,45 @@ test.describe('extension mocked states', () => {
       // leave the user looking at a blank/recent fallback chart.
       await assertPulseShadowContains(extension.page, /Full stream|Available coverage|Range/i)
     }
+    assertNoUncaughtErrors(evidence)
+  })
+
+  test('a channel Pulse does not chart opens on Chat without saving it, and Pulse says why', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'live-ready', twitchKind: 'live', storage: { sidebarTab: 'pulse' } })
+    const fixture = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-live-ready.json', import.meta.url), 'utf8'))
+    await extension.context.route(
+      'https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*',
+      async route => {
+        if (new URL(route.request().url()).pathname.endsWith('/fixturechan')) {
+          await route.fulfill({ json: { ...fixture, rosterEligible: false } })
+        } else {
+          await route.fallback()
+        }
+      },
+    )
+    await openTwitchChannel(extension.page)
+
+    const chatTab = extension.page.getByRole('tab', { name: 'Chat', exact: true })
+    const pulseTab = extension.page.getByRole('tab', { name: 'Pulse', exact: true })
+    const panel = extension.page.locator('#streamclone-pulse-root')
+    const savedTab = async () => (await readExtensionStorage(extension.serviceWorker, ['sidebarTab'])).sidebarTab
+    // The saved tab is Pulse, so only the off-list answer can put Chat on screen.
+    await expect(chatTab).toHaveAttribute('aria-selected', 'true')
+    await expect(panel).toBeHidden()
+    expect(await savedTab()).toBe('pulse')
+
+    // Pulse still opens on a click, to one card that says why, with the way back.
+    await pulseTab.click()
+    await expect(pulseTab).toHaveAttribute('aria-selected', 'true')
+    await assertPulseShadowContains(extension.page, /Not charted\s*StreamPulse only charts Twitch’s busiest channels\./)
+    await extension.page.getByRole('button', { name: 'Back to chat', exact: true }).click()
+    await expect(chatTab).toHaveAttribute('aria-selected', 'true')
+    await expect(panel).toBeHidden()
+    expect(await savedTab()).toBe('pulse')
     assertNoUncaughtErrors(evidence)
   })
 
@@ -338,10 +378,10 @@ test.describe('extension mocked states', () => {
     await expect(hostPage.locator('.pulse-host-nav [aria-current="page"]')).toHaveCount(1)
     await expect(hostPage.getByRole('link', { name: 'Updates & Changelog' })).toHaveAttribute('aria-current', 'page')
     await expect(hostPage.getByText('Installed version', { exact: true })).toBeVisible()
-    await expect(hostPage.locator('.pulse-changelog-release')).toHaveCount(4)
-    await expect(hostPage.locator('.pulse-changelog-release .pulse-changelog-version')).toHaveText(['v0.2.2', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    await expect(hostPage.locator('.pulse-changelog-release')).toHaveCount(5)
+    await expect(hostPage.locator('.pulse-changelog-release .pulse-changelog-version')).toHaveText(['v0.2.7', 'v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
     // What's new leads the page with the version you have.
-    await expect(hostPage.locator('[data-whatsnew="true"] .pulse-changelog-version')).toHaveText('v0.2.2')
+    await expect(hostPage.locator('[data-whatsnew="true"] .pulse-changelog-version')).toHaveText('v0.2.7')
 
     // The complete page owns the superset, and shared storage changes are reflected
     // by the already-open Twitch quick controls without reloading either surface.
@@ -354,7 +394,7 @@ test.describe('extension mocked states', () => {
     // controls so this test does not regress when chart state changes.
     await expect(hostPage.getByText('Default chart range', { exact: true })).toHaveCount(0)
     await expect(hostPage.getByRole('group', { name: 'Accent theme' })).toBeVisible()
-    await expect(hostPage.getByRole('group', { name: 'Overlay placement' })).toBeVisible()
+    await expect(hostPage.getByRole('group', { name: 'Placement', exact: true })).toBeVisible()
     await expect(hostPage.getByText('Dock when chat is closed', { exact: true })).toBeVisible()
     await hostPage.getByRole('button', { name: /Azure/ }).click()
     await expect(settings.getByRole('button', { name: 'Azure', exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -458,6 +498,7 @@ test.describe('extension mocked states', () => {
     await expect(releasePreview).toContainText('What’s new:')
     const settingsShell = extension.page.locator('#streamclone-pulse-root section[aria-label="StreamPulse overlay"]')
     await expect(settingsShell).toBeVisible()
+    await expect(settings.locator('[data-settings-host-cta="supporter"]')).toHaveAccessibleDescription("Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn't change. Core tools stay free.")
     await expect(settingsShell).toHaveScreenshot('overlay-settings-panel.png', {
       animations: 'disabled',
       // The Supporter card's chat stage is live, scripted motion; its copy and frame stay covered.
@@ -549,7 +590,7 @@ test.describe('extension mocked states', () => {
   test('packaged internal host mounts the shared workspace with stable keyboard order', async ({
     extension,
     prepare,
-  }) => {
+  }, testInfo) => {
     await prepare({ scenario: 'live-ready', twitchKind: 'live' })
     const host = await extension.context.newPage()
     await host.setViewportSize({ width: 1000, height: 720 })
@@ -594,28 +635,27 @@ test.describe('extension mocked states', () => {
     await expect(workspace.locator('[data-settings-section="updates"]')).toBeVisible()
     await expect(workspace.locator('[data-settings-section]')).toHaveCount(1)
     const releases = workspace.locator('.pulse-changelog-release')
-    await expect(releases).toHaveCount(4)
-    await expect(releases.locator('.pulse-changelog-version')).toHaveText(['v0.2.2', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    await expect(releases).toHaveCount(5)
+    await expect(releases.locator('.pulse-changelog-version')).toHaveText(['v0.2.7', 'v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
     const latestRelease = releases.nth(0)
     const olderRelease = releases.nth(1)
     // What's new leads: this version's title and three highlights, with every release folded under it.
     const whatsNew = workspace.locator('[data-whatsnew="true"]')
     await expect(whatsNew).toBeVisible()
     await expect(whatsNew.locator('li')).toHaveCount(3)
-    for (let index = 0; index < 4; index += 1) await expect(releases.nth(index)).toHaveAttribute('data-changelog-open', 'false')
+    for (let index = 0; index < 5; index += 1) await expect(releases.nth(index)).toHaveAttribute('data-changelog-open', 'false')
     expect((await whatsNew.boundingBox())!.y).toBeLessThan((await latestRelease.boundingBox())!.y)
-    // See all changes unfolds this version's notes and moves focus there. New, Improved
-    // and Fixed fold to a count; Known limitations stays open. This release has
-    // no Changed entry: the Supporter preview does not change existing store users.
+    // See all changes unfolds this version's notes and moves focus there. New
+    // and Fixed fold to a count; Known limitations stays open.
     await whatsNew.getByRole('button', { name: 'See all changes ↓', exact: true }).click()
     await expect(latestRelease).toHaveAttribute('data-changelog-open', 'true')
     await expect(latestRelease.locator('.pulse-changelog-toggle')).toBeFocused()
     await expect(olderRelease).toHaveAttribute('data-changelog-open', 'false')
     const groups = latestRelease.locator('details.pulse-changelog-category')
-    await expect(groups.locator('summary h3')).toHaveText(['New', 'Improved', 'Fixed', 'Known limitations'])
+    await expect(groups.locator('summary h3')).toHaveText(['New', 'Fixed', 'Known limitations'])
     await expect(latestRelease.locator('[data-release-category="changed"]')).toHaveCount(0)
-    expect(await groups.evaluateAll(details => details.map(group => (group as HTMLDetailsElement).open))).toEqual([false, false, false, true])
-    await expect(latestRelease.locator('[data-release-category="fixed"] .pulse-changelog-count')).toHaveText('8')
+    expect(await groups.evaluateAll(details => details.map(group => (group as HTMLDetailsElement).open))).toEqual([false, false, true])
+    await expect(latestRelease.locator('[data-release-category="fixed"] .pulse-changelog-count')).toHaveText('1')
     await latestRelease.locator('[data-release-category="fixed"] summary').click()
     await expect(latestRelease.locator('[data-release-category="fixed"] li').first()).toBeVisible()
     await latestRelease.locator('[data-release-category="fixed"] summary').click()
@@ -642,13 +682,22 @@ test.describe('extension mocked states', () => {
     // Soft, like the emote-picker set: the test still fails on any mismatch, but one
     // run records the actual PNG of all three settings-page captures, so a baseline
     // refresh never has to stop at the first stale one.
-    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog.png', {
+    await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('full-settings-changelog-v027.png', {
       animations: 'disabled',
       // Only the Supporter banner's emote pile moves, so it is masked. On wide banners the pile spans the right
       // half under the "View benefits" pill, so the mask hides the pill too: bannerPillOnTop() checks it instead.
       mask: [host.locator('.pulse-supporter-pile')],
       caret: 'hide',
       maxDiffPixelRatio: 0.04,
+    })
+
+    // Retain the actual dated page for cross-platform release-baseline review,
+    // including when a small date change falls within the visual tolerance.
+    await host.locator('.pulse-host').screenshot({
+      path: testInfo.outputPath('full-settings-changelog-current.png'),
+      animations: 'disabled',
+      mask: [host.locator('.pulse-supporter-pile')],
+      caret: 'hide',
     })
 
     // Visual coverage for the complete page shell and its responsive top nav.
@@ -664,7 +713,8 @@ test.describe('extension mocked states', () => {
       const hit = root.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
       return Boolean(banner && box.width > 0 && box.left >= banner.left && box.right <= banner.right && box.top >= banner.top && box.bottom <= banner.bottom && hit && pill.contains(hit))
     })
-    await expect(bannerPill).toHaveText('See what’s coming →')
+    // A browser with no account cannot tell whether sales are open, so the pill makes no claim.
+    await expect(bannerPill).toHaveText('View benefits →')
     expect(await bannerPillOnTop()).toBe(true)
     await expect.soft(host.locator('.pulse-host')).toHaveScreenshot('settings-host-page.png', {
       animations: 'disabled',
@@ -742,7 +792,7 @@ test.describe('extension mocked states', () => {
     await expect(extension.page.locator('[data-test-selector="chat-scrollable-area"]')).toHaveCSS('visibility', 'hidden')
   })
 
-  test('live partial / starting surfaces not-tracked / starting copy', async ({
+  test('live partial / warming tier shows the warm-up card in plain words', async ({
     extension,
     prepare,
     evidence,
@@ -750,8 +800,15 @@ test.describe('extension mocked states', () => {
     await prepare({ scenario: 'live-partial', twitchKind: 'live' })
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
-    // Hosted + warming tier shows the not-tracked live path (starting / not yet IRC-active).
-    await assertPulseShadowContains(extension.page, /Not tracked|IRC pool|Partial|Warming|tracking/i)
+    // Hosted + warming tier: chat is being read, so the channel gets the live
+    // view and its warm-up card. This fixture's refresh fails once; the
+    // overlay keeps the last coverage tier across that failure (mount.tsx), so
+    // the card stays the warm-up card and never drops to a not-charted card.
+    // No pipeline words either way.
+    await assertPulseShadowContains(extension.page, /Warming.*3 \/ 5 minutes collected/)
+    const shadowText = await pulseShadowText(extension.page)
+    expect(shadowText).not.toMatch(/Not charted|Not tracked live/)
+    expect(shadowText).not.toMatch(/IRC pool|IRC chat|rollups are/)
     assertNoUncaughtErrors(evidence)
   })
 
@@ -825,6 +882,51 @@ test.describe('extension mocked states', () => {
     await waitForPulseRoot(extension.page)
     await assertExactlyOnePulseRoot(extension.page)
     await assertOutageCardWithRetry(extension.page)
+    expect(evidence.pageErrors).toEqual([])
+  })
+
+  test('a hosted outage in the sidebar offers Back to chat, unsaved, instead of Open settings', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'api-500', twitchKind: 'live', storage: { sidebarTab: 'pulse' } })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await assertOutageCardWithRetry(extension.page)
+
+    // Settings can't fix a hosted outage; the way out is back to chat, as on
+    // the Not charted card, and it doesn't rewrite the reader's saved tab.
+    const panel = extension.page.locator('#streamclone-pulse-root')
+    const card = panel.locator('.pulse-error-block')
+    const chatTab = extension.page.getByRole('tab', { name: 'Chat', exact: true })
+    const savedTab = async () => (await readExtensionStorage(extension.serviceWorker, ['sidebarTab'])).sidebarTab
+    await expect(card.getByRole('button', { name: 'Open settings', exact: true })).toHaveCount(0)
+    await card.getByRole('button', { name: 'Back to chat', exact: true }).click()
+    await expect(chatTab).toHaveAttribute('aria-selected', 'true')
+    await expect(panel).toBeHidden()
+    expect(await savedTab()).toBe('pulse')
+    expect(evidence.pageErrors).toEqual([])
+  })
+
+  test('a hosted outage in the floating panel shows Retry alone, across the whole row', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'api-500', twitchKind: 'live', storage: { overlayPlacement: 'right' } })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await expect(extension.page.locator('#streamclone-pulse-root')).toHaveAttribute('data-streampulse-styles', 'loaded')
+    await assertOutageCardWithRetry(extension.page)
+
+    // No Chat tab to go back to, and Settings can't fix a hosted outage, so
+    // Retry stands alone and spans the footer row instead of half of it.
+    const footer = extension.page.locator('#streamclone-pulse-root .pulse-error-block .pulse-footer-actions')
+    await expect(footer.getByRole('button')).toHaveCount(1)
+    const retry = (await footer.getByRole('button', { name: 'Retry', exact: true }).boundingBox())!
+    const row = (await footer.boundingBox())!
+    expect(Math.abs(retry.width - row.width)).toBeLessThanOrEqual(1)
     expect(evidence.pageErrors).toEqual([])
   })
 

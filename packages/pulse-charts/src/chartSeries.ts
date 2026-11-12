@@ -1,4 +1,4 @@
-import { parseEmoteKey } from '@streampulse/pulse-core'
+import { sameEmoteKey } from '@streampulse/pulse-core'
 import type { ChartMinuteRollup } from './types.ts'
 import { emoteChartColor } from './chartTheme.ts'
 import { MAX_PLOTTED_EMOTES } from './emotePlotSelection.ts'
@@ -27,12 +27,10 @@ function resolveEmoteMinuteCount(rollup: ChartMinuteRollup, key: string): number
   if (rollup.missing) return 0
   const direct = rollup.emotes?.[key]
   if (direct != null && direct > 0) return direct
-  const targetName = parseEmoteKey(key).name.trim().toLowerCase()
-  if (!targetName || !rollup.emotes) return 0
+  if (!rollup.emotes) return 0
+  // Same provider and name; a key without a provider matches on name alone.
   for (const [rollupKey, count] of Object.entries(rollup.emotes)) {
-    if (count <= 0) continue
-    if (rollupKey === key) return count
-    if (parseEmoteKey(rollupKey).name.trim().toLowerCase() === targetName) return count
+    if (count > 0 && sameEmoteKey(rollupKey, key)) return count
   }
   return 0
 }

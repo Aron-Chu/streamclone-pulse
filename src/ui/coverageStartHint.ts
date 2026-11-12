@@ -21,6 +21,13 @@ export interface CoverageStartHint {
   text: string
 }
 
+/** Where the minutes start, to the minute as the moment rows show it: "Tracked from 00:04". */
+export function trackedFromLabel(offsetSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(offsetSeconds))
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `Tracked from ${pad(Math.floor(seconds / 3600))}:${pad(Math.floor((seconds % 3600) / 60))}`
+}
+
 export function resolveCoverageStartHint(input: CoverageStartHintInput): CoverageStartHint {
   const offset = Math.max(0, input.coverageStartOffsetSeconds ?? 0)
   const trackedFromStart =
@@ -49,6 +56,6 @@ export function resolveCoverageStartHint(input: CoverageStartHintInput): Coverag
   return {
     show: true,
     tone: 'warn',
-    text: `Rollups since ${formatHeatOffset(offset)} — tracking started after stream start`,
+    text: trackedFromLabel(offset),
   }
 }

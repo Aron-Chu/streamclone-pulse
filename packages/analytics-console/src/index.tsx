@@ -4,6 +4,7 @@ export type {
   PulseBookmarkQuery,
   SetupWelcome,
   StartHistoricalSyncOptions,
+  TwitchChannelLookup,
 } from './configureApi.ts'
 export type {
   AnalyticsMinuteRollup,
@@ -37,4 +38,6 @@ export {
   streamWallDurationSeconds,
   trimRollupsToWallDuration,
 } from './utils/gameSegmentChart.ts'
+// (fix, 10-30) GP-8: name-based box art and Twitch's "?" cover check, shared with the hub.
+export { isTwitchPlaceholderBoxArt, twitchBoxArtByName } from './utils/twitchBoxArt.ts'
 export { AnalyticsConsole } from './components/AnalyticsConsole.tsx'

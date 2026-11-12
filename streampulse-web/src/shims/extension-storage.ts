@@ -14,6 +14,8 @@ export const DEFAULT_OVERLAY_MODE: OverlayMode = 'expanded'
 export const DEFAULT_OVERLAY_PLACEMENT: OverlayPlacement = 'sidebar'
 export const DEFAULT_SIDEBAR_TAB: SidebarTab = 'pulse'
 export const DEFAULT_DEFAULT_CHART_WINDOW: DefaultChartWindow = '60m'
+/** Portal shim — no chrome.storage, so nothing listens; momentPicture.ts imports the key. */
+export const MOMENT_PICTURES_KEY = 'momentPicturesEnabled'
 
 export function isLocalStackBackendUrl(url: string): boolean {
   const normalized = url.trim().replace(/\/+$/, '')

@@ -16,7 +16,7 @@ import type { SupporterFinishId } from '../ui/supporterFinish.ts'
  * it. Nothing unbuilt is shown: the preview draws with the overlay's own
  * paint, crest and rain styles.
  */
-export function SupporterLookPreview({ finish, paint, tenure, rain, shown }: {
+export function SupporterLookPreview({ finish, paint, tenure, rain, shown, hideStateLabel = false, seenInChat = false }: {
   finish: SupporterFinishId | null
   paint: SupporterPaintStyle
   tenure: SupporterTenure
@@ -24,6 +24,8 @@ export function SupporterLookPreview({ finish, paint, tenure, rain, shown }: {
   rain: PulseBannerPreference
   /** Whose look it wears: a Supporter's own, the sample, or one being tried; unset while membership is unknown. */
   shown?: 'own' | 'sample' | 'trying'
+  hideStateLabel?: boolean
+  seenInChat?: boolean
 }) {
   return (
     <div className="pulse-supporter-preview" data-supporter-preview={shown ?? 'pending'} style={finishVars(finish) as CSSProperties}>
@@ -42,9 +44,10 @@ export function SupporterLookPreview({ finish, paint, tenure, rain, shown }: {
         </p>
       </div>
       <div className="pulse-supporter-preview-foot">
-        <span>Everyone else on Twitch sees normal chat.</span>
+        <span>{seenInChat ? 'This preview is local. You can separately opt in to show your crest and paint to StreamPulse viewers in chat.' : 'Everyone else on Twitch sees normal chat.'}</span>
         <small data-supporter-perk-names="true">{PERK_NAMES.join(' · ')}</small>
-        {shown ? <small>{shown === 'own' ? 'Your look' : shown === 'trying' ? 'Trying' : 'Sample look'}</small> : null}
+        {/* The card above already says "Sample look"; the preview names only a look that is yours or being tried. */}
+        {shown && shown !== 'sample' && !hideStateLabel ? <small>{shown === 'own' ? 'Your look' : 'Trying'}</small> : null}
       </div>
     </div>
   )

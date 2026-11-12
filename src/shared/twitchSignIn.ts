@@ -4,10 +4,10 @@ import type { SupporterAccountState } from './supporterAccount.ts'
  * Sign in with Twitch build stage, fixed at build time from
  * PULSE_EXTENSION_TWITCH_SIGNIN (see scripts/extension-target.mjs):
  *
- *   - `off` (the default and every store build today): the options page says
- *     Supporter sign-ups are not open yet and keeps the invited-tester device
- *     link behind a closed disclosure. The worker answers TWITCH_SIGN_IN
- *     without network I/O.
+ *   - `off` (the default and every store build today): an explicit nonpaid
+ *     connection checks server availability for an installation account. The
+ *     invited-tester device link stays behind a closed disclosure. The worker
+ *     answers TWITCH_SIGN_IN without network I/O.
  *   - `tester`: development and preview builds for invited testers while the
  *     backend runs Twitch sign-in in pilot mode. Store builds refuse it.
  *   - `public`: Continue with Twitch for everyone. A store build accepts it

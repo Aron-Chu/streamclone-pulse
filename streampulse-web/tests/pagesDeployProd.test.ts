@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { resolvePageMetadata } from '../src/lib/pageMetadata'
 
 const webRoot = resolve(import.meta.dirname, '..')
 const deploymentScript = readFileSync(resolve(webRoot, 'scripts/pages-deploy-prod.mjs'), 'utf8')
@@ -45,14 +46,28 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     }
   })
 
-  it('preserves search discovery while opting out of AI model use', () => {
+  it('lists only pages that ask to be indexed, so Search Console reports no "submitted URL marked noindex"', () => {
+    const sitemap = readFileSync(resolve(webRoot, 'public/sitemap.xml'), 'utf8')
+    const paths = [...sitemap.matchAll(/<loc>https:\/\/streampulse\.stream(\/[^<]*)<\/loc>/g)].map(match => match[1])
+    expect(paths.length).toBeGreaterThan(0)
+    for (const path of paths) expect(resolvePageMetadata(path).robots, path).toBe('index,follow')
+    // Kept out of search on purpose: the Discord page only forwards to the invite, the changelog documents the extension.
+    for (const path of ['/changelog', '/discord']) {
+      expect(resolvePageMetadata(path).robots).toBe('noindex,nofollow')
+      expect(paths).not.toContain(path)
+    }
+  })
+
+  it('permits public retrieval while restricting model training', () => {
     const robots = readFileSync(resolve(webRoot, 'public/robots.txt'), 'utf8')
     const headers = readFileSync(resolve(webRoot, 'public/_headers'), 'utf8')
-    expect(robots).toContain('Content-signal: search=yes, ai-input=no, ai-train=no, use=reference')
-    for (const agent of ['CCBot', 'ClaudeBot', 'GPTBot', 'Google-Extended', 'meta-externalagent']) {
+    expect(robots).toContain('Content-signal: search=yes, ai-input=yes, ai-train=no')
+    for (const agent of ['CCBot', 'ClaudeBot', 'GPTBot', 'meta-externalagent']) {
       expect(robots).toMatch(new RegExp(`User-agent: ${agent}\\s+Disallow: /`, 'i'))
     }
-    expect(headers).toContain('Content-Signal: search=yes, ai-input=no, ai-train=no, use=reference')
+    expect(headers).toContain('Content-Signal: search=yes, ai-input=yes')
+    expect(headers).not.toContain('ai-train=no')
+    expect(robots).toContain('User-agent: Google-Extended\nContent-signal: search=yes, ai-input=yes, ai-train=yes\nAllow: /')
   })
 
   it('ships static redirects for legacy analytics entrypoints and SPA deep links', () => {
@@ -74,10 +89,16 @@ describe('Cloudflare Pages production deployment hygiene', () => {
       '/analytics/:login/s/:streamId', '/analytics/:login/s/:streamId/',
       '/s/:login', '/s/:login/:streamId',
     ]) {
-      // Pages must serve the canonical asset internally while retaining the
+      // Pages must serve the separate noindexed fallback while retaining the
       // requested URL; an .html target produces a browser redirect instead.
-      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics/ 200`)
+      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics-fallback/ 200`)
     }
+  })
+
+  it('temporarily redirects both install entry forms to the existing guide', () => {
+    const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8').split(/\r?\n/)
+    expect(redirects).toContain('/install /docs#extension 302')
+    expect(redirects).toContain('/install/ /docs#extension 302')
   })
 
   it('rewrites every account deep link to the private SPA entry', () => {
@@ -88,6 +109,9 @@ describe('Cloudflare Pages production deployment hygiene', () => {
       expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} / 200`)
       expect(redirects).toContain(`${path}/ ${path} 301`)
     }
+    // Show my Twitch follows returns to a private route that moves itself to the hub.
+    expect(redirects.split(/\r?\n/)).toContain('/account/twitch/callback /analytics-fallback/ 200')
+    expect(redirects).toContain('/account/twitch/callback/ /account/twitch/callback 301')
   })
 
   it('ships Pages security and cache headers', () => {
@@ -99,6 +123,10 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     expect(enforced).toContain("frame-ancestors 'none'")
     expect(enforced).toContain("script-src 'self' https://challenges.cloudflare.com")
     expect(enforced).not.toContain("'unsafe-eval'")
+    // Show my Twitch follows reads from Twitch and cancels its sign-in from the page.
+    for (const policy of [enforced, readFileSync(resolve(webRoot, 'index.html'), 'utf8')]) {
+      expect(policy).toMatch(/connect-src [^;]*https:\/\/api\.twitch\.tv https:\/\/id\.twitch\.tv;/)
+    }
     expect(headers).toContain('/assets/*')
     expect(headers).toContain('/static/*')
     expect(headers).toContain('Cache-Control: public, max-age=31536000, immutable')

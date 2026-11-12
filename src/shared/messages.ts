@@ -9,7 +9,11 @@ export type MessageType =
   | 'SUPPORTER_APPEARANCE'
   | 'SUPPORTER_FINISH_INTENT'
   | 'SUPPORTER_CARD_SCRIPT'
+  | 'SUPPORTER_CHAT_BADGE'
+  | 'SUPPORTER_TWITCH_LINK'
+  | 'CHAT_BADGES'
   | 'MOMENT_FRAMES_SCRIPT'
+  | 'MOMENT_PICTURE'
   | 'CATCH_ME_UP_SCRIPT'
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
@@ -22,6 +26,7 @@ export type MessageType =
   | 'GET_CLIP'
   | 'HEALTH'
   | 'HUB_SNAPSHOT'
+  | 'MOMENT_MINUTE'
   | 'GET_UPDATE_CHECK_CAPABILITY'
   | 'CHECK_FOR_UPDATE'
   | 'OPEN_SETTINGS_HOST'
@@ -31,6 +36,7 @@ export type MessageType =
   | 'MOMENT_CAPTURE'
   | 'SAVE_BOOKMARK'
   | 'DELETE_BOOKMARK'
+  | 'REMOVE_BOOKMARK'
   | 'LIST_WATCHLIST'
   | 'ADD_WATCHLIST'
   | 'REMOVE_WATCHLIST'
@@ -45,6 +51,8 @@ export type MessageType =
   | 'VOD_PULSE_UPDATE'
   | 'REPORT_EXTENSION_DIAGNOSTIC'
   | 'EMIT_EXTENSION_ANALYTICS'
+  | 'PREPARE_ANALYTICS_CONSENT_GRANT'
+  | 'SET_ANALYTICS_CONSENT'
   | 'ENROLL_DEVICE'
   | 'GET_DEVICE_AUTH_STATUS'
   | 'ROTATE_DEVICE'
@@ -78,6 +86,8 @@ export interface GetPulseMessage {
   window?: 'recent' | 'full'
   /** Reject cached pulse when the viewer moved to a different live stream. */
   streamId?: string
+  /** A Retry the viewer pressed: skip the cache and fetch once. */
+  fresh?: boolean
 }
 
 export interface GetClipMessage {
@@ -173,8 +183,11 @@ export interface CheckForUpdateMessage {
 }
 
 export type SettingsHostSection = 'moments' | 'pulse' | 'supporter' | 'privacy' | 'updates' | 'help' | 'developer'
-/** A section, or a place inside one: `pulse-background` opens Pulse with Background & motion expanded. */
-export type SettingsHostTarget = SettingsHostSection | 'pulse-background'
+/**
+ * A section, or a place inside one: `pulse-background` opens Pulse with
+ * Background & motion expanded; `moments-history`, My Moments on History.
+ */
+export type SettingsHostTarget = SettingsHostSection | 'pulse-background' | 'moments-history'
 
 /** Open the packaged extension-origin settings host from a Twitch surface. */
 export interface OpenSettingsHostMessage {
@@ -235,6 +248,12 @@ export interface EmitExtensionAnalyticsMessage {
   name: 'pulse_load_completed' | 'extension_error_shown'
 }
 
+export interface SetAnalyticsConsentMessage {
+  type: 'SET_ANALYTICS_CONSENT'
+  granted: boolean
+  grantTicket?: string
+}
+
 export interface ListBookmarksMessage {
   type: 'LIST_BOOKMARKS'
   /** Sender-page identity only; never a backend bookmark filter. */
@@ -249,6 +268,13 @@ export interface ListBookmarksMessage {
 export interface SaveBookmarkMessage {
   type: 'SAVE_BOOKMARK'
   bookmark: CreatePulseBookmarkInput
+  /** The panel's Undo of a remove: the removed bookmark's id, whose note on this device comes back. */
+  restoreOf?: string
+  /**
+   * The panel payload's VOD origin delta, sent only when `bookmark.vodId` is
+   * that payload's VOD. Kept on this device beside the save, never posted.
+   */
+  vodOriginDeltaSeconds?: number
 }
 
 export interface DeleteBookmarkMessage {
@@ -256,12 +282,26 @@ export interface DeleteBookmarkMessage {
   id: string
 }
 
+/**
+ * The Twitch panel's remove. Scoped like a save: the worker removes the
+ * bookmark only when it is one of that channel's (and stream's or VOD's).
+ */
+export interface RemoveBookmarkMessage {
+  type: 'REMOVE_BOOKMARK'
+  id: string
+  login: string
+  streamId?: string
+  vodId?: string
+  /** Sender-page identity only, as on LIST_BOOKMARKS. */
+  contextVodId?: string
+}
+
 export type BackgroundRequest =
   | import('./myMoments.ts').MyMomentsRequest
   | { type: 'SUPPORTER_ACCOUNT'; action: SupporterAccountAction }
   | import('./twitchSignIn.ts').TwitchSignInRequest
   /** `portal_confirm`: a click-started Twitch check, then the portal (Twitch sign-in builds only). */
-  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'check' | 'checkout' | 'resume' | 'portal' | 'portal_confirm' }
+  | { type: 'SUPPORTER_BILLING'; action: 'status' | 'check' | 'connect' | 'checkout' | 'resume' | 'portal' | 'portal_confirm' }
   | { type: 'SUPPORTER_RESTORE'; action: 'status' | 'start' | 'check' | 'cancel'; email?: string }
   | { type: 'SUPPORTER_DEVICES'; action: 'list'; cursor?: string }
   | { type: 'SUPPORTER_DEVICES'; action: 'revoke'; deviceId: string }
@@ -272,7 +312,16 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
   /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
   | { type: 'SUPPORTER_CARD_SCRIPT' }
+  /** Explicit opt-in/out controls are restricted to extension pages. */
+  | { type: 'SUPPORTER_CHAT_BADGE'; action: 'status' | 'on' | 'off' }
+  | { type: 'SUPPORTER_CHAT_BADGE'; action: 'style'; wave: SupporterPaintStyle['wave'] }
+  /** Link Twitch to this membership's account, or unlink it. Extension pages only. */
+  | { type: 'SUPPORTER_TWITCH_LINK'; action: 'link' | 'unlink' }
+  /** A chat tab asks only for the public list and its own cached version. */
+  | { type: 'CHAT_BADGES'; have?: string }
   | { type: 'MOMENT_FRAMES_SCRIPT' }
+  /** The frames script asks which pictures the worker wants from its tab, or sends one. */
+  | import('./momentPictureMessages.ts').MomentPictureRequest
   /** Injects the stream recap's Catch me up script into the sender's own Twitch tab. */
   | { type: 'CATCH_ME_UP_SCRIPT' }
   | TrackMessage
@@ -283,6 +332,8 @@ export type BackgroundRequest =
   | GetClipMessage
   | HealthMessage
   | { type: 'HUB_SNAPSHOT' }
+  /** A saved moment's minute for My Moments' Preview, from the public minutes API. */
+  | { type: 'MOMENT_MINUTE'; streamId: string; offsetSeconds: number }
   | GetUpdateCheckCapabilityMessage
   | CheckForUpdateMessage
   | OpenSettingsHostMessage
@@ -293,9 +344,12 @@ export type BackgroundRequest =
   | RevokeDeviceMessage
   | ReportExtensionDiagnosticMessage
   | EmitExtensionAnalyticsMessage
+  | { type: 'PREPARE_ANALYTICS_CONSENT_GRANT' }
+  | SetAnalyticsConsentMessage
   | ListBookmarksMessage
   | SaveBookmarkMessage
   | DeleteBookmarkMessage
+  | RemoveBookmarkMessage
   | ListWatchlistMessage
   | AddWatchlistMessage
   | RemoveWatchlistMessage
@@ -369,6 +423,8 @@ export interface ExtensionPeak {
   refinementStatus?: string
   refinementConfidence?: number
   reactionScoringVersion?: string
+  /** Backend scoring v2: "opening" / "closing" for hello / goodbye spam, ranked last. */
+  streamEdge?: string
 }
 
 export interface ExtensionLanes {
@@ -516,6 +572,8 @@ export interface PulseRecapMoment {
   refinementStatus?: string
   refinementConfidence?: number
   reactionScoringVersion?: string
+  /** Backend scoring v2: "opening" / "closing" for hello / goodbye spam, ranked last. */
+  streamEdge?: string
 }
 
 export interface PulseStreamRecap {
@@ -767,7 +825,9 @@ export type BackgroundResponse =
   | { type: 'OPEN_SETTINGS_HOST'; ok: boolean; error?: 'settings_host_open_failed' }
   | { type: 'OPEN_COMMUNITY_LINK'; ok: boolean }
   | { type: 'HUB_SNAPSHOT'; snapshot: import('./hubSnapshot.ts').HubSnapshot | null; error?: string }
+  | { type: 'MOMENT_MINUTE'; context: import('../ui/library/MomentPreview.tsx').MomentContext | null; error?: string }
   | { type: 'MY_MOMENTS_RECENT'; recent: import('./myMoments.ts').MyMomentsRecent }
+  | import('./myMoments.ts').MyMomentsFirstSignIn
   | { type: 'SUPPORTER_ACCOUNT'; account: SupporterAccountState }
   | import('./twitchSignIn.ts').TwitchSignInResponse
   | { type: 'SUPPORTER_BILLING'; billing: SupporterBillingState }
@@ -780,16 +840,21 @@ export type BackgroundResponse =
    * `unverified`: the account read failed or is waiting on renewal; keep the last verified state until it expires.
    */
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
-  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null }
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null; setAt?: number }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
+  | import('./chatBadges.ts').ChatBadgesReply
+  | { type: 'SUPPORTER_CHAT_BADGE'; ok: boolean; listReceived: boolean; keysPinned?: boolean; own?: 'on' | 'off'; login?: string; error?: import('./chatBadges.ts').ChatBadgeActionError }
+  | { type: 'SUPPORTER_TWITCH_LINK'; ok: boolean; login?: string; error?: import('./chatBadges.ts').TwitchLinkError }
   | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
+  | { type: 'MOMENT_PICTURE'; wants?: import('./momentFramesContract.ts').MomentPictureWant[]; ok?: boolean; vod?: import('./vodPictures.ts').VodPictures | null; frame?: import('../background/vodFrameInject.ts').VodFrame | { error: string } | null }
   | { type: 'CATCH_ME_UP_SCRIPT'; ok: boolean }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   /** `device`: saved without an account; these rows never leave this browser. */
   | ({ type: 'BOOKMARKS'; device?: true; error?: string } & PulseBookmarkPage)
-  | { type: 'BOOKMARK'; item: PulseBookmark; device?: true; error?: string }
+  | { type: 'BOOKMARK'; item: PulseBookmark; device?: true; reviewRequest?: true; error?: string }
   | { type: 'DELETE_BOOKMARK'; ok: boolean; error?: string }
+  | { type: 'REMOVE_BOOKMARK'; ok: boolean; device?: true; error?: string }
   | { type: 'WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }
   | { type: 'SYNC_WATCHLIST'; channels: string[]; sync?: WatchlistSyncStatus; error?: string }
   | { type: 'PAST_VODS'; items: PastVodRow[]; error?: string }

@@ -295,6 +295,38 @@ function mergeRollupsByOffset(previous: ExtensionRollup[], incoming: ExtensionRo
 }
 
 /**
+ * Stream summaries every poll carries for the whole stream. A retained Full
+ * payload's copies are as old as that request, so the newer poll's win.
+ */
+const POLL_SUMMARY_FIELDS = [
+  'peaks',
+  'games',
+  'peakViewers',
+  'peakEmotePerMin',
+  'topEmotes',
+  'lanes',
+  'recap',
+  'emoteSync',
+] as const satisfies readonly (keyof PulsePayload)[]
+
+/**
+ * Lay a retained Full-history payload under the newest poll for the chart: it
+ * adds the Full rollups, while the poll keeps its newer moments, games and peak
+ * stats (a cached Full payload froze Top Moments at load, LIVE-2).
+ */
+export function layFullHistoryUnderPoll(poll: PulsePayload, fullHistory: PulsePayload): PulsePayload {
+  // Another stream's history (the render before Overlay drops it) adds nothing.
+  if (!samePayloadSurface(poll, fullHistory)) return poll
+  const merged = mergePulsePayload(poll, fullHistory, { source: 'full' })
+  if (merged === poll) return merged
+  const next: Record<string, unknown> = { ...merged }
+  for (const field of POLL_SUMMARY_FIELDS) {
+    if (poll[field] !== undefined) next[field] = poll[field]
+  }
+  return next as unknown as PulsePayload
+}
+
+/**
  * Merge a payload without letting a Full-history enrichment downgrade recent
  * live truth or let a recent poll discard validated same-stream Full rollups.
  */

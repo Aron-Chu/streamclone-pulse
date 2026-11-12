@@ -22,6 +22,7 @@ import { resolveGameArtUrl } from '../components/analytics/GamesPlayedStrip.tsx'
 import { getEmoteImageUrl, rollupOffsetSeconds } from './consoleFormat.ts'
 import { resolveMomentRowRollup } from './momentRowDisplay.ts'
 import { stripMomentEmotes } from './sessionStripMoments.ts'
+import { sessionVodLine } from './sessionState.ts'
 import { alignedVodOffset, buildTwitchVodUrl, type VodLinkState } from './twitchVodUrl.ts'
 
 /** Seconds of lead-in before a moment, so it plays in (moment-rows.js LEAD). */
@@ -150,8 +151,14 @@ const CLOCK: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' }
 const clockFormats = new Map<string, Intl.DateTimeFormat>()
 const zoneFormats = new Map<string, Intl.DateTimeFormat>()
 
-function cachedFormat(cache: Map<string, Intl.DateTimeFormat>, options: Intl.DateTimeFormatOptions, timeZone?: string): Intl.DateTimeFormat {
-  const key = timeZone ?? ''
+// Default formatters snapshot the OS zone. Resolve it once per public call so a
+// long-lived page follows a settings change, while configured formatters remain reusable.
+function currentTimeZone(timeZone?: string): string {
+  return timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
+function cachedFormat(cache: Map<string, Intl.DateTimeFormat>, options: Intl.DateTimeFormatOptions, timeZone: string): Intl.DateTimeFormat {
+  const key = timeZone
   let format = cache.get(key)
   if (!format) {
     format = new Intl.DateTimeFormat('en-US', { ...options, timeZone })
@@ -160,22 +167,23 @@ function cachedFormat(cache: Map<string, Intl.DateTimeFormat>, options: Intl.Dat
   return format
 }
 
-function clockText(ms: number, timeZone?: string): string {
+function clockText(ms: number, timeZone: string): string {
   return cachedFormat(clockFormats, CLOCK, timeZone).format(new Date(ms))
 }
 
 /** "1:22–1:23 PM" (one day period when both ends share it), card-model.js clockRange. */
 export function stripClockRange(a: number, b: number, timeZone?: string): string {
-  const parts = (ms: number) => cachedFormat(clockFormats, CLOCK, timeZone).formatToParts(new Date(ms))
+  const zone = currentTimeZone(timeZone)
+  const parts = (ms: number) => cachedFormat(clockFormats, CLOCK, zone).formatToParts(new Date(ms))
   const fa = parts(a)
   const fb = parts(b)
   const period = (p: Intl.DateTimeFormatPart[]) => p.find((x) => x.type === 'dayPeriod')?.value
   const bare = (p: Intl.DateTimeFormatPart[]) => p.filter((x) => x.type !== 'dayPeriod').map((x) => x.value).join('').trim()
-  if (period(fa) && period(fa) === period(fb)) return `${bare(fa)}–${clockText(b, timeZone)}`
-  return `${clockText(a, timeZone)}–${clockText(b, timeZone)}`
+  if (period(fa) && period(fa) === period(fb)) return `${bare(fa)}–${clockText(b, zone)}`
+  return `${clockText(a, zone)}–${clockText(b, zone)}`
 }
 
-function zoneLabel(ms: number, timeZone?: string): string {
+function zoneLabel(ms: number, timeZone: string): string {
   try {
     return cachedFormat(zoneFormats, { timeZoneName: 'short' }, timeZone).formatToParts(new Date(ms))
       .find((x) => x.type === 'timeZoneName')?.value ?? ''
@@ -243,6 +251,8 @@ export interface SessionBarStripModel {
   figures: StripFigure[]
   topEmotes: StripEmote[]
   topEmotesExact: boolean
+  /** Why the top emotes list is empty, else null. */
+  topEmotesNote: string | null
   namedNote: string | null
   providers: { sevenTv: number; other: number } | null
   category: { name: string; artUrl: string | null } | null
@@ -281,7 +291,8 @@ export function buildSessionBarStrip(args: {
   vodDurationSeconds?: number | null
   timeZone?: string
 }): SessionBarStripModel {
-  const { span, startedAt, topEmotesCatalog, timeZone } = args
+  const { span, startedAt, topEmotesCatalog } = args
+  const timeZone = currentTimeZone(args.timeZone)
   const startMs = Date.parse(startedAt)
   const bm = Math.max(1, Math.round(span.levelMinutes))
   const end = Math.max(span.endSec, span.startSec + 60)
@@ -345,6 +356,10 @@ export function buildSessionBarStrip(args: {
     imageUrl: getEmoteImageUrl(hit) || null,
   }))
   const emoteTotal = sum(rows, (row) => minuteEmoteTotal(row))
+  // A bar that counted emote uses but whose minutes name none did not name none: the count decides, as on the
+  // hub's bar card (pick 12S, 10-30).
+  const topEmotesNote = topEmotes.length ? null
+    : emoteTotal > 0 ? 'names not in this update' : `none named in this ${span.levelMinutes === 1 ? 'minute' : 'bar'}`
   const namedPct = emoteTotal > 0 ? Math.round((sum(Object.values(merged), (v) => v) / emoteTotal) * 1000) / 10 : null
   const namedNote = namedPct != null && namedPct < NAMED_MIN_PCT
     ? `Names for ${namedPct < 1 ? '<1' : Math.round(namedPct)}% of emote uses`
@@ -353,7 +368,9 @@ export function buildSessionBarStrip(args: {
   // 7TV is complete; "other" = the emotes total minus 7TV, so the two add up to emotes/min
   const svRows = rows.filter((row) => row.seventvEmoteCount != null && Number.isFinite(row.seventvEmoteCount))
   const sevenTv = n && svRows.length ? Math.round(sum(svRows, (row) => row.seventvEmoteCount ?? 0) / n) : null
-  const providers = sevenTv != null && emotes != null
+  // A stream with no 7TV count anywhere (7TV not tracked for it) hides the split: "7TV 0" would read as a fact.
+  const streamHasSevenTv = args.rollups.some((row) => (row.seventvEmoteCount ?? 0) > 0)
+  const providers = sevenTv != null && emotes != null && streamHasSevenTv
     ? { sevenTv, other: Math.max(0, Math.round(emotes) - sevenTv) }
     : null
 
@@ -417,10 +434,9 @@ export function buildSessionBarStrip(args: {
     return v == null ? null : v
   }
   if (!vodId) {
-    const pending = args.vodLinkState.status === 'live' || args.vodLinkState.status === 'syncing'
     vod = {
       vodId: null, playAt: null, playVerb: 'Play from', leadCaption: null, open: null,
-      message: pending || !args.vodLinkState.label ? 'No VOD for this stream yet.' : args.vodLinkState.label,
+      message: sessionVodLine(args.vodLinkState).text,
       subjectVodStart: null, frameVodOffset: null, subject: lockedMoment ? 'moment' : unitMinute ? 'minute' : 'bar',
     }
   } else if (align == null) {
@@ -478,6 +494,7 @@ export function buildSessionBarStrip(args: {
     figures,
     topEmotes,
     topEmotesExact: n === 1,
+    topEmotesNote,
     namedNote,
     providers,
     category,

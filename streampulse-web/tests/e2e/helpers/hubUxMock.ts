@@ -106,12 +106,40 @@ export type HubUxMockOptions = {
   momentOffsets?: [number, number]
   /** More Pulse moments after the two defaults, `minutesBefore` the second one. */
   extraPulseMoments?: Array<{ login: string; streamId: string; offsetSeconds: number; label: string; minutesBefore: number }>
+  /** The hub's featured stream (default: none qualifies, so the Featured stream card stays off). */
+  featuredSession?: unknown
+  /** Serves the 24h activity without the buckets this returns false for (index from the oldest): a window the collector missed. */
+  keepActivityBucket?: (index: number) => boolean
+  /** Each 24h bucket names its top three emotes and certifies its provider counts (default: counts only, no names). */
+  bucketEmoteDetail?: boolean
+}
+
+/**
+ * A ready featured stream for xQc, the mock's first live row, with three top moments (shape of the 10-30 07:19Z reply).
+ * Its stored name and game differ from the live row's on purpose: the card shows the live row's, as Busiest now does
+ * (review 10-30).
+ */
+export const READY_FEATURED_SESSION = {
+  state: 'ready',
+  login: 'xqc',
+  displayName: 'XQC',
+  streamId: 's1',
+  category: 'Grand Theft Auto V',
+  viewers: 12_000,
+  chatPerMin: 200,
+  topMoments: [
+    { offsetSeconds: 834, score: 39, label: 'Emote spike', topEmoteCode: 'YappingDuck', topEmotes: [{ name: 'YappingDuck', count: 930 }] },
+    { offsetSeconds: 5754, score: 36, label: 'Emote spike', topEmoteCode: 'NotLikeThis', topEmotes: [{ name: 'NotLikeThis', count: 1286 }] },
+    { offsetSeconds: 2514, score: 34, label: 'Emote spike', topEmoteCode: 'YappingDuck', topEmotes: [{ name: 'YappingDuck', count: 319 }] },
+  ],
 }
 
 /** What the mock served, for routes a test adds around it. */
 export type HubUxMockServed = {
   /** `at` of the two default Pulse moments: each one's own minute. */
   momentAts: [number, number]
+  /** Later 24h hub replies carry these buckets (counted back from the newest, 0 = newest) as unmeasured gaps. */
+  markUnmeasured: (bucketsAgo: Iterable<number>) => void
 }
 
 export async function installHubUxMock(page: Page, options: HubUxMockOptions = {}): Promise<HubUxMockServed> {
@@ -121,6 +149,20 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
   const now = options.diurnal7d ? Date.parse('2026-09-13T12:00:00Z') : Date.now()
   const liveChannels = noLiveData || mode === 'error' ? [] : buildLiveChannels(14)
   const activityPoints = noLiveData || mode === 'error' ? [] : options.diurnal7d ? build7dDiurnalActivityPoints(now) : build24hActivityPoints(now)
+  const unmeasured = new Set<number>()
+  /** The 24h reply's points as they stand: emote detail when asked for, unmeasured buckets as gaps. */
+  const dayPoints = () => activityPoints.map((point, index) => {
+    if (unmeasured.has(activityPoints.length - 1 - index)) {
+      return { t: point.t, chat: 0, seventv: 0, viewers: 0, gapKind: 'unmeasured', bucketComplete: true }
+    }
+    return options.bucketEmoteDetail
+      ? { ...point, providerCountsComplete: true, topEmotes: [
+          { name: 'KEKW', provider: '7tv', count: 30 },
+          { name: 'OMEGALUL', provider: 'bttv', count: 18 },
+          { name: 'DinoDance', provider: 'twitch', count: 12 },
+        ] }
+      : point
+  })
   const newsroomMomentAt = activityPoints.length >= 2
     ? activityPoints[activityPoints.length - 2].t
     : now - 6 * 60_000
@@ -217,7 +259,10 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
     })) : servingRecent && activityPoints.length ? Array.from({ length: 30 }, (_, i) => ({
       ...activityPoints[activityPoints.length - 1],
       t: Math.floor(now / 60_000) * 60_000 - (30 - i) * 60_000,
-    })) : activityPoints
+    })) : dayPoints()
+    const answeredPoints = options.keepActivityBucket && !servingRecent
+      ? servedPoints.filter((_, index) => options.keepActivityBucket!(index))
+      : servedPoints
     if (hubDelayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, hubDelayMs))
     }
@@ -271,7 +316,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
           },
         },
         activity: {
-          points: servedPoints,
+          points: answeredPoints,
           windowMinutes: legacyCoarse ? requestedMinutes : servedWindowMinutes,
           servedWindowMinutes,
           bucketMinutes,
@@ -387,11 +432,16 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
             topEmotes: [{ name: 'KEKW', provider: '7tv', count: 40, sharePct: 25 }],
           })),
         ],
-        featuredSession: { state: 'empty', reason: 'no_qualifying_session' },
+        featuredSession: options.featuredSession ?? { state: 'empty', reason: 'no_qualifying_session' },
       }),
     })
   })
 
+  // Top moments today now keeps the mock's early moments (board 2A, 11-02), so the
+  // carousel asks for their streams' game covers; answer with none.
+  await page.route(/\/v1\/portal\/analytics\/streams\/[^/]+\/games(\?.*)?$/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  )
   await page.route(/\/v1\/extension\/health(\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, version: 'test' }) }),
   )
@@ -414,5 +464,10 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
   await page.route(/\/v1\/public\/newsroom(\/[^?]+)?(\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schemaVersion: 0 }) }),
   )
-  return { momentAts: [newsroomMomentAt, newsroomMomentAt - 6 * 60_000] }
+  return {
+    momentAts: [newsroomMomentAt, newsroomMomentAt - 6 * 60_000],
+    markUnmeasured: (bucketsAgo) => {
+      for (const ago of bucketsAgo) unmeasured.add(ago)
+    },
+  }
 }

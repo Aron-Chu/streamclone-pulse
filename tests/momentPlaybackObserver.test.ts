@@ -62,3 +62,25 @@ it('records on a player that attaches its stream through srcObject, as Twitch VO
   expect(records()).toBe(1)
   expect(sendMessage.mock.calls.length).toBe(asked)
 })
+it('tells the caller only once the worker kept the record', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] })
+  let kept = true
+  const sendMessage = vi.fn(async (m: {action: string}) => m.action === 'status' ? { enabled: true, epoch: 3 } : { ok: kept })
+  vi.stubGlobal('chrome', { runtime: { sendMessage } })
+  Object.defineProperty(document, 'hidden', { configurable:true, value:false })
+  const video = document.createElement('video')
+  document.body.append(video)
+  let time=200
+  Object.defineProperties(video, { currentSrc:{ configurable:true,value:'blob:fixture' }, currentTime:{ configurable:true,get:()=>time },
+    paused:{ configurable:true,value:false }, seeking:{ configurable:true,value:false }, readyState:{ configurable:true,value:4 } })
+  const reference={id:'moment',channel:'fixturechan',vodId:'2806037629',offsetSeconds:205,title:'Moment',availability:'unresolved' as const}
+  const onRecorded = vi.fn()
+  await observeMomentPlayback(video,reference,200,260,onRecorded)
+  for(let i=0;i<24;i++) { time+=.5; await vi.advanceTimersByTimeAsync(500) }
+  expect(onRecorded).toHaveBeenCalledTimes(1)
+  kept = false
+  time = 200
+  await observeMomentPlayback(video,reference,200,260,onRecorded)
+  for(let i=0;i<24;i++) { time+=.5; await vi.advanceTimersByTimeAsync(500) }
+  expect(onRecorded).toHaveBeenCalledTimes(1)
+})

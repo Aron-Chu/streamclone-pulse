@@ -1,9 +1,10 @@
 /**
- * As tall as the loaded chart block (720 px), so the page under it does not jump when the chart lands.
+ * As tall as the loaded chart card (770 px below 610 px, where its toolbar wraps; 738 px at 610-639 px;
+ * 730 px at 640-719 px; 830 px from 720 px, where the plot grows from 340 to 440 px), so Stream Recap and the
+ * Moments tabs under it do not jump when the chart lands on one-column widths. From 1280 px the columns sit
+ * side by side and only the footer is below it. 610 and 720 px have no named breakpoint.
  *
- * Its first line sits where the chart's readout will be, in the readout's own style. On a phone the readout is the
- * largest text on screen and used to paint only with the chart, so the page's largest paint waited for all the data;
- * this line paints with the skeleton. It fits a 384 px skeleton too: the bars below need 288 px at least.
+ * A readout-styled loading line paints before the data; its text stays out of the spoken status.
  */
 export function AnalyticsConsoleDataSkeleton() {
   return (
@@ -11,7 +12,7 @@ export function AnalyticsConsoleDataSkeleton() {
       role="status"
       aria-label="Loading analytics chart"
       data-console-skeleton="chart"
-      className="flex min-h-[45rem] animate-pulse flex-col rounded border border-white/[0.07] bg-white/[0.025] p-4"
+      className="flex min-h-[48.125rem] min-[610px]:min-h-[46.125rem] sm:min-h-[45.625rem] min-[720px]:min-h-[51.875rem] animate-pulse flex-col rounded border border-white/[0.07] bg-white/[0.025] p-4"
     >
       <span className="sr-only">Loading analytics chart</span>
       <div className="ssc-head" aria-hidden="true">
@@ -36,6 +37,23 @@ export function AnalyticsConsoleDataSkeleton() {
           <div className="h-24 flex-1 rounded-t bg-violet-500/10" />
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * As tall as a full Stream Recap on desktop and phone (title, two totals, two one-line highlight rows,
+ * five top emotes: 456 px), so the Moments tabs under it do not jump when the recap lands.
+ * Silent: the chart skeleton speaks for the loading page.
+ */
+export function StreamRecapSkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      data-console-skeleton="recap"
+      className="min-h-[28.5rem] w-full min-w-0 animate-pulse rounded border border-white/[0.07] bg-white/[0.025] p-3"
+    >
+      <div className="h-4 w-28 rounded bg-zinc-800/80" />
     </div>
   )
 }

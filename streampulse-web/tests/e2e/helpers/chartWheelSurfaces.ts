@@ -16,7 +16,10 @@ export interface ChartSurface {
   navigator: Locator
   /** The plot box. */
   plot: Locator
-  /** The whole chart card: a wheel anywhere over it zooms (owner rule, round 3). */
+  /**
+   * The wheel zone. On the stream chart, the whole card: a wheel anywhere over
+   * it zooms (owner rule, round 3). On the hub, the graph only (owner, 2026-10-15).
+   */
   card: Locator
   /** Navigator steps at the full range. */
   full: number
@@ -45,7 +48,8 @@ export async function hubSurface(page: Page): Promise<ChartSurface> {
     name: 'hub',
     navigator,
     plot,
-    // Until the hub's d3 port (which adds [data-hub-chart-wheel-card]) the hub's wheel zone is its plot.
+    // The hub keeps the graph as the wheel zone, not the card (owner, 2026-10-15):
+    // the header, range tabs and the lanes below give the page the wheel.
     card: plot,
     full: HUB_BUCKETS,
     // No fake clock on the hub: frames run; the safety timer lands it regardless.

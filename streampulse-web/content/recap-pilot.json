@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "pages": [
+    {
+      "kind": "stream",
+      "login": "zackrawrr",
+      "streamId": "319604372055",
+      "displayName": "zackrawrr",
+      "game": "Just Chatting, World of Warcraft",
+      "title": "Asmongold (zackrawrr) Twitch chat recap, Oct 17, 2026 — StreamPulse",
+      "description": "Chat stats from Asmongold's Oct 17, 2026 Twitch stream: 101,856 messages, a peak of 703 a minute, top emotes LUL, LOL and o7, and the three biggest reactions.",
+      "summary": "Asmongold, on the zackrawrr channel, streamed Just Chatting and World of Warcraft for 9 hours 49 minutes, starting October 17, 2026 at 16:27 UTC. StreamPulse counted 101,856 chat messages in the minutes it measured. Chat peaked at 703 messages in one minute, at 5:07:00 into the stream. The most-used emotes were LUL (3,528 uses), LOL (2,366 uses) and o7 (2,147 uses). The biggest chat reaction came at 2:02:55 (score 55), then 5:06:55 (55) and 5:57:55 (53). Scores run from 0 to 100 and rank moments within this stream only.",
+      "startedAt": "2026-10-17T16:27:05Z",
+      "durationSeconds": 35358,
+      "nonMissingRollupMinutes": 585,
+      "coverage": {
+        "state": "partial",
+        "description": "StreamPulse measured chat in 585 of the stream's 590 minutes (99.2%). Minutes without measurements are left out, not counted as quiet."
+      },
+      "moments": [
+        {
+          "offsetSeconds": 7375,
+          "score": 55,
+          "chatCount": 462,
+          "emoteCount": 214
+        },
+        {
+          "offsetSeconds": 18415,
+          "score": 55,
+          "chatCount": 703,
+          "emoteCount": 445
+        },
+        {
+          "offsetSeconds": 21475,
+          "score": 53,
+          "chatCount": 156,
+          "emoteCount": 61
+        }
+      ],
+      "topEmotes": [
+        {
+          "code": "LUL",
+          "count": 3528
+        },
+        {
+          "code": "LOL",
+          "count": 2366
+        },
+        {
+          "code": "o7",
+          "count": 2147
+        },
+        {
+          "code": "EZ",
+          "count": 1865
+        },
+        {
+          "code": "om",
+          "count": 1523
+        }
+      ],
+      "review": {
+        "approved": true,
+        "reviewedAt": "2026-11-05T18:37:57Z",
+        "expiresAt": "2026-12-05T18:37:57Z",
+        "sourceUrl": "https://api.streampulse.stream/v1/portal/analytics/streams/319604372055/recap",
+        "notes": "Claude checked this entry on 2026-11-05 (UTC) against the public portal API. /streams/319604372055/recap gave the duration, measured minutes, chat peak and moments. /streams/319604372055/summary gave the top emotes. /streams/319604372055/minutes showed chat measured right up to the recorded end, so the duration is not padded. The top 3 follow the portal's recap ranking, leaving out the opening and closing minutes. No replay was verified, so replay links stay off. Aron's review of the pull request is the publication gate."
+      },
+      "replay": {
+        "state": "unavailable"
+      }
+    },
+    {
+      "kind": "stream",
+      "login": "hasanabi",
+      "streamId": "320795920348",
+      "displayName": "HasanAbi",
+      "game": "Just Chatting",
+      "title": "HasanAbi Twitch chat recap, Oct 17, 2026 — StreamPulse",
+      "description": "Chat stats from HasanAbi's Oct 17, 2026 Twitch stream: 99,436 messages, a peak of 682 a minute, top emotes KEKW, hasL and YEP, and the three biggest reactions.",
+      "summary": "HasanAbi streamed Just Chatting for 7 hours 42 minutes, starting October 17, 2026 at 18:12 UTC. StreamPulse counted 99,436 chat messages in the minutes it measured. Chat peaked at 682 messages in one minute, at 7:28:00 into the stream. The most-used emotes were KEKW (3,602 uses), hasL (3,390 uses) and YEP (2,266 uses). The biggest chat reaction came at 7:29:39 (score 61), then 2:32:39 (46) and 7:07:39 (44). Scores run from 0 to 100 and rank moments within this stream only.",
+      "startedAt": "2026-10-17T18:12:21Z",
+      "durationSeconds": 27757,
+      "nonMissingRollupMinutes": 457,
+      "coverage": {
+        "state": "partial",
+        "description": "StreamPulse measured chat in 457 of the stream's 463 minutes (98.7%). Minutes without measurements are left out, not counted as quiet."
+      },
+      "moments": [
+        {
+          "offsetSeconds": 26979,
+          "score": 61,
+          "chatCount": 679,
+          "emoteCount": 862
+        },
+        {
+          "offsetSeconds": 9159,
+          "score": 46,
+          "chatCount": 607,
+          "emoteCount": 323
+        },
+        {
+          "offsetSeconds": 25659,
+          "score": 44,
+          "chatCount": 510,
+          "emoteCount": 359
+        }
+      ],
+      "topEmotes": [
+        {
+          "code": "KEKW",
+          "count": 3602
+        },
+        {
+          "code": "hasL",
+          "count": 3390
+        },
+        {
+          "code": "YEP",
+          "count": 2266
+        },
+        {
+          "code": "KEKL",
+          "count": 1782
+        },
+        {
+          "code": "OMEGALUL",
+          "count": 1105
+        }
+      ],
+      "review": {
+        "approved": true,
+        "reviewedAt": "2026-11-05T18:37:57Z",
+        "expiresAt": "2026-12-05T18:37:57Z",
+        "sourceUrl": "https://api.streampulse.stream/v1/portal/analytics/streams/320795920348/recap",
+        "notes": "Claude checked this entry on 2026-11-05 (UTC) against the public portal API. /streams/320795920348/recap gave the duration, measured minutes, chat peak and moments. /streams/320795920348/summary gave the top emotes. /streams/320795920348/minutes showed chat measured until 2 min before the recorded end, so the duration is not padded. The top 3 follow the portal's recap ranking, leaving out the opening and closing minutes. No replay was verified, so replay links stay off. Aron's review of the pull request is the publication gate."
+      },
+      "replay": {
+        "state": "unavailable"
+      }
+    }
+  ]
+}

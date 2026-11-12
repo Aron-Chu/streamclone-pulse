@@ -14,6 +14,8 @@ import { PulseOverviewChart } from '../src/ui/PulseOverviewChart.tsx'
 import { RecapTimelineChart } from '../src/ui/RecapTimelineChart.tsx'
 import { shadowStyles } from '../src/ui/theme.ts'
 import { ChartViewportControls } from '../src/ui/ChartViewportControls.tsx'
+import { panelRule } from './helpers/panelRule.ts'
+import { panelComponentCss } from '../src/ui/panelComponentStyles.ts'
 
 interface ProbeProps {
   identity: string
@@ -282,7 +284,9 @@ describe('chart shells and controls', () => {
 
     expect(html).toContain('data-chart-viewer-lane="true"')
     expect(html).toContain('data-chart-viewer-strip-share="0.28"')
-    expect(html).toContain('Unavailable')
+    // Nothing hovered: the readout is one quiet line, not "Viewers Unavailable".
+    expect(html).toContain('Hover the chart to inspect a minute.')
+    expect(html).not.toContain('Unavailable')
   })
 
   it('keeps populated, loading, and empty shells at the same animated height', () => {
@@ -303,8 +307,10 @@ describe('chart shells and controls', () => {
     expect(shellHeight(empty)).toBe(shellHeight(loading))
     expect(shellHeight(populated)).toBe(shellHeight(loading))
     expect(shellHeight(expandedEmpty) - shellHeight(empty)).toBe(48)
-    expect(loading).toContain('height:100%')
-    expect(empty).toContain('height:100%')
+    // The loading and empty messages fill the shell (shadow CSS, not inline).
+    expect(loading).toContain('class="pulse-oc-empty"')
+    expect(empty).toContain('class="pulse-oc-empty"')
+    expect(panelRule('pulse-oc-empty')).toContain(' height: 100%;')
   })
 
   it('moves lane geometry with the same intermediate expansion progress', () => {
@@ -392,11 +398,13 @@ describe('chart shells and controls', () => {
         if (!button) throw new Error(`chart zoom ${action} control did not render`)
         expect(button.tagName).toBe('BUTTON')
         expect(button.classList.contains('pulse-chart-zoom-button')).toBe(true)
-        expect(button.style.height).toBe('24px')
+        const sized = action === 'reset' ? 'pulse-vp-reset' : 'pulse-vp-zoom'
+        expect(button.classList.contains(sized)).toBe(true)
+        expect(panelRule(sized)).toContain(' height: 24px;')
         if (action === 'reset') {
           expect(button.classList.contains('pulse-chart-zoom-reset')).toBe(true)
         } else {
-          expect(button.style.width).toBe('24px')
+          expect(panelRule(sized)).toContain(' width: 24px;')
         }
       }
     }
@@ -447,6 +455,10 @@ describe('interactive chart controls', () => {
   }
 
   it('keeps live and recap Expand/Reset active styling, focus, and ARIA in sync', () => {
+    // The recap chart styles its buttons from shadow CSS under .pulse-rc; the live band inline.
+    const css = panelComponentCss()
+    expect(css).toContain('.pulse-rc .pulse-chart-toggle-btn, .pulse-rc .pulse-chart-expand-btn { background: rgba(255, 255, 255, 0.05);')
+    expect(css).toContain('.pulse-rc .pulse-chart-toggle-btn-active, .pulse-rc .pulse-chart-expand-btn-active { background: rgba(139, 92, 246, 0.12);')
     const charts = [
       <LiveStatsBand payload={makePayload()} backendUrl="https://api.example.test" />,
       <RecapTimelineChart
@@ -470,14 +482,15 @@ describe('interactive chart controls', () => {
       expect(button.getAttribute('aria-expanded')).toBe('true')
       expect(button.getAttribute('aria-label')).toBe('Reset stream activity chart')
       expect(button.classList.contains('pulse-chart-expand-btn-active')).toBe(true)
-      expect(button.style.background).toBe('rgba(139, 92, 246, 0.12)')
+      const inline = button.closest('.pulse-rc') == null
+      if (inline) expect(button.style.background).toBe('rgba(139, 92, 246, 0.12)')
 
       act(() => button.click())
       expect(document.activeElement).toBe(button)
       expect(button.getAttribute('aria-expanded')).toBe('false')
       expect(button.getAttribute('aria-label')).toBe('Expand stream activity chart')
       expect(button.classList.contains('pulse-chart-expand-btn-active')).toBe(false)
-      expect(button.style.background).toBe('rgba(255, 255, 255, 0.05)')
+      if (inline) expect(button.style.background).toBe('rgba(255, 255, 255, 0.05)')
     }
   })
 })

@@ -1,21 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiClient, normalizeApiError } from '../src/lib/apiClient'
-import { clearBetaKey, setBackendUrlOverride, setBetaKey } from '../src/lib/auth'
+import { setBackendUrlOverride } from '../src/lib/auth'
 
 describe('apiClient', () => {
   afterEach(() => vi.useRealTimers())
   beforeEach(() => {
     localStorage.clear()
-    clearBetaKey()
     vi.restoreAllMocks()
   })
 
-  it('injects beta header on gated calls', async () => {
-    await setBetaKey('secret-one')
+  it('sends no beta key on gated calls, even one an older build saved', async () => {
+    localStorage.setItem('sp.betaKey', 'secret-one')
     const fetchMock = vi.fn(async (_input: RequestInfo, init?: RequestInit) => {
-      expect(init?.headers).toBeTruthy()
-      const headers = new Headers(init?.headers)
-      expect(headers.get('X-Streamclone-Beta-Key')).toBe('secret-one')
+      expect(new Headers(init?.headers).has('X-Streamclone-Beta-Key')).toBe(false)
       return new Response(JSON.stringify({ ok: true }), { status: 200 })
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -46,26 +43,22 @@ describe('apiClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('normalizes 401 errors and dispatches auth:rejected', async () => {
-    const rejected = vi.fn()
-    window.addEventListener('auth:rejected', rejected)
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            error: 'unauthorized',
-            hint: 'Set X-Streamclone-Beta-Key header (Pulse extension options)',
-          }),
-          { status: 401 },
-        ),
+  it('normalizes 401 errors without asking again', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          error: 'unauthorized',
+          hint: 'Set X-Streamclone-Beta-Key header (Pulse extension options)',
+        }),
+        { status: 401 },
       ),
     )
+    vi.stubGlobal('fetch', fetchMock)
 
     await expect(apiClient('/v1/extension/pulse/channels/xqc', { gated: true })).rejects.toMatchObject({
       kind: 'unauthorized',
     })
-    expect(rejected).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('normalizes 429/500/timeout kinds', () => {
@@ -124,8 +117,7 @@ describe('apiClient', () => {
     vi.stubGlobal('fetch', fetchMock)
     await apiClient('/v1/portal/profile', { gated: true, redirect: 'follow' })
     await apiClient('/v1/portal/profile', { headers: { Authorization: 'Bearer private' }, redirect: 'follow' })
-    await apiClient('/v1/portal/profile', { headers: { 'X-Streamclone-Beta-Key': 'private' } })
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('removes composed caller and body abort listeners after success', async () => {
@@ -229,18 +221,70 @@ describe('apiClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('still retries a 503 once when Retry-After is absent or hidden from the page', async () => {
+  it('does not repeat a 503 when Retry-After is absent or hidden from the page', async () => {
     // Cross-origin, the browser hides Retry-After unless the API exposes it through CORS.
     const fetchMock = vi.fn(async () => new Response('{"error":"unavailable"}', { status: 503 }))
     vi.stubGlobal('fetch', fetchMock)
     const error = await apiClient('/v1/public/explorer?window=7d').catch((caught: unknown) => caught)
     expect(error).toMatchObject({ kind: 'server', status: 503 })
     expect((error as { retryAfterMs?: number }).retryAfterMs).toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([502, 504])('still retries a %i once when Retry-After is absent', async status => {
+    let calls = 0
+    const fetchMock = vi.fn(async () => {
+      calls += 1
+      return calls === 1
+        ? new Response('{"error":"gateway"}', { status })
+        : new Response('{"ok":true}', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await apiClient('/v1/portal/analytics/streams/s1/summary')
+    expect(result.data).toEqual({ ok: true })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  // A second hub request would start the origin's slow build over.
+  it('asks a slow origin once after a 504, a late 502 or a late lost response', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi.fn(async () => new Response('{"error":"gateway"}', { status: 504 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(apiClient('/v1/public/hub', { slowOrigin: true })).rejects.toMatchObject({ kind: 'server', status: 504 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    const late = async (answer: () => Response) => {
+      fetchMock.mockReset()
+      fetchMock.mockImplementation(async () => {
+        await new Promise(resolve => setTimeout(resolve, 30_000))
+        return answer()
+      })
+      const request = apiClient('/v1/public/hub', { slowOrigin: true, timeoutMs: 90_000 }).catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(31_000)
+      return request
+    }
+    expect(await late(() => new Response('{"error":"bad gateway"}', { status: 502 }))).toMatchObject({ kind: 'server', status: 502 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(await late(() => { throw new TypeError('connection lost') })).toMatchObject({ kind: 'unreachable' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('still asks a slow origin twice after an early 502 or lost response', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      calls += 1
+      if (calls === 1) return new Response('{"error":"bad gateway"}', { status: 502 })
+      if (calls === 2) return new Response('{"ok":1}', { status: 200 })
+      if (calls === 3) throw new TypeError('connection lost')
+      return new Response('{"ok":2}', { status: 200 })
+    }))
+    expect((await apiClient('/v1/public/hub', { slowOrigin: true })).data).toEqual({ ok: 1 })
+    expect((await apiClient('/v1/public/hub', { slowOrigin: true })).data).toEqual({ ok: 2 })
+    expect(calls).toBe(4)
+  })
+
   it('refuses to attach credentials outside the configured origin or API paths', async () => {
-    await setBetaKey('secret-one')
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     await expect(apiClient('https://example.com/image.png', { gated: true })).rejects.toThrow('trusted StreamPulse boundary')
@@ -252,16 +296,13 @@ describe('apiClient', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     await expect(apiClient('https://example.com/v1/portal/profile', { headers: { Authorization: 'Bearer private' } })).rejects.toThrow('trusted StreamPulse boundary')
-    await expect(apiClient('/provider/avatar', { headers: { 'X-Streamclone-Beta-Key': 'private' } })).rejects.toThrow('trusted StreamPulse boundary')
     await expect(apiClient('https://example.com/v1/portal/profile', { credentials: 'include' })).rejects.toThrow('trusted StreamPulse boundary')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('binds support body credentials to the trusted route and forbids redirects without injecting beta auth', async () => {
-    await setBetaKey('must-not-be-injected')
+  it('binds support body credentials to the trusted route and forbids redirects', async () => {
     const fetchMock = vi.fn(async (_url: RequestInfo, init?: RequestInit) => {
       expect(init?.redirect).toBe('error')
-      expect(new Headers(init?.headers).has('X-Streamclone-Beta-Key')).toBe(false)
       return new Response('{"case_id":"one"}')
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -277,7 +318,6 @@ describe('apiClient', () => {
     const fetchMock = vi.fn(async (url: RequestInfo, init?: RequestInit) => {
       expect(String(url)).toBe('https://api.example.test/v1/portal/support/cases')
       expect(init?.redirect).toBe('error')
-      expect(new Headers(init?.headers).has('X-Streamclone-Beta-Key')).toBe(false)
       return new Response('{"case_id":"one"}')
     })
     vi.stubGlobal('fetch', fetchMock)

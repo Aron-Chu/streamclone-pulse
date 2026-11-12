@@ -36,6 +36,7 @@ import {
 import { overlayBaseStyles } from '../src/ui/overlayStyles.ts'
 import { resolvePanelBottomY, VOD_CHAT_BOTTOM_RESERVE_PX } from '../src/content/twitchChat.ts'
 import { applyTwitchSidebarChromeHides } from '../src/content/twitchSidebarChrome.ts'
+import { readTwitchCollapseLabel } from '../src/content/twitchChatControls.ts'
 import {
   computeMessagesAreaRect,
   FALLBACK_CHAT_HEADER_HEIGHT,
@@ -797,6 +798,31 @@ describe('chat stack scoping', () => {
     expect(resolveChatBottomBound(page.doc)).toBe(690)
     // Tab slot sits between the stack's own collapse and viewers controls.
     expect(layout!.headerTabs.left).toBe(724)
+  })
+
+  it('a pinned message’s own Collapse button does not push the header row or the panel down', () => {
+    const page = makeStackedChatPage()
+    const before = measureSidebarSnapLayout(page.doc)!
+    // Twitch's pinned-message card sits at the top of the message list with a
+    // 32 px "Collapse" button of its own, over the column like the header controls.
+    page.byTest('messages').insertAdjacentHTML('afterbegin', `
+      <div data-a-target="pinned-chat-messages-list" data-test="pinned">
+        <button aria-label="Collapse" data-test="pinned-collapse"></button>
+      </div>`)
+    page.place('pinned', { top: 100, left: 680, width: 340, height: 80 })
+    page.place('pinned-collapse', { top: 108, left: 980, width: 32, height: 32 })
+    expect(Array.from(page.doc.querySelectorAll('button[aria-label*="Collapse" i]')))
+      .toContain(page.byTest('pinned-collapse'))
+
+    const after = measureSidebarSnapLayout(page.doc)!
+    expect(after.header).toEqual(before.header)
+    expect(after.headerTabs).toEqual(before.headerTabs)
+    expect(after.panel.top).toBe(before.panel.top)
+    expect(after.panel.top).toBe(90)
+    // A renamed header toggle (no data-a-target) still finds the header's own
+    // control for the Hide chat proxy, not the pinned card's or the side nav's.
+    page.byTest('collapse').removeAttribute('data-a-target')
+    expect(readTwitchCollapseLabel(page.doc)).toBe('Collapse Chat')
   })
 
   it('without a chat stack keeps the document-wide read but ignores controls off the column', () => {

@@ -51,7 +51,9 @@ describe('history sync uses the account origin', () => {
 
   it('a store build syncs history with production', async () => {
     const { reads, history } = await accountOrigins(true)
-    expect(reads.every(key => key === PRODUCTION)).toBe(true)
+    // The credential, plus the key-only check before any history leaves the browser.
+    expect(reads.every(key => key === PRODUCTION || key === 'supporter-installation-key')).toBe(true)
+    expect(reads).toContain(PRODUCTION)
     expect(history).toEqual([PRODUCTION])
   })
 })

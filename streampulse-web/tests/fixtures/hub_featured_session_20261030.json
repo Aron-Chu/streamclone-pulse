@@ -1,0 +1,584 @@
+{
+ "_source": "trimmed from the 2026-10-30 07:19Z hub answers (evidence/hub-24h-down.json: the 24h answer with every screener set to history_query_unavailable; evidence/hub-30m.json): 3 of the 500 live channels, the first 4 of 10 top moments with 2 emotes each, 2 chart points, 2 bursts",
+ "down24h": {
+  "generatedAt": "2026-10-30T07:19:05.316775501Z",
+  "poolSize": 999,
+  "liveChannels": [
+   {
+    "streamId": "316655688306",
+    "login": "yuyuta0702",
+    "displayName": "ゆゆうた押忍",
+    "category": "Just Chatting",
+    "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/c9923860-b55f-435f-be2d-560107cc2205-profile_image-300x300.png",
+    "viewers": 10682,
+    "chatPerMin": 372.5,
+    "emotesPerMin": 23.44,
+    "seventvPerMin": 0,
+    "coverageState": "synced",
+    "trendPct": 14.44,
+    "screener": {
+     "version": 1,
+     "streamId": "316655688306",
+     "measuredAt": 1793344745316,
+     "baselineKind": "current_stream_measured_average",
+     "state": "unavailable",
+     "currentWindow": {
+      "start": 1793344440000,
+      "end": 1793344740000,
+      "expectedMinutes": 5,
+      "measuredMinutes": 0,
+      "coveragePct": 0
+     },
+     "baselineWindow": {
+      "coveragePct": 0,
+      "end": 0,
+      "expectedMinutes": 0,
+      "measuredMinutes": 0,
+      "start": 0
+     },
+     "evidence": {
+      "ircBound": true,
+      "chatObservedLast5m": false,
+      "rollupAvailable": false,
+      "metadataAgeSeconds": 159
+     },
+     "chat": {
+      "absoluteDeltaPerMin": 0,
+      "baselineCoveragePct": 0,
+      "baselineExpectedMinutes": 0,
+      "baselineMeasuredMinutes": 0,
+      "baselinePerMin": 0,
+      "currentExpectedMinutes": 5,
+      "currentMeasuredMinutes": 0,
+      "currentPerMin": 0,
+      "reason": "history_query_unavailable",
+      "state": "unavailable"
+     },
+     "emotes": {
+      "absoluteDeltaPerMin": 0,
+      "baselineCoveragePct": 0,
+      "baselineExpectedMinutes": 0,
+      "baselineMeasuredMinutes": 0,
+      "baselinePerMin": 0,
+      "currentExpectedMinutes": 5,
+      "currentMeasuredMinutes": 0,
+      "currentPerMin": 0,
+      "reason": "history_query_unavailable",
+      "state": "unavailable"
+     },
+     "reason": "history_query_unavailable"
+    }
+   },
+   {
+    "streamId": "319738329815",
+    "login": "aldo_geo",
+    "displayName": "aldo_geo",
+    "category": "QSMP",
+    "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/4b2a8e19-7dd9-46bd-9a01-0bb40aae852c-profile_image-300x300.png",
+    "viewers": 5434,
+    "chatPerMin": 335.82,
+    "emotesPerMin": 321.41,
+    "seventvPerMin": 118.91,
+    "coverageState": "synced",
+    "trendPct": -63.94,
+    "screener": {
+     "version": 1,
+     "streamId": "319738329815",
+     "measuredAt": 1793344745316,
+     "baselineKind": "current_stream_measured_average",
+     "state": "unavailable",
+     "currentWindow": {
+      "start": 1793344440000,
+      "end": 1793344740000,
+      "expectedMinutes": 5,
+      "measuredMinutes": 0,
+      "coveragePct": 0
+     },
+     "baselineWindow": {
+      "coveragePct": 0,
+      "end": 0,
+      "expectedMinutes": 0,
+      "measuredMinutes": 0,
+      "start": 0
+     },
+     "evidence": {
+      "ircBound": true,
+      "chatObservedLast5m": false,
+      "rollupAvailable": false,
+      "metadataAgeSeconds": 159
+     },
+     "chat": {
+      "absoluteDeltaPerMin": 0,
+      "baselineCoveragePct": 0,
+      "baselineExpectedMinutes": 0,
+      "baselineMeasuredMinutes": 0,
+      "baselinePerMin": 0,
+      "currentExpectedMinutes": 5,
+      "currentMeasuredMinutes": 0,
+      "currentPerMin": 0,
+      "reason": "history_query_unavailable",
+      "state": "unavailable"
+     },
+     "emotes": {
+      "absoluteDeltaPerMin": 0,
+      "baselineCoveragePct": 0,
+      "baselineExpectedMinutes": 0,
+      "baselineMeasuredMinutes": 0,
+      "baselinePerMin": 0,
+      "currentExpectedMinutes": 5,
+      "currentMeasuredMinutes": 0,
+      "currentPerMin": 0,
+      "reason": "history_query_unavailable",
+      "state": "unavailable"
+     },
+     "reason": "history_query_unavailable"
+    }
+   },
+   {
+    "streamId": "320961711580",
+    "login": "xqc",
+    "displayName": "xQc",
+    "category": "Grand Theft Auto V",
+    "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/xqc-profile_image-9298dca608632101-300x300.jpeg",
+    "viewers": 16740,
+    "chatPerMin": 243.91,
+    "emotesPerMin": 6.21,
+    "seventvPerMin": 0,
+    "coverageState": "synced",
+    "trendPct": 170.63,
+    "screener": {
+     "version": 1,
+     "streamId": "320961711580",
+     "measuredAt": 1793344745316,
+     "baselineKind": "current_stream_measured_average",
+     "state": "unavailable",
+     "currentWindow": {
+      "start": 1793344440000,
+      "end": 1793344740000,
+      "expectedMinutes": 5,
+      "measuredMinutes": 0,
+      "coveragePct": 0
+     },
+     "baselineWindow": {
+      "coveragePct": 0,
+      "end": 0,
+      "expectedMinutes": 0,
+      "measuredMinutes": 0,
+      "start": 0
+     },
+     "evidence": {
+      "ircBound": true,
+      "chatObservedLast5m": false,
+      "rollupAvailable": false,
+      "metadataAgeSeconds": 159
+     },
+     "chat": {
+      "absoluteDeltaPerMin": 0,
+      "baselineCoveragePct": 0,
+      "baselineExpectedMinutes": 0,
+      "baselineMeasuredMinutes": 0,
+      "baselinePerMin": 0,
+      "currentExpectedMinutes": 5,
+      "currentMeasuredMinutes": 0,
+      "currentPerMin": 0,
+      "reason": "history_query_unavailable",
+      "state": "unavailable"
+     },
+     "emotes": {
+      "absoluteDeltaPerMin": 0,
+      "baselineCoveragePct": 0,
+      "baselineExpectedMinutes": 0,
+      "baselineMeasuredMinutes": 0,
+      "baselinePerMin": 0,
+      "currentExpectedMinutes": 5,
+      "currentMeasuredMinutes": 0,
+      "currentPerMin": 0,
+      "reason": "history_query_unavailable",
+      "state": "unavailable"
+     },
+     "reason": "history_query_unavailable"
+    }
+   }
+  ],
+  "featuredSession": {
+   "state": "ready",
+   "login": "yuyuta0702",
+   "displayName": "ゆゆうた押忍",
+   "streamId": "316655688306",
+   "category": "Just Chatting",
+   "startedAt": "2026-10-30T04:20:06Z",
+   "viewers": 10682,
+   "chatPerMin": 372.5,
+   "peakCount": 20,
+   "dataCoveragePct": 98.88,
+   "topMoments": [
+    {
+     "offsetSeconds": 834,
+     "score": 39,
+     "label": "Emote spike",
+     "kind": "twitch",
+     "source": "live_irc",
+     "chatPerMin": 711,
+     "emotesPerMin": 1320,
+     "topEmoteCode": "YappingDuck",
+     "topEmotes": [
+      {
+       "name": "YappingDuck",
+       "provider": "twitch",
+       "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_bea88a2caa044e409c1b32ee0850b825/default/dark/2.0",
+       "count": 930,
+       "sharePct": 0
+      },
+      {
+       "name": "BloodTrail",
+       "provider": "twitch",
+       "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/69/default/dark/2.0",
+       "count": 241,
+       "sharePct": 0
+      }
+     ],
+     "vodState": "no_vod"
+    },
+    {
+     "offsetSeconds": 5754,
+     "score": 36,
+     "label": "Emote spike",
+     "kind": "twitch",
+     "source": "live_irc",
+     "chatPerMin": 729,
+     "emotesPerMin": 1585,
+     "topEmoteCode": "NotLikeThis",
+     "topEmotes": [
+      {
+       "name": "NotLikeThis",
+       "provider": "twitch",
+       "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/2.0",
+       "count": 1286,
+       "sharePct": 0
+      },
+      {
+       "name": "BloodTrail",
+       "provider": "twitch",
+       "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/69/default/dark/2.0",
+       "count": 91,
+       "sharePct": 0
+      }
+     ],
+     "vodState": "no_vod"
+    },
+    {
+     "offsetSeconds": 2514,
+     "score": 34,
+     "label": "Emote spike",
+     "kind": "twitch",
+     "source": "live_irc",
+     "chatPerMin": 639,
+     "emotesPerMin": 373,
+     "topEmoteCode": "YappingDuck",
+     "topEmotes": [
+      {
+       "name": "YappingDuck",
+       "provider": "twitch",
+       "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_bea88a2caa044e409c1b32ee0850b825/default/dark/2.0",
+       "count": 319,
+       "sharePct": 0
+      },
+      {
+       "name": "MikeHogu",
+       "provider": "twitch",
+       "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/81636/default/dark/2.0",
+       "count": 15,
+       "sharePct": 0
+      }
+     ],
+     "vodState": "no_vod"
+    },
+    {
+     "offsetSeconds": 1074,
+     "score": 31,
+     "label": "Chat spike",
+     "kind": "chat",
+     "source": "live_irc",
+     "chatPerMin": 838,
+     "emotesPerMin": 81,
+     "topEmoteCode": "YappingDuck",
+     "topEmotes": [
+      {
+       "name": "YappingDuck",
+       "provider": "twitch",
+       "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_bea88a2caa044e409c1b32ee0850b825/default/dark/2.0",
+       "count": 72,
+       "sharePct": 0
+      },
+      {
+       "name": "ClapHands",
+       "provider": "twitch",
+       "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_cb4c93c8bef44ae6888cf239f98754b7/default/dark/2.0",
+       "count": 5,
+       "sharePct": 0
+      }
+     ],
+     "vodState": "no_vod"
+    }
+   ],
+   "chartPoints": [
+    {
+     "offsetSeconds": 7020,
+     "chatNorm": 54,
+     "viewersNorm": 90,
+     "emotesNorm": 25,
+     "heat": 15
+    },
+    {
+     "offsetSeconds": 7080,
+     "chatNorm": 62,
+     "viewersNorm": 90,
+     "emotesNorm": 99,
+     "heat": 62
+    }
+   ],
+   "topEmoteBursts": [
+    {
+     "code": "YappingDuck",
+     "provider": "twitch",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_bea88a2caa044e409c1b32ee0850b825/default/dark/2.0",
+     "count": 930,
+     "peakOffset": "13:54",
+     "peakOffsetSeconds": 834,
+     "sharePct": 70.5
+    },
+    {
+     "code": "BloodTrail",
+     "provider": "twitch",
+     "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/69/default/dark/2.0",
+     "count": 241,
+     "peakOffset": "13:54",
+     "peakOffsetSeconds": 834,
+     "sharePct": 18.3
+    }
+   ],
+   "coverageTruth": [
+    {
+     "label": "VOD available",
+     "value": "No",
+     "ok": false
+    },
+    {
+     "label": "Chat replay",
+     "value": "Full stream tracked",
+     "ok": true
+    },
+    {
+     "label": "Source confidence",
+     "value": "99%",
+     "ok": true
+    },
+    {
+     "label": "Backfill",
+     "value": "Not needed",
+     "ok": true
+    },
+    {
+     "label": "Data freshness",
+     "value": "Current window",
+     "ok": true
+    },
+    {
+     "label": "7TV coverage",
+     "value": "0 / min",
+     "ok": false
+    }
+   ]
+  }
+ },
+ "featured30m": {
+  "state": "ready",
+  "login": "yuyuta0702",
+  "displayName": "ゆゆうた押忍",
+  "streamId": "316655688306",
+  "category": "Just Chatting",
+  "startedAt": "2026-10-30T04:20:06Z",
+  "viewers": 10682,
+  "chatPerMin": 374.03,
+  "peakCount": 19,
+  "dataCoveragePct": 99.44,
+  "topMoments": [
+   {
+    "offsetSeconds": 834,
+    "score": 37,
+    "label": "Emote spike",
+    "kind": "twitch",
+    "source": "live_irc",
+    "chatPerMin": 711,
+    "emotesPerMin": 1320,
+    "topEmoteCode": "YappingDuck",
+    "topEmotes": [
+     {
+      "name": "YappingDuck",
+      "provider": "twitch",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_bea88a2caa044e409c1b32ee0850b825/default/dark/2.0",
+      "count": 930,
+      "sharePct": 0
+     },
+     {
+      "name": "BloodTrail",
+      "provider": "twitch",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/69/default/dark/2.0",
+      "count": 241,
+      "sharePct": 0
+     }
+    ],
+    "vodState": "no_vod"
+   },
+   {
+    "offsetSeconds": 5754,
+    "score": 35,
+    "label": "Emote spike",
+    "kind": "twitch",
+    "source": "live_irc",
+    "chatPerMin": 729,
+    "emotesPerMin": 1585,
+    "topEmoteCode": "NotLikeThis",
+    "topEmotes": [
+     {
+      "name": "NotLikeThis",
+      "provider": "twitch",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/2.0",
+      "count": 1286,
+      "sharePct": 0
+     },
+     {
+      "name": "BloodTrail",
+      "provider": "twitch",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/69/default/dark/2.0",
+      "count": 91,
+      "sharePct": 0
+     }
+    ],
+    "vodState": "no_vod"
+   },
+   {
+    "offsetSeconds": 2514,
+    "score": 33,
+    "label": "Emote spike",
+    "kind": "twitch",
+    "source": "live_irc",
+    "chatPerMin": 639,
+    "emotesPerMin": 373,
+    "topEmoteCode": "YappingDuck",
+    "topEmotes": [
+     {
+      "name": "YappingDuck",
+      "provider": "twitch",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_bea88a2caa044e409c1b32ee0850b825/default/dark/2.0",
+      "count": 319,
+      "sharePct": 0
+     },
+     {
+      "name": "MikeHogu",
+      "provider": "twitch",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/81636/default/dark/2.0",
+      "count": 15,
+      "sharePct": 0
+     }
+    ],
+    "vodState": "no_vod"
+   },
+   {
+    "offsetSeconds": 1074,
+    "score": 29,
+    "label": "Chat spike",
+    "kind": "chat",
+    "source": "live_irc",
+    "chatPerMin": 838,
+    "emotesPerMin": 81,
+    "topEmoteCode": "YappingDuck",
+    "topEmotes": [
+     {
+      "name": "YappingDuck",
+      "provider": "twitch",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_bea88a2caa044e409c1b32ee0850b825/default/dark/2.0",
+      "count": 72,
+      "sharePct": 0
+     },
+     {
+      "name": "ClapHands",
+      "provider": "twitch",
+      "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_cb4c93c8bef44ae6888cf239f98754b7/default/dark/2.0",
+      "count": 5,
+      "sharePct": 0
+     }
+    ],
+    "vodState": "no_vod"
+   }
+  ],
+  "chartPoints": [
+   {
+    "offsetSeconds": 7080,
+    "chatNorm": 62,
+    "viewersNorm": 90,
+    "emotesNorm": 99,
+    "heat": 73
+   },
+   {
+    "offsetSeconds": 7140,
+    "chatNorm": 46,
+    "viewersNorm": 90,
+    "emotesNorm": 8,
+    "heat": 36
+   }
+  ],
+  "topEmoteBursts": [
+   {
+    "code": "YappingDuck",
+    "provider": "twitch",
+    "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_bea88a2caa044e409c1b32ee0850b825/default/dark/2.0",
+    "count": 930,
+    "peakOffset": "13:54",
+    "peakOffsetSeconds": 834,
+    "sharePct": 70.5
+   },
+   {
+    "code": "BloodTrail",
+    "provider": "twitch",
+    "imageUrl": "https://static-cdn.jtvnw.net/emoticons/v2/69/default/dark/2.0",
+    "count": 241,
+    "peakOffset": "13:54",
+    "peakOffsetSeconds": 834,
+    "sharePct": 18.3
+   }
+  ],
+  "coverageTruth": [
+   {
+    "label": "VOD available",
+    "value": "No",
+    "ok": false
+   },
+   {
+    "label": "Chat replay",
+    "value": "Full stream tracked",
+    "ok": true
+   },
+   {
+    "label": "Source confidence",
+    "value": "99%",
+    "ok": true
+   },
+   {
+    "label": "Backfill",
+    "value": "Not needed",
+    "ok": true
+   },
+   {
+    "label": "Data freshness",
+    "value": "Current window",
+    "ok": true
+   },
+   {
+    "label": "7TV coverage",
+    "value": "0 / min",
+    "ok": false
+   }
+  ]
+ }
+}

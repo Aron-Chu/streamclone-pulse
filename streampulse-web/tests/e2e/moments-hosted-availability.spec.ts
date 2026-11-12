@@ -31,11 +31,12 @@ test('hosted Latest first screen and unavailable discovery recovery', async ({ p
     await page.screenshot({ path: testInfo.outputPath(`latest-live-${width}.png`) })
   }
   const shown = await page.locator('.moments-result').count()
-  // After the first screen, one availability read decides the ranked tabs. A 404
-  // leaves Latest and Saved; bookmarked ranked views keep their honest panel.
+  // The site hides the ranked tabs itself: Latest makes no availability read, even
+  // past the two seconds the removed check waited. Bookmarked ranked views read it
+  // for their own panel, which a 404 makes the honest not-deployed panel.
   const availabilityReads = () => reads.filter(read => read.path.includes('/discovery/ranked/availability'))
-  await expect.poll(() => availabilityReads().length).toBe(1)
-  expect(availabilityReads()[0].status).toBe(404)
+  await page.waitForTimeout(2_500)
+  expect(availabilityReads()).toHaveLength(0)
   await expect(page.getByRole('tablist', { name: 'Moment views' }).getByRole('tab')).toHaveText(['Latest', /^Saved/])
   await page.goto('/analytics/moments?view=explore')
   await expect(page.getByRole('tab', { name: 'Explore', exact: true })).toHaveAttribute('aria-selected', 'true')

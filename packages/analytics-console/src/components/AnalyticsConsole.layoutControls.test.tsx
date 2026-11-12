@@ -145,7 +145,7 @@ describe('AnalyticsConsole opt-in layout controls', () => {
   })
   it('keeps package defaults unchanged when layout controls are omitted', async () => {
     renderConsole()
-    expect(await screen.findByRole('heading', { name: 'Layout fixture' })).not.toBeNull()
+    expect(await screen.findByText('Layout fixture', { selector: '[data-session-title]' })).not.toBeNull()
     expect(await screen.findByTestId('analytics-chart')).not.toBeNull()
     expect(screen.queryByRole('button', { name: /hide streams/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /focus chart/i })).toBeNull()
@@ -157,7 +157,7 @@ describe('AnalyticsConsole opt-in layout controls', () => {
 
   it('hides the stream rail without hiding session details', async () => {
     renderConsole({ enableLayoutControls: true })
-    expect(await screen.findByRole('heading', { name: 'Layout fixture' })).not.toBeNull()
+    expect(await screen.findByText('Layout fixture', { selector: '[data-session-title]' })).not.toBeNull()
     expect(await screen.findByTestId('analytics-chart')).not.toBeNull()
 
     const toggle = screen.getByRole('button', { name: 'Hide streams' })
@@ -174,7 +174,7 @@ describe('AnalyticsConsole opt-in layout controls', () => {
 
   it('moves streams and session details below the focused chart in details disclosures', async () => {
     renderConsole({ enableLayoutControls: true })
-    expect(await screen.findByRole('heading', { name: 'Layout fixture' })).not.toBeNull()
+    expect(await screen.findByText('Layout fixture', { selector: '[data-session-title]' })).not.toBeNull()
     expect(await screen.findByTestId('analytics-chart')).not.toBeNull()
 
     const focus = screen.getByRole('button', { name: 'Focus chart' })
@@ -200,7 +200,7 @@ describe('AnalyticsConsole opt-in layout controls', () => {
 
   it('exposes one keyboard-operable tab set for session details', async () => {
     renderConsole()
-    await screen.findByRole('heading', { name: 'Layout fixture' })
+    await screen.findByText('Layout fixture', { selector: '[data-session-title]' })
     const tabs = screen.getAllByRole('tab')
     expect(tabs.map(tab => tab.textContent)).toEqual(['Moments', 'Emotes', 'Status'])
     expect(tabs[0]?.getAttribute('aria-selected')).toBe('true')
@@ -222,7 +222,12 @@ describe('AnalyticsConsole data skeleton', () => {
     })
     const status = screen.getByRole('status', { name: /loading analytics chart/i })
     expect(status.getAttribute('data-console-skeleton')).toBe('chart')
-    expect(status.className).toMatch(/min-h-\[45rem\]/)
+    // One height per loaded chart card size: 770 px below 610 px, 738 px at 610-639 px, 730 px at 640-719 px,
+    // 830 px from 720 px.
+    expect(status.className).toMatch(/(?:^| )min-h-\[48\.125rem\]/)
+    expect(status.className).toMatch(/ min-\[610px\]:min-h-\[46\.125rem\]/)
+    expect(status.className).toMatch(/ sm:min-h-\[45\.625rem\]/)
+    expect(status.className).toMatch(/ min-\[720px\]:min-h-\[51\.875rem\]/)
     // The readout's place holds a loading line in the readout's style, kept out of the status's spoken text.
     const readout = status.querySelector('[data-console-skeleton-readout]')!
     expect(readout.className).toBe('ssc-ro')
@@ -237,7 +242,7 @@ describe('AnalyticsConsole data skeleton', () => {
     renderConsole()
     expect(await screen.findByRole('heading', { name: 'Session layout-stream not found' })).not.toBeNull()
     expect(screen.getByText(/Session not found for/)).not.toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Layout fixture' })).toBeNull()
+    expect(screen.queryByText('Layout fixture', { selector: '[data-session-title]' })).toBeNull()
   })
 
   it('does not mislabel a service failure as a nonexistent session', async () => {
@@ -245,6 +250,6 @@ describe('AnalyticsConsole data skeleton', () => {
     renderConsole()
     expect(await screen.findByRole('heading', { name: 'Unable to load xqc session' })).toBeTruthy()
     expect(screen.queryByText(/Session not found for/)).toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Layout fixture' })).toBeNull()
+    expect(screen.queryByText('Layout fixture', { selector: '[data-session-title]' })).toBeNull()
   })
 })

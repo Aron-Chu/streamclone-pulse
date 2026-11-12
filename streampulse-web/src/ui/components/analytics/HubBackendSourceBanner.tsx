@@ -3,6 +3,7 @@ import {
   backendSourceCaption,
   backendSourceHost,
   localBackendDevCaption,
+  isSandboxSiteBuild,
   resolveBackendSource,
 } from '../../../lib/backendSource'
 import { DEFAULT_PRODUCTION_BACKEND_URL, setBackendUrlOverride } from '../../../lib/auth'
@@ -12,7 +13,7 @@ export function HubBackendSourceBanner() {
   const source = resolveBackendSource(backendUrl)
   const host = backendSourceHost(backendUrl)
 
-  if (source === 'hosted') return null
+  if (source === 'hosted' || isSandboxSiteBuild()) return null
 
   function handleUseHosted() {
     setBackendUrlOverride(null)

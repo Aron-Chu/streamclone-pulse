@@ -1,4 +1,4 @@
-import { PulseBannerBackdrop, usePulseBanner } from './PulseBanner.tsx'
+import { PulseBannerBackdrop, PulseBannerLoadError, usePulseBanner } from './PulseBanner.tsx'
 import { openCommunity } from './AnalyticsHubCta.tsx'
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
@@ -8,6 +8,7 @@ import { readTwitchChannelAvatarUrl } from '../content/twitch.ts'
 import { ACCENT_THEME_OPTIONS } from './overlayTheme.ts'
 import { ChoicePicker } from './ChoicePicker.tsx'
 import { DENSITY_OPTIONS, PLACEMENT_OPTIONS } from './preferenceOptions.ts'
+import { AUTO_UPDATE_LABEL, DENSITY_LABEL, DOCK_LABEL, LIVE_SETTINGS_TITLE, PLACEMENT_LABEL, VOD_JUMP_PIN_LABEL } from './settingLabels.ts'
 import { usePulseHealth } from './usePulseHealth.ts'
 import { usePulsePreferences } from './usePulsePreferences.ts'
 import { useSupporterAppearanceDetails, type SupporterAppearance } from './useSupporterAppearance.ts'
@@ -189,18 +190,18 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
         <QuickLook appearance={appearance} disabled={opening} onOpen={() => void openHost('supporter')} />
 
         <QuickGroup title="Moments">
-          <StoredToggleRow label="Moment pictures" hint="Captured in this tab, never uploaded." read={getMomentPicturesEnabled} write={setMomentPicturesEnabled} />
-          <StoredToggleRow label="Mark VOD jumps on the chart" read={getVodJumpChartPinEnabled} write={setVodJumpChartPinEnabled} />
+          <StoredToggleRow label="Moment pictures" hint="Kept on this device with your saves, never uploaded." read={getMomentPicturesEnabled} write={setMomentPicturesEnabled} />
+          <StoredToggleRow label={VOD_JUMP_PIN_LABEL} read={getVodJumpChartPinEnabled} write={setVodJumpChartPinEnabled} />
           <div className="pulse-settings-toggle-row pulse-settings-control-block">
             <span className="pulse-settings-label">My Moments</span>
             <button type="button" className="pulse-link-btn" data-settings-host-cta="moments" disabled={opening} onClick={() => void openHost('moments')}>Open ↗</button>
           </div>
         </QuickGroup>
 
-        <QuickGroup title="Live data">
+        <QuickGroup title={LIVE_SETTINGS_TITLE}>
           <ToggleRow
             id="pulse-auto-update"
-            label="Refresh live data automatically"
+            label={AUTO_UPDATE_LABEL}
             checked={preferences.autoUpdate}
             onChange={preferences.setAutoUpdate}
           />
@@ -208,11 +209,11 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
 
         <QuickGroup title="Layout">
           <div className="pulse-settings-field pulse-settings-control-block">
-            <span className="pulse-settings-label">Density</span>
+            <span className="pulse-settings-label">{DENSITY_LABEL}</span>
             <ChoicePicker
               kind="density"
               variant="compact"
-              groupLabel="Density"
+              groupLabel={DENSITY_LABEL}
               options={DENSITY_OPTIONS}
               value={preferences.density}
               onChange={next => void preferences.setDensity(next)}
@@ -220,11 +221,11 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
           </div>
 
           <div className="pulse-settings-field pulse-settings-control-block">
-            <span className="pulse-settings-label">Placement</span>
+            <span className="pulse-settings-label">{PLACEMENT_LABEL}</span>
             <ChoicePicker
               kind="placement"
               variant="compact"
-              groupLabel="Placement"
+              groupLabel={PLACEMENT_LABEL}
               options={PLACEMENT_OPTIONS.map(option => ({
                 ...option,
                 icon: <span className="pulse-placement-icon" data-placement={option.value} aria-hidden="true" />,
@@ -236,7 +237,7 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
 
           <ToggleRow
             id="pulse-chat-dock"
-            label="Dock when chat is closed"
+            label={DOCK_LABEL}
             hint={isSidebar ? 'Show a mini Pulse dock when Twitch chat is hidden.' : 'Docking needs Sidebar placement.'}
             checked={preferences.dock}
             disabled={!isSidebar}
@@ -320,7 +321,7 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
 export function SupporterHero({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
   const finish = appearance?.finish ?? null
   const descriptionId = useId()
-  const perks = `${appearance ? 'Your Supporter perks' : 'Supporter perks'}: ${SUPPORTER_PERK_NAMES.join(', ')}. Only you see them. Core tools stay free. This card is a preview, shown only in your StreamPulse extension. Twitch chat is unchanged.`
+  const perks = `${appearance ? 'Your Supporter perks' : 'Supporter perks'}: ${SUPPORTER_PERK_NAMES.join(', ')}. Only you see them. The chat lines are a preview; Twitch chat doesn't change. Core tools stay free.`
   return (
     <button
       type="button"
@@ -393,7 +394,7 @@ export function QuickLook({ appearance, disabled, onOpen }: { appearance: Suppor
   const mode = perks ? banner.value.mode : rain ?? 'off'
   const title = banner.value.title || 'Stream Pulse'
   return (
-    <QuickGroup title={<>Your look{perks ? null : <span className="pulse-quick-chip">Supporter · try free</span>}</>}>
+    <QuickGroup title={<>Your look{perks ? null : <span className="pulse-quick-chip">Supporter · preview</span>}</>}>
       <div className="pulse-settings-control-block">
         <div className="pulse-quick-look" aria-hidden="true">
           <PulseBannerBackdrop value={{ ...banner.value, mode }} perks />
@@ -401,10 +402,15 @@ export function QuickLook({ appearance, disabled, onOpen }: { appearance: Suppor
           <strong className={finish ? 'pulse-paint' : undefined} data-finish={finish ?? undefined} data-wave={appearance?.paint?.wave} data-sheen={appearance?.paint?.sheen} data-text={title}>{title}</strong>
         </div>
       </div>
-      <div className="pulse-settings-field pulse-settings-control-block">
+      <div className="pulse-settings-field pulse-settings-control-block" aria-busy={perks && (!banner.ready || banner.saving) || undefined}>
         <span className="pulse-settings-label">Emote rain</span>
         <ChoicePicker kind="look" variant="compact" groupLabel="Emote rain" options={RAIN_OPTIONS} value={mode}
-          onChange={next => perks ? void banner.save({ ...banner.value, mode: next }) : setRain(next)} />
+          onChange={next => {
+            if (!perks) setRain(next)
+            else if (banner.ready && !banner.saving) void banner.save({ ...banner.value, mode: next })
+          }} />
+        {banner.loadError ? <PulseBannerLoadError onRetry={() => void banner.reload()} /> : null}
+        {banner.status && banner.status !== 'Saved' ? <span role="status">{banner.status}</span> : null}
       </div>
       <div className="pulse-settings-field pulse-settings-control-block">
         <span className="pulse-settings-label">Paint</span>

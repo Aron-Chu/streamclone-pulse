@@ -115,6 +115,9 @@ describe('buildSessionBarStrip', () => {
     expect(m.topEmotes.slice(0, 3).map((e) => [e.code, e.perMin])).toEqual([['HUH', 56], ['LOL', 44], ['LO', 29]])
     expect(m.topEmotesExact).toBe(true)
     expect(m.providers).toEqual({ sevenTv: 218, other: 32 })
+    // a stream with no 7TV count anywhere hides the split ("7TV 0" would read as a fact)
+    const no7tv = rows.map((row) => ({ ...row, seventvEmoteCount: 0 }))
+    expect(buildSessionBarStrip({ ...base, span: { startSec: 3054, endSec: 3114, levelMinutes: 1 }, rollups: no7tv, moments: [] }).providers).toBeNull()
     expect(m.category).toEqual({ name: 'Grand Theft Auto V', artUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/32982_IGDB-144x192.jpg' })
     expect(m.moments.map((x) => [x.rank, x.offsetLabel, x.label, x.locked])).toEqual([[1, '0:50:54', 'Emote spike · score 56', true]])
     expect(m.moments[0]!.topEmote).toMatchObject({ code: 'HUH', count: 56 })
@@ -162,6 +165,19 @@ describe('buildSessionBarStrip', () => {
     expect(m.namedNote).toBe('Names for <1% of emote uses')
   })
 
+  it('an empty top emotes list says none were named only when the bar counted no emote uses (pick 12S, 10-30)', () => {
+    const one = { ...base, span: { startSec: 3054, endSec: 3114, levelMinutes: 1 } }
+    expect(buildSessionBarStrip({ ...one, rollups: [minute(3054)] }).topEmotesNote).toBeNull()
+    expect(buildSessionBarStrip({ ...one, rollups: [minute(3054, { emotes: {} })] }).topEmotesNote).toBe('names not in this update')
+    expect(buildSessionBarStrip({ ...one, rollups: [minute(3054, { totalEmoteCount: 0, seventvEmoteCount: 0, emotes: {} })] }).topEmotesNote)
+      .toBe('none named in this minute')
+    const five = { ...base, span: { startSec: 3000, endSec: 3300, levelMinutes: 5 } }
+    expect(buildSessionBarStrip({ ...five, rollups: [minute(3000, { emotes: undefined }), minute(3060, { emotes: {} })] }).topEmotesNote)
+      .toBe('names not in this update')
+    expect(buildSessionBarStrip({ ...five, rollups: [minute(3000, { totalEmoteCount: 0, emotes: undefined })] }).topEmotesNote)
+      .toBe('none named in this bar')
+  })
+
   it('reads a category switch in time order', () => {
     const m = buildSessionBarStrip({
       ...base,
@@ -203,12 +219,12 @@ describe('buildSessionBarStrip', () => {
       ...base, vodLinkState: { status: 'live', label: 'Live — no VOD yet', detail: '' },
       span: { startSec: 3054, endSec: 3114, levelMinutes: 1 }, rollups: [minute(3054)],
     })
-    expect(live.vod).toMatchObject({ vodId: null, playAt: null, open: null, message: 'No VOD for this stream yet.' })
+    expect(live.vod).toMatchObject({ vodId: null, playAt: null, open: null, message: 'No VOD linked yet.' })
     const gone = buildSessionBarStrip({
       ...base, vodLinkState: { status: 'unavailable', label: 'VOD unavailable', detail: '' },
       span: { startSec: 3054, endSec: 3114, levelMinutes: 1 }, rollups: [minute(3054)],
     })
-    expect(gone.vod.message).toBe('VOD unavailable')
+    expect(gone.vod.message).toBe('VOD unavailable.')
   })
 
   it("a minute past the VOD's end isn't in the VOD", () => {

@@ -87,7 +87,7 @@
   z-index: 90;
   padding: 0.5rem 0.9rem;
   background: var(--fma-accent);
-  color: #fff;
+  color: var(--fma-bg);
   border-radius: 8px;
   font-size: 0.8rem;
 }
@@ -177,16 +177,6 @@
   background: var(--fma-accent-bg);
 }
 
-.analytics-topnav__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.3rem 0.7rem;
-  border: 1px solid var(--fma-border);
-  border-radius: var(--sp-radius-md, 7px);
-  font-size: 0.75rem;
-}
-
 .analytics-topnav__actions {
   margin-left: auto;
   display: inline-flex;
@@ -201,6 +191,7 @@
 .analytics-topnav__install {
   display: inline-flex;
   align-items: center;
+  gap: 0.45rem;
   min-height: 44px;
   white-space: nowrap;
   font-size: 0.8rem;
@@ -216,39 +207,51 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* hover as the bar's other buttons (2026-11-02), with the approved ease and press */
+.analytics-topnav__install:hover { background: var(--fma-dim); color: var(--fma-text, #f4f4f5); }
+@media (prefers-reduced-motion: no-preference) {
+  .analytics-topnav__install { transition: background-color 140ms ease, color 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1); }
+  .analytics-topnav__install:active { scale: .96; transition-duration: 140ms, 140ms, 70ms; }
+}
+
+/* Discord, on the bar at every width: Blurple like the site header's, a 44px mark below 1280px. */
+.analytics-topnav__discord {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.8rem 0 0.7rem;
+  border-radius: 0.5rem;
+  background: #5865f2;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 650;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.analytics-topnav__discord:hover { background: #4752c4; color: #fff; }
+.analytics-topnav__discord:focus-visible { outline: 2px solid var(--fma-accent); outline-offset: 2px; }
+@media (max-width: 1279px) {
+  .analytics-topnav__discord { padding: 0; }
+  .analytics-topnav__discord span { display: none; }
+}
 
 .figma-analytics__center--themed {
   transition: opacity 0.15s ease;
 }
 
-.analytics-topnav__status span {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--fma-sub);
-}
-
-.analytics-topnav__status small {
-  color: var(--fma-muted);
-  font-family: var(--fma-mono);
-  letter-spacing: 0.04em;
-  font-size: 0.75rem;
-}
-
-.analytics-topnav__status strong {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.analytics-topnav__status--ready span { background: var(--fma-green); }
-.analytics-topnav__status--degraded span { background: var(--fma-amber); }
-.analytics-topnav__status--offline span { background: var(--fma-red); }
-
 /* Reserve the phone navigation row before the webfont arrives. Otherwise its
-   slightly wider metrics can push the links down and shift the entire page. */
-@media (max-width: 480px) {
+   slightly wider metrics can push the links down and shift the entire page.
+   Below 600px the buttons (Discord, the hub's search) stay on the brand's row,
+   so the bar keeps one height with the hub's search docked or not. */
+@media (max-width: 599px) {
   .analytics-topnav .analytics-topnav__links {
     flex: 1 0 100%;
+    order: 5;
   }
 }
 
@@ -266,30 +269,24 @@
     padding-inline: 0.55rem;
   }
 
-  .analytics-topnav__actions {
-    flex: 1 0 100%;
-    margin-left: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.5rem;
-  }
-
-  .analytics-topnav__status {
-    min-width: 0;
-    justify-content: center;
-    padding-inline: 0.55rem;
-  }
-
-  /* The status container already has a full accessible label. Keep the compact
-     mobile badge to dot + value so longer truthful states never wrap the nav. */
-  .analytics-topnav__status small {
+  /* Add to Chrome is no use on a phone; Discord stays. The hub hero and
+     Moments drop install the same way. */
+  .analytics-topnav__install {
     display: none;
   }
 
-  .analytics-topnav__status strong {
-    white-space: nowrap;
-    overflow-wrap: normal;
-  }
+  /* With the header account entry (VITE_ACCOUNT_HEADER=1) the actions are too
+     wide to share the links row, so they start their own; the account entry
+     ends that row instead of adding another. */
+  .analytics-topnav--account .analytics-topnav__actions { flex: 1 1 18rem; }
+  .analytics-topnav--account > .account-entry { margin-left: auto; }
+}
+
+/* Phones give the links their own row, which leaves the brand row room for the
+   account entry. It stays last in tab order. */
+@media (max-width: 480px) {
+  .analytics-topnav--account .analytics-topnav__brand { order: -2; }
+  .analytics-topnav--account > .account-entry { order: -1; }
 }
 
 .hub-mobile-sections {

@@ -64,7 +64,9 @@ describe('GamesPlayedStrip live versus offline contract', () => {
     expect(screen.getByRole('listitem', { name: /Game C/i })).not.toBeNull()
   })
 
-  it('headerless (session chart): no header, every game on the rail, each poster with its run time', () => {
+  // (candidate, 10-30) GP1: the name and run time under each poster are visible
+  // lines a screen reader reads too (they were aria-hidden, the name title-only).
+  it('headerless (session chart): no header, every game on the rail, each poster with its name and run time', () => {
     const { container } = render(
       <GamesPlayedStrip
         games={games}
@@ -84,7 +86,27 @@ describe('GamesPlayedStrip live versus offline contract', () => {
     ])
     const runTimes = [...container.querySelectorAll('[data-games-played-run-time]')]
     expect(runTimes.map(el => el.textContent)).toEqual(['10m', '10m', '10m'])
-    expect(runTimes.every(el => el.getAttribute('aria-hidden') === 'true')).toBe(true)
+    expect(runTimes.some(el => el.closest('[aria-hidden="true"]'))).toBe(false)
+    const names = [...container.querySelectorAll('[data-games-played-name]')]
+    expect(names.map(el => el.textContent)).toEqual(['Game A', 'Game B', 'Game C'])
+    expect(names.some(el => el.closest('[aria-hidden="true"]'))).toBe(false)
+    // One line each, the name cut with an ellipsis (sp-session-chart.css .ssc-gp-name).
+    expect(names.every(el => el.classList.contains('ssc-gp-name'))).toBe(true)
+    expect(runTimes.every(el => el.classList.contains('ssc-gp-rt'))).toBe(true)
+  })
+
+  it('headerless items size to the name, up to 96 px, so a long name does not run under the next poster', () => {
+    render(
+      <GamesPlayedStrip
+        games={[{ gameName: 'Call of Duty: Black Ops II', offsetSeconds: 0, durationSeconds: 600 }]}
+        durationSeconds={600}
+        headerless
+      />,
+    )
+    const item = screen.getByRole('listitem')
+    expect(item.style.flex).toBe('0 0 auto')
+    expect(item.style.minWidth).toBe('52px')
+    expect(item.style.maxWidth).toBe('96px')
   })
 
   it('headerless run times round to the minute and stop at the timeline end, like session-original fdm', () => {

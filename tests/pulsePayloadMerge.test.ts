@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergePulsePayload } from '../src/background/pulsePayloadMerge.ts'
+import { layFullHistoryUnderPoll, mergePulsePayload } from '../src/background/pulsePayloadMerge.ts'
 import type { PulsePayload } from '../src/shared/messages.ts'
 
 function basePayload(overrides: Partial<PulsePayload> = {}): PulsePayload {
@@ -373,5 +373,62 @@ describe('mergePulsePayload', () => {
     const merged = mergePulsePayload(previous, incoming)
     expect(merged.topEmotes?.[0]?.providerEmoteId).toBe('provider-1')
     expect(merged.games?.[0]?.categoryId).toBe('509658')
+  })
+})
+
+describe('layFullHistoryUnderPoll', () => {
+  const startedAt = '2026-10-17T15:00:00.000Z'
+  const fullHistory = basePayload({
+    streamId: 'stream-a',
+    startedAt,
+    currentOffsetSeconds: 8_600,
+    rollups: [{ offsetSeconds: 8_580, chatCount: 50, sevenTvEmoteCount: 10 }],
+    fullRollups: [
+      { offsetSeconds: 0, chatCount: 5, sevenTvEmoteCount: 1 },
+      { offsetSeconds: 8_580, chatCount: 50, sevenTvEmoteCount: 10 },
+    ],
+    peaks: [{ offsetSeconds: 8_634, score: 4.7, reasons: ['chat_spike'], dominantSignal: 'chat' }],
+    games: [{ gameName: 'GTA V', offsetSeconds: 0, durationSeconds: 11_862 }],
+    peakViewers: 4_100,
+    topEmotes: [{ id: 'a', name: 'KEKW', provider: 'ffz', count: 900 }],
+  })
+
+  it('keeps the newest poll’s moments, games and peak stats over a Full payload cached at load (LIVE-2)', () => {
+    const poll = basePayload({
+      streamId: 'stream-a',
+      startedAt,
+      currentOffsetSeconds: 12_278,
+      rollups: [{ offsetSeconds: 12_240, chatCount: 80, sevenTvEmoteCount: 30 }],
+      peaks: [
+        { offsetSeconds: 12_054, score: 3.6, reasons: ['emote_spike'], dominantSignal: 'emote' },
+        { offsetSeconds: 8_634, score: 4.7, reasons: ['chat_spike'], dominantSignal: 'chat' },
+      ],
+      games: [{ gameName: 'GTA V', offsetSeconds: 0, durationSeconds: 12_278 }],
+      peakViewers: 4_300,
+      topEmotes: [{ id: 'b', name: 'LUL', provider: 'twitch', count: 1_200 }],
+    })
+
+    const merged = layFullHistoryUnderPoll(poll, fullHistory)
+
+    expect(merged.peaks?.map(peak => peak.offsetSeconds)).toEqual([12_054, 8_634])
+    expect(merged.games?.[0]?.durationSeconds).toBe(12_278)
+    expect(merged.peakViewers).toBe(4_300)
+    expect(merged.topEmotes?.[0]?.name).toBe('LUL')
+    expect(merged.currentOffsetSeconds).toBe(12_278)
+    expect(merged.fullRollups).toEqual(fullHistory.fullRollups)
+    expect(merged.rollups.at(-1)?.offsetSeconds).toBe(12_240)
+  })
+
+  it('falls back to the Full payload for summaries the poll omits', () => {
+    const poll = basePayload({ streamId: 'stream-a', startedAt, rollups: [] })
+    const merged = layFullHistoryUnderPoll(poll, fullHistory)
+    expect(merged.peaks).toEqual(fullHistory.peaks)
+    expect(merged.games).toEqual(fullHistory.games)
+  })
+
+  it('does not lay another stream’s Full history under the poll', () => {
+    const poll = basePayload({ streamId: 'stream-b', startedAt: '2026-10-18T15:00:00.000Z', peaks: [] })
+    const merged = layFullHistoryUnderPoll(poll, fullHistory)
+    expect(merged.fullRollups).toBeUndefined()
   })
 })

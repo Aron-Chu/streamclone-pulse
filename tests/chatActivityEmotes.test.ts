@@ -486,6 +486,30 @@ describe('chatActivityEmotes', () => {
     expect(firstBucket?.viewerCount).toBe(10_000)
   })
 
+  it('weights each minute by its viewer samples, so a 2-sample minute is not halved', () => {
+    const densified = densifyRollupsForTimeline([
+      { offsetSeconds: 0, chatCount: 10, viewerCount: 49_000, viewerSamples: 1 },
+      { offsetSeconds: 60, chatCount: 10, viewerCount: 49_450, viewerSamples: 2 },
+      { offsetSeconds: 120, chatCount: 10, viewerCount: 50_000, viewerSamples: 1 },
+    ], {
+      fromOffset: 0,
+      toOffset: 600 * 60,
+      maxPoints: 480,
+    })
+    expect(densified[1]?.viewerCount).toBe(49_450)
+    expect(densified[1]?.viewerSamples).toBe(2)
+
+    const merged = densifyRollupsForTimeline([
+      { offsetSeconds: 0, chatCount: 10, viewerCount: 40_000, viewerSamples: 1 },
+      { offsetSeconds: 60, chatCount: 10, viewerCount: 46_000, viewerSamples: 2 },
+    ], {
+      fromOffset: 0,
+      toOffset: 4 * 60,
+      maxPoints: 2,
+    })
+    expect(merged[0]?.viewerCount).toBe(44_000)
+  })
+
   it('preserves hosted rollups whose minute phase is offset from :00', () => {
     const densified = densifyRollupsForTimeline([
       { offsetSeconds: 0, chatCount: 228, totalEmoteCount: 200 },

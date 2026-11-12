@@ -1,14 +1,18 @@
 import { PulseThemedSelect } from '../PulseThemedSelect.tsx'
 import { useEffect, useId, useRef, useState } from 'react'
+import { PICTURE_LIMITS } from '../../shared/momentPictureStore.ts'
+import { BACKUP_MAX_BYTES, parseMomentsBackup } from '../../shared/myMomentsBackup.ts'
 import { PulseSectionCard } from '../PulseSectionCard.tsx'
 import { DeviceSaveItem, LibraryDialog, MomentEditor, MomentListItem } from './LibraryPrimitives.tsx'
-import { hasRecent, replayAvailability, visibleMoments, type HistorySyncView, type LibraryMoment, type LibraryPreferences, type LibraryRepository, type LibrarySnapshot, type LibraryView, type MomentReference } from './model.ts'
+import { DAY, hasRecent, replayAvailability, visibleMoments, type HistorySyncView, type LibraryMoment, type LibraryPreferences, type LibraryRepository, type LibrarySnapshot, type LibraryView, type MomentReference } from './model.ts'
 import { useLibrary } from './useLibrary.ts'
 import { MomentPreview, type MomentContextState } from './MomentPreview.tsx'
 import type { MomentPresentation } from './MomentMedia.tsx'
-import type { BookmarksState } from '../../shared/myMoments.ts'
-import type { PulseBookmark } from '../../shared/messages.ts'
+import type { BookmarksState, DeviceBookmark } from '../../shared/myMoments.ts'
+import { keptVodOriginDelta } from '../../shared/vodOriginAlignment.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../../shared/twitchSignIn.ts'
+import { rememberMomentArrival } from '../../shared/momentArrival.ts'
+import { buildAnalyticsUrl, DEFAULT_WEB_ANALYTICS_BASE_URL } from '../../shared/analyticsLinks.ts'
 import './library.css'
 
 export interface LibraryWorkspaceProps {
@@ -20,6 +24,10 @@ export interface LibraryWorkspaceProps {
   /** Optional display-only analysis projections keyed by canonical moment ID. */
   contexts?: Readonly<Record<string, MomentContextState>>
   presentations?: Readonly<Record<string, MomentPresentation>>
+  /** Like `contexts`, but shown in Preview only; list rows stay as they are. */
+  previewContexts?: Readonly<Record<string, MomentContextState>>
+  /** Called with the moments a Bookmarks or History page lists, each time that page changes. */
+  onShowMoments?: (moments: readonly LibraryMoment[]) => void
   /** Portal origin for moment Analytics links; production when omitted. */
   analyticsOrigin?: string
   /**
@@ -32,7 +40,7 @@ export interface LibraryWorkspaceProps {
 }
 
 const views: readonly { id: LibraryView; label: string }[] = [
-  { id: 'saved', label: 'Bookmarks' },
+  { id: 'saved', label: 'Saved' },
   { id: 'recent', label: 'History' },
   { id: 'storage', label: 'Storage & privacy' },
 ]
@@ -41,18 +49,35 @@ type Confirmation = { kind: 'remove'; moment: LibraryMoment } | { kind: 'clear' 
   /** Add saves made without an account to it: one, or all when `moment` is absent. */
   | { kind: 'import'; moment?: LibraryMoment }
 
+/** Same channel, broadcast and whole second: how the worker matches a bookmark to its history entry. */
+function sameSource(a: MomentReference, b: MomentReference): boolean {
+  const broadcast = a.streamId || a.vodId
+  return !!broadcast && broadcast === (b.streamId || b.vodId) && a.channel.toLowerCase() === b.channel.toLowerCase()
+    && a.offsetSeconds !== null && b.offsetSeconds !== null && Math.floor(a.offsetSeconds) === Math.floor(b.offsetSeconds)
+}
+
 /** Pre-link device saves as rows, newest first. Only the worker's linked snapshot carries any. */
 function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
-  const saves = snapshot && 'deviceBookmarks' in snapshot ? (snapshot as { deviceBookmarks: Partial<PulseBookmark>[] }).deviceBookmarks : []
+  const saves = snapshot && 'deviceBookmarks' in snapshot ? (snapshot as { deviceBookmarks: Partial<DeviceBookmark>[] }).deviceBookmarks : []
   return saves.flatMap(b => {
     if (typeof b.id !== 'string') return []
     const vodId = b.vodId ?? null
     const offsetSeconds = typeof b.offsetSeconds === 'number' ? b.offsetSeconds : null
     const savedAt = Date.parse(b.createdAt ?? '')
+    const delta = vodId ? keptVodOriginDelta(b.vodOriginDeltaSeconds) : undefined
     return [{ id: b.id, channel: b.login ?? '', title: b.label || 'Saved moment', vodId, streamId: b.streamId, offsetSeconds,
-      availability: replayAvailability({ vodId, offsetSeconds }), ...(Number.isFinite(savedAt) ? { savedAt } : {}), note: b.notes ?? '' }]
+      ...(delta === undefined ? {} : { vodOriginDeltaSeconds: delta }),
+      availability: replayAvailability({ vodId, offsetSeconds }, Number.isFinite(savedAt) ? savedAt : undefined), ...(Number.isFinite(savedAt) ? { savedAt } : {}), note: b.notes ?? '' }]
   }).sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0) || a.id.localeCompare(b.id))
 }
+
+/** Saves (the account's and this device's) and History entries a snapshot lists: what an import added. */
+function counts(snapshot: LibrarySnapshot) {
+  return { saves: snapshot.moments.filter(m => m.savedAt !== undefined).length + deviceSaveMoments(snapshot).length,
+    visits: snapshot.moments.filter(m => m.jumpedAt !== undefined).length }
+}
+/** History kept on this device before an account was linked; only an account's snapshot counts it. */
+const deviceHistory = (snapshot: LibrarySnapshot) => 'deviceHistory' in snapshot ? Number((snapshot as { deviceHistory?: number }).deviceHistory) || 0 : 0
 
 /**
  * My Moments with Sign in with Twitch compiled off (every store build today):
@@ -61,6 +86,8 @@ function deviceSaveMoments(snapshot: LibrarySnapshot | null): LibraryMoment[] {
  */
 export const DEVICE_ONLY_INTRO = 'Find your way back to the stream. Bookmarks are free and stay in this browser, along with your notes and watched history.'
 export const DEVICE_ONLY_COPY = 'Bookmarks, notes and watched history stay in this browser and are never uploaded. Accounts are coming with Continue with Twitch; until then there is nothing to sign up for.'
+/** An account already linked, while nobody can make one (F15): its saves follow it, and no sign-up is promised. */
+export const ACCOUNT_INTRO = 'Find your way back to the stream. Saves follow your Pulse account to every browser it’s connected in. Notes stay on this device. Watched history does too, unless you sync it to your account.'
 
 /**
  * Names why the hosted list is missing and what to do about it.
@@ -85,7 +112,7 @@ function BookmarksNotice({ state, onRetry, accountsOpen }: { state: BookmarksSta
           ? 'Connect a free Pulse account and new bookmarks follow you to any device. Bookmarks, notes and watched history saved here stay on this device.'
           : linkable
             ? 'Saved moments sync through your account so they survive a reinstall. Notes stay on this device, and so does watched history unless you turn on history sync.'
-            : 'No bookmark change was confirmed. Watched history and notes on this device are unaffected.'}
+            : 'Your account bookmarks could not be loaded, so they are not listed here. Nothing was changed; watched history and notes on this device are unaffected.'}
       </p>
       {deviceOnly ? null : <div className="pl-row">
         {linkable ? <a className="pl-button pl-primary" href="#supporter">Connect account</a> : null}
@@ -95,7 +122,7 @@ function BookmarksNotice({ state, onRetry, accountsOpen }: { state: BookmarksSta
   )
 }
 
-export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, analyticsOrigin, now = Date.now, accountsOpen = TWITCH_SIGNIN_ENABLED }: LibraryWorkspaceProps) {
+export function LibraryWorkspace({ repository, initialView = 'saved', onExport, contexts, presentations, previewContexts, onShowMoments, analyticsOrigin, now = Date.now, accountsOpen = TWITCH_SIGNIN_ENABLED }: LibraryWorkspaceProps) {
   const library = useLibrary(repository)
   const [view, setView] = useState<LibraryView>(initialView)
   const [query, setQuery] = useState('')
@@ -103,7 +130,13 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const [channel, setChannel] = useState('')
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState<LibraryMoment | null>(null)
-  const [previewId, setPreviewId] = useState<string | null>(null)
+  // Preview follows its moment by source: a save or Undo can bring it back under a new id.
+  const [preview, setPreview] = useState<LibraryMoment | null>(null)
+  // The bookmark Preview just removed, kept for Undo; and one whose note Undo still has to put back.
+  const [removed, setRemoved] = useState<LibraryMoment | null>(null)
+  const [restore, setRestore] = useState<LibraryMoment | null>(null)
+  // The History visit ✕ just removed, with when it was watched, for Undo.
+  const [removedVisit, setRemovedVisit] = useState<{ moment: LibraryMoment; jumpedAt: number } | null>(null)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const [localNotice, setLocalNotice] = useState('')
   const [clock, setClock] = useState(now())
@@ -111,21 +144,25 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const tabButtons = useRef<Array<HTMLButtonElement | null>>([])
   const id = useId()
   useEffect(() => {
-    setEditing(null); setPreviewId(null); setConfirmation(null); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice('')
+    setEditing(null); setPreview(null); setRemoved(null); setRestore(null); setRemovedVisit(null); setConfirmation(null); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice('')
   }, [repository])
   useEffect(() => { const timer = window.setInterval(() => setClock(now()), 30_000); return () => window.clearInterval(timer) }, [now])
   useEffect(() => { setPage(1) }, [query, view, channel, watchLater])
   useEffect(() => { setLocalNotice('') }, [library.notice])
   function navigate(next: LibraryView, focus: 'heading' | 'tab' = 'heading') {
-    setView(next); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice('')
+    setView(next); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice(''); setRemoved(null); setRemovedVisit(null)
     if (focus === 'heading') heading.current?.focus()
   }
-  function navigateFromTab(index: number, key: string) {
+  function navigateFromTab(index: number, event: { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; preventDefault(): void }) {
+    const { key } = event
     const next = key === 'ArrowRight' ? (index + 1) % views.length
       : key === 'ArrowLeft' ? (index + views.length - 1) % views.length
         : key === 'Home' ? 0
           : key === 'End' ? views.length - 1 : -1
     if (next === -1) return
+    // The key moves between tabs, so the page must not scroll with it too.
+    // A browser shortcut (Alt, Ctrl or Cmd held) keeps its own default.
+    if (!event.altKey && !event.ctrlKey && !event.metaKey) event.preventDefault()
     navigate(views[next].id, 'tab')
     tabButtons.current[next]?.focus()
   }
@@ -137,6 +174,9 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   // they are rather than only counting them.
   const deviceMoments = deviceSaveMoments(snapshot)
   const deviceSaves = deviceMoments.length
+  // The account list did not load: an empty Bookmarks tab would claim there are
+  // none, beside a notice saying they could not be read.
+  const accountListUnknown = bookmarksState === 'error' || bookmarksState === 'expired'
   // Unfiltered population decides whether filters are worth showing at all.
   const population = snapshot ? visibleMoments(snapshot, view, '', '', clock) : []
   const items = snapshot
@@ -146,7 +186,28 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const pages = Math.max(1, Math.ceil(items.length / pageSize))
   const currentPage = Math.min(page, pages)
   const pageItems = items.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  const previewMoment = snapshot?.moments.find(moment => moment.id === previewId)
+  const previewLive = preview ? snapshot?.moments.find(moment => moment.id === preview.id) ?? snapshot?.moments.find(moment => sameSource(moment, preview)) : undefined
+  // Removed from Preview with nothing left in History: keep showing it, unsaved, for Undo.
+  const previewMoment = previewLive ?? (preview && removed ? { ...removed, savedAt: undefined } : undefined)
+  // Data keyed by the id Preview opened with still describes the moment after it comes back.
+  const previewPresentation = previewMoment && preview ? presentations?.[previewMoment.id] ?? presentations?.[preview.id] : undefined
+  const previewContext = previewMoment && preview ? previewContexts?.[previewMoment.id] ?? contexts?.[previewMoment.id] ?? previewContexts?.[preview.id] ?? contexts?.[preview.id] : undefined
+  // Analysis opens the session page at this minute, the same link as the row's Analytics.
+  const previewAnalysis = previewPresentation?.analysisUrl ?? (previewMoment?.streamId ? buildAnalyticsUrl({ webAnalyticsBaseUrl: analyticsOrigin ?? DEFAULT_WEB_ANALYTICS_BASE_URL,
+    channelLogin: previewMoment.channel, streamId: previewMoment.streamId, offsetSeconds: previewMoment.offsetSeconds ?? undefined }) ?? undefined : undefined)
+  const contentView = view === 'saved' || view === 'recent'
+  // Told once per listed page, not per render: the latest callback and rows ride in a ref.
+  const shown = useRef({ items: pageItems, notify: onShowMoments })
+  shown.current = { items: pageItems, notify: onShowMoments }
+  const shownKey = contentView && pageItems.length ? JSON.stringify(pageItems.map(moment => moment.id)) : ''
+  useEffect(() => { if (shownKey) shown.current.notify?.(shown.current.items) }, [shownKey])
+  // A Watch link leaves a note so the panel in the new tab locks that moment;
+  // 10 s of it playing there then joins History, as after a jump in the panel.
+  const openedLink = (moment: MomentReference) => {
+    void rememberMomentArrival({ vodId: moment.vodId, offsetSeconds: moment.offsetSeconds, source: 'library',
+      login: moment.channel, streamId: moment.streamId, title: moment.title })
+    setLocalNotice(snapshot?.preferences.captureHistory ? 'Opened on Twitch. 10 s of playback there adds it to History.' : 'Opened on Twitch.')
+  }
   const modal = !!editing || !!confirmation || !!previewMoment
   const filtered = Boolean(query.trim() || channel || watchLater)
   async function exportAll() {
@@ -163,30 +224,92 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
     }
   }
   function save(reference: MomentReference) { void library.run({ kind: 'save', reference }, 'Moment saved. It will remain when history expires.') }
-  const contentView = view === 'saved' || view === 'recent'
+  // Removing deletes the save and its note; Undo saves it again and puts the note back.
+  async function removeFromPreview(moment: LibraryMoment, message = 'Bookmark removed.') {
+    setRemoved(moment); setRestore(null); setRemovedVisit(null)
+    if (!await library.run({ kind: 'unsave', id: moment.id }, message)) setRemoved(null)
+  }
+  async function undoRemove() {
+    if (!removed) return
+    if (await library.run({ kind: 'save', reference: removed }, 'Back in Saved.')) { setRemoved(null); if (removed.note) setRestore(removed) }
+  }
+  // ✕ on History drops that one visit; a save of the same moment stays. Undo puts the visit back.
+  async function removeVisit(moment: LibraryMoment) {
+    if (moment.jumpedAt === undefined) return
+    setRemovedVisit({ moment, jumpedAt: moment.jumpedAt }); setRemoved(null)
+    if (!await library.run({ kind: 'remove-visit', reference: moment }, 'Removed from History.')) setRemovedVisit(null)
+  }
+  async function undoRemoveVisit() {
+    if (!removedVisit) return
+    if (await library.run({ kind: 'restore-visit', reference: removedVisit.moment, jumpedAt: removedVisit.jumpedAt }, 'Back in History.')) setRemovedVisit(null)
+  }
+  function changePreferences(value: LibraryPreferences) {
+    if (!snapshot) return
+    if (value.retentionDays < snapshot.preferences.retentionDays) setConfirmation({ kind: 'retention', preferences: value })
+    else void library.run({ kind: 'preferences', value }, value.captureHistory ? 'Local history enabled. Cloud sync was not changed.' : 'History paused. Existing records were not deleted.')
+  }
+  // Import (H4): reads the file Export makes, then adds only what this browser lacks.
+  async function importFile(file: File) {
+    setLocalNotice(''); setRemoved(null); setRemovedVisit(null)
+    if (!snapshot) return
+    if (file.size > BACKUP_MAX_BYTES) { setLocalNotice('That file is too large to be a My Moments export.'); return }
+    let text: string
+    try { text = await file.text() } catch { setLocalNotice('Couldn’t read that file. Try again.'); return }
+    const backup = parseMomentsBackup(text)
+    if (!backup) { setLocalNotice('That file isn’t a My Moments export.'); return }
+    if (!backup.saves.length && !backup.history.length) { setLocalNotice('That export has no moments to add.'); return }
+    const before = counts(snapshot)
+    const historyOff = !snapshot.preferences.captureHistory
+    const at = now()
+    const old = historyOff ? 0 : backup.history.filter(h => h.at + snapshot.preferences.retentionDays * DAY <= at).length
+    void library.run({ kind: 'import-backup', saves: backup.saves, history: backup.history }, next => {
+      const after = counts(next)
+      const added = Math.max(0, after.saves - before.saves) + Math.max(0, after.visits - before.visits)
+      const skipped = Math.max(0, backup.saves.length + (historyOff ? 0 : backup.history.length - old) - added)
+      return [`Added ${added} ${added === 1 ? 'moment' : 'moments'}.`,
+        skipped ? `Skipped ${skipped} you already have.` : '',
+        old ? `${old} watched ${old === 1 ? 'moment is' : 'moments are'} older than your history keeps.` : '',
+        historyOff && backup.history.length ? 'History is off, so watched moments were not added.' : ''].filter(Boolean).join(' ')
+    })
+  }
+  useEffect(() => {
+    if (!restore || library.busy) return
+    setRestore(null)
+    const back = snapshot?.moments.find(moment => moment.savedAt !== undefined && sameSource(moment, restore))
+    if (back && back.note !== restore.note) void library.run({ kind: 'edit', id: back.id, note: restore.note }, 'Back in Saved, with its note.')
+  }, [restore, library.busy, library.run, snapshot])
   const syncing = snapshot?.historySync?.state === 'on'
+  // An account's view says so even where nobody can make one (F15).
+  const linked = !!snapshot && bookmarksState !== 'not_linked'
+  const undoable = (removed && !preview) || removedVisit
   return <main className="pl-library" id="settings-content" tabIndex={-1} aria-label="My Moments settings">
     <div className="pl-page-heading"><div><span className="pl-eyebrow">YOUR MOMENTS · FREE</span><h2 ref={heading} tabIndex={-1}>My Moments</h2>
-      <p className="pl-muted">{accountsOpen ? 'Find your way back to the stream. Bookmarks are free. Without an account they stay on this device; with a free Pulse account they follow you to any device. Notes stay on this device. Watched history does too, unless you sync it to your account.' : DEVICE_ONLY_INTRO}</p></div></div>
+      <p className="pl-muted">{accountsOpen ? 'Find your way back to the stream. Bookmarks are free. Without an account they stay on this device; with a free Pulse account they follow you to any device. Notes stay on this device. Watched history does too, unless you sync it to your account.' : linked ? ACCOUNT_INTRO : DEVICE_ONLY_INTRO}</p></div></div>
 
     <div className="pl-tabs" role="tablist" aria-label="My Moments views">{views.map((item, index) => <button type="button" key={item.id}
       ref={element => { tabButtons.current[index] = element }}
       role="tab" id={`${id}-tab-${item.id}`} aria-controls={`${id}-panel-${item.id}`} tabIndex={view === item.id ? 0 : -1}
       className="pl-tab" aria-selected={view === item.id} onClick={() => navigate(item.id)}
-      onKeyDown={event => navigateFromTab(index, event.key)}>{item.label}</button>)}</div>
+      onKeyDown={event => navigateFromTab(index, event)}>{item.label}</button>)}</div>
 
-    <div className="pl-feedback" role="status" aria-live="polite" aria-atomic="true">{localNotice || library.notice}</div>
+    <div className="pl-feedback-row"><div className="pl-feedback" role="status" aria-live="polite" aria-atomic="true">{localNotice || library.notice}</div>
+      {undoable ? <button type="button" className="pl-button pl-undo" disabled={library.busy} onClick={() => void (removedVisit ? undoRemoveVisit() : undoRemove())}>Undo</button> : null}</div>
     {library.error && !modal ? <div role="alert" className="pl-warning"><p>{library.error}</p>
       {!snapshot ? <button type="button" className="pl-button" onClick={library.retry}>Try loading again</button> : <p className="pl-muted">Your last loaded data is still available. Retry the action when ready.</p>}</div> : null}
     {library.loading ? <section aria-busy="true" aria-label="Loading My Moments" className="pl-stack"><p role="status">Loading your moments…</p>
       {[0, 1, 2].map(n => <div className="pl-skeleton" aria-hidden="true" key={n}><span /><span /></div>)}</section> : null}
     {snapshot ? <>
-      {contentView ? <BookmarksNotice state={bookmarksState} onRetry={library.retry} accountsOpen={accountsOpen} /> : null}
+      {view === 'saved' ? <BookmarksNotice state={bookmarksState} onRetry={library.retry} accountsOpen={accountsOpen} /> : null}
       {snapshot.sync.kind === 'offline' ? <p className="pl-warning">You’re offline. Local saves still work. Cloud changes have not been backed up yet.</p> : null}
       {contentView ? <>
         <section className="pl-library-results" id={`${id}-panel-${view}`} role="tabpanel" aria-labelledby={`${id}-tab-${view}`} tabIndex={-1} aria-label={views.find(v => v.id === view)?.label}>
-          {view === 'recent' && !snapshot.preferences.captureHistory ? <div className="pl-callout"><strong>Automatic history is off</strong><p>Previous entries expire normally. Manual saves still work.</p>
-            <button className="pl-button" type="button" onClick={() => navigate('storage')}>Choose history preferences</button></div> : null}
+          {view === 'recent' ? <div className="pl-switch-row">
+            <div><strong id={`${id}-history`}>History</strong><span className="pl-muted pl-block" id={`${id}-history-help`}>{syncing ? 'Keeps the moments you watch, synced to your account.' : 'Keeps the moments you watch, on this browser only.'}
+              {!snapshot.preferences.captureHistory && population.length ? ' While off, what it kept stays until it expires.' : ''}</span></div>
+            {/* The same setting as Storage & privacy's checkbox. */}
+            <button type="button" role="switch" className="pl-switch" aria-checked={snapshot.preferences.captureHistory} aria-labelledby={`${id}-history`} aria-describedby={`${id}-history-help`}
+              disabled={library.busy} onClick={() => changePreferences({ ...snapshot.preferences, captureHistory: !snapshot.preferences.captureHistory })} />
+          </div> : null}
 
           {/* Filters exist to narrow a list. With nothing to narrow they are three
               controls that cannot change the outcome. */}
@@ -201,12 +324,15 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
           {pageItems.length ? <ul className="pl-list">{pageItems.map(moment => <MomentListItem key={moment.id} moment={moment} recent={view === 'recent'} busy={library.busy}
             personalWorkspace analyticsOrigin={analyticsOrigin}
             presentation={presentations?.[moment.id]} context={contexts?.[moment.id]}
-            onSave={save} onEdit={setEditing} onPreview={moment => setPreviewId(moment.id)} onRemove={moment => setConfirmation({ kind: 'remove', moment })}
-            onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
-            : <div className="pl-empty"><h3>{filtered ? 'No matching moments' : view === 'recent' ? 'No history yet' : deviceSaves ? 'No account bookmarks yet' : 'No bookmarks yet'}</h3>
+            onSave={save} onEdit={setEditing} onPreview={moment => { setPreview(moment); setRemoved(null); setRemovedVisit(null) }}
+            // Synced History clears only as a whole: no one-visit remove.
+            onRemove={view === 'saved' ? moment => void removeFromPreview(moment, 'Removed from Saved.') : syncing ? undefined : moment => void removeVisit(moment)}
+            onOpenLink={openedLink} />)}</ul>
+            : view === 'saved' && !filtered && accountListUnknown ? null
+            : <div className="pl-empty"><h3>{filtered ? 'No matching moments' : view === 'recent' ? snapshot.preferences.captureHistory ? 'Nothing yet' : 'History is off' : deviceSaves ? 'No account saves yet' : 'No saves yet'}</h3>
               <p>{filtered ? 'Try a channel name, a word from your note, or clear the filters.'
-                : view === 'recent' ? 'Watch a Pulse moment for at least 10 seconds after a jump. Opening a link alone is not recorded.'
-                  : 'Choose Bookmark on a Pulse moment or recent jump. No replay is required.'}</p>
+                : view === 'recent' ? snapshot.preferences.captureHistory ? 'Jump to a moment and watch it for 10 seconds.' : 'Turn it on to find streams you watched again.'
+                  : 'Choose Save on a Pulse moment. No replay is needed.'}</p>
               {filtered ? <button type="button" className="pl-button" onClick={() => { setQuery(''); setChannel(''); setWatchLater(false) }}>Clear filters</button> : null}</div>}
 
           {pages > 1 ? <nav className="pl-row pl-between" aria-label="Moment pages"><button type="button" className="pl-button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
@@ -219,24 +345,23 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
             <ul className="pl-list">{deviceMoments.map(moment => <DeviceSaveItem key={moment.id} moment={moment} busy={library.busy} analyticsOrigin={analyticsOrigin}
               onRemove={moment => setConfirmation({ kind: 'remove', moment })}
               onImport={bookmarksState === 'ready' ? moment => setConfirmation({ kind: 'import', moment }) : undefined}
-              onOpenLink={() => setLocalNotice('Opened a replay link. This is not a confirmed jump and has not been added to history.')} />)}</ul>
+              onOpenLink={openedLink} />)}</ul>
           </section> : null}
         </section>
       </> : <div className="pl-library-results" id={`${id}-panel-storage`} role="tabpanel" aria-labelledby={`${id}-tab-storage`} tabIndex={-1} aria-label="Storage and privacy">
         <StorageSettings snapshot={snapshot} busy={library.busy} accountsOpen={accountsOpen} onExport={() => void exportAll()} onClear={() => setConfirmation({ kind: 'clear' })}
-          exportLabel={bookmarksState === 'ready' ? 'Export all data' : 'Export device data'}
+          onImport={file => void importFile(file)}
           onHistorySync={enabled => enabled
             ? void library.run({ kind: 'history-sync', enabled: true }, 'History sync is on. This browser’s history is joining your account.')
             : setConfirmation({ kind: 'sync-off' })}
-          onChange={value => {
-            if (value.retentionDays < snapshot.preferences.retentionDays) setConfirmation({ kind: 'retention', preferences: value })
-            else void library.run({ kind: 'preferences', value }, value.captureHistory ? 'Local history enabled. Cloud sync was not changed.' : 'History paused. Existing records were not deleted.')
-          }} />
+          onChange={changePreferences} />
       </div>}
-      <p className="pl-footnote">Links and notes only · no video downloads</p>
+      <p className="pl-footnote">Links, notes and moment pictures only · no video downloads</p>
     </> : null}
-    {previewMoment ? <MomentPreview key={previewMoment.id} moment={previewMoment} context={contexts?.[previewMoment.id]} presentation={presentations?.[previewMoment.id]} busy={library.busy} error={library.error} onClose={() => setPreviewId(null)} onSave={save}
-      onOpenLink={() => setLocalNotice('Opened a replay link. Playback is unconfirmed; History was not changed.')} /> : null}
+    {preview && previewMoment ? <MomentPreview key={preview.id} moment={previewMoment} context={previewContext}
+      presentation={previewAnalysis ? { ...previewPresentation, analysisUrl: previewAnalysis } : previewPresentation} busy={library.busy} error={library.error}
+      removed={!!removed} onClose={() => { setPreview(null); setRemoved(null) }} onSave={save} onRemove={moment => void removeFromPreview(moment)} onUndo={() => void undoRemove()}
+      onOpenLink={() => openedLink(previewMoment)} /> : null}
     {editing && snapshot ? <MomentEditor personalWorkspace key={editing.id} moment={editing} collections={snapshot.collections} supporter={false} busy={library.busy} error={library.error}
       onClose={() => setEditing(null)} onCommit={note => library.run({ kind: 'edit', id: editing.id, note }, 'Note saved on this device.')} /> : null}
     {confirmation ? <LibraryDialog title={confirmation.kind === 'clear' ? 'Clear history?' : confirmation.kind === 'remove' ? 'Remove bookmark?' : confirmation.kind === 'sync-off' ? 'Stop syncing history?'
@@ -273,17 +398,15 @@ function syncedLabel(at: number, now: number): string {
 
 /** The account half of history: the switch, what it shares, and how the last sync went. */
 export function HistorySyncCard({ sync, busy, onChange, now = Date.now(), accountsOpen = TWITCH_SIGNIN_ENABLED }: { sync: HistorySyncView; busy: boolean; onChange: (enabled: boolean) => void; now?: number; accountsOpen?: boolean }) {
-  if (sync.state === 'unavailable') return null
+  // No account can be made with sign-in compiled off: Saved already says accounts are coming (F15).
+  if (sync.state === 'unavailable' || (sync.state === 'signed_out' && !accountsOpen)) return null
   return <PulseSectionCard title="Sync with your account">
-    {sync.state === 'signed_out' && !accountsOpen
-      // No account can be made with sign-in compiled off: say so, offer nothing.
-      ? <p className="pl-muted">History stays in this browser. Syncing it across browsers arrives with accounts, which are coming with Continue with Twitch.</p>
-      : sync.state === 'signed_out'
-      ? <><p className="pl-muted">Connect a free Pulse account to see this history in your other browsers and on streampulse.stream. History kept while signed out stays on this device.</p>
+    {sync.state === 'signed_out'
+      ? <><p className="pl-muted">Connect a free Pulse account to see this history in your other browsers. History kept while signed out stays on this device.</p>
         <div className="pl-row"><a className="pl-button" href="#supporter">Connect account</a></div></>
       : <>
         <label className="pl-check"><input type="checkbox" checked={sync.state === 'on'} disabled={busy} onChange={event => onChange(event.target.checked)} />
-          <span><strong>Sync watched history to your account</strong><span className="pl-muted pl-block">Every browser signed in to your account, and My Moments on streampulse.stream, shows the same history, and browsers that sign in later remember watched moments too (each can turn that off above). Up to 1,000 recent moments, kept for the period above. Notes stay on each device.</span></span></label>
+          <span><strong>Sync watched history to your account</strong><span className="pl-muted pl-block">Every browser signed in to your account shows the same history, and browsers that sign in later remember watched moments too (each can turn that off above). Up to 1,000 recent moments, kept for the period above. Notes stay on each device.</span></span></label>
         {sync.state === 'on' ? <p className="pl-muted" role="status">{sync.failed ? 'The last sync did not finish. It retries on its own; history on this device is safe.'
           : sync.syncedAt ? syncedLabel(sync.syncedAt, now) : 'Waiting for the first sync.'}{sync.pending ? ` ${sync.pending === 1 ? '1 moment is' : `${sync.pending} moments are`} waiting to be sent.` : ''}</p>
           : <p className="pl-muted">Off. Only this browser keeps its history, and removing the extension removes it. Turn sync on to keep it through a reinstall.</p>}
@@ -291,13 +414,16 @@ export function HistorySyncCard({ sync, busy, onChange, now = Date.now(), accoun
   </PulseSectionCard>
 }
 
-export function StorageSettings({ snapshot, busy, onChange, onExport, onClear, onHistorySync, exportLabel = 'Export all data', accountsOpen = TWITCH_SIGNIN_ENABLED }: {
+export function StorageSettings({ snapshot, busy, onChange, onExport, onClear, onImport, onHistorySync, exportLabel = 'Export', accountsOpen = TWITCH_SIGNIN_ENABLED }: {
   snapshot: LibrarySnapshot; busy: boolean; onChange: (value: LibraryPreferences) => void; onExport: () => void; onClear: () => void
+  /** A file chosen to import; Import is offered only with this. */
+  onImport?: (file: File) => void
   onHistorySync?: (enabled: boolean) => void
   accountsOpen?: boolean
   exportLabel?: string
 }) {
   const id = useId(); const preferences = snapshot.preferences; const storage = snapshot.storage
+  const picker = useRef<HTMLInputElement>(null)
   const full = storage.usedBytes >= storage.limitBytes
   const syncing = snapshot.historySync?.state === 'on'
   return <div className="pl-stack">
@@ -309,11 +435,19 @@ export function StorageSettings({ snapshot, busy, onChange, onExport, onClear, o
     {snapshot.historySync && onHistorySync ? <HistorySyncCard sync={snapshot.historySync} busy={busy} onChange={onHistorySync} accountsOpen={accountsOpen} /> : null}
     <PulseSectionCard title="On this device" meta={<span>{(storage.usedBytes / 1048576).toFixed(2)} / {(storage.limitBytes / 1048576).toFixed(0)} MiB</span>}>
       <label className="pl-field" htmlFor={`${id}-usage`}>Moment data allowance<meter id={`${id}-usage`} min={0} max={storage.limitBytes} value={Math.min(storage.usedBytes, storage.limitBytes)} /></label>
-      <p>{full ? 'Storage limit reached. Remove bookmark items or clear eligible history before adding more. Existing items stay available.' : 'References and notes only. No downloaded videos or cached thumbnails.'}</p>
+      <p>{full ? 'Storage limit reached. Remove bookmark items or clear eligible history before adding more. Existing items stay available.'
+        : `Links and notes count here. Moment pictures, when on, are kept apart: up to ${PICTURE_LIMITS.count}, ${PICTURE_LIMITS.bytes / 1048576} MiB. No videos are downloaded.`}</p>
       <p className="pl-muted">{storage.persistence === 'granted' ? 'Browser persistence granted. Uninstalling or losing this profile can still remove local data.' : 'Local persistence is not guaranteed. Export regularly; this device is not a backup.'}</p>
-      <div className="pl-row"><button type="button" className="pl-button" disabled={busy} onClick={onExport}>{busy ? 'Working…' : exportLabel}</button>
-        <button type="button" className="pl-button" disabled={busy || !snapshot.moments.some(m => m.jumpedAt !== undefined)} onClick={onClear}>Clear history…</button></div>
       <details><summary>Does the settings page have more storage?</summary><p>No. The panel and this settings page share the extension’s database. This larger page gives you more room to search and organize. Runtime saves do not grow the ZIP package.</p></details>
+    </PulseSectionCard>
+    <PulseSectionCard title="Backup">
+      <p>Save your moments and notes to a file, or load one from another browser.</p>
+      <div className="pl-row"><button type="button" className="pl-button" disabled={busy} onClick={onExport}>{busy ? 'Working…' : exportLabel}</button>
+        {onImport ? <><button type="button" className="pl-button" disabled={busy} onClick={() => picker.current?.click()}>Import</button>
+          <input ref={picker} type="file" accept=".json,application/json" hidden aria-label="Import a My Moments export"
+            onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onImport(file) }} /></> : null}
+        <button type="button" className="pl-button" disabled={busy || !(snapshot.moments.some(m => m.jumpedAt !== undefined) || deviceHistory(snapshot))} onClick={onClear}>Clear history…</button></div>
+      {onImport ? <p className="pl-muted">Import adds what’s new and skips moments you already have.</p> : null}
     </PulseSectionCard>
   </div>
 }

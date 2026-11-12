@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolvePageMetadata } from '../src/lib/pageMetadata'
 
 describe('public page metadata', () => {
@@ -27,7 +27,7 @@ describe('public page metadata', () => {
   it('canonicalizes analytics aliases without treating them as channel names', () => {
     for (const path of ['/analytics/hub', '/analytics/emotes', '/analytics/streams', '/atlas']) {
       expect(resolvePageMetadata(path)).toMatchObject({
-        title: 'StreamPulse Analytics',
+        title: 'Live Twitch Chat Stats & Top Emotes — StreamPulse',
         canonicalPath: '/analytics',
         robots: 'index,follow',
       })
@@ -72,5 +72,21 @@ describe('public page metadata', () => {
         title: 'Moments — StreamPulse', canonicalPath: '/analytics/moments', robots: 'noindex,nofollow',
       })
     }
+  })
+})
+
+describe('clip page metadata', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('titles a clip address as not found while clips are off', () => {
+    vi.stubEnv('VITE_PUBLIC_NATIVE_CLIPS', '')
+    for (const path of ['/analytics/clips/BraveClipSlug-abc_1', '/analytics/clips']) {
+      expect(resolvePageMetadata(path), path).toMatchObject({ title: 'Page not found — StreamPulse', robots: 'noindex,nofollow' })
+    }
+  })
+
+  it('titles a clip page only when clips are on', () => {
+    vi.stubEnv('VITE_PUBLIC_NATIVE_CLIPS', 'on')
+    expect(resolvePageMetadata('/analytics/clips/BraveClipSlug-abc_1')).toMatchObject({ title: 'Clip — StreamPulse', robots: 'noindex,nofollow' })
   })
 })

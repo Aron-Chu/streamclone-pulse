@@ -172,7 +172,7 @@ export function TrackedChannels({ hub }: { hub: PublicHub | null }) {
           </span>
           <span className="sl-tc__col">Viewers</span>
           <span className="sl-tc__col">Chat/min</span>
-          <span className="sl-tc__col sl-tc__col--sv">7TV/min</span>
+          <span className="sl-tc__col sl-tc__col--sv">Emotes/min</span>
           <span className="sl-tc__col">Trend</span>
         </div>
 

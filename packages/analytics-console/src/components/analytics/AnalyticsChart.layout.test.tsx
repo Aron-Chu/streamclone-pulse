@@ -239,6 +239,7 @@ describe('AnalyticsChart stable regions', () => {
       />,
     )
     const runTimes = [...container.querySelectorAll('[data-games-played-run-time]')].map(el => el.textContent)
-    expect(runTimes).toEqual(['30m', '2h 30m'])
+    // (fix, 10-30) GP-3: the cut-off game says its length is not known ("+").
+    expect(runTimes).toEqual(['30m', '2h 30m+'])
   })
 })

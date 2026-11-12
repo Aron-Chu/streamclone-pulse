@@ -91,6 +91,14 @@ describe('isSenderAuthorizedForMessage', () => {
     expect(isSenderAuthorizedForMessage('GET_PULSE', undefined, twitchTab, extensionId)).toBe(false)
   })
 
+  it('lets the panel remove a bookmark only from its own channel page', () => {
+    expect(isSenderAuthorizedForMessage('REMOVE_BOOKMARK', 'xqc', twitchTab, extensionId)).toBe(true)
+    expect(isSenderAuthorizedForMessage('REMOVE_BOOKMARK', 'shroud', twitchTab, extensionId)).toBe(false)
+    expect(isSenderAuthorizedForMessage('REMOVE_BOOKMARK', undefined, twitchTab, extensionId)).toBe(false)
+    // The library's own removal stays with extension pages.
+    expect(isSenderAuthorizedForMessage('DELETE_BOOKMARK', 'xqc', twitchTab, extensionId)).toBe(false)
+  })
+
   it('allows twitch-any messages from any top-frame Twitch tab', () => {
     const directory = { id: extensionId, frameId: 0, tab: { url: 'https://www.twitch.tv/directory' } }
     expect(isSenderAuthorizedForMessage('HEALTH', undefined, directory, extensionId)).toBe(true)
@@ -99,7 +107,7 @@ describe('isSenderAuthorizedForMessage', () => {
 
   it('binds VOD clip, bookmark and past-stream requests to the exact top-frame video', () => {
     const vod = { id: extensionId, frameId: 0, tab: { url: 'https://www.twitch.tv/videos/123?t=2m' } }
-    for (const type of ['GET_CLIP', 'LIST_BOOKMARKS', 'SAVE_BOOKMARK', 'LIST_PAST_VODS']) {
+    for (const type of ['GET_CLIP', 'LIST_BOOKMARKS', 'SAVE_BOOKMARK', 'REMOVE_BOOKMARK', 'LIST_PAST_VODS']) {
       expect(isSenderAuthorizedForMessage(type, 'xqc', vod, extensionId, '123')).toBe(true)
       expect(isSenderAuthorizedForMessage(type, 'xqc', vod, extensionId, '456')).toBe(false)
       expect(isSenderAuthorizedForMessage(type, 'xqc', vod, extensionId)).toBe(false)

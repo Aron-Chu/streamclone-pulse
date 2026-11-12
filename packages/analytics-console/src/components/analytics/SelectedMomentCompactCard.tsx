@@ -3,8 +3,9 @@
  * session-original `.bkc--below`, bucket-card.js + card-model.js sessionBar).
  *
  * In the page's flow under the chart at every width, so nothing covers the
- * plot: the bar's picture (a VOD storyboard frame, or the game's art and the
- * reason) with Play over its time and game on the left; its figures, top
+ * plot: the bar's picture (a VOD storyboard frame, or a plain dark box with
+ * the reason; the game's sharp cover sits by the title, candidate 10-30,
+ * PIC-2) with Play over its time and game on the left; its figures, top
  * emotes, moments (the locked one marked) and the VOD link on the right.
  * Under 600 px the picture is a 128 px thumbnail beside the time and the rest
  * stacks. Twitch's player loads only when the viewer presses Play.
@@ -29,6 +30,7 @@ import {
   type SessionBarStripModel,
   type StripGame,
 } from '../../utils/sessionBarStrip.ts'
+import { boxArtAtSize } from '../../utils/boxArtSize.ts'
 import type { VodLinkState } from '../../utils/twitchVodUrl.ts'
 import { useVodFrame } from '../../utils/vodFrames.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
@@ -65,7 +67,10 @@ export interface SelectedMomentCompactCardProps {
   // ---- optional extras (requested from Page) ----
   /** Game segments: box art and a category switch inside the bar. */
   games?: StripGame[] | null
-  /** The VOD is still recording (Twitch has no preview frames yet). */
+  /**
+   * The page's flag: this is the channel's current live stream, still recording. Pass the same value as the
+   * Moments strip's `recording`, so the bar's picture and the reel say the same line (fix, 10-30, PIC-3).
+   */
   vodRecording?: boolean
   /** "N more": open the Moments list past the strip's three. */
   onShowMoreMoments?: () => void
@@ -85,12 +90,13 @@ const HATCH = (
   </svg>
 )
 
-function BoxArt({ src }: { src: string | null }) {
-  const [failed, setFailed] = useState<string | null>(null)
-  if (!src || failed === src) return null
+// The failed state lives in the strip, so the picture's note claims box art only while the cover shows
+// (fix, 10-30, PIC-3). Asked at 2x its 36x48 (candidate, 10-30, PIC-2); a failure reports the answer's URL.
+function BoxArt({ src, onFail }: { src: string | null; onFail: (src: string) => void }) {
+  if (!src) return null
   return (
-    <img className="bkc-art" src={src} alt="" width={36} height={48} decoding="async" referrerPolicy="no-referrer"
-      onError={() => setFailed(src)} />
+    <img className="bkc-art" src={boxArtAtSize(src, 72, 96)} alt="" width={36} height={48} decoding="async"
+      referrerPolicy="no-referrer" onError={() => onFail(src)} />
   )
 }
 
@@ -116,7 +122,7 @@ function TopEmotes({ model }: { model: SessionBarStripModel }) {
   if (!list.length) {
     return (
       <div className="bkc-emo">
-        <p className="bkc-sl"><span>Top emotes</span><span className="r">none named in this {unit}</span></p>
+        <p className="bkc-sl"><span>Top emotes</span><span className="r">{model.topEmotesNote}</span></p>
       </div>
     )
   }
@@ -349,6 +355,9 @@ export function SelectedMomentCompactCard({
   const frame = frameState.result?.frame ?? null
   const recording = vodRecording
     ?? (frameState.result?.reason === 'recording' || /live archive/i.test(vodLinkState.label))
+  const [failedArt, setFailedArt] = useState<string | null>(null)
+  const artSrc = model.category?.artUrl ?? null
+  const shownArt = artSrc && failedArt !== artSrc ? artSrc : null
 
   // 120 ms enter on the first open only (a swap keeps the strip in place); none under reduced motion
   useLayoutEffect(() => {
@@ -394,7 +403,7 @@ export function SelectedMomentCompactCard({
               ) : null}
             </div>
             <div className="bkc-id">
-              {model.category ? <BoxArt src={model.category.artUrl} /> : null}
+              {model.category ? <BoxArt src={shownArt} onFail={setFailedArt} /> : null}
               <div className="bkc-hl">
                 <h2 className="bkc-t" id={titleId}>
                   <span className="sr-only">Bucket selected:</span>{' '}
@@ -424,7 +433,7 @@ export function SelectedMomentCompactCard({
                 loading={frameState.loading}
                 subject={vod.subject}
                 subjectVodStart={vod.subjectVodStart}
-                artUrl={model.category?.artUrl ?? null}
+                hasArt={Boolean(shownArt)}
                 recording={recording}
               />
             </div>

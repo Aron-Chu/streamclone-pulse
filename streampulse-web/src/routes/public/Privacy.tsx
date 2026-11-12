@@ -1,14 +1,17 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
+import { FoldedSections } from '../../ui/components/FoldedSections'
 import { REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { supporterChatBadgesEnabled } from '../../lib/supporterChatBadgesFlag'
+import { supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
 import {
   PRIVACY_CHATTER_IDENTITY_EXCEPTION,
+  PRIVACY_SEEN_IN_CHAT_HEADING,
   PRIVACY_TWITCH_PLAIN_ID_SENTENCE,
   PRIVACY_TWITCH_THIRD_PARTY_SEEN_IN_CHAT,
   PrivacyObservesChatUsernames,
-  PrivacySeenInChat,
+  PrivacySeenInChatBody,
 } from '../../ui/components/SupporterChatBadgeCopy'
 
 /** Public privacy policy for StreamPulse (portal + browser extension). Current behavior only. */
@@ -20,42 +23,66 @@ export default function Privacy() {
           <Link to="/" className="text-zinc-400 hover:text-white inline-flex items-center gap-1">← StreamPulse Home</Link>
         </p>
         <header className="mb-6 border-b border-white/[0.08] pb-6">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Extension and website privacy
-            </span>
-          </div>
-          <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
+          <h1>Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 13, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
+            Last updated: November 2, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>
         </header>
 
         <PrelaunchNotice />
 
-        <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
-          <h2 className="!mt-0">Summary</h2>
-          <p className="text-zinc-300">
-            StreamPulse shows Twitch stream activity using minute-level aggregates from the StreamPulse
-            API. The extension and public site are rollup-first: they do not expose raw chat messages or
-            chatter identity to users{supporterChatBadgesEnabled() ? PRIVACY_CHATTER_IDENTITY_EXCEPTION : ''}. Extension Twitch sign-in is not available in 0.2.2. When available, the extension uses Twitch sign-in only to confirm your Twitch
-            user ID: when you choose Continue with Twitch, and in one check without a window after a
-            fresh install, which can only sign you back in to a StreamPulse account you already have
-            (see Extensions below). Protect enrollment is not offered in 0.2.2. Earlier beta enrollment
-            used a beta access key once to create a local device credential.
-          </p>
-          <p className="text-zinc-300">
-            Accounts are optional; free tools work without an account. A StreamPulse account is
-            created when you choose Continue with Twitch (coming soon). During the private pilot,
-            invited testers can also sign in by email. Supporter sign-ups are not open yet; card
-            details go to Stripe, never to StreamPulse.
-          </p>
+        {/* Six plain lines first, then the full policy (audit row 1, Aron 11-02). The
+            sections below are the policy; this box only points at them. */}
+        <section className="public-glance" aria-labelledby="privacy-glance">
+          <h2 id="privacy-glance" className="!mt-0">At a glance</h2>
+          <ul>
+            <li>
+              StreamPulse shows minute-by-minute totals of Twitch chat and emotes. The extension and
+              this site do not expose raw chat messages or chatter identity to users{supporterChatBadgesEnabled() ? PRIVACY_CHATTER_IDENTITY_EXCEPTION : ''}.
+            </li>
+            <li>
+              No account is needed: the free tools work without one. Connecting the extension works
+              without a Twitch identity or email address, and starts no payment.
+            </li>
+            <li>
+              No advertising or tracking cookies. Optional website analytics stay off unless you turn
+              them on.
+            </li>
+            <li>Supporter payments, once sign-ups open: card details go to Stripe, never to StreamPulse.</li>
+            <li>If you show your Twitch follows, the list is read in your browser and never reaches StreamPulse&rsquo;s servers.</li>
+            <li>
+              Questions: <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>
+            </li>
+          </ul>
+          <nav className="public-toc" aria-label="On this page">
+            <a href="#account">Account</a>
+            <a href="#payments">Payments</a>
+            <a href="#cookies">Cookies</a>
+            <a href="#website-analytics">Website analytics</a>
+            <a href="#extension-observes">What the extension sees</a>
+            <a href="#sent">What is sent</a>
+            <a href="#stored">What is stored</a>
+            <a href="#services">Other services</a>
+            <a href="#retention">Retention</a>
+            <a href="#pilot">Pilot and future features</a>
+            <a href="#contact">Contact</a>
+          </nav>
         </section>
 
-        <h2>Your account, if you create one</h2>
+        {/* Each h2 below opens a section that folds under its heading (FoldedSections). */}
+        <FoldedSections>
+        <h2 id="account">Your account, if you create one</h2>
+        <p data-testid="privacy-installation-account">
+          <strong>Extension-only connections.</strong> The extension generates a random installation
+          key and keeps it, its private access credentials and connection state in this browser
+          profile. StreamPulse stores an internal account identifier, a one-way hash of the
+          installation key, device labels, hashed credentials and their expiry, and creation and
+          activity times. The installation account has no account email address or Twitch identity.
+          Looking at your status does not create a connection; one is saved only when you choose Become a Supporter.
+          This connection does not sync My Moments: bookmarks, notes and watched history stay in this browser.
+        </p>
         <p data-testid="privacy-continue-with-twitch">
-          <strong>Continue with Twitch.</strong> StreamPulse asks Twitch only to confirm who you are.
+          <strong>If Continue with Twitch is offered.</strong> StreamPulse asks Twitch only to confirm who you are.
           Twitch returns a signed, one-time sign-in proof that StreamPulse checks against Twitch's
           public keys. StreamPulse stores a keyed hash of your Twitch user ID, an internal account
           identifier, and creation, sign-in and activity times. Your Twitch display name and picture
@@ -66,49 +93,44 @@ export default function Privacy() {
           tab keeps a one-time sign-in value in session storage; it's removed when you return.
           {supporterChatBadgesEnabled() ? <> {PRIVACY_TWITCH_PLAIN_ID_SENTENCE}</> : null}
         </p>
-        <p>
-          <strong>Tester email sign-in.</strong> During the private pilot, invited testers can sign in
-          by emailed link. A tester account stores the email address, an internal account identifier,
-          and timestamps for creation and sign-in; there is no password, no name field and no
-          profile. When you request a link, StreamPulse stores a hash of a single-use secret — not
-          the secret itself — with a 15-minute expiry, and emails you a link containing it. The
-          secret travels in the link's <strong>URL fragment</strong> (after the <code>#</code>), which
-          browsers do not send to the server or include in a <code>Referer</code> header, so it is
-          not written into server logs. Confirming a sign-in requires the same browser that
-          requested it. A tester's email is used for sign-in links and for notices about the account
-          or subscription. It is not used for marketing, and it is not sold, shared or used to build
-          an advertising profile.
-        </p>
-        <p>
-          Testers can link Twitch to the same account. Linking needs a sign-in from the last 10
-          minutes plus a fresh Twitch sign-in, and never combines two accounts.
+        <p data-testid="privacy-twitch-follows">
+          <strong>Show my Twitch follows.</strong> On the analytics hub you can ask Twitch which
+          channels you follow, without a StreamPulse account. Twitch asks whether StreamPulse may read
+          the channels you follow (<code>user:read:follows</code>). If you agree, Twitch sends this tab
+          an access token in the address it returns to. The page removes the token from the address
+          bar right away and reads your follows directly from Twitch. It then asks Twitch to revoke
+          the token: as soon as the read ends, or as you leave the page if the read has not ended. A
+          token that arrives when this tab did not ask for one, or without that permission, is revoked
+          at once and never used. The token and your list never reach StreamPulse's servers. The page
+          only compares the list with the live channels the hub already shows.
         </p>
         <p data-testid="privacy-extensions">
-          <strong>Extensions.</strong> Signing in from the extension stores a device credential in
-          it. Sign out ends that device's access; Sign out everywhere, once available, ends every
-          session and device. StreamPulse keeps a record of each extension signed in to an account:
-          a label naming the store, the browser family and the sign-in time, plus hashed credentials
-          and their expiry. It is listed under Account &amp; devices. A signed-out or expired
-          extension stays on that record, without access, until the account is deleted. Testers can
+          <strong>Extension connections.</strong> Connecting or signing in from the extension stores
+          a private device credential in it. Sign out ends that device's access. StreamPulse keeps
+          a record of connected extensions: a device label, connection time, hashed credentials and
+          their expiry. Devices are listed under Account &amp; devices. Connection records remain
+          after access ends; revocation is not account deletion. Testers can
           also connect an extension with a connection code: that stores a short-lived connection
           code, the device label you approve, and a device credential identifier. Approving a device
           does not publish anything about you or start a subscription.
         </p>
-        <p data-testid="privacy-extension-first-install">
-          <strong>One check after a fresh install.</strong> This check is not active in 0.2.2, where
-          extension Twitch sign-in is unavailable. When Continue with Twitch is available, the first time you open the extension's
-          Account &amp; Supporter settings after installing it, the extension checks once with
-          Twitch, without opening a window, whether you've used Continue with Twitch before. If
-          your browser is signed in to Twitch and that Twitch account already has a StreamPulse
-          account, the extension signs back in to it and keeps your Twitch display name and picture
-          for that browser session. Otherwise nothing changes. This check never creates an account,
-          and it doesn't run again after you sign out.
-        </p>
+        {supporterChatBadgesEnabled() ? <p data-testid="privacy-extension-first-install">
+          After a fresh installation, opening Account &amp; Supporter may trigger one silent Twitch
+          sign-in attempt without opening a window. If Twitch can confirm an existing authorization
+          without interaction, this may connect the account; otherwise you can choose Continue with
+          Twitch. Signing out prevents that automatic attempt from repeating. Seen in chat remains
+          off until you separately choose to turn it on and confirm its disclosure.
+        </p> : null}
 
         {/* Seen in chat copy only once VITE_SUPPORTER_CHAT_BADGES is on (launch day). */}
-        {supporterChatBadgesEnabled() ? <PrivacySeenInChat /> : null}
+        {supporterChatBadgesEnabled() ? (
+          <section data-testid="privacy-seen-in-chat">
+            <h2 id="seen-in-chat">{PRIVACY_SEEN_IN_CHAT_HEADING}</h2>
+            <PrivacySeenInChatBody />
+          </section>
+        ) : null}
 
-        <h2>Payment data, if you subscribe</h2>
+        <h2 id="payments">Payment data, if you subscribe</h2>
         <p>
           This section describes what happens once paid sign-ups open. Until then, no payment is
           taken through StreamPulse.
@@ -117,18 +139,15 @@ export default function Privacy() {
           Payments are processed by <strong>Stripe</strong>. Card numbers and CVC are entered on
           Stripe's own hosted pages and go to Stripe — StreamPulse never receives or stores them.
         </p>
-        {/* OWNER GATE: the "once sign-ups open" handling below is true only when
-            backend #162 (customer_name/customer_address stripping) and #150 (inbox
-            prune) are deployed, PULSE_ACCOUNT_PRUNE_ENABLED=true and
-            PULSE_RECOVERY_EMAIL_HMAC_KEY stays unset. Do not open live Checkout
-            before then. */}
+        {/* Before paid sales open, verify that deployed account, payment-contact
+            handling and retention match this notice. Source alone is not proof. */}
         <p data-testid="privacy-billing-email">
-          Stripe asks for a billing email at checkout; it can differ from your Twitch email, and
-          StreamPulse never matches accounts by email. Stripe's payment notifications to StreamPulse
-          can include that email, your name and billing address. Once sign-ups open, StreamPulse
-          checks each notification's signature and removes those details before saving it, saved
-          notifications are reduced to identifiers about 30 days after processing, and StreamPulse
-          does not keep your billing email or a hash of it.
+          Stripe asks for a billing email at checkout. Verified payment notifications can send
+          StreamPulse that email, your name and billing address. StreamPulse checks the notification's
+          signature and removes contact details before saving the new payment notification. For an
+          extension-only purchase, it keeps a keyed, one-way hash of the billing email as a recovery
+          lookup, rather than the address itself. That lookup does not automatically combine accounts
+          or grant Supporter access. Stripe keeps the billing email for receipts and billing.
         </p>
         <p>
           What StreamPulse stores is the identifiers and state needed to know whether your membership
@@ -137,6 +156,14 @@ export default function Privacy() {
           These identifiers are treated as private financial references; they are never shown
           publicly or attached to a badge or profile.
         </p>
+        {supporterWithdrawalEnabled() ? <p data-testid="privacy-withdrawal">
+          If you submit an online withdrawal, StreamPulse stores your acknowledgement email, any name
+          or purchase date you provide, your request and its submission time to handle it. The mail
+          service and private billing inbox receive your email, withdrawal statement, reference and
+          request time to deliver the acknowledgement and notify StreamPulse.
+          A random request key, but no form details, may be kept in this tab to help retry an interrupted submission.
+          Do not include a full card number or security code. The request does not automatically issue a refund.
+        </p> : null}
         <p>
           Provider webhook notifications are stored in a durable queue so a payment event is never
           lost or processed twice. The proposed retention for a raw stored notification is about 30
@@ -150,7 +177,7 @@ export default function Privacy() {
           dispute. Only payment records and delivery state are used for that.
         </p>
 
-        <h2>Cookies</h2>
+        <h2 id="cookies">Cookies</h2>
         <p>
           StreamPulse does not use advertising, tracking or analytics cookies. Optional website
           analytics are off by default; you can choose to allow them through <strong>Analytics
@@ -190,21 +217,34 @@ export default function Privacy() {
           hub, or the documentation.
         </p>
 
-        <h2>Optional website analytics</h2>
+        <h2 id="website-analytics">Optional website analytics</h2>
         <p>
           Website product analytics are separate from Twitch reaction analytics and from the browser
           extension. They are <strong>off by default</strong>. If you opt in through <strong>Analytics
           preferences</strong> in the footer, the website sends PostHog a fixed event for a public page
-          category and for clicks on Install or Open Analytics. These events help us understand which
+          category and for clicks on Install or Open the Hub. These events help us understand which
           public pages and product links are useful.
+          Successful timestamp-link creation adds a fixed tool-completion event. It contains only the
+          tool category and a link-built outcome, never your entered link, timestamp or generated URL.
+        </p>
+        <p>
+          After copying a timestamp link, visitors who allowed website analytics can choose to open
+          one optional feedback question. Opening, closing and submitting it send fixed feedback events.
+          Only submitting includes the fixed Yes or Not yet answer, the question identifier and tool category.
+          A temporary submission identifier prevents duplicate
+          responses. Feedback uses the same page-memory identifier as the optional website events;
+          no person profile, persistent survey history or free-text answer is created.
         </p>
         <p>
           Events use a random identifier held only in page memory, replaced when the page reloads.
           No person profile is created, and no analytics identifier is saved in cookies or browser
           storage. Events do not include full URLs, query strings, URL fragments, form entries,
           email addresses, account or payment identifiers, Twitch channel names, viewing history,
-          searched channels or saved moments. Account pages, dashboard activity and individual
-          channel or stream pages are excluded. Automatic click collection and session replay are off.
+          searched channels or saved moments. Selected public summaries count only as a channel
+          summary or stream recap category, without identifying the channel or stream. Selected tools
+          and guides use only tool or guide categories; form inputs and generated links are excluded. Account pages,
+          dashboard activity and other channel or stream pages are excluded. Automatic click collection
+          and session replay are off.
         </p>
         <p>
           PostHog processes these optional events in its United States region. As with any direct
@@ -212,11 +252,16 @@ export default function Privacy() {
           events are configured not to retain the IP address or collect GeoIP location information.
         </p>
         <p>
+          The PostHog project used for these website events and tool-feedback responses has a
+          six-calendar-month event retention window. Events older than that window are permanently
+          deleted at the following monthly cleanup. This is not an exact 180-day deletion deadline.
+        </p>
+        <p>
           You can turn analytics off at any time in the footer. This stops future events and clears
           the in-memory analytics identifier, but cannot recall events already transmitted. Browser
           Global Privacy Control or Do Not Track signals keep analytics off. Clearing website data
-          removes your saved choice and returns analytics to its default-off state. This policy does
-          not promise a fixed retention period for events already sent to PostHog.
+          removes your saved choice and returns analytics to its default-off state. Events already
+          transmitted remain subject to the retention window and monthly cleanup described above.
         </p>
 
         {/* Feedback form: describes the processing in streampulse-backend
@@ -303,7 +348,7 @@ export default function Privacy() {
           </p>
         </section>
 
-        <h2>What the browser extension observes on Twitch</h2>
+        <h2 id="extension-observes">What the browser extension observes on Twitch</h2>
         <ul>
           <li>The active Twitch page URL, channel login, and stream or VOD identifiers for the tab you are viewing.</li>
           <li>Page-context Twitch metadata needed to resolve the current live stream or VOD for the overlay.</li>
@@ -311,21 +356,43 @@ export default function Privacy() {
             Twitch GraphQL requests performed in the Twitch page context when needed to resolve stream or
             VOD identity for Pulse coverage and backfill flows.
           </li>
+          {/* Moment pictures: src/content/momentFrames.ts and momentFrameStore.ts keep
+              the stills as object URLs in tab memory; on by default in
+              src/shared/storage.ts. A saved moment keeps its one picture in IndexedDB
+              (src/shared/momentPictureStore.ts, PICTURE_LIMITS), removed from Settings
+              (KeptPicturesOffer in src/ui/SettingsWorkspace.tsx). */}
+          <li data-testid="privacy-moment-pictures">
+            <strong>Moment pictures</strong>, on by default: while the Pulse panel is open on a live
+            stream or VOD and the video is playing, a small still of the Twitch player every few
+            seconds, so Top Moments can show what happened. The stills stay in that tab's memory.
+            When you bookmark a moment or watch it from History, the extension keeps that one
+            picture with the saved moment in this browser's extension storage (up to 300 pictures or
+            8 MB; the oldest go first). Pictures are never uploaded. Turning Moment pictures off
+            drops the stills at once, and you can remove saved pictures in Settings.
+          </li>
+          {/* VOD pictures: vod() and vodFrame() in src/content/momentFrames.ts, for a moment
+              the tab holds no still of; the reads run in the Twitch page without cookies. */}
+          <li data-testid="privacy-vod-frames">
+            When the tab has no still of a moment, for example on a past stream, the extension may
+            read the VOD's preview pictures and a small, low-resolution copy of the VOD's video from
+            Twitch, in your Twitch tab, to show the frame of that moment. These reads go to Twitch;
+            StreamPulse receives none of them.
+          </li>
           {supporterChatBadgesEnabled() ? <PrivacyObservesChatUsernames /> : null}
         </ul>
         <p>
            The extension does not request or transmit Twitch cookies, passwords, Twitch OAuth credentials
-           (except the one-time sign-in proof described under Your account, sent only when you choose
-           Continue with Twitch or during the one check after a fresh install, neither available in 0.2.2), raw chat exports, or chatter identities.
+           (except the one-time sign-in proof described under Your account, sent{' '}
+           {supporterChatBadgesEnabled() ? 'during the first-install check or when you choose Continue with Twitch' : 'only when you choose Continue with Twitch, not available in this release'}), raw chat exports, or chatter identities.
            In earlier beta builds, a beta access key is sent only to the hosted enrollment
            endpoint when you explicitly connect Protect; it is discarded after that request and is not stored
-           or sent with later requests. Protect enrollment is not offered in 0.2.2. Page-context Twitch requests may
+           or sent with later requests. Protect enrollment is not offered in this release. Page-context Twitch requests may
           use your active Twitch browser session through normal browser credential handling. Those requests
           go to Twitch; StreamPulse does not receive your Twitch cookies or Twitch login credentials from
           the extension.
         </p>
 
-        <h2>What is sent to StreamPulse</h2>
+        <h2 id="sent">What is sent to StreamPulse</h2>
         <p>
           The extension service worker sends channel login, stream identifiers, and VOD identifiers, as
           applicable, plus aggregate Pulse and coverage requests, to{' '}
@@ -333,7 +400,7 @@ export default function Privacy() {
           can be returned.
         </p>
         <p>
-           Protect enrollment is not offered in 0.2.2. Earlier beta builds used a one-time enrollment flow:
+           Protect enrollment is not offered in this release. Earlier beta builds used a one-time enrollment flow:
            the service worker sent the key only to
            <code>https://api.streampulse.stream/v1/extension/auth/device</code>, then discarded it.
            For an earlier enrollment, protected watchlist requests use an opaque bearer device token stored locally
@@ -355,11 +422,13 @@ export default function Privacy() {
           fixed aggregate event names (for example <code>pulse_load_completed</code> and{' '}
           <code>extension_error_shown</code>) through the StreamPulse backend to PostHog for
           processing. Events are non-identifying aggregates (no person profiles, no channel/stream/VOD
-          identifiers, no free text). Retention target is about 180 days once activated; this page
-          does not claim that activation has occurred.
+          identifiers, no free text). The intended PostHog project has a six-calendar-month event
+          retention window; older events are permanently deleted at the following monthly cleanup.
+          This is not an exact 180-day deletion deadline, and this page does not claim that extension
+          analytics activation has occurred.
         </p>
 
-        <h2>What is stored in the browser</h2>
+        <h2 id="stored">What is stored in the browser</h2>
         <ul>
           <li>
             <strong>Extension sync storage</strong> (<code>storage.sync</code>) — extension preferences such as theme, color scheme,
@@ -380,10 +449,13 @@ export default function Privacy() {
              stored.
           </li>
           <li>
-            <strong>Extension IndexedDB</strong> (<code>pulse-account-private-v1</code>) — after you
-             connect the extension to a StreamPulse account, the account device credential is held in an
-            extension-origin database reachable only from the extension's own trusted contexts, not
-            from any Twitch page script. Disconnecting the extension or uninstalling it removes it.
+            <strong>Extension IndexedDB</strong> (<code>pulse-account-private-v1</code>) — private
+            account and device credentials, an installation setup key and connection state, a pending
+            appearance choice, and payment or recovery progress needed to resume an interrupted action.
+            These records stay in extension-only storage, not browser sync storage, and Twitch page
+            scripts cannot read them. Signing out removes active access; limited retry records may
+            remain to finish revocation or prevent duplicate payments. Uninstalling removes this
+            installation's browser storage. Neither action cancels a subscription or deletes the server account.
           </li>
           <li>
             <strong>Extension IndexedDB</strong> (<code>pulse-my-moments-v1</code>) — My Moments data
@@ -398,29 +470,35 @@ export default function Privacy() {
           <li>
             <strong>Portal localStorage</strong> — stores recently opened Twitch channel logins
             (<code>sp.hub.recentLogins</code>, capped list), public hub/analytics cache entries keyed by
-            backend URL and activity window (<code>sp:publicHub:v1:…</code>, with a staleness hint of about
-            10 minutes), browser-saved moments and any notes you add to them
+            backend URL and activity window (<code>sp:publicHub:v1:…</code>, a hub copy that may be shown,
+            marked as cached, for up to about 6 hours; <code>sp:publicHubProjection:v1:…</code>, Moments
+            and ticker copies used for about 10 minutes), browser-saved moments and any notes you add to them
             (<code>streampulse.saved-moments.v2</code>; an older <code>v1</code> copy may remain after
-            migration), your optional website analytics choice, your chart Scroll zoom choice
-            (<code>sp.chart.scrollZoom.v1</code>), and an optional beta key
-            (<code>sp.betaKey</code>) when a gated portal feature is
-            used. Saved moments and notes are not synced to your account and remain on this browser after
+            migration), your optional website analytics choice, and your chart Scroll zoom choice
+            (<code>sp.chart.scrollZoom.v1</code>).
+            Saved moments and notes are not synced to your account and remain on this browser after
             sign-out. Clearing site data for streampulse.stream removes these keys.
           </li>
           <li>
             <strong>Portal sessionStorage</strong> — while a Twitch sign-in is in progress, the
             one-time sign-in value and the page to return to (<code>pulse.account.twitchFlow.v1</code>,
             removed when you return); after a Twitch sign-in, the Twitch display name and picture shown
-            for that tab (<code>pulse.account.twitch.v1</code>, removed on sign-out); and, during a
+            for that tab (<code>pulse.account.twitch.v1</code>, removed on sign-out); during a
             “Confirm it’s you” check, a short tag of the account that asked
-            (<code>pulse.account.billingStepUp.v1</code>, at most 10 minutes). In local development
+            (<code>pulse.account.billingStepUp.v1</code>, at most 10 minutes); and, while Show my
+            Twitch follows is in progress, a one-time sign-in value and the page to return to
+            (<code>sp.twitchFollows.pending</code>, removed when you come back from Twitch and ignored
+            after 15 minutes). After it, the tab keeps your Twitch login and display name, the logins
+            of up to 3,000 channels you follow, Twitch's total count and when they were read
+            (<code>sp.twitchFollows.v1</code>). These stay until you choose Forget or close the tab; a
+            browser that restores or duplicates the tab can bring them back with it. In local development
             builds only, it may also hold a developer backend URL override
             (<code>sp.backendUrlOverride</code>); production portal builds do not apply session backend
             overrides. Clearing site data removes session keys as well.
           </li>
         </ul>
 
-        <h2>External services that receive data</h2>
+        <h2 id="services">External services that receive data</h2>
         <ul>
           <li>
             <strong>StreamPulse API</strong> — the hosted analytics service at
@@ -434,10 +512,16 @@ export default function Privacy() {
             recorded.
           </li>
           <li data-testid="privacy-third-party-turnstile">
-            <strong>Cloudflare Turnstile (feedback form bot check)</strong> — only on the feedback
-            form. Cloudflare processes your IP address and browser signals to tell people from bots,
+            <strong>Cloudflare Turnstile (feedback form bot check)</strong> —{' '}
+            {supporterWithdrawalEnabled() ? 'on the feedback form and online withdrawal form' : 'only on the feedback form'}.
+            Cloudflare processes your IP address and browser signals to tell people from bots,
             as described under Feedback form.
           </li>
+          {supporterWithdrawalEnabled() ? <li data-testid="privacy-third-party-withdrawal-mail">
+            <strong>Withdrawal mail service and billing inbox</strong> — receive your email address,
+            withdrawal statement, request reference and submission time to deliver the acknowledgement
+            and notify StreamPulse.
+          </li> : null}
           <li data-testid="privacy-third-party-support-mail">
             <strong>Outgoing mail service and support inbox (feedback form only)</strong> — the email
             provider StreamPulse uses to send feedback reports, and the provider that hosts
@@ -453,11 +537,13 @@ export default function Privacy() {
           </li>
           <li data-testid="privacy-third-party-twitch">
             <strong>Twitch</strong> — page context and GraphQL used to identify streams and VODs on
-            twitch.tv, and, only when you choose Continue with Twitch or during the extension's one
-            check after a fresh install, Twitch's sign-in service, which confirms your Twitch user ID
+            twitch.tv, and, {supporterChatBadgesEnabled() ? 'during the first-install check or when you choose Continue with Twitch' : 'only when you choose Continue with Twitch'}, Twitch's sign-in service, which
+            confirms your Twitch user ID
             to StreamPulse. If you disconnect StreamPulse in your Twitch settings, Twitch sends
             StreamPulse a notification with your Twitch user ID, which StreamPulse uses only to sign
-            that account out everywhere and does not store.
+            that account out everywhere and does not store. Show my Twitch follows sends your browser
+            to Twitch's sign-in page and reads your follows from Twitch's API with the token Twitch
+            gave the tab; StreamPulse's servers are not involved.
             {supporterChatBadgesEnabled() ? <> {PRIVACY_TWITCH_THIRD_PARTY_SEEN_IN_CHAT}</> : null}
           </li>
           <li>
@@ -497,7 +583,7 @@ export default function Privacy() {
           download or evaluate remotely hosted JavaScript or WebAssembly for product logic.
         </p>
 
-        <h2>Purpose</h2>
+        <h2 id="purpose">Purpose</h2>
         <p data-testid="privacy-purpose">
           Data is used to provide Pulse overlays on Twitch, honest coverage and backfill status, and public
           aggregate analytics. Account data is used to sign you in and, if you subscribe, to know whether
@@ -505,7 +591,7 @@ export default function Privacy() {
           to read and answer that report and to fix the problem it describes. Data is not sold, used for advertising, or used for unrelated profiling.
         </p>
 
-        <h2>Retention and deletion</h2>
+        <h2 id="retention">Retention and deletion</h2>
         <p>
           Browser settings, caches, and optional debug logs remain until you clear them or uninstall the
           extension. Uninstalling removes browser storage for that installation; it does not itself delete
@@ -524,13 +610,12 @@ export default function Privacy() {
           logs. Browser removal and token revocation do not retroactively erase aggregate analytics.
         </p>
         <p>
-          <strong>Account and billing records.</strong> Signing out ends a session but keeps the
-          account. To delete an account, email the address below from the account's own address;
-          sessions and device links are revoked and the account record is removed. Payment records —
-          invoices, amounts and dates — are kept after deletion where financial-record or tax
-          obligations require it, and are then no longer linked to an active account. Unconfirmed
-          sign-in challenges expire on their own after 15 minutes. Cancelling a subscription does not
-          delete the account, and deleting an account does not by itself cancel a subscription: see{' '}
+          <strong>Account and billing records.</strong> Signing out or uninstalling does not by itself
+          delete the server account. An extension-only account has no account email address. For
+          account-data requests, contact <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>;
+          do not send private device credentials. Account deletion and subscription cancellation are
+          different actions. Payment records may need to remain where financial-record or tax
+          obligations require them. Unconfirmed sign-in challenges expire after 15 minutes. See{' '}
           <Link to={REFUNDS_PATH}>cancellation and refunds</Link>.
         </p>
 
@@ -539,7 +624,7 @@ export default function Privacy() {
           kept, and how to ask for one to be deleted, is described under Feedback form above.
         </p>
 
-        <h2>Chrome Web Store limited use</h2>
+        <h2 id="chrome-web-store">Chrome Web Store limited use</h2>
         <p>
           User data collected through the extension is used only to provide or improve user-facing
           StreamPulse features. It is not sold or used for advertising or unrelated profiling. Transfers
@@ -548,7 +633,36 @@ export default function Privacy() {
           separate from the extension package.
         </p>
 
-        <h2>Contact</h2>
+        {/* Pilot-only and not-yet-shipped features, kept in full but folded away like every
+            section here, so the policy reads as what this release does (audit row 1, Aron 11-02). */}
+        <h2 id="pilot">Pilot and future features</h2>
+        <p>
+          {supporterChatBadgesEnabled()
+            ? 'The extension uses Twitch sign-in to confirm your Twitch user ID; a fresh installation may try one silent check as described above.'
+            : 'Extension Twitch sign-in is not available in this release. When available, the extension uses Twitch sign-in only to confirm your Twitch user ID, when you choose Continue with Twitch.'}{' '}
+          Protect enrollment is not offered in this release. Earlier beta enrollment
+          used a beta access key once to create a local device credential.
+        </p>
+        <p>
+        <strong>Tester email sign-in.</strong> During the private pilot, invited testers can sign in
+        by emailed link. A tester account stores the email address, an internal account identifier,
+        and timestamps for creation and sign-in; there is no password, no name field and no
+        profile. When you request a link, StreamPulse stores a hash of a single-use secret — not
+        the secret itself — with a 15-minute expiry, and emails you a link containing it. The
+        secret travels in the link's <strong>URL fragment</strong> (after the <code>#</code>), which
+        browsers do not send to the server or include in a <code>Referer</code> header, so it is
+        not written into server logs. Confirming a sign-in requires the same browser that
+        requested it. A tester's email is used for sign-in links and for notices about the account
+        or subscription. It is not used for marketing, and it is not sold, shared or used to build
+        an advertising profile.
+        </p>
+        <p>
+        Testers can link Twitch to the same account. Linking needs a sign-in from the last 10
+        minutes plus a fresh Twitch sign-in, and never combines two accounts.
+        </p>
+        <p>Invited testers may use a separate email account.</p>
+
+        <h2 id="contact">Contact</h2>
         {/* OWNER CONFIRMED 2026-10-13 (D35): Aron answers billing, cancellation
             and refund requests within 7 days. Private mailbox routing is ops-owned. */}
         <p data-testid="privacy-contact">
@@ -559,15 +673,16 @@ export default function Privacy() {
         </p>
         <p>Aron answers billing, cancellation and refund requests within 7 days.</p>
 
-        <h2>Related documents</h2>
+        <h2 id="related">Related documents</h2>
         <p>
           <Link to={TERMS_PATH}>Terms of use</Link> ·{' '}
           <Link to={REFUNDS_PATH}>Cancellation and refunds</Link> ·{' '}
           <Link to={SUPPORTER_PATH}>Supporter</Link>
         </p>
 
-        <h2>Changes</h2>
+        <h2 id="changes">Changes</h2>
         <p>Material changes to this policy will be reflected on this page with an updated date.</p>
+        </FoldedSections>
       </article>
     </PublicLayout>
   )

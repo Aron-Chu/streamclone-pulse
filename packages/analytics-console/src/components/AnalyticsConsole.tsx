@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type SyntheticEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   mergeRecapMoments,
   momentScoreReasonLabel,
@@ -24,9 +24,9 @@ import {
   watchAnalyticsChannel,
   type AnalyticsMinuteRollup,
 } from '../api.ts'
-import type { AnalyticsStream, AnalyticsStreamDetail, SyncStatus } from '../apiTypes.ts'
+import type { AnalyticsStream, AnalyticsStreamDetail, StreamSummaryResponse, SyncStatus } from '../apiTypes.ts'
 import type { HeatmapResponse } from '../types/heatmap.ts'
-import { useAnalyticsLive } from '../hooks/useAnalyticsLive.ts'
+import { useAnalyticsLive, type SessionReadIntervalQuery } from '../hooks/useAnalyticsLive.ts'
 import { syncCtaLabel } from '../utils/syncLabel.ts'
 import { SESSION_MOMENTS_SHOWN } from '../utils/momentListDisplay.tsx'
 import { findNearestRollupByOffset, parseDeepLinkOffset, rollupOffsetSeconds } from '../utils/momentSelection.ts'
@@ -39,8 +39,14 @@ import {
   STAT_PLACEHOLDER_MUTED_CLASS,
   type StreamCollectionState,
 } from '../utils/statCards.ts'
-import { isActiveLiveCollectorStream, isSyncPrefetchPlaceholder, resolveChannelActuallyLive } from '../utils/analyticsStreamRow.ts'
-import { analyticsStreamPathSlug, resolveCanonicalLiveSessionTarget } from '../utils/syncedLiveStream.ts'
+import {
+  isActiveLiveCollectorStream,
+  isPlaceholderStreamTitle,
+  isSyncPrefetchPlaceholder,
+  newerChannelStream,
+  resolveChannelActuallyLive,
+} from '../utils/analyticsStreamRow.ts'
+import { analyticsStreamPathSlug, resolveCanonicalLiveSessionTarget, streamHasSyncedMinutes } from '../utils/syncedLiveStream.ts'
 import {
   isDateSlugUnresolved,
   recapMatchesStreamIds,
@@ -50,7 +56,15 @@ import {
 } from '../utils/streamRouteResolution.ts'
 import { buildTwitchVodUrl, resolveAnalyticsVodId, resolveSessionFallbackVodId, resolveVodLinkState } from '../utils/twitchVodUrl.ts'
 import { mergeSessionStatusIntoDetail } from '../utils/sessionStatusMerge.ts'
-import { maxRollupOffsetSeconds, mergeMinutesTailIntoDetail } from '../utils/minutesTailMerge.ts'
+import {
+  accumulateMinutesTail,
+  awaitingFirstMinute,
+  maxRollupOffsetSeconds,
+  mergeMinutesTailIntoDetail,
+  newestMeasuredMinuteMs,
+  nextTailAfterOffset,
+  type MinutesTail,
+} from '../utils/minutesTailMerge.ts'
 import {
   computeRollupChatStats,
   computeRollupViewerStats,
@@ -62,13 +76,14 @@ import {
   resolveChartEmoteKeys,
   toggleEmotePlotSelection,
 } from '../utils/emotePlotSelection.ts'
-import { count, displayStreamTitle, duration, durationFromDetail, getLocalDateString } from '../utils/consoleFormat.ts'
+import { count, duration, durationFromDetail } from '../utils/consoleFormat.ts'
 import { deriveChartGameSegments, gameNameAtOffset } from '../utils/gameSegmentChart.ts'
 import { CoverageStartMetaItem, DataQualityButton, StatCard } from './analytics/ConsoleBits.tsx'
 import { StreamSidebar } from './analytics/StreamSidebar.tsx'
 import { TopEmoteTable } from './analytics/TopEmoteTable.tsx'
 import { MomentReviewPanel } from './analytics/MomentReviewPanel.tsx'
 import { SessionLifecycleMeta } from './analytics/PastBroadcastBanner.tsx'
+import { SessionChannelAvatar } from './analytics/SessionChannelAvatar.tsx'
 import { RelativeTimeText } from './analytics/RelativeTimeText.tsx'
 import { SessionRecapMomentsStrip } from './analytics/SessionRecapMomentsStrip.tsx'
 import { SelectedMomentCompactCard } from './analytics/SelectedMomentCompactCard.tsx'
@@ -76,15 +91,17 @@ import { StreamRecapPanel } from './analytics/StreamRecapPanel.tsx'
 import { hasRecapMomentsAvailable } from '../utils/recapMomentsAvailable.ts'
 import { resolveMomentVodJump } from '../utils/selectedMomentDisplay.ts'
 import { SyncStatusPanel } from './analytics/SyncStatusPanel.tsx'
+import { lookupTwitchChannel } from '../twitchChannelLookup.ts'
 import { StreamQualityBanner } from './analytics/StreamQualityBanner.tsx'
-import { diagnoseStreamQuality } from '../utils/streamQuality.ts'
+import { diagnoseStreamQuality, sessionDataQualityLabel } from '../utils/streamQuality.ts'
+import { sessionIsEnded, sessionStreamedLine, sessionVodLine } from '../utils/sessionState.ts'
 import { isTerminalSyncPhase, pollSyncUntilDone } from '../utils/syncPolling.ts'
 import { buildSessionSignals } from '../signals/buildSessionSignals.ts'
 import { SessionSignalTape } from './signals/SessionSignalTape.tsx'
-import { AnalyticsConsoleDataSkeleton } from './AnalyticsConsoleDataSkeleton.tsx'
+import { AnalyticsConsoleDataSkeleton, StreamRecapSkeleton } from './AnalyticsConsoleDataSkeleton.tsx'
 import { SessionInfoToggletip } from './analytics/SessionInfoToggletip.tsx'
 import { useSessionColumnFill } from '../hooks/useSessionColumnFill.ts'
-import { sessionStripMoments, stripHasReactionCoverage } from '../utils/sessionStripMoments.ts'
+import { sessionStreamEdges, sessionStripMoments, stripHasReactionCoverage } from '../utils/sessionStripMoments.ts'
 import { bestMomentInSpan, momentsInBar } from '../utils/sessionBarStrip.ts'
 import { SESSION_OWNER_SWITCHES } from '../sessionOwnerSwitches.ts'
 // Signal tape styles ship as `@streampulse/analytics-console/session-signal-tape.css`:
@@ -95,6 +112,12 @@ const RIGHT_PANEL_TABS: readonly RightPanelTab[] = ['moments', 'emotes', 'status
 
 /** d3-v2 session-original: the Moments explainer, behind the (i) beside the tabs. */
 const MOMENTS_TIP = 'Ranked by how strongly chat reacted, not by clip quality.'
+
+/** (fix, 10-30) VOD-4: the stream list's first, small read; the 100-row read follows it. */
+const STREAMS_FIRST_PAGE = 12
+
+/** (fix, 10-30) CX-2: a live summary is re-read only while its newest measured minute is younger than this. */
+const SUMMARY_POLL_STALE_MS = 10 * 60_000
 
 interface HistoryStreamItem {
   streamId?: string
@@ -130,6 +153,12 @@ export interface AnalyticsConsoleProps {
   enableSyncActions?: boolean
   buildSessionPath?: (login: string, streamId: string) => string
   buildChannelPath?: (login: string) => string
+  /**
+   * Where "Suggest a channel" goes on a channel StreamPulse has not recorded.
+   * By default the site's /feedback page; a host whose feedback form is not open
+   * can point it straight at its public Discord instead (an outside link).
+   */
+  suggestChannel?: { href: string; label: string }
   /** Host-owned actions for an explicitly selected minute on a resolved stream. */
   renderSelectedMomentActions?: (moment: { login: string; streamId: string; offsetSeconds: number; at?: number; chatPerMin?: number; emotesPerMin?: number; category?: string; label?: string }) => ReactNode
 }
@@ -146,6 +175,21 @@ function streamBelongsToChannel(detail: AnalyticsStreamDetail, channelLogin: str
   return Boolean(requested && owner === requested && (!responseChannel || responseChannel === requested))
 }
 
+/**
+ * The live frame's own archive id comes without verified archive timing, so the stand-in drops it.
+ * List-row and recap archive fallbacks still apply, as on the direct route.
+ */
+function withoutUnverifiedArchive(detail: AnalyticsStreamDetail): AnalyticsStreamDetail {
+  return {
+    ...detail,
+    vodId: undefined,
+    vodAlignSeconds: undefined,
+    vodDurationSeconds: undefined,
+    stream: detail.stream ? { ...detail.stream, vodId: undefined } : detail.stream,
+    availability: detail.availability ? { ...detail.availability, vodId: undefined } : detail.availability,
+  }
+}
+
 function defaultChannelPath(login: string): string {
   return `/analytics/${encodeURIComponent(login)}`
 }
@@ -159,6 +203,7 @@ export function AnalyticsConsole({
   enableSyncActions = false,
   buildSessionPath = defaultSessionPath,
   buildChannelPath = defaultChannelPath,
+  suggestChannel,
   renderSelectedMomentActions,
 }: AnalyticsConsoleProps = {}) {
   const navigate = useNavigate()
@@ -233,22 +278,44 @@ export function AnalyticsConsole({
   const liveQuery = useAnalyticsLive(channelLogin, {
     enabled: Boolean(channelLogin && isLiveRoute),
   })
-  const streamsQuery = useQuery({
-    queryKey: ['analytics-console-streams', channelLogin],
-    // Fetch a bounded recent channel list (limit 100) once. This response powers
-    // both the recent sidebar AND the history used for date-slug resolution —
-    // previously two separate fetches to the same /channels/{login}/streams
-    // endpoint (limit 20 + limit 100).
-    queryFn: () => getAnalyticsStreams(channelLogin, 100),
+  const isDateSlugRoute = isHistoricalRoute && /^\d{4}-\d{2}-\d{2}$/.test(streamId)
+  // (fix, 10-30) VOD-4: the list loads in two reads. The first 12 rows render
+  // at once; the 100-row read (slow on a busy channel) follows with them as its
+  // placeholder and then replaces them. Only the 100-row read resolves a date
+  // slug, which must see every stream of that day, so a date route starts it
+  // straight away. VOD-7: neither read refetches on a tab return (each one cost
+  // the full read again); the channel route still polls the 100 rows.
+  const streamsFirstPageQuery = useQuery({
+    queryKey: ['analytics-console-streams', channelLogin, STREAMS_FIRST_PAGE],
+    queryFn: () => getAnalyticsStreams(channelLogin, STREAMS_FIRST_PAGE),
     enabled: Boolean(channelLogin),
     staleTime: 30_000,
-    refetchInterval: isLiveRoute ? 30_000 : false,
+    refetchOnWindowFocus: false,
   })
+  const streamsQuery = useQuery({
+    queryKey: ['analytics-console-streams', channelLogin, 100],
+    // A bounded recent channel list (limit 100). It powers both the sidebar and
+    // the history used for date-slug resolution.
+    queryFn: () => getAnalyticsStreams(channelLogin, 100),
+    enabled: Boolean(channelLogin && (streamsFirstPageQuery.isFetched || isDateSlugRoute)),
+    placeholderData: streamsFirstPageQuery.data,
+    staleTime: 30_000,
+    refetchInterval: isLiveRoute ? 30_000 : false,
+    refetchOnWindowFocus: false,
+  })
+  const streamsFullListLoaded = Boolean(streamsQuery.data) && !streamsQuery.isPlaceholderData
+  // What the sidebar lists: the 100 rows once loaded, else the first page (the
+  // placeholder, and still after a failed 100-row read).
+  const streamsData = streamsQuery.data ?? streamsFirstPageQuery.data
+  // Only the first page is known and more rows may exist; a first page shorter
+  // than its limit is the whole list.
+  const streamsPartial = !streamsFullListLoaded
+    && (streamsFirstPageQuery.data?.items?.length ?? 0) >= STREAMS_FIRST_PAGE
 
-  // historyItems are derived from the same limit-100 streams response (no
-  // second network call). resolveTargetQueryStreamId only reads streamId/id/startedAt.
+  // historyItems are derived from the same streams response (no second network
+  // call). resolveTargetQueryStreamId only reads streamId/id/startedAt.
   const historyItems = useMemo<HistoryStreamItem[] | undefined>(() => {
-    const items = streamsQuery.data?.items ?? []
+    const items = streamsData?.items ?? []
     if (items.length === 0) return undefined
     return items.map((item) => ({
       streamId: item.streamId,
@@ -263,15 +330,19 @@ export function AnalyticsConsole({
       chatMessages: item.chatMessages,
       vodId: item.vodId,
     }))
-  }, [streamsQuery.data?.items])
+  }, [streamsData?.items])
   // A never-loaded query returns to "pending" on every refetch (TanStack v5). Judge the
   // list by whether it has failed, so polls and retries of a failed list keep the
   // failure on screen instead of flashing a loading state.
-  const streamsListFailed = !streamsQuery.data && streamsQuery.errorUpdateCount > 0
-  const listsLoading = streamsQuery.isLoading && !streamsListFailed
+  // (fix, 10-30) VOD-4: the 100-row read decides: the sidebar fails only with no
+  // rows at all, and a date slug waits for (or fails with) the full list.
+  const streamsFullListFailed = !streamsFullListLoaded && streamsQuery.errorUpdateCount > 0
+  const streamsListFailed = !streamsData && streamsFullListFailed
+  const listsLoading = Boolean(channelLogin) && !streamsFullListLoaded && !streamsFullListFailed
+  const sidebarListLoading = Boolean(channelLogin) && !streamsData && !streamsListFailed
 
   const sidebarStreams = useMemo(() => {
-    const local = streamsQuery.data?.items ?? []
+    const local = streamsData?.items ?? []
     const historyItemsList = historyItems ?? []
     const mappedHistory: AnalyticsStream[] = historyItemsList
       .map((s) => ({
@@ -319,27 +390,35 @@ export function AnalyticsConsole({
         const bTime = b.startedAt ? Date.parse(b.startedAt) : 0
         return bTime - aTime
       })
-  }, [streamsQuery.data?.items, historyItems, channelLogin])
+  }, [streamsData?.items, historyItems, channelLogin])
 
   const matchedStream = useMemo(() => {
     if (!streamId) return undefined
-    return resolveMatchedStream(streamId, sidebarStreams, sidebarStreams)
-  }, [streamId, sidebarStreams])
+    // (fix, 10-30) VOD-4: a date names its stream from the full list only; the
+    // first 12 rows can hold one of that day's two streams.
+    return resolveMatchedStream(streamId, sidebarStreams, streamsFullListLoaded ? sidebarStreams : [])
+  }, [streamId, sidebarStreams, streamsFullListLoaded])
 
   const targetQueryStreamId = useMemo(() => {
     if (isLiveRoute) {
-      return liveQuery.data?.stream?.streamId || streamsQuery.data?.items?.[0]?.streamId || ''
+      return liveQuery.data?.stream?.streamId || streamsData?.items?.[0]?.streamId || ''
     }
-    const resolved = resolveTargetQueryStreamId(streamId, matchedStream, historyItems, listsLoading)
+    const resolved = resolveTargetQueryStreamId(
+      streamId,
+      matchedStream,
+      streamsFullListLoaded ? historyItems : undefined,
+      listsLoading,
+    )
     return resolved ?? ''
   }, [
     isLiveRoute,
     streamId,
     matchedStream,
     historyItems,
+    streamsFullListLoaded,
     listsLoading,
     liveQuery.data?.stream?.streamId,
-    streamsQuery.data?.items,
+    streamsData?.items,
   ])
 
   const sessionResolving = Boolean(
@@ -347,7 +426,7 @@ export function AnalyticsConsole({
   )
   // A failed list cannot show that a date has no stream: report a failed load, not "not found".
   const dateAliasListFailed = Boolean(
-    isHistoricalRoute && streamsListFailed && /^\d{4}-\d{2}-\d{2}$/.test(streamId),
+    isHistoricalRoute && streamsFullListFailed && /^\d{4}-\d{2}-\d{2}$/.test(streamId),
   )
   const unresolvedSessionAlias = Boolean(
     isHistoricalRoute && !dateAliasListFailed && isDateSlugUnresolved(streamId, matchedStream, listsLoading),
@@ -358,14 +437,48 @@ export function AnalyticsConsole({
   // treating its first row as live suppresses the historical detail query for
   // ended sessions (and leaves the page stuck on an empty live frame).
   const liveActiveStreamId = liveQuery.data?.stream?.streamId || ''
-  // A date-slug redirect can resolve to the session that the live query already
-  // owns. Reuse that payload instead of starting a second historical detail /
-  // minutes waterfall for the same stream id.
-  const currentLiveTarget = Boolean(
+  const liveFrameMatchesTarget = Boolean(
     isHistoricalRoute
     && targetQueryStreamId
     && liveActiveStreamId
     && targetQueryStreamId === liveActiveStreamId,
+  )
+  // A date-slug redirect can resolve to the session that the live query already
+  // owns. Reuse that payload instead of starting a second historical detail /
+  // minutes waterfall for the same stream id, but only while it is confirmed live.
+  const currentLiveTarget = liveFrameMatchesTarget && resolveChannelActuallyLive(liveQuery.data)
+  // (fix, 10-30) CX-3: the live tail starts from the session's newest minute, so
+  // a live session read before its first minute (it just went live, or its
+  // minutes read failed) is read again every 30 s until one exists. Judged on
+  // the query's own data, since the status merge drops `liveDvrState`. It stops
+  // when the stream ends or a newer one replaces it, after 20 more reads (focus and
+  // Refresh data still work) and while the tab is hidden.
+  const firstMinutePoll = (query: SessionReadIntervalQuery): number | false =>
+    query.state.dataUpdateCount + query.state.errorUpdateCount <= 20
+    && awaitingFirstMinute(query.state.data, sidebarStreams)
+      ? 30_000
+      : false
+  // (fix, 10-30) After the channel route redirects here the page reads that live
+  // frame, whose query above is enabled only on the channel route: with no other
+  // observer it never refreshed, not even on a tab return. Observe it here as a
+  // session read opened directly is refreshed: on focus, and every 30 s only
+  // while it waits for its first minute. Once a minute exists the live tail
+  // below keeps the minutes moving.
+  useAnalyticsLive(channelLogin, {
+    enabled: Boolean(channelLogin && currentLiveTarget),
+    refetchInterval: firstMinutePoll,
+  })
+  // An ended stream reached from the channel page: the live frame has no per-minute
+  // emote names and no verified archive timing, so the session read still runs. The
+  // frame (when it belongs to this channel) stands in only if that read fails or
+  // finds nothing.
+  const liveStandInFrame = liveFrameMatchesTarget && !currentLiveTarget && liveQuery.data
+    && streamBelongsToChannel(liveQuery.data, channelLogin)
+    ? liveQuery.data
+    : undefined
+  const liveStandIn = useMemo(
+    () => (liveStandInFrame ? withoutUnverifiedArchive(liveStandInFrame) : undefined),
+    [liveStandInFrame],
   )
 
   const historicalDetailQuery = useQuery({
@@ -386,20 +499,33 @@ export function AnalyticsConsole({
       && !currentLiveTarget,
     ),
     staleTime: 30_000,
-    refetchInterval: false,
+    refetchInterval: firstMinutePoll,
     // A confirmed-ended broadcast cannot change; re-downloading every minute on
     // each tab return is pure cost. Unconfirmed sessions keep the focus refresh.
     refetchOnWindowFocus: query => (query.state.data as AnalyticsStreamDetail | null | undefined)?.stream?.lifecycleState !== 'confirmed_ended',
   })
 
   const detailQuery = isLiveRoute || currentLiveTarget ? liveQuery : historicalDetailQuery
-  const rawDetail = (detailQuery.data ?? undefined) as AnalyticsStreamDetail | undefined
+  // Until the session read first answers, the page loads as it does when opened directly (chart
+  // skeleton, meta slot held): showing the frame first would move the page when the read lands.
+  const sessionReadFirstAnswerOut = historicalDetailQuery.isPending
+    && historicalDetailQuery.errorUpdatedAt === 0
+    && historicalDetailQuery.fetchStatus !== 'idle'
+  // What the page shows: the read that owns the detail, else the live frame standing in for it
+  // when that read failed or found nothing.
+  const shownDetail: AnalyticsStreamDetail | undefined = detailQuery.data
+    ?? (sessionReadFirstAnswerOut ? undefined : liveStandIn)
   // A date alias can reuse the live query rather than historicalDetailQuery.
   // Apply the same ownership check to that route before any session data renders.
   const detailOwnershipMismatch = Boolean(
-    isHistoricalRoute && rawDetail && !streamBelongsToChannel(rawDetail, channelLogin),
+    isHistoricalRoute && shownDetail && !streamBelongsToChannel(shownDetail, channelLogin),
   )
-  const baseDetail = detailOwnershipMismatch ? undefined : rawDetail
+  const baseDetail = detailOwnershipMismatch ? undefined : shownDetail
+  // (fix, 10-30) GP-3: a stream whose channel list holds a newer stream for the
+  // same channel is over, whatever its row says (the backend left 316705728883
+  // open with the channel's current viewers). It gets no live polls, live
+  // wording or "recording" notes.
+  const streamSuperseded = Boolean(newerChannelStream(baseDetail?.stream, sidebarStreams))
 
   const statusQuery = useQuery({
     queryKey: ['analytics-console-status', targetQueryStreamId, channelLogin],
@@ -425,9 +551,10 @@ export function AnalyticsConsole({
       const vod = (data?.availability?.vodState ?? baseDetail?.availability?.vodState ?? '').toLowerCase()
       const liveDvr = (data?.availability?.liveDvrState ?? baseDetail?.availability?.liveDvrState ?? '').toLowerCase()
       if (vod === 'linked' || vod === 'terminal' || vod === 'unavailable') return false
-      if (baseDetail?.stream?.lifecycleState
+      // (fix, 10-30) GP-3: no live-rate polling for a superseded stream.
+      if (!streamSuperseded && (baseDetail?.stream?.lifecycleState
         ? baseDetail.stream.lifecycleState === 'confirmed_live'
-        : mergedState === 'live' || liveDvr === 'live') return backoff
+        : mergedState === 'live' || liveDvr === 'live')) return backoff
       if (vod === 'pending_live' || vod === 'resolving' || vod === 'request_failed') return backoff
       return false
     },
@@ -440,16 +567,27 @@ export function AnalyticsConsole({
     return mergeSessionStatusIntoDetail(baseDetail, statusQuery.data as Parameters<typeof mergeSessionStatusIntoDetail>[1])
   }, [baseDetail, statusQuery.data])
 
-  const sessionIsLive = resolveChannelActuallyLive(statusMerged)
+  // (fix, 10-30) GP-3: judged against the channel list, so a superseded stream
+  // stops the tail and games polls below.
+  const sessionIsLive = resolveChannelActuallyLive(statusMerged, sidebarStreams)
 
-  const liveTailAfterOffset = maxRollupOffsetSeconds(statusMerged)
+  // (fix, 10-30) VOD-1: each tail poll asks after the newest minute already
+  // merged and folds its rows into the tail read since the session read, so the
+  // plot, tiles and table advance. The key names that session read (its read
+  // time): a fresh read starts a fresh tail. Every poll used to ask after the
+  // session read's edge, re-downloading up to 120 minutes (VOD-6), and the rows
+  // reached the chart series only.
+  const queryClient = useQueryClient()
+  const liveTailReadAt = baseDetail?.updatedAt ?? 0
   const minutesTailQuery = useQuery({
-    queryKey: ['analytics-console-minutes-tail', targetQueryStreamId, liveTailAfterOffset],
-    queryFn: async () => {
-      if (!targetQueryStreamId || liveTailAfterOffset < 0) return null
-      return getStreamMinutesTail(targetQueryStreamId, liveTailAfterOffset)
+    queryKey: ['analytics-console-minutes-tail', targetQueryStreamId, liveTailReadAt],
+    queryFn: async ({ queryKey }) => {
+      const previous = queryClient.getQueryData<MinutesTail | null>(queryKey) ?? null
+      const afterOffset = nextTailAfterOffset(statusMerged, previous)
+      if (!targetQueryStreamId || afterOffset < 0) return previous
+      return accumulateMinutesTail(previous, await getStreamMinutesTail(targetQueryStreamId, afterOffset))
     },
-    enabled: Boolean(sessionIsLive && targetQueryStreamId && liveTailAfterOffset >= 0 && statusMerged),
+    enabled: Boolean(sessionIsLive && targetQueryStreamId && maxRollupOffsetSeconds(statusMerged) >= 0 && statusMerged),
     staleTime: 15_000,
     refetchInterval: sessionIsLive ? 30_000 : false,
   })
@@ -458,6 +596,13 @@ export function AnalyticsConsole({
     if (!statusMerged) return undefined
     return mergeMinutesTailIntoDetail(statusMerged, minutesTailQuery.data ?? undefined)
   }, [statusMerged, minutesTailQuery.data])
+  // (fix, 10-30) On a live session "Updated" names the newest merged minute with
+  // data, so a stalled feed does not read as fresh: `detail.updatedAt` is the
+  // read time, which every poll moves on (and the chart's live edge measures
+  // through). Other sessions keep the read time.
+  const sessionUpdatedAt = sessionIsLive
+    ? newestMeasuredMinuteMs(detail) ?? undefined
+    : detail?.updatedAt || undefined
 
   // The session read is judged like the list: while a failed, never-loaded read is
   // fetched again (a poll, a focus refetch or Refresh data) its error is cleared, so
@@ -563,9 +708,17 @@ export function AnalyticsConsole({
     refetchInterval: syncing ? 2000 : false,
   })
 
+  // (fix, 10-30) CX-2: the Top emotes table, the "Data:" label and the Status
+  // tab read this summary, so a live session reads it again every 30 s (the
+  // backend caches it for 45 s); it used to keep its first read. It stops once
+  // the newest measured minute is over 10 min old: a page left open in a visible
+  // tab is never told the stream ended. A failed read (null) keeps the last good
+  // summary, so the table never flips back to the session read's older counts.
   const summaryQuery = useQuery({
     queryKey: ['analytics-console-summary', targetQueryStreamId, channelLogin],
-    queryFn: () => getStreamSummary(targetQueryStreamId, channelLogin),
+    queryFn: async ({ queryKey }) => (await getStreamSummary(targetQueryStreamId, channelLogin))
+      ?? queryClient.getQueryData<StreamSummaryResponse | null>(queryKey)
+      ?? null,
     enabled: Boolean(
       layer2Enabled
       && targetQueryStreamId
@@ -573,6 +726,10 @@ export function AnalyticsConsole({
       && chartDetailReady
     ),
     staleTime: 30_000,
+    refetchInterval: () => {
+      const newestMinuteMs = sessionIsLive ? newestMeasuredMinuteMs(detail) : null
+      return newestMinuteMs != null && Date.now() - newestMinuteMs <= SUMMARY_POLL_STALE_MS ? 30_000 : false
+    },
   })
 
   const recapQuery = useQuery({
@@ -620,18 +777,31 @@ export function AnalyticsConsole({
       ? recapQuery.data
       : null
 
+  // Hello / goodbye spam at the stream's edges ranks last in every moment list
+  // (markers, strip, pins). The closing edge waits until the stream has ended.
+  const sessionRollups = detail?.momentRollups ?? detail?.rollups
+  const sessionEdges = useMemo(
+    () => sessionStreamEdges({
+      rollups: sessionRollups,
+      streamStartedAt: detail?.stream?.startedAt,
+      // the hosted adapter blanks endedAt, so the end comes from the shared rule (availability's "ended")
+      streamEnded: sessionIsEnded({ live: sessionIsLive, stream: detail?.stream, availability: detail?.availability }),
+    }),
+    [detail?.stream, detail?.availability, sessionIsLive, sessionRollups],
+  )
+
   // One source of truth for chart markers: refined recap windows outrank the
   // coarse heatmap, while the heatmap remains the honest fallback when recap
   // refinement is unavailable. This prevents two competing marker sets from
   // rendering at different timestamps in the portal and extension.
   const reactionMoments = useMemo(
     () =>
-      mergeRecapMoments(recapForStream, heatmapPoints ?? [], 40, true)
+      mergeRecapMoments(recapForStream, heatmapPoints ?? [], 40, true, sessionEdges)
         .map((moment) => sanitizeReactionMoment(moment)),
-    [heatmapPoints, recapForStream],
+    [heatmapPoints, recapForStream, sessionEdges],
   )
 
-  const isActiveLiveCollector = isActiveLiveCollectorStream(detail?.stream, detail?.state)
+  const isActiveLiveCollector = isActiveLiveCollectorStream(detail?.stream, detail?.state) && !streamSuperseded
   // Deep-linked live sessions must keep advancing — path shape is not authoritative.
   const isLive = sessionIsLive
 
@@ -863,6 +1033,14 @@ export function AnalyticsConsole({
   ])
 
   const stream = detail?.stream
+  // An ended stream says when it streamed and for how long ("Streamed Oct 29 · 4h",
+  // "Viewers at end") instead of the read time, which reads as live. The hosted
+  // data blanks endedAt, so the shared rule reads availability's "ended" too.
+  // Refresh data stays: ended data still changes.
+  const sessionEnded = sessionIsEnded({ live: sessionIsLive, stream, availability: detail?.availability })
+  const streamedLine = sessionEnded
+    ? sessionStreamedLine(stream?.startedAt, detail?.momentRollups?.length ? detail.momentRollups : detail?.rollups)
+    : null
   const fallbackVodId = useMemo(
     () =>
       resolveSessionFallbackVodId({
@@ -876,7 +1054,7 @@ export function AnalyticsConsole({
     () => Boolean(layer2Enabled && recapForStream && hasRecapMomentsAvailable(recapForStream)),
     [layer2Enabled, recapForStream],
   )
-  const channelIsLive = useMemo(() => resolveChannelActuallyLive(detail), [detail])
+  const channelIsLive = useMemo(() => resolveChannelActuallyLive(detail, sidebarStreams), [detail, sidebarStreams])
   // A channel StreamPulse has never recorded: the live read settled as
   // not_collected with no stream, and the stored list settled empty. A dashboard
   // of "Needs sync" cards, an empty chart and "Updated 1m ago" would read as a
@@ -889,11 +1067,33 @@ export function AnalyticsConsole({
     && liveQuery.isSuccess
     && liveQuery.data?.state === 'not_collected'
     && !liveQuery.data?.stream?.streamId
-    && streamsQuery.isSuccess
-    && (streamsQuery.data?.items ?? []).length === 0
+    && Boolean(streamsData)
+    && (streamsData?.items ?? []).length === 0
     && !channelIsLive
     && !isActiveLiveCollector
+  // C1 (11-11): the header leads with the channel's name and Twitch picture. Same read
+  // and key as the not-recorded panel, so the two share one answer.
+  const twitchChannelQuery = useQuery({
+    queryKey: ['analytics', 'twitch-channel', channelLogin],
+    queryFn: () => lookupTwitchChannel(channelLogin),
+    enabled: Boolean(channelLogin),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const twitchChannel = twitchChannelQuery.data?.state === 'found' ? twitchChannelQuery.data : null
   const streamVodId =resolveAnalyticsVodId(detail, recapForStream?.vodId) ?? fallbackVodId
+  // (fix, 10-30) PIC-3: "still recording" only for the channel's current live
+  // stream: live, and no newer stream in the channel's list (which has
+  // answered). The bar picture and the moments reel read this one flag, so
+  // they say the same line; it used to be `isLive && vodId` on the bar only.
+  const recording = sessionIsLive && sidebarStreams.length > 0
+  // The pictures' "No preview frames while live." follows the live stream itself, VOD id or not:
+  // a live stream with no VOD id yet used to blame missing frames instead.
+  const vodRecording = recording
+  // (candidate, 10-30) PIC-4: the "Live now" tile names the login only while
+  // recording, and hides once the newest measured minute is old (LiveNowTile.tsx).
+  const liveNowLogin = recording ? channelLogin : null
+  const liveNowMinuteMs = recording ? newestMeasuredMinuteMs(detail) : null
   const vodLinkState = useMemo(
     () =>
       resolveVodLinkState({
@@ -905,6 +1105,7 @@ export function AnalyticsConsole({
       }),
     [detail, recapForStream?.vodId, fallbackVodId, isActiveLiveCollector, channelIsLive],
   )
+  const noVodLine = sessionVodLine(vodLinkState)
   // Tiles and totals read every measured minute; `rollups` is the chart's downsampled series.
   const measuredRollups = detail?.momentRollups?.length ? detail.momentRollups : detail?.rollups
 
@@ -949,19 +1150,34 @@ export function AnalyticsConsole({
 
   const liveRouteSessionTarget = useMemo(() => {
     if (!isLiveRoute) return undefined
-    return resolveCanonicalLiveSessionTarget(sidebarStreams, {
+    const fromList = resolveCanonicalLiveSessionTarget(sidebarStreams, {
       liveStreamId: detail?.stream?.streamId || liveQuery.data?.stream?.streamId || liveActiveStreamId,
       channelLive: channelIsLive || isActiveLiveCollector,
       channelLogin,
       startedAt: detail?.stream?.startedAt ?? liveQuery.data?.stream?.startedAt,
     })
+    if (fromList || streamsData) return fromList
+    // Until the list answers, an ended or unconfirmed live read opens its own stream when that is
+    // this channel's measured stream (viewer and chat minutes, not a prefetch stub): the loaded list
+    // opens the same ID. The session URL must name its read without the list (a numeric ID).
+    const live = liveQuery.data
+    const liveStream = live?.stream
+    if (
+      !live
+      || !liveStream?.streamId
+      || !streamBelongsToChannel(live, channelLogin)
+      || !streamHasSyncedMinutes(liveStream)
+      || isSyncPrefetchPlaceholder(liveStream)
+      || resolveTargetQueryStreamId(liveStream.streamId, undefined, undefined, true) !== liveStream.streamId
+    ) return undefined
+    return liveStream
   }, [
     isLiveRoute,
     sidebarStreams,
+    streamsData,
     detail?.stream?.streamId,
     detail?.stream?.startedAt,
-    liveQuery.data?.stream?.streamId,
-    liveQuery.data?.stream?.startedAt,
+    liveQuery.data,
     liveActiveStreamId,
     channelIsLive,
     isActiveLiveCollector,
@@ -973,10 +1189,13 @@ export function AnalyticsConsole({
     return analyticsStreamPathSlug(liveRouteSessionTarget, sidebarStreams)
   }, [liveRouteSessionTarget, sidebarStreams])
 
+  // Does not wait on the stream list: before it answers, a live read that confirms
+  // the live stream, or names this channel's measured ended stream, names the target,
+  // and that is the same stream ID the loaded list would pick. Without one (a channel
+  // not recorded, an unmeasured or another channel's stream), the target waits for the list.
   const shouldRedirectLiveRouteToSession = Boolean(
     isLiveRoute
     && !detailQuery.isLoading
-    && !streamsQuery.isLoading
     && liveRouteSessionSlug,
   )
 
@@ -1057,7 +1276,7 @@ export function AnalyticsConsole({
   }, [minuteTsToRollup])
   const showSessionSignalTape = Boolean(
     layer2Enabled
-    && detailQuery.data
+    && shownDetail
     && !sessionResolving
     && !sessionNotFound,
   )
@@ -1072,8 +1291,11 @@ export function AnalyticsConsole({
       hasChatMinutes: rollups.some(
         row => !row.missing && ((row.chatCount ?? 0) > 0 || (row.totalEmoteCount ?? 0) > 0),
       ),
-      coveragePct: summaryQuery.data?.metrics?.data_coverage_pct ?? detail.chatCoveragePct,
+      // A data share only: availability.coveragePct is the backend's data coverage, chatCoveragePct is chat's alone.
+      coveragePct: summaryQuery.data?.metrics?.data_coverage_pct ?? detail.availability?.coveragePct,
       syncHealthState: summaryQuery.data?.metrics?.sync_health_state,
+      // The header's "Data: <label>" from the same detail and summary (pick 11A review, 10-30).
+      quality: sessionDataQualityLabel(detail, summaryQuery.data?.metrics),
     }
   }, [detail, isHistoricalRoute, summaryQuery.data?.metrics])
 
@@ -1192,8 +1414,9 @@ export function AnalyticsConsole({
       heatmapPoints,
       streamStartedAt: stream?.startedAt,
       topEmotesCatalog: detailForRender?.topEmotes,
+      streamEdges: sessionEdges,
     })
-  }, [recapMomentsAvailable, recapForStream, heatmapPoints, stream?.startedAt, detailForRender?.topEmotes])
+  }, [recapMomentsAvailable, recapForStream, heatmapPoints, stream?.startedAt, detailForRender?.topEmotes, sessionEdges])
   const stripMomentCount = stripMoments.length
   // Expand adds its own height on top: the fill holds while it is on (fitMoments).
   const [chartExpanded, setChartExpanded] = useState(false)
@@ -1266,8 +1489,17 @@ export function AnalyticsConsole({
   // The first session read is out: the chart skeleton stands in, and the meta line keeps its slot hidden
   // (its items arrive with the read and would slide across it).
   const sessionReadPending = sessionResolving || (!effectiveSessionNotFound && detailQuery.isLoading && !detail)
+  // The recap's slot keeps its height until the recap answer settles, so the Moments tabs under it do not
+  // jump when it lands. The channel route holds the slot too while it may still open the session page.
+  // (fix, 10-30) VOD-4: it waits on the list only until some rows (or the live read's own stream)
+  // name the session, not on the 100-row read.
+  const recapSlotPending = !effectiveSessionNotFound && (layer2Enabled
+    ? recapQuery.isLoading || (recapQuery.isPending && !detail)
+    : detailQuery.isLoading || (sidebarListLoading && !liveRouteSessionTarget) || shouldRedirectLiveRouteToSession)
 
-  const headerTitle = channelNotRecorded
+  // A status heading (never recorded, an unknown date, not found, a failed read) says so in
+  // the h1; every other heading is the channel's name (C1, 11-11).
+  const statusHeading = channelNotRecorded
     ? channelLogin
     : unresolvedSessionAlias
     ? `Session date ${streamId} outside loaded results`
@@ -1275,15 +1507,25 @@ export function AnalyticsConsole({
     ? `Session ${streamId} not found`
     : sessionLoadFailed
       ? `Unable to load ${channelLogin} session`
-    : displayStreamTitle(stream, channelLogin, [
-    // When the detail title is a "Syncing..." placeholder, fall back to the real
-    // broadcast title from the live frame / matched sidebar record before the
-    // date slug, so a resolved date route shows the actual stream title.
-    liveQuery.data?.stream?.title,
-    matchedStream?.title,
-    streamsQuery.data?.items?.[0]?.title,
-    `${channelLogin} / ${getLocalDateString(stream?.startedAt) || 'session'}`,
-      ])
+    : null
+  const channelName = stream?.displayName?.trim()
+    || twitchChannel?.displayName?.trim()
+    || liveQuery.data?.stream?.displayName?.trim()
+    || channelLogin
+  const headerTitle = statusHeading ?? channelName
+  // The stream's own title: one grey line under the header, in full on hover and to screen
+  // readers. When the detail title is a "Syncing..." placeholder it falls back to the real
+  // broadcast title from the live frame / matched sidebar record. A session route takes the
+  // live frame's title only from the frame it shows or stands in with.
+  const streamTitle = statusHeading == null
+    ? [
+        stream?.title,
+        isLiveRoute || currentLiveTarget ? liveQuery.data?.stream?.title : liveStandIn?.stream?.title,
+        matchedStream?.title,
+        streamsData?.items?.[0]?.title,
+      ].map(title => title?.trim() ?? '').find(title => !isPlaceholderStreamTitle(title)) ?? null
+    : null
+  const streamStatePill = sessionIsLive ? 'live' : sessionEnded ? 'ended' : null
   const consoleGridClassName = chartFocused
     ? 'grid grid-cols-1 gap-4'
     : streamsVisible
@@ -1311,23 +1553,37 @@ export function AnalyticsConsole({
       data-shell-nested={shellNested ? 'true' : 'false'}
     >
       <div className="flex w-full flex-col gap-4">
-        <header data-session-header className="ssp-head flex flex-col gap-3 border-b border-white/[0.07] pb-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1">
-            {/* d3-v2 session-original: no badge row; the hub and channel links are
-                the page's breadcrumb, the live state and data quality are meta items. */}
-            <h1 className="ssp-h1 line-clamp-2 text-2xl font-black leading-[1.08] text-white [overflow-wrap:anywhere] lg:text-[32px]" title={headerTitle}>
+        <header data-session-header className="ssp-head flex flex-col gap-3 border-b border-white/[0.07] pb-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
+          {/* C1 (11-11): the channel's name is the headline, its picture beside it, and the
+              badge row under it (Live or Ended, game, started, updated, Watch VOD). The hub and
+              channel links stay the page's breadcrumb; the stream title is one grey line below. */}
+          <div className={statusHeading == null ? 'ssp-id min-w-0 flex-1' : 'min-w-0 flex-1'}>
+            {statusHeading == null ? (
+              <SessionChannelAvatar name={channelName} src={twitchChannel?.avatar} live={sessionIsLive} />
+            ) : null}
+            <h1
+              className="ssp-h1 line-clamp-2 text-2xl font-black leading-[1.08] text-white [overflow-wrap:anywhere] lg:text-[32px]"
+              title={headerTitle}
+              data-channel-name={statusHeading == null || undefined}
+            >
               {headerTitle}
             </h1>
             {channelNotRecorded ? null : (
               <div className="ssp-meta-w" data-session-meta data-session-meta-pending={sessionReadPending || undefined}>
                 <div className="ssp-meta">
-                  {stream?.displayName ? <span className="mi">{stream.displayName}</span> : null}
+                  {streamStatePill ? (
+                    <span className="mi" data-session-state={streamStatePill}>
+                      <span className="ssp-pill">{streamStatePill === 'live' ? 'Live' : 'Ended'}</span>
+                    </span>
+                  ) : null}
                   {stream?.category ? <span className="mi">{stream.category}</span> : null}
                   <SessionLifecycleMeta
                     isLiveRoute={isLiveRoute}
                     isActiveLiveCollector={isActiveLiveCollector}
                     stream={stream}
                     syncing={syncing}
+                    streamedLine={streamedLine}
+                    ended={sessionEnded}
                     hasChartData={
                       (detail?.rollups ?? []).some(rollupHasMinuteData)
                       || rollupsHaveViewerData(detail?.rollups ?? [])
@@ -1340,7 +1596,9 @@ export function AnalyticsConsole({
                   <span className="mi" data-session-updated>
                     {lastRefreshedAt
                       ? <RelativeTimeText prefix="Refreshed" value={lastRefreshedAt} />
-                      : <RelativeTimeText prefix="Updated" value={detail?.updatedAt || undefined} />}
+                      : sessionEnded
+                        ? null
+                        : <RelativeTimeText prefix="Updated" value={sessionUpdatedAt} />}
                     <button
                       type="button"
                       className="ssp-rf"
@@ -1414,12 +1672,18 @@ export function AnalyticsConsole({
               </button>
             </div>
           )}
+          {statusHeading == null ? (
+            // Its slot is held while the title is out, so nothing under it moves when it lands.
+            <p className="ssp-title lg:basis-full" data-session-title title={streamTitle ?? undefined}>
+              {streamTitle}
+            </p>
+          ) : null}
         </header>
-        {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} /> : <>
+        {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} suggest={suggestChannel} /> : <>
 
         <section className="ssp-stats grid grid-cols-2 gap-3 lg:grid-cols-6" data-session-stat-row aria-label="Stream figures">
           <StatCard
-            label={isHistoricalRoute ? 'Latest viewers' : 'Current viewers'}
+            label={sessionEnded ? 'Viewers at end' : 'Latest viewers'}
             value={statCardsPending ? '-' : statCardClasses.current.placeholder ?? count(headerStats.current)}
             tone={statCardClasses.current.muted ? STAT_PLACEHOLDER_MUTED_CLASS : 'text-cyan-300/90'}
           />
@@ -1534,7 +1798,7 @@ export function AnalyticsConsole({
                 reactionMoments={reactionMoments}
                 vodJump={selectedVodJump}
                 viewerCaption={{ peak: headerStats.peak ?? null, avg: headerStats.avg ?? null }}
-                stripPins={recapMomentsAvailable && recapForStream ? { recap: recapForStream, streamStartedAt: stream?.startedAt, heatmapPoints, topEmotesCatalog: detailForRender?.topEmotes, rollups: detail?.momentRollups ?? detail?.rollups ?? [], onSelectOffset: handleJumpToRecapOffset } : null}
+                stripPins={recapMomentsAvailable && recapForStream ? { recap: recapForStream, streamStartedAt: stream?.startedAt, heatmapPoints, topEmotesCatalog: detailForRender?.topEmotes, rollups: detail?.momentRollups ?? detail?.rollups ?? [], streamEdges: sessionEdges, onSelectOffset: handleJumpToRecapOffset } : null}
                 extraPlotPx={columnFill.extraPlotPx}
                 momentOffsetInBar={momentOffsetInBar}
                 selectionIsMoment={selectionIsMoment}
@@ -1546,7 +1810,7 @@ export function AnalyticsConsole({
                   onLockMoment={handleJumpToRecapOffset}
                   onZoomToBar={bar?.zoom}
                   onShowMoreMoments={stripMoments.length ? handleShowMoreMoments : undefined}
-                  vodRecording={isLive && Boolean(streamVodId)}
+                  vodRecording={vodRecording}
                   recapMoment={matchedRecapMoment}
                   vodAlignSeconds={detail?.vodAlignSeconds}
                   vodDurationSeconds={detail?.vodDurationSeconds}
@@ -1568,10 +1832,9 @@ export function AnalyticsConsole({
               />
               {/* d3-v2 session-original: "Watch VOD" sits in the meta line; only a
                   missing VOD still says why under the chart. */}
-              {!streamVodId && vodLinkState.detail ? (
-                <p className={`text-xs font-semibold ${vodLinkState.status === 'request_failed' ? 'text-amber-200' : 'text-zinc-400'}`}>
-                  {vodLinkState.status === 'request_failed' ? `${vodLinkState.label} · ` : null}
-                  {vodLinkState.detail}
+              {!streamVodId ? (
+                <p className={`text-xs font-semibold ${noVodLine.failed ? 'text-amber-200' : 'text-zinc-400'}`} data-session-vod-line data-vod-status={vodLinkState.status}>
+                  {noVodLine.text}
                 </p>
               ) : null}
             </div>
@@ -1604,14 +1867,16 @@ export function AnalyticsConsole({
                 <StreamSidebar
                   login={channelLogin}
                   streams={sidebarStreams}
-                  loading={listsLoading}
+                  loading={sidebarListLoading}
                   loadFailed={streamsListFailed}
+                  streamsPartial={streamsPartial}
                   retrying={streamsQuery.isFetching}
                   onRetry={() => void streamsQuery.refetch()}
                   activeID={isHistoricalRoute ? streamId : undefined}
                   isLiveView={isLiveRoute}
                   liveState={detail?.stream?.lifecycleState === 'unknown' ? 'unknown' : channelIsLive || isActiveLiveCollector ? 'live' : isLiveRoute ? detail?.state : undefined}
                   liveStreamId={liveActiveStreamId}
+                  activeLive={sessionEnded ? false : sessionIsLive ? true : undefined}
                   liveSessionPath={
                     canonicalLiveSessionSlug
                       ? buildSessionPath(channelLogin, canonicalLiveSessionSlug)
@@ -1652,6 +1917,8 @@ export function AnalyticsConsole({
                 onJumpToOffset={handleJumpToRecapOffset}
                 onPreviewOffset={handlePreviewRecapOffset}
               />
+            ) : recapSlotPending ? (
+              <StreamRecapSkeleton />
             ) : null}
             <div
               className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/[0.07] bg-white/[0.025]"
@@ -1721,6 +1988,10 @@ export function AnalyticsConsole({
                       vodAlignSeconds={detail?.vodAlignSeconds}
                       vodDurationSeconds={detail?.vodDurationSeconds}
                       reel={SESSION_OWNER_SWITCHES.momentsReel}
+                      streamEdges={sessionEdges}
+                      recording={vodRecording}
+                      liveNowLogin={liveNowLogin}
+                      liveNowMinuteMs={liveNowMinuteMs}
                     />
                   ) : (
                     <MomentReviewPanel
@@ -1785,7 +2056,17 @@ export function AnalyticsConsole({
  * One honest panel for a channel StreamPulse has never recorded, in place of
  * the stat grid, stream list and chart (which would all be empty placeholders).
  */
-function ChannelNotRecordedPanel({ login }: { login: string }) {
+function ChannelNotRecordedPanel({ login, suggest }: { login: string; suggest?: { href: string; label: string } }) {
+  // SRCH-5 (3A, 11-02): Twitch's answer turns the dead end into a next step. Only a
+  // real answer says the account exists; a failed read never says it doesn't.
+  const twitch = useQuery({
+    queryKey: ['analytics', 'twitch-channel', login],
+    queryFn: () => lookupTwitchChannel(login),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const lookup = twitch.data
+  const found = lookup && lookup.state === 'found' ? lookup : null
   return (
     <section
       data-channel-not-recorded
@@ -1802,6 +2083,20 @@ function ChannelNotRecordedPanel({ login }: { login: string }) {
           How coverage works
         </Link>
       </p>
+      {found ? (
+        <p data-twitch-lookup="found" className="mt-5 flex items-center gap-3 text-sm font-semibold text-zinc-200">
+          {found.avatar ? (
+            <img src={found.avatar} alt="" width={32} height={32} referrerPolicy="no-referrer" className="h-8 w-8 shrink-0 rounded-full bg-white/10" />
+          ) : null}
+          <span>
+            <span className="font-black text-white">{found.displayName || login}</span> is on Twitch, not tracked yet.
+          </span>
+        </p>
+      ) : twitch.isSuccess ? (
+        <p data-twitch-lookup="unknown" className="mt-5 max-w-2xl text-sm font-semibold leading-6 text-zinc-400">
+          We can&rsquo;t check Twitch for <span className="break-words">{login}</span> right now. Check the spelling, or suggest it.
+        </p>
+      ) : null}
       <div className="mt-6 flex flex-wrap gap-3">
         <Link
           to="/analytics"
@@ -1809,12 +2104,24 @@ function ChannelNotRecordedPanel({ login }: { login: string }) {
         >
           Search tracked channels
         </Link>
-        <Link
-          to="/feedback"
-          className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
-        >
-          Suggest a channel
-        </Link>
+        {suggest ? (
+          <a
+            href={suggest.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${suggest.label} (opens in a new tab)`}
+            className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            {suggest.label}
+          </a>
+        ) : (
+          <Link
+            to="/feedback"
+            className="inline-flex min-h-11 items-center rounded border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-black text-zinc-200 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            {found ? `Suggest ${login}` : 'Suggest a channel'}
+          </Link>
+        )}
       </div>
     </section>
   )

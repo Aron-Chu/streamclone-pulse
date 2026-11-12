@@ -34,6 +34,38 @@ function fakePayload(login = 'xqc'): PulseCacheEntry['payload'] {
 }
 
 describe('production pulse GET_PULSE coordinator matrix', () => {
+  it('a viewer Retry (fresh) skips a fresh cache, fetches once and broadcasts the answer (STATE-2)', async () => {
+    const cache = new Map<string, PulseCacheEntry>()
+    cache.set(pulseCacheKey('xqc', 'recent'), {
+      payload: fakePayload('xqc'),
+      fetchedAt: Date.now(),
+      window: 'recent',
+      streamId: 's1',
+    })
+    let fetches = 0
+    const broadcasts: unknown[] = []
+    const deps = {
+      getCached: async (login: string, window: PulseCacheWindow) => cache.get(pulseCacheKey(login, window)) ?? null,
+      getCoverage: async () => null,
+      fetchPulse: async (login: string) => {
+        fetches += 1
+        return { payload: { ...fakePayload(login), currentOffsetSeconds: 660 }, coverageTier: null }
+      },
+      onBroadcast: (_login: string, payload: unknown) => { broadcasts.push(payload) },
+    }
+    const state = createPulseCoordinatorState()
+
+    const cachedAnswer = await handleGetPulse({ login: 'xqc', window: 'recent' }, deps, state)
+    expect(fetches).toBe(0)
+    expect(cachedAnswer.payload?.currentOffsetSeconds).toBe(600)
+
+    const retried = await handleGetPulse({ login: 'xqc', window: 'recent', fresh: true }, deps, state)
+    expect(fetches).toBe(1)
+    expect(retried.network.syncFetches).toBe(1)
+    expect(retried.payload?.currentOffsetSeconds).toBe(660)
+    expect(broadcasts).toHaveLength(1)
+  })
+
   it('cold cache one tab → exactly one sync fetch', async () => {
     const cache = new Map<string, PulseCacheEntry>()
     let fetches = 0

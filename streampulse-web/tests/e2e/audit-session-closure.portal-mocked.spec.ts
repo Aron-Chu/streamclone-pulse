@@ -1,4 +1,4 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from './helpers/portalMockedTest'
 import { writeFileSync } from 'node:fs'
 import {
   assertNoUnexpected,
@@ -233,7 +233,7 @@ test.describe('portal session closure acceptance (mocked)', () => {
     await openAnalyticsSession(page)
     await expect(page).toHaveURL(new RegExp(`/analytics/xqc/${PORTAL_STREAM_ID}$`))
     expect(harness.counter.count(`/streams/${PORTAL_STREAM_ID}`)).toBeGreaterThan(0)
-    await expect(page.getByRole('heading', { level: 1, name: 'Deterministic portal acceptance fixture' })).toBeVisible()
+    await expect(page.locator('[data-session-header] [data-session-title]')).toHaveText('Deterministic portal acceptance fixture')
     // d3-v2 session-original: the lifecycle row rides on the meta line's
     // "Started" item (its title, plus a visually hidden status for screen readers).
     const lifecycle = page.locator('[data-session-meta] [data-session-lifecycle-row]')

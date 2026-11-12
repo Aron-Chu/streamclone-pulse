@@ -1,13 +1,18 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './helpers/portalMockedTest'
+
+// The homepage reads the public hub; answer it here so no test reaches the live API.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/v1/**', route => route.fulfill({ status: 503, body: '{}' }))
+})
 
 for (const width of [390, 1440]) {
   test(`restored homepage at ${width}px retains visible demos and static access`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.route('**/v1/**', route => route.fulfill({ status: 503, body: '{}' }))
     await page.goto('/')
     await expect(page.locator('.sl-fx')).toHaveCount(1)
-    await expect(page.locator('.sl-chatbg')).toHaveCount(1)
+    // landing.css hides the chat backdrop at 960px and below, so it is not mounted there.
+    await expect(page.locator('.sl-chatbg')).toHaveCount(width >= 961 ? 1 : 0)
     await expect(page.locator('.sl-fx')).toBeHidden()
     await expect(page.locator('.sl-optional-demo')).toHaveCount(0)
     await page.keyboard.press('Tab')
@@ -16,20 +21,9 @@ for (const width of [390, 1440]) {
     await expect(page.locator('#landing-main')).toBeFocused()
     await page.locator('#demo').scrollIntoViewIfNeeded()
     await expect(page.locator('.sl-xtour')).toBeVisible()
-    await expect(page.locator('.lsg')).toHaveAttribute('data-static', '')
-    await page.locator('.lsg').scrollIntoViewIfNeeded()
-    await expect(page.locator('.lsg__panel')).toBeVisible()
+    await expect(page.locator('.lsg')).toHaveCount(0)
     expect(await page.locator('.sl-header').evaluate(element => Math.abs(element.getBoundingClientRect().top))).toBeLessThanOrEqual(1)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
-    const labels = await page.locator('.lsg__peak-chip').evaluateAll(elements => elements.map(element => {
-      const { left, top, right, bottom } = element.getBoundingClientRect()
-      return { left, top, right, bottom }
-    }))
-    for (let i = 0; i < labels.length; i++) for (let j = i + 1; j < labels.length; j++) {
-      const a = labels[i], b = labels[j]
-      expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top).toBe(true)
-    }
-    await page.locator('.lsg').screenshot({ path: testInfo.outputPath(`replay-${width}.png`) })
     await page.evaluate(() => scrollTo(0, 0))
     await page.screenshot({ path: testInfo.outputPath(`home-${width}.png`) })
     if (width === 390) {
@@ -41,7 +35,7 @@ for (const width of [390, 1440]) {
   })
 }
 
-test('scrolling reveals the original SVG beats without a click-to-load gate', async ({ page }, testInfo) => {
+test('the animated homepage shows the rain, the chat backdrop and the Pulse tab tour', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.goto('/')
@@ -50,28 +44,41 @@ test('scrolling reveals the original SVG beats without a click-to-load gate', as
   await page.screenshot({ path: testInfo.outputPath('home-animated.png') })
   await page.locator('#demo').scrollIntoViewIfNeeded()
   await expect(page.locator('.sl-xtour')).toBeVisible()
-  await expect(page.locator('.lsg')).not.toHaveAttribute('data-static', '')
-  for (const [progress, beat] of [[0.2, '2'], [0.9, '5']] as const) {
-    await page.locator('.lsg__scene').evaluate((element, progress) => {
-      const top = element.getBoundingClientRect().top + scrollY
-      scrollTo(0, top + (element.clientHeight - innerHeight) * progress)
-    }, progress)
-    await expect(page.locator('.lsg')).toHaveAttribute('data-beat', beat)
-  }
-  await page.screenshot({ path: testInfo.outputPath('replay-animated.png') })
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  await expect(page.locator('.lsg')).toHaveAttribute('data-static', '')
-  await expect.poll(() => page.locator('.lsg').evaluate(element => getComputedStyle(element).getPropertyValue('--wipe').trim())).toBe('1')
-  await expect(page.locator('.lsg__sticky')).toHaveCSS('transform', 'none')
 })
 
-test('the prerendered SVG remains readable with JavaScript disabled', async ({ browser, baseURL }) => {
-  const context = await browser.newContext({ javaScriptEnabled: false })
-  const page = await context.newPage()
-  await page.goto(baseURL ?? 'http://127.0.0.1:4173')
-  await expect(page.locator('.lsg')).toHaveAttribute('data-static', '')
-  await expect(page.locator('.lsg__panel')).toBeVisible()
-  await expect(page.getByText('Highest sample chat rate', { exact: true })).toBeVisible()
-  await expect(page.locator('#demo')).toContainText('JavaScript is available')
-  await context.close()
+test.describe('without JavaScript', () => {
+  test.use({ javaScriptEnabled: false })
+
+  test('the prerendered homepage stays readable with JavaScript disabled', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('#demo')).toContainText('JavaScript is available')
+    // The chat backdrop mounts after load on wide screens; it is not in the prerendered HTML.
+    await expect(page.locator('.sl-chatbg')).toHaveCount(0)
+    await expect(page.locator('#roadmap, #analysis, .lsg')).toHaveCount(0)
+  })
+})
+
+// P1 (11-02): a phone leads with Open the Hub, filled, with no install button and a line saying the extension is for
+// desktop; a desktop keeps the install button first and no such line.
+test('the homepage hero leads with Open the Hub on a phone and keeps the install button on a desktop', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  const actions = page.locator('.sl-hero__actions')
+  const hub = actions.getByRole('link', { name: 'Open the Hub' })
+  const install = actions.locator('[data-cta="chrome-install-hero"]')
+  const desk = page.locator('p.sl-hero__desk')
+  await expect(hub).toBeVisible()
+  await expect(install).toBeHidden()
+  await expect(desk).toBeVisible()
+  await expect(desk).toHaveText('Desktop extension for Chrome, Edge and Firefox')
+  const filled = (el: Element) => getComputedStyle(el).backgroundColor
+  expect(await hub.evaluate(filled)).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/)
+  expect((await hub.boundingBox())!.height).toBeGreaterThanOrEqual(40)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(install).toBeVisible()
+  await expect(desk).toBeHidden()
+  await expect(hub).toBeVisible()
 })

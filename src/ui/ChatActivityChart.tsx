@@ -511,7 +511,7 @@ export function ChatActivityChart({
       {showEmptyState ? (
         <div className="pulse-chart-empty pulse-shimmer" style={{ ...styles.empty, height }} role="status">
           <span style={styles.emptyText}>
-            {loading ? 'Loading timeline…' : (emptyMessage ?? 'Waiting for chat rollups…')}
+            {loading ? 'Loading timeline…' : (emptyMessage ?? 'Waiting for the first minute of chat…')}
           </span>
         </div>
       ) : (

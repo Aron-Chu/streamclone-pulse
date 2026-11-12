@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react'
+import { displayMomentReasonLabel, momentClockDisplay, type LiveHeatPoint } from '@streampulse/pulse-core'
 import { chatSeriesFromRollups, chartRollupSeries } from './chatActivityEmotes.ts'
 import type { PulsePayload } from '../shared/messages.ts'
+import { momentReasonLabelStyle } from './momentReasonStyles.ts'
 import { theme } from './theme.ts'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 
@@ -17,6 +19,10 @@ export interface MiniDockProps {
   onSettings: () => void
   onHide: () => void
   onTrack?: () => void
+  /** The first row of the panel's Top moments list, when the panel would show it. */
+  topMoment?: LiveHeatPoint | null
+  /** Does what the Top moments card's Jump does. */
+  onJumpTopMoment?: (point: LiveHeatPoint) => void
 }
 
 export function MiniDock({
@@ -30,14 +36,16 @@ export function MiniDock({
   onSettings,
   onHide,
   onTrack,
+  topMoment = null,
+  onJumpTopMoment,
 }: MiniDockProps) {
   const rollups = payload ? chartRollupSeries(payload) : []
   const heatValues = chatSeriesFromRollups(rollups).slice(-MINI_HEAT_BARS)
-  const statusLabel = tracking
-    ? isLive
-      ? `Tracking ${login}`
-      : `Tracking ${login}`
-    : 'Not tracking'
+  // The dock sits on the channel's own page, so the name only goes in the tooltip.
+  const statusLabel = tracking ? 'Tracking' : 'Not tracking'
+  const statusTitle = tracking ? `Tracking ${login}` : `Not tracking ${login}`
+  // The list row's reason line; a row without one shows none here either.
+  const topDetail = topMoment ? displayMomentReasonLabel(topMoment.reason, topMoment.reasonLabel) : ''
 
   return (
     <section
@@ -51,22 +59,55 @@ export function MiniDock({
         title="Expand Pulse panel"
       >
         <BrandMark compact />
-        <span className="pulse-mini-brand">Pulse</span>
-        <span className={tracking ? 'pulse-mini-status pulse-mini-status-live' : 'pulse-mini-status'}>
-          <span
-            className={`pulse-mini-dot${tracking ? ' pulse-mini-dot-live' : ''}${tracking && isLive ? ' pulse-live-dot' : ''}`}
-            aria-hidden
-          />
-          <span className="pulse-mini-status-text">{statusLabel}</span>
-        </span>
-        <MiniHeatStrip values={heatValues} />
+        {topMoment ? (
+          // Two lines, so the time never ellipses away in the narrow sidebar dock.
+          <span className="pulse-mini-moment" data-mini-top-moment="true">
+            <span className="pulse-mini-moment-label">Top moment</span>
+            <span className="pulse-mini-moment-detail">
+              <span className="pulse-mini-moment-time">{momentClockDisplay(topMoment).text}</span>
+              {topDetail ? (
+                <>
+                  {' · '}
+                  <span style={momentReasonLabelStyle(topMoment.reason, topMoment.reasonLabel)}>{topDetail}</span>
+                </>
+              ) : null}
+            </span>
+          </span>
+        ) : (
+          <>
+            <span className="pulse-mini-brand">Pulse</span>
+            <span className={tracking ? 'pulse-mini-status pulse-mini-status-live' : 'pulse-mini-status'}>
+              <span
+                className={`pulse-mini-dot${tracking ? ' pulse-mini-dot-live' : ''}${tracking && isLive ? ' pulse-live-dot' : ''}`}
+                aria-hidden
+              />
+              <span className="pulse-mini-status-text" title={statusTitle}>{statusLabel}</span>
+            </span>
+            <MiniHeatStrip values={heatValues} />
+          </>
+        )}
       </button>
 
       <div className="pulse-mini-dock-actions" aria-label="Mini dock controls">
+        {topMoment && onJumpTopMoment ? (
+          <button
+            type="button"
+            style={JUMP_BUTTON_STYLE}
+            data-mini-top-moment-jump="true"
+            onClick={event => {
+              event.stopPropagation()
+              onJumpTopMoment(topMoment)
+            }}
+            title="Jump to the top moment"
+          >
+            <PlayIcon />
+            Jump
+          </button>
+        ) : null}
         {!tracking && onTrack ? (
           <button
             type="button"
-            style={styles.trackButton}
+            style={styles.chipButton}
             disabled={trackBusy}
             onClick={event => {
               event.stopPropagation()
@@ -177,6 +218,14 @@ function ExpandIcon() {
   )
 }
 
+function PlayIcon() {
+  return (
+    <svg width="9" height="10" viewBox="0 0 9 10" fill="none" aria-hidden>
+      <path d="M1.5 1.6v6.8a.6.6 0 0 0 .9.5l5.5-3.4a.6.6 0 0 0 0-1L2.4 1.1a.6.6 0 0 0-.9.5Z" fill="currentColor" />
+    </svg>
+  )
+}
+
 function HideIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
@@ -188,17 +237,16 @@ function HideIcon() {
 // Inline on purpose: as classes, the `.pulse-mini-dock button[title]` hover
 // rule would start tinting these buttons.
 const styles: Record<string, CSSProperties> = {
-  trackButton: {
+  chipButton: {
     background: 'rgba(139, 92, 246, 0.16)',
     border: `1px solid ${theme.borderAccent}`,
     borderRadius: theme.radiusButton,
     color: theme.accentSoft,
     cursor: 'pointer',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 800,
-    letterSpacing: '0.04em',
     padding: '6px 8px',
-    textTransform: 'uppercase',
+    whiteSpace: 'nowrap',
   },
   iconButton: {
     alignItems: 'center',
@@ -214,3 +262,6 @@ const styles: Record<string, CSSProperties> = {
     width: 28,
   },
 }
+
+// The chip look, with room for the play icon beside the label.
+const JUMP_BUTTON_STYLE: CSSProperties = { ...styles.chipButton, alignItems: 'center', display: 'inline-flex', gap: 5 }

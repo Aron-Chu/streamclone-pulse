@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  findChartIndexByOffset,
   mapPeakOffsetsToBucketedChartIndices,
   mapPeakOffsetsToChartIndices,
 } from '../src/ui/chatActivityEmotes.ts'
@@ -39,5 +40,23 @@ describe('mapPeakOffsetsToBucketedChartIndices', () => {
 
   it('dedupes peaks in the same bucket', () => {
     expect(mapPeakOffsetsToBucketedChartIndices([100, 110], wideOffsets, [10, 20, 30])).toEqual([0])
+  })
+
+  it('leaves a peak hours past the chart off it', () => {
+    expect(mapPeakOffsetsToBucketedChartIndices([100, 4 * 3600], wideOffsets, [10, 20, 30])).toEqual([0])
+  })
+})
+
+describe('findChartIndexByOffset past the chart end', () => {
+  const wideOffsets = [0, 120, 240]
+
+  it('keeps one bucket of slack for a lagging live chart', () => {
+    expect(findChartIndexByOffset(wideOffsets, 300, { bucketed: true })).toBe(2)
+    expect(findChartIndexByOffset(wideOffsets, 400, { bucketed: true })).toBe(2)
+  })
+
+  it('does not pin a later moment to the last bucket', () => {
+    expect(findChartIndexByOffset(wideOffsets, 480, { bucketed: true })).toBeNull()
+    expect(findChartIndexByOffset(wideOffsets, 45 * 3600 + 40 * 60, { bucketed: true })).toBeNull()
   })
 })

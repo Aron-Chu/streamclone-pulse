@@ -32,7 +32,7 @@ async function centerOf(cdp: CDPSession, node: DomNode, scroll = true): Promise<
 
 test('pressing the next Top Moments row keeps the card and selects that row', async ({ extension, prepare }) => {
   await prepare({ scenario: 'vod-ready', twitchKind: 'vod', storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
-  // Eight moments: Catch me up shows three, Top Moments the other five once unfolded.
+  // Eight moments: Top Moments lists five, and the other three once unfolded.
   const offline = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-offline.json', import.meta.url), 'utf8'))
   const topMoments = Array.from({ length: 8 }, (_, index) => ({ ...offline.recap.topMoments[0], offsetSeconds: 1800 + index * 1200, score: 92 - index * 4 }))
   await extension.context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', async route => {
@@ -86,22 +86,5 @@ test('pressing the next Top Moments row keeps the card and selects that row', as
   await page.mouse.up()
   await expect.poll(async () => attr((await rows())[1]!, 'aria-pressed')).toBe('true')
   await expect.poll(label).not.toBe(firstLabel)
-  expect(await label()).toMatch(/^Selected moment at /)
-
-  // Catch me up's moments take the same path: a held press on the next one
-  // swaps its card in under the block.
-  const minis = async () => (await tree(cdp)).filter(node => hasClass(node, 'pcu-mini'))
-  const two = await centerOf(cdp, (await minis())[0]!)
-  await page.mouse.click(two.x, two.y)
-  await expect.poll(async () => attr((await minis())[0]!, 'aria-pressed')).toBe('true')
-  const twoLabel = await label()
-  await page.waitForTimeout(400)
-  const three = await centerOf(cdp, (await minis())[1]!)
-  await page.mouse.move(three.x, three.y)
-  await page.mouse.down()
-  await page.waitForTimeout(120)
-  await page.mouse.up()
-  await expect.poll(async () => attr((await minis())[1]!, 'aria-pressed')).toBe('true')
-  await expect.poll(label).not.toBe(twoLabel)
   expect(await label()).toMatch(/^Selected moment at /)
 })

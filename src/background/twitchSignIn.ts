@@ -1,4 +1,6 @@
 import { AccountRequestNotSent } from './supporterAccount.ts'
+import { TWITCH_LOGIN, isChatBadgeEntry, parseChatBadgeSnapshot, type ChatBadgeActionError, type ChatBadgeEntry, type ChatBadgeSnapshot, type TwitchLinkError } from '../shared/chatBadges.ts'
+import type { SupporterWave } from '../shared/supporterPaint.ts'
 import type { SupporterAccountAction, SupporterAccountState } from '../shared/supporterAccount.ts'
 import type {
   TwitchProfile,
@@ -37,7 +39,7 @@ export interface WebAuthFlowDetails {
 
 type Account = {
   run(action: SupporterAccountAction): Promise<SupporterAccountState>
-  adopt(body: unknown, generation: number): Promise<{ adopted: boolean; account: SupporterAccountState }>
+  adopt(body: unknown, generation: number, via?: 'twitch'): Promise<{ adopted: boolean; account: SupporterAccountState }>
   withCredential<T extends { status: number }>(operation: (token: string) => Promise<T>, accountId?: string): Promise<T>
   /**
    * Sign out everywhere succeeded: forget this device's credential without
@@ -73,6 +75,10 @@ export interface TwitchSignInPorts {
   meta: Record_
   /** Browser-session display profile. */
   profile: Record_
+  /** "Not you?": sends the signed-in account's unsent watched history before it is signed out. */
+  flushAccount?: () => Promise<void>
+  /** Notes each account that signs in here, for the one-time "move this browser's saves" ask. */
+  accountSeen?: (accountId: string) => Promise<void>
 }
 
 /** Persisted markers. A missing or unreadable record is never a first install. */
@@ -325,6 +331,122 @@ export class TwitchSignIn {
     }
   }
 
+  /**
+   * Seen in chat opt-in: a fresh Twitch check that ends in one consent action.
+   *
+   * start-device with purpose `badge` (bound to this device's bearer, like a
+   * step-up) → the Twitch window → POST /v1/account/auth/twitch/badge with the
+   * ID token and the consent version the card showed. The server verifies the
+   * token, checks it is this account's Twitch identity and that the account is
+   * an active Supporter, and only then stores and publishes the Twitch user ID
+   * and login, so a tampered client cannot publish anyone else's. Always
+   * interactive: consent comes from a click, never a silent check.
+   */
+  async confirmForBadge(badge: { consentVersion: number; wave: SupporterWave }): Promise<TwitchBadgeResult> {
+    if (!this.ports.enabled || !this.available) return { ok: false, error: 'unavailable' }
+    if (this.active) return { ok: false, error: 'busy' }
+    this.active = true
+    try {
+      const account = await this.ports.account.run('status')
+      if (account.state === 'unavailable' && account.linked) return { ok: false, error: 'unavailable' }
+      if (account.state !== 'linked') return { ok: false, error: 'sign_in_required' }
+      const started = await this.ports.account.withCredential(async token => {
+        const result = await this.post('/v1/account/auth/twitch/start-device', { surface: this.ports.surface, purpose: 'badge', mode: 'interactive', forceVerify: false }, token)
+        return { status: bearerStatus(result), result }
+      }, account.accountId)
+      const flow = this.parseStart(started.result)
+      if (failure(flow)) return badgeFailure(flow, started.result)
+      const proof = await this.authorize(flow, 'interactive')
+      if (failure(proof)) return badgeFailure(proof)
+      const finished = await this.ports.account.withCredential(async token => {
+        const result = await this.post('/v1/account/auth/twitch/badge', { flowId: flow.flowId, flowSecret: flow.flowSecret, idToken: proof, badge: { consentVersion: badge.consentVersion, wave: badge.wave } }, token)
+        return { status: bearerStatus(result), result }
+      }, account.accountId)
+      const body = object(finished.result.body)
+      if (finished.result.status === 200 && body.status === 'badge_on') {
+        const chatBadge = parseChatBadgeSnapshot(body.chatBadge)
+        return { ok: true, ...(isChatBadgeEntry(body.own) ? { own: body.own } : {}), ...(chatBadge ? { chatBadge } : {}) }
+      }
+      if (finished.result.status === 200) return { ok: false, error: 'error' }
+      return badgeFailure(serverFailure(finished.result), finished.result)
+    } catch (error) {
+      return badgeFailure(thrownFailure(error))
+    } finally {
+      this.active = false
+    }
+  }
+
+  /**
+   * Link Twitch to this membership: a fresh Twitch check that attaches the
+   * Twitch identity to the account this extension is connected to.
+   *
+   * start-device with purpose `link` (bound to this device's bearer) → the
+   * Twitch window → POST /v1/account/auth/twitch/link with the ID token. The
+   * server never creates an account on this route and writes nothing when the
+   * Twitch account already belongs to another one. The profile is not kept:
+   * this extension is still connected by its membership, not signed in with
+   * Twitch. Always interactive.
+   */
+  async linkToMembership(): Promise<TwitchLinkResult> {
+    if (!this.ports.enabled || !this.available) return { ok: false, error: 'unavailable' }
+    if (this.active) return { ok: false, error: 'busy' }
+    this.active = true
+    try {
+      const account = await this.ports.account.run('status')
+      if (account.state === 'unavailable' && account.linked) return { ok: false, error: 'unavailable' }
+      if (account.state !== 'linked') return { ok: false, error: 'sign_in_required' }
+      const started = await this.ports.account.withCredential(async token => {
+        const result = await this.post('/v1/account/auth/twitch/start-device', { surface: this.ports.surface, purpose: 'link', mode: 'interactive', forceVerify: false }, token)
+        return { status: bearerStatus(result), result }
+      }, account.accountId)
+      const flow = this.parseStart(started.result)
+      if (failure(flow)) return linkFailure(flow, started.result)
+      const proof = await this.authorize(flow, 'interactive')
+      if (failure(proof)) return linkFailure(proof)
+      const finished = await this.ports.account.withCredential(async token => {
+        const result = await this.post('/v1/account/auth/twitch/link', { flowId: flow.flowId, flowSecret: flow.flowSecret, idToken: proof }, token)
+        return { status: bearerStatus(result), result }
+      }, account.accountId)
+      const body = object(finished.result.body)
+      if (finished.result.status === 200 && body.status === 'linked') {
+        return { ok: true, ...(typeof body.login === 'string' && TWITCH_LOGIN.test(body.login) ? { login: body.login } : {}) }
+      }
+      if (finished.result.status === 200) return { ok: false, error: 'error' }
+      return linkFailure(serverFailure(finished.result), finished.result)
+    } catch (error) {
+      return linkFailure(thrownFailure(error))
+    } finally {
+      this.active = false
+    }
+  }
+
+  /**
+   * Unlink Twitch from this membership's account. The server withdraws a Seen
+   * in chat entry first, and refuses when Twitch is the account's only way
+   * back in. No Twitch window: unlinking needs only this device's bearer.
+   */
+  async unlinkTwitch(): Promise<TwitchLinkResult> {
+    if (!this.ports.enabled) return { ok: false, error: 'unavailable' }
+    if (this.active) return { ok: false, error: 'busy' }
+    this.active = true
+    try {
+      const account = await this.ports.account.run('status')
+      if (account.state === 'unavailable' && account.linked) return { ok: false, error: 'unavailable' }
+      if (account.state !== 'linked') return { ok: false, error: 'sign_in_required' }
+      const finished = await this.ports.account.withCredential(async token => {
+        const result = await this.post('/v1/account/identities/twitch/unlink', {}, token)
+        return { status: bearerStatus(result), result }
+      }, account.accountId)
+      if (finished.result.status === 200 && object(finished.result.body).status === 'unlinked') return { ok: true }
+      if (finished.result.status === 200) return { ok: false, error: 'error' }
+      return linkFailure(serverFailure(finished.result), finished.result)
+    } catch (error) {
+      return linkFailure(thrownFailure(error))
+    } finally {
+      this.active = false
+    }
+  }
+
   /** One step-up round; the caller holds `active`. */
   private async runStepUp(mode: TwitchSignInMode): Promise<TwitchStepUpResult> {
     if (!this.available) return { ok: false, error: 'unsupported' }
@@ -375,7 +497,9 @@ export class TwitchSignIn {
     if (account.state === 'error' && account.revocationPending) return this.respond(account, { outcome: 'revocation_pending' })
     if (signedIn(account)) {
       if (!forceVerify) return this.respond(account, { outcome: 'already_signed_in' })
-      // "Not you?": sign this identity out first, then choose an account.
+      // "Not you?": send what is not sent yet, sign this identity out, then
+      // choose an account. A failed send never keeps the old account here.
+      await Promise.resolve().then(() => this.ports.flushAccount?.()).catch(() => undefined)
       await this.markSignedOutByUser()
       account = await this.ports.account.run('disconnect')
       if (account.state !== 'signed_out') return this.respond(account, { outcome: account.state === 'error' && account.revocationPending ? 'revocation_pending' : 'network' })
@@ -413,12 +537,13 @@ export class TwitchSignIn {
     } catch (error) { return thrownFailure(error) }
     if (finished.status !== 200) return serverFailure(finished)
     const profile = parseTwitchProfile(object(finished.body).profile)
-    const { adopted, account } = await this.ports.account.adopt(finished.body, generation)
+    const { adopted, account } = await this.ports.account.adopt(finished.body, generation, 'twitch')
     if (!adopted) {
       if (account.state === 'error' && account.revocationPending) return { outcome: 'revocation_pending', account }
       return { outcome: account.state === 'linked' ? 'already_signed_in' : 'error', account }
     }
     if (profile && account.state === 'linked') await this.ports.profile.write({ accountId: account.accountId, ...profile }).catch(() => undefined)
+    if (account.state === 'linked') await Promise.resolve().then(() => this.ports.accountSeen?.(account.accountId)).catch(() => undefined)
     return { outcome: 'signed_in', account }
   }
 
@@ -538,6 +663,46 @@ export function parseAuthorizeRedirect(responseUrl: string | undefined, flow: { 
   const idToken = fragment.get('id_token')
   if (!idToken || idToken.length > MAX_ID_TOKEN || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(idToken)) return { outcome: 'error' }
   return idToken
+}
+
+export type TwitchBadgeResult =
+  | { ok: true; own?: ChatBadgeEntry; chatBadge?: ChatBadgeSnapshot }
+  | { ok: false; error: ChatBadgeActionError; retryAfterSeconds?: number }
+
+/** Server codes the badge action adds to the sign-in ones. */
+const BADGE_CODES: ReadonlySet<string> = new Set(['identity_mismatch', 'supporter_required', 'consent_outdated', 'pilot_only', 'twitch_in_use'])
+
+function badgeFailure(value: Failure, result?: Http): TwitchBadgeResult {
+  const code = result ? object(result.body).error : undefined
+  if (typeof code === 'string' && BADGE_CODES.has(code)) return { ok: false, error: code as ChatBadgeActionError }
+  // 400 invalid_request from start-device, or 404 from the badge route: the feature is off on the server.
+  if (result && (result.status === 404 || (result.status === 400 && code === 'invalid_request'))) return { ok: false, error: 'unavailable' }
+  const outcome = value.outcome
+  if (outcome === 'cancelled' || outcome === 'interaction_required') return { ok: false, error: 'cancelled' }
+  if (outcome === 'identity_mismatch' || outcome === 'sign_in_required' || outcome === 'pilot_only' || outcome === 'network' || outcome === 'unavailable') return { ok: false, error: outcome }
+  if (outcome === 'try_later') return { ok: false, error: 'try_later', ...(value.retryAfterSeconds !== undefined ? { retryAfterSeconds: value.retryAfterSeconds } : {}) }
+  if (outcome === 'hosted_only') return { ok: false, error: 'unavailable' }
+  return { ok: false, error: 'error' }
+}
+
+export type TwitchLinkResult =
+  | { ok: true; login?: string }
+  | { ok: false; error: TwitchLinkError; retryAfterSeconds?: number }
+
+function linkFailure(value: Failure, result?: Http): TwitchLinkResult {
+  const code = result ? object(result.body).error : undefined
+  // Both conflicts write nothing; the card gives one answer for them.
+  if (code === 'identity_in_use' || code === 'account_already_linked') return { ok: false, error: 'linked_elsewhere' }
+  if (code === 'unlink_not_allowed') return { ok: false, error: 'unlink_not_allowed' }
+  // 400 invalid_request from start-device, or 404 from the link routes: linking is off on the server.
+  if (result && (result.status === 404 || (result.status === 400 && code === 'invalid_request'))) return { ok: false, error: 'unavailable' }
+  const outcome = value.outcome
+  if (outcome === 'cancelled' || outcome === 'interaction_required') return { ok: false, error: 'cancelled' }
+  if (outcome === 'identity_in_use') return { ok: false, error: 'linked_elsewhere' }
+  if (outcome === 'sign_in_required' || outcome === 'network' || outcome === 'unavailable') return { ok: false, error: outcome }
+  if (outcome === 'try_later') return { ok: false, error: 'try_later', ...(value.retryAfterSeconds !== undefined ? { retryAfterSeconds: value.retryAfterSeconds } : {}) }
+  if (outcome === 'hosted_only' || outcome === 'pilot_only') return { ok: false, error: 'unavailable' }
+  return { ok: false, error: 'error' }
 }
 
 const STEP_UP_ERRORS: ReadonlySet<string> = new Set<TwitchStepUpError>([

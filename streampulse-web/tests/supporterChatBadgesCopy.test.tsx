@@ -61,7 +61,7 @@ describe('Seen in chat copy, flag off (before launch)', () => {
     expect(supporterOnlyYou()).toBe(SUPPORTER_PERKS.onlyYou)
     expect(supporterPerkNames()).toEqual(SUPPORTER_PERKS.names)
     expect(textOf(Terms, 'terms-of-use')).toContain('no public Twitch chat badge — it is not included')
-    expect(textOf(Supporter, 'supporter-offer')).toMatch(/No public Twitch chat badge\. A chat badge is not included in Supporter/)
+    expect(textOf(Supporter, 'supporter-offer')).toMatch(/There’s no public chat badge\./)
     for (const [, Page, testId] of pages) {
       const body = textOf(Page, testId)
       expect(body).not.toMatch(/Seen in chat/)
@@ -113,7 +113,7 @@ describe('Seen in chat copy, flag on (launch)', () => {
     expect(seen).toContain('publishes your Twitch username, Twitch user ID, crest level and paint in a public list')
     expect(seen).toContain('to its users who haven’t hidden crests')
     expect(seen).toContain('Anyone can download that list.')
-    expect(seen).toContain('Turn it off at any time; your entry leaves the list within about an hour.')
+    expect(seen).toContain('entry is removed from future lists, while cached copies may take time to refresh or expire.')
     expect(screen.getByTestId('terms-seen-in-chat').querySelector('a[href="/privacy"]')).toBeTruthy()
   })
 
@@ -126,8 +126,8 @@ describe('Seen in chat copy, flag on (launch)', () => {
     expect(seen).toContain('It stays off until you turn it on')
     expect(seen).toContain('publishes your Twitch username, Twitch user ID, crest level and paint in a public list')
     expect(seen).toContain('who haven’t hidden crests')
-    expect(seen).toContain('People without StreamPulse see normal chat, and nothing is sent to Twitch.')
-    expect(seen).toContain('your entry leaves the list within about an hour')
+    expect(seen).toContain('People without StreamPulse see normal chat. The chat decorator does not send chat lines to Twitch.')
+    expect(seen).toContain('your entry is removed from future lists')
   })
 
   it('Privacy describes storage, the public list, local matching, the Helix lookup and deletion', () => {
@@ -138,7 +138,9 @@ describe('Seen in chat copy, flag on (launch)', () => {
     expect((screen.getByTestId('privacy-continue-with-twitch').textContent ?? '').replace(/\s+/g, ' '))
       .toContain('If you turn on Seen in chat, StreamPulse also stores your Twitch user ID and username in plain form so it can publish them; turning it off deletes them.')
     const section = (screen.getByTestId('privacy-seen-in-chat').textContent ?? '').replace(/\s+/g, ' ')
-    expect(section).toMatch(/^Seen in chat \(optional, Supporters only\)/)
+    // The folds move the heading into its section's summary, ahead of the text.
+    expect(document.getElementById('seen-in-chat')?.textContent).toBe('Seen in chat (optional, Supporters only)')
+    expect(section).toMatch(/^What is stored\. Nothing until you turn it on\./)
     expect(section).toContain('Nothing until you turn it on.')
     expect(section).toContain('your Twitch user ID, Twitch username, crest level')
     expect(section).toContain('no account identifier, email, billing detail or date')
@@ -147,8 +149,11 @@ describe('Seen in chat copy, flag on (launch)', () => {
     // Scoped to the list: the extension does send channel logins for Pulse ("What is sent to StreamPulse").
     expect(section).not.toMatch(/never learns/i)
     expect(body).toContain('The extension service worker sends channel login')
+    expect(screen.getByTestId('privacy-extension-first-install').textContent).toContain('one silent Twitch sign-in attempt')
+    expect(body).not.toContain('Extension Twitch sign-in is not available in this release.')
     expect(section).toContain('asks Twitch’s API for the current username')
-    expect(section).toContain('your entry leaves the list within about an hour')
+    expect(section).toContain('Other viewers may still see a cached copy until it refreshes or expires.')
+    expect(section).toContain('Other StreamPulse features may send channel information')
     expect(section).toContain('deleted 30 days later')
     expect((screen.getByTestId('privacy-observes-chat-usernames').textContent ?? '').replace(/\s+/g, ' '))
       .toBe('To show Supporter crests, the extension reads the usernames on chat lines in your browser and compares them with the Seen in chat list. It doesn’t store or send them.')

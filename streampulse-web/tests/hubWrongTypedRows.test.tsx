@@ -8,7 +8,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { normalizePublicHub, type PublicHub } from '../src/lib/publicHub'
 import { fromHubMoment } from '../src/lib/discoveryMoments'
-import AnalyticsLandingPage from '../src/routes/analytics/AnalyticsLandingPage'
+import AnalyticsHubV5Page, { formatCachedSnapshotNotice } from '../src/routes/analytics/AnalyticsHubV5Page'
 
 const channel = (login: unknown, extra: Record<string, unknown> = {}) => ({
   login,
@@ -55,6 +55,24 @@ function hostileRawHub() {
 
 const hostileHub = vi.hoisted(() => ({ data: null as PublicHub | null }))
 
+describe('cached hub snapshot notice', () => {
+  it('names the save time without presenting it as data age', () => {
+    const savedAt = Date.now()
+    const notice = formatCachedSnapshotNotice(savedAt, savedAt)
+    expect(notice).toContain('Saved at ')
+    expect(notice).not.toContain('Cached snapshot from')
+    expect(notice).not.toContain('Data from')
+  })
+
+  it('does not insert at before the day of an older save', () => {
+    const now = new Date(2026, 9, 28, 10, 55).getTime()
+    const savedAt = new Date(2026, 9, 27, 23, 30).getTime()
+    const notice = formatCachedSnapshotNotice(savedAt, now)
+    expect(notice).toMatch(/^Cached snapshot · Saved yesterday, 11:30\sPM$/)
+    expect(notice).not.toContain('Saved at yesterday')
+  })
+})
+
 vi.mock('../src/hooks/usePublicHubData', () => ({
   usePublicHubData: () => ({
     data: hostileHub.data,
@@ -66,17 +84,12 @@ vi.mock('../src/hooks/usePublicHubData', () => ({
     hubEndpointOk: true,
     liveEmpty: false,
     lastUpdated: Date.now(),
+    displayedSnapshotAt: Date.now(),
     lastSuccessfulPollAt: Date.now(),
     pollSequence: 1,
+    pollAttempt: 0,
     cachedAt: null,
     refresh: vi.fn(),
-  }),
-}))
-vi.mock('../src/hooks/useHubRecentLogins', () => ({ useHubRecentLogins: () => [] }))
-vi.mock('../src/hooks/useNewsroomData', () => ({
-  useNewsroomData: () => ({
-    data: null, loading: false, refreshing: false, loadingMore: false, error: 'Newsroom unavailable',
-    unavailable: true, announcement: '', refresh: vi.fn(), loadMore: vi.fn(),
   }),
 }))
 
@@ -119,10 +132,10 @@ describe('hub rows with wrong-typed fields', () => {
     hostileHub.data = normalizePublicHub(hostileRawHub() as unknown as Parameters<typeof normalizePublicHub>[0])
     render(
       <MemoryRouter>
-        <AnalyticsLandingPage />
+        <AnalyticsHubV5Page />
       </MemoryRouter>,
     )
-    expect(await screen.findByRole('heading', { name: 'Command center' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Find your streamer' })).toBeTruthy()
     expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
     expect(screen.getAllByText('pokimane').length).toBeGreaterThan(0)
   })

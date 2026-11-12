@@ -91,9 +91,3 @@ export function hubViewerScopes(hub: PublicHub, chartPoints: readonly HubActivit
     sampledLatest: extremes.latest,
   }
 }
-
-/** "41 live of 500 sampled channels", or null when the backend gave no counts. */
-export function sampledRosterLabel(point: Pick<HubSampledViewerPoint, 'liveChannels' | 'rosterChannels'> | null): string | null {
-  if (!point || point.liveChannels == null || point.rosterChannels == null || point.rosterChannels <= 0) return null
-  return `${point.liveChannels.toLocaleString('en-US')} live of ${point.rosterChannels.toLocaleString('en-US')} sampled channels`
-}

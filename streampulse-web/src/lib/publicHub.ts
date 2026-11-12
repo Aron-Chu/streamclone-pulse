@@ -1,12 +1,16 @@
 import { DEFAULT_PRODUCTION_BACKEND_URL } from './auth'
+import { hubDataAsOf } from './hubDataAge'
 import { measurementTimeIso, measurementTimeMs } from '@streampulse/pulse-core'
 import { apiClient, getBackendUrl, isApiError, type ApiError } from './apiClient'
-import { SLOW_READ_TIMEOUT_MS } from './portalTimeouts'
+import { hubReadTimeoutMs, publicHubPath, takePrimedPublicHub } from './hubEarlyFetch'
+import type { HubApiWindow } from './hubWindows'
 import { absolutizeEmoteAssetUrl } from './emoteAssetUrl'
 import { resolveBackendSource } from './backendSource'
 import {
   normalizeHubChannelScreenerFields,
+  normalizeHubChannelScreenerV1,
   type HubChannelScreenerFields,
+  type HubChannelScreenerV1,
 } from './channelScreenerContract'
 import {
   normalizeHubEmoteMarket,
@@ -28,8 +32,6 @@ import { verifiedArchiveArtwork, type ArchiveArtwork } from './archiveArtwork'
  * returns aggregate corpus counts and bounded per-minute activity, never raw
  * rollups, emote maps, or principals.
  */
-/** Matches hubMoversCap in streampulse-backend internal/analytics/hub_overview.go. */
-export const HUB_TOP_MOVERS_CAP = 12
 
 export interface HubCorpus {
   streamsTracked: number
@@ -457,6 +459,11 @@ export interface HubLiveChannel {
   togetherWith?: string[]
   /** Backend-owned screener fields — never invent from client poll history. */
   screener?: HubChannelScreenerFields
+  /**
+   * Backend screener v1 (`screener.version === 1`), additive beside the legacy
+   * fields. Read "× usual" only through the gates in channelScreenerContract.ts.
+   */
+  screenerV1?: HubChannelScreenerV1
 }
 
 export type HubMomentKind =
@@ -623,7 +630,7 @@ interface PublicStatusSnapshot {
   }
 }
 
-export type PublicHubActivityWindow = 'all' | '1y' | '6m' | '3m' | '1m' | '7d' | '24h' | '30m' | 'recent'
+export type PublicHubActivityWindow = HubApiWindow
 
 export type PublicHubLoadSource = 'full' | 'stats-fallback' | 'cache'
 
@@ -676,18 +683,15 @@ export interface FetchPublicHubResult {
   data: PublicHub
   loadSource: PublicHubLoadSource
   hubEndpointOk: boolean
+  dataAsOf?: number | null
   cache?: 'HIT' | 'MISS' | 'BYPASS'
   status: number
 }
 
 export type PublicHubProjection = 'moments' | 'tickers'
 
-function publicHubPath(activityWindow?: PublicHubActivityWindow, projection?: PublicHubProjection): string {
-  const params = new URLSearchParams({ activityWindow: activityWindow ?? '24h' })
-  if (projection === 'moments') params.set('include', 'livePulseMoments')
-  if (projection === 'tickers') params.set('include', 'topEmotes,topMovers')
-  return `/v1/public/hub?${params.toString()}`
-}
+// The hub path lives in hubEarlyFetch.ts so the entry chunk can prime it.
+export { publicHubPath }
 
 function publicHubMomentsPath(
   bucketT: number,
@@ -782,11 +786,6 @@ export function hasPublicHubResponseShape(raw: unknown): raw is PublicHubInput {
     Array.isArray(raw.topEmotes) && Array.isArray(raw.topMovers)
 }
 
-/** The 30-minute windows, whose small bodies keep apiClient's default deadline. */
-function isRecentHubWindow(activityWindow?: PublicHubActivityWindow): boolean {
-  return activityWindow === '30m' || activityWindow === 'recent'
-}
-
 /** Primary hub fetch only — no Top-500 readiness fan-out. */
 export async function fetchPublicHubBase(
   signal?: AbortSignal,
@@ -794,16 +793,21 @@ export async function fetchPublicHubBase(
   projection?: PublicHubProjection,
   // The 24h body is ~1.2 MB decoded; a slow network needs longer than the 8 s
   // default. A 30-minute body is small and keeps the default, so a stalled API
-  // reaches its error or stats fallback sooner.
-  timeoutMs: number | undefined = isRecentHubWindow(activityWindow) ? undefined : SLOW_READ_TIMEOUT_MS,
+  // reaches its error or stats fallback sooner. The moments read has no
+  // fallback and gets the long deadline too.
+  timeoutMs: number | undefined = hubReadTimeoutMs(activityWindow, projection),
 ): Promise<FetchPublicHubResult> {
   try {
-    const primary = await apiClient<PublicHub>(publicHubPath(activityWindow, projection), { signal, timeoutMs })
+    const path = publicHubPath(activityWindow, projection)
+    // Adopt the request main.tsx primed for this exact path (plan §2.6).
+    const primed = takePrimedPublicHub<PublicHub>(path, signal)
+    const primary = await (primed ?? apiClient<PublicHub>(path, { signal, timeoutMs, slowOrigin: true }))
     if (!hasPublicHubResponseShape(primary.data)) {
       throw { kind: 'server', message: 'Public hub returned an incomplete response', status: primary.status, code: 'invalid_hub_response' } satisfies ApiError
     }
     return {
       data: normalizePublicHub(primary.data),
+      dataAsOf: hubDataAsOf(primary.data as PublicHub & { snapshot?: { ageSeconds?: unknown } }, primary),
       loadSource: 'full',
       hubEndpointOk: true,
       cache: primary.cache,
@@ -995,84 +999,20 @@ function absolutizeMovers(movers: HubMover[] | undefined): HubMover[] {
   }))
 }
 
-/** Join mover rows with avatars from the live-channel rail when the hub omits profileImageUrl on movers. */
-export function enrichTopMoversWithAvatars(
-  movers: HubMover[],
-  liveChannels: HubLiveChannel[],
-): HubMover[] {
-  const imageByLogin = new Map<string, string>()
-  for (const channel of liveChannels) {
-    if (channel.profileImageUrl) {
-      imageByLogin.set(channel.login.toLowerCase(), channel.profileImageUrl)
-    }
-  }
-  return movers.map((mover) =>
-    mover.profileImageUrl
-      ? mover
-      : { ...mover, profileImageUrl: imageByLogin.get(mover.login.toLowerCase()) },
-  )
-}
-
-function compareMoverVelocity(a: HubMover | HubLiveChannel, b: HubMover | HubLiveChannel): number {
-  const aEmotes = a.emotesPerMin ?? 0
-  const bEmotes = b.emotesPerMin ?? 0
-  if (aEmotes !== bEmotes) return bEmotes - aEmotes
-  if (a.seventvPerMin !== b.seventvPerMin) return b.seventvPerMin - a.seventvPerMin
-  return b.chatPerMin - a.chatPerMin
-}
-
-function liveChannelToMover(channel: HubLiveChannel): HubMover {
-  return {
-    login: channel.login,
-    displayName: channel.displayName,
-    category: channel.category,
-    profileImageUrl: channel.profileImageUrl,
-    viewers: channel.viewers,
-    emotesPerMin: channel.emotesPerMin,
-    seventvPerMin: channel.seventvPerMin,
-    chatPerMin: channel.chatPerMin,
-    trendPct: channel.trendPct,
-    trendSignal: channel.trendSignal,
-  }
-}
-
-/** Rank live hub channels by emote velocity (matches backend topMovers ordering). */
-export function buildTopMoversFromLiveChannels(
-  liveChannels: HubLiveChannel[],
-  cap = HUB_TOP_MOVERS_CAP,
-): HubMover[] {
-  return liveChannels
-    .filter((channel) => (channel.emotesPerMin ?? 0) > 0 || channel.chatPerMin > 0)
-    .sort(compareMoverVelocity)
-    .slice(0, cap)
-    .map(liveChannelToMover)
-}
-
-/**
- * Prefer live-channel velocity rows so the portal can show the full cap even when
- * hosted `/v1/public/hub` still returns a legacy 8-row topMovers payload.
- */
-export function resolveHubTopMovers(
-  apiMovers: HubMover[],
-  liveChannels: HubLiveChannel[],
-  cap = HUB_TOP_MOVERS_CAP,
-): HubMover[] {
-  const fromLive = buildTopMoversFromLiveChannels(liveChannels, cap)
-  if (fromLive.length > 0) {
-    return enrichTopMoversWithAvatars(fromLive, liveChannels)
-  }
-  return enrichTopMoversWithAvatars(apiMovers, liveChannels).slice(0, cap)
-}
-
 function absolutizeLiveChannels(channels: HubLiveChannel[] | undefined): HubLiveChannel[] {
   if (!channels) return []
   return channels.filter(hasTextLogin).map((channel) => {
     const screener = normalizeHubChannelScreenerFields(channel.screener)
+    // The wire carries v1 under `screener`; an already-normalized row (cache
+    // hydrate) carries it under `screenerV1`. Both go through the same checks.
+    const screenerV1 = normalizeHubChannelScreenerV1(channel.screener) ??
+      normalizeHubChannelScreenerV1((channel as { screenerV1?: unknown }).screenerV1)
     return {
       ...clearWrongTypedText(channel, ['displayName', 'title', 'category', 'streamId', 'hostLogin']),
       startedAt: measurementTimeIso(channel.startedAt),
       profileImageUrl: sanitizeHubProfileImageUrl(channel.profileImageUrl),
       screener: screener ?? undefined,
+      ...(screenerV1 ? { screenerV1 } : {}),
     }
   })
 }

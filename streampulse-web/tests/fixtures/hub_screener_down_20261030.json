@@ -1,0 +1,669 @@
+{
+ "_source": "trimmed from the 2026-10-30 07:19Z hub 24h answer with every screener set to history_query_unavailable (evidence/hub-24h-down.json): 8 of its 500 live channels, 4 activity points",
+ "generatedAt": "2026-10-30T07:19:05.316775501Z",
+ "poolSize": 999,
+ "coverage": {
+  "liveChannels": 1000,
+  "trackingMax": 1000,
+  "backfillActive": 0,
+  "backfillMax": 0,
+  "syncActive": 0,
+  "emotesIndexed": 918287,
+  "databaseOk": true,
+  "state": "degraded"
+ },
+ "ingest": {
+  "tieringEnabled": false,
+  "coreEnabled": true,
+  "dualReadMode": false,
+  "shadowMode": false,
+  "desiredCollectors": 1000,
+  "activeCollectors": 1000,
+  "boundCollectors": 1000,
+  "joinAcknowledged": 1000,
+  "awaitingJoin": 0,
+  "connectedQuiet": 126,
+  "chatActive5m": 874,
+  "chatActive15m": 912,
+  "reconnecting": 0,
+  "unexpectedParts": 0,
+  "admitLagSeconds": 0,
+  "joinRate1m": 13,
+  "partRate1m": 13,
+  "state": "operational"
+ },
+ "activity": {
+  "windowMinutes": 1440,
+  "bucketMinutes": 1,
+  "channelCount": 999,
+  "peakViewersAt": 1793344500000,
+  "livePoolViewerSum": 523410,
+  "state": "degraded",
+  "source": "live_pool_fallback",
+  "reason": "historical_projection_unavailable",
+  "availableWindowMinutes": 30,
+  "requestedWindowMinutes": 1440,
+  "servedWindowMinutes": 30,
+  "providerCoverage": {
+   "bttv": {
+    "measured": true,
+    "measuredBuckets": 29,
+    "expectedBuckets": 29,
+    "state": "complete",
+    "complete": true
+   },
+   "ffz": {
+    "measured": true,
+    "measuredBuckets": 29,
+    "expectedBuckets": 29,
+    "state": "complete",
+    "complete": true
+   },
+   "other": {
+    "measured": true,
+    "measuredBuckets": 29,
+    "expectedBuckets": 29,
+    "state": "complete",
+    "complete": true
+   },
+   "seventv": {
+    "measured": true,
+    "measuredBuckets": 29,
+    "expectedBuckets": 29,
+    "state": "complete",
+    "complete": true
+   },
+   "twitch": {
+    "measured": true,
+    "measuredBuckets": 29,
+    "expectedBuckets": 29,
+    "state": "complete",
+    "complete": true
+   }
+  },
+  "providerTotalsComplete": true,
+  "points": [
+   {
+    "t": 1793344500000,
+    "chat": 6897,
+    "emotes": 1891,
+    "seventv": 657,
+    "twitch": 1193,
+    "bttv": 14,
+    "ffz": 27,
+    "viewers": 497457,
+    "providerCountsComplete": true,
+    "hasChatRollup": true,
+    "hasViewerRollup": true,
+    "bucketComplete": true
+   },
+   {
+    "t": 1793344560000,
+    "chat": 5741,
+    "emotes": 1295,
+    "seventv": 418,
+    "twitch": 860,
+    "bttv": 9,
+    "ffz": 8,
+    "viewers": 495701,
+    "providerCountsComplete": true,
+    "hasChatRollup": true,
+    "hasViewerRollup": true,
+    "bucketComplete": true
+   },
+   {
+    "t": 1793344620000,
+    "chat": 6414,
+    "emotes": 1676,
+    "seventv": 509,
+    "twitch": 1153,
+    "bttv": 4,
+    "ffz": 10,
+    "viewers": 492892,
+    "providerCountsComplete": true,
+    "hasChatRollup": true,
+    "hasViewerRollup": true,
+    "bucketComplete": true
+   },
+   {
+    "t": 1793344680000,
+    "chat": 5092,
+    "emotes": 1511,
+    "seventv": 435,
+    "twitch": 1052,
+    "bttv": 12,
+    "ffz": 12,
+    "viewers": 495509,
+    "providerCountsComplete": true,
+    "hasChatRollup": true,
+    "hasViewerRollup": true,
+    "bucketComplete": true
+   }
+  ]
+ },
+ "topEmotes": [],
+ "topMovers": [],
+ "liveChannels": [
+  {
+   "streamId": "320961711580",
+   "login": "xqc",
+   "displayName": "xQc",
+   "category": "Grand Theft Auto V",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/xqc-profile_image-9298dca608632101-300x300.jpeg",
+   "viewers": 16740,
+   "chatPerMin": 243.91,
+   "emotesPerMin": 6.21,
+   "seventvPerMin": 0,
+   "coverageState": "synced",
+   "trendPct": 170.63,
+   "screener": {
+    "version": 1,
+    "streamId": "320961711580",
+    "measuredAt": 1793344745316,
+    "baselineKind": "current_stream_measured_average",
+    "state": "unavailable",
+    "currentWindow": {
+     "start": 1793344440000,
+     "end": 1793344740000,
+     "expectedMinutes": 5,
+     "measuredMinutes": 0,
+     "coveragePct": 0
+    },
+    "baselineWindow": {
+     "coveragePct": 0,
+     "end": 0,
+     "expectedMinutes": 0,
+     "measuredMinutes": 0,
+     "start": 0
+    },
+    "evidence": {
+     "ircBound": true,
+     "chatObservedLast5m": false,
+     "rollupAvailable": false,
+     "metadataAgeSeconds": 159
+    },
+    "chat": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "emotes": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "reason": "history_query_unavailable"
+   }
+  },
+  {
+   "streamId": "316655688306",
+   "login": "yuyuta0702",
+   "displayName": "ゆゆうた押忍",
+   "category": "Just Chatting",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/c9923860-b55f-435f-be2d-560107cc2205-profile_image-300x300.png",
+   "viewers": 10682,
+   "chatPerMin": 372.5,
+   "emotesPerMin": 23.44,
+   "seventvPerMin": 0,
+   "coverageState": "synced",
+   "trendPct": 14.44,
+   "screener": {
+    "version": 1,
+    "streamId": "316655688306",
+    "measuredAt": 1793344745316,
+    "baselineKind": "current_stream_measured_average",
+    "state": "unavailable",
+    "currentWindow": {
+     "start": 1793344440000,
+     "end": 1793344740000,
+     "expectedMinutes": 5,
+     "measuredMinutes": 0,
+     "coveragePct": 0
+    },
+    "baselineWindow": {
+     "coveragePct": 0,
+     "end": 0,
+     "expectedMinutes": 0,
+     "measuredMinutes": 0,
+     "start": 0
+    },
+    "evidence": {
+     "ircBound": true,
+     "chatObservedLast5m": false,
+     "rollupAvailable": false,
+     "metadataAgeSeconds": 159
+    },
+    "chat": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "emotes": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "reason": "history_query_unavailable"
+   }
+  },
+  {
+   "streamId": "319738329815",
+   "login": "aldo_geo",
+   "displayName": "aldo_geo",
+   "category": "QSMP",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/4b2a8e19-7dd9-46bd-9a01-0bb40aae852c-profile_image-300x300.png",
+   "viewers": 5434,
+   "chatPerMin": 335.82,
+   "emotesPerMin": 321.41,
+   "seventvPerMin": 118.91,
+   "coverageState": "synced",
+   "trendPct": -63.94,
+   "screener": {
+    "version": 1,
+    "streamId": "319738329815",
+    "measuredAt": 1793344745316,
+    "baselineKind": "current_stream_measured_average",
+    "state": "unavailable",
+    "currentWindow": {
+     "start": 1793344440000,
+     "end": 1793344740000,
+     "expectedMinutes": 5,
+     "measuredMinutes": 0,
+     "coveragePct": 0
+    },
+    "baselineWindow": {
+     "coveragePct": 0,
+     "end": 0,
+     "expectedMinutes": 0,
+     "measuredMinutes": 0,
+     "start": 0
+    },
+    "evidence": {
+     "ircBound": true,
+     "chatObservedLast5m": false,
+     "rollupAvailable": false,
+     "metadataAgeSeconds": 159
+    },
+    "chat": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "emotes": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "reason": "history_query_unavailable"
+   }
+  },
+  {
+   "streamId": "321065577824",
+   "login": "supertf",
+   "displayName": "supertf",
+   "category": "SILENT HILL: townfall",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/supertf-profile_image-4a7fae211a68ae1f-300x300.jpeg",
+   "viewers": 4828,
+   "chatPerMin": 64.79,
+   "emotesPerMin": 30.79,
+   "seventvPerMin": 29,
+   "coverageState": "synced",
+   "trendPct": 11.9,
+   "screener": {
+    "version": 1,
+    "streamId": "321065577824",
+    "measuredAt": 1793344745316,
+    "baselineKind": "current_stream_measured_average",
+    "state": "unavailable",
+    "currentWindow": {
+     "start": 1793344440000,
+     "end": 1793344740000,
+     "expectedMinutes": 5,
+     "measuredMinutes": 0,
+     "coveragePct": 0
+    },
+    "baselineWindow": {
+     "coveragePct": 0,
+     "end": 0,
+     "expectedMinutes": 0,
+     "measuredMinutes": 0,
+     "start": 0
+    },
+    "evidence": {
+     "ircBound": true,
+     "chatObservedLast5m": false,
+     "rollupAvailable": false,
+     "metadataAgeSeconds": 159
+    },
+    "chat": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "emotes": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "reason": "history_query_unavailable"
+   }
+  },
+  {
+   "streamId": "321066007008",
+   "login": "yourragegaming",
+   "displayName": "yourragegaming",
+   "category": "SILENT HILL: townfall",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/70c63d12-ecae-485c-9bca-3d3f3ad5782a-profile_image-300x300.png",
+   "viewers": 9246,
+   "chatPerMin": 53.12,
+   "emotesPerMin": 18.82,
+   "seventvPerMin": 16.29,
+   "coverageState": "synced",
+   "trendPct": -1.33,
+   "screener": {
+    "version": 1,
+    "streamId": "321066007008",
+    "measuredAt": 1793344745316,
+    "baselineKind": "current_stream_measured_average",
+    "state": "unavailable",
+    "currentWindow": {
+     "start": 1793344440000,
+     "end": 1793344740000,
+     "expectedMinutes": 5,
+     "measuredMinutes": 0,
+     "coveragePct": 0
+    },
+    "baselineWindow": {
+     "coveragePct": 0,
+     "end": 0,
+     "expectedMinutes": 0,
+     "measuredMinutes": 0,
+     "start": 0
+    },
+    "evidence": {
+     "ircBound": true,
+     "chatObservedLast5m": false,
+     "rollupAvailable": false,
+     "metadataAgeSeconds": 159
+    },
+    "chat": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "emotes": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "reason": "history_query_unavailable"
+   }
+  },
+  {
+   "streamId": "317767049079",
+   "login": "summit1g",
+   "displayName": "summit1g",
+   "category": "Just Chatting",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/99aa4739-21d6-40af-86ae-4b4d3457fce4-profile_image-300x300.png",
+   "viewers": 8735,
+   "chatPerMin": 39.85,
+   "emotesPerMin": 13.74,
+   "seventvPerMin": 8.26,
+   "coverageState": "synced",
+   "trendPct": 38.74,
+   "screener": {
+    "version": 1,
+    "streamId": "317767049079",
+    "measuredAt": 1793344745316,
+    "baselineKind": "current_stream_measured_average",
+    "state": "unavailable",
+    "currentWindow": {
+     "start": 1793344440000,
+     "end": 1793344740000,
+     "expectedMinutes": 5,
+     "measuredMinutes": 0,
+     "coveragePct": 0
+    },
+    "baselineWindow": {
+     "coveragePct": 0,
+     "end": 0,
+     "expectedMinutes": 0,
+     "measuredMinutes": 0,
+     "start": 0
+    },
+    "evidence": {
+     "ircBound": true,
+     "chatObservedLast5m": false,
+     "rollupAvailable": false,
+     "metadataAgeSeconds": 159
+    },
+    "chat": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "emotes": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "reason": "history_query_unavailable"
+   }
+  },
+  {
+   "streamId": "319740936151",
+   "login": "hazlanz",
+   "displayName": "Hazlanz",
+   "category": "Dead by Daylight",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/f6c26aaa-36da-419d-916d-56e6814c01fa-profile_image-300x300.png",
+   "viewers": 173,
+   "chatPerMin": 0,
+   "emotesPerMin": 0,
+   "seventvPerMin": 0,
+   "coverageState": "stats_only",
+   "trendPct": 0,
+   "screener": {
+    "version": 1,
+    "streamId": "319740936151",
+    "measuredAt": 1793344745316,
+    "baselineKind": "current_stream_measured_average",
+    "state": "unavailable",
+    "currentWindow": {
+     "start": 1793344440000,
+     "end": 1793344740000,
+     "expectedMinutes": 5,
+     "measuredMinutes": 0,
+     "coveragePct": 0
+    },
+    "baselineWindow": {
+     "coveragePct": 0,
+     "end": 0,
+     "expectedMinutes": 0,
+     "measuredMinutes": 0,
+     "start": 0
+    },
+    "evidence": {
+     "ircBound": true,
+     "chatObservedLast5m": false,
+     "rollupAvailable": false,
+     "metadataAgeSeconds": 159
+    },
+    "chat": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "emotes": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "reason": "history_query_unavailable"
+   }
+  },
+  {
+   "streamId": "319198429158",
+   "login": "astana666santa",
+   "displayName": "aStana666Santa",
+   "category": "I'm Only Sleeping",
+   "profileImageUrl": "https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png",
+   "viewers": 1216,
+   "chatPerMin": 0,
+   "emotesPerMin": 0,
+   "seventvPerMin": 0,
+   "coverageState": "viewer_only",
+   "trendPct": 0,
+   "screener": {
+    "version": 1,
+    "streamId": "319198429158",
+    "measuredAt": 1793344745316,
+    "baselineKind": "current_stream_measured_average",
+    "state": "unavailable",
+    "reason": "history_query_unavailable",
+    "currentWindow": {
+     "start": 1793344440000,
+     "end": 1793344740000,
+     "expectedMinutes": 5,
+     "measuredMinutes": 0,
+     "coveragePct": 0
+    },
+    "baselineWindow": {
+     "coveragePct": 0,
+     "end": 0,
+     "expectedMinutes": 0,
+     "measuredMinutes": 0,
+     "start": 0
+    },
+    "evidence": {
+     "ircBound": true,
+     "chatObservedLast5m": false,
+     "rollupAvailable": false
+    },
+    "chat": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    },
+    "emotes": {
+     "absoluteDeltaPerMin": 0,
+     "baselineCoveragePct": 0,
+     "baselineExpectedMinutes": 0,
+     "baselineMeasuredMinutes": 0,
+     "baselinePerMin": 0,
+     "currentExpectedMinutes": 5,
+     "currentMeasuredMinutes": 0,
+     "currentPerMin": 0,
+     "reason": "history_query_unavailable",
+     "state": "unavailable"
+    }
+   }
+  }
+ ],
+ "moments": [],
+ "livePulseMoments": []
+}

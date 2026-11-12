@@ -1,10 +1,8 @@
 import { sendBackgroundMessage } from '../content/bridge.ts'
+import { isDevLoopbackHostname } from './devHosts.ts'
 
 const MAX_OBJECT_URL_CACHE = 48
 const LOCAL_EMOTE_PATH = /^\/emotes\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(?:1x|2x|4x)\.webp$/i
-const LOCALHOST = String.fromCharCode(108, 111, 99, 97, 108, 104, 111, 115, 116)
-const LOOPBACK_IPV4 = [127, 0, 0, 1].join('.')
-const LOOPBACK_IPV6 = '::1'
 
 interface CachedObjectUrl {
   objectUrl: string
@@ -20,9 +18,8 @@ export function needsEmoteImageProxy(resolvedUrl: string | undefined): boolean {
   if (window.location.protocol !== 'https:') return false
   try {
     const parsed = new URL(resolvedUrl)
-    const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase()
     return parsed.protocol === 'http:'
-      && (hostname === LOCALHOST || hostname === LOOPBACK_IPV4 || hostname === LOOPBACK_IPV6)
+      && isDevLoopbackHostname(parsed.hostname)
       && !parsed.username
       && !parsed.password
       && LOCAL_EMOTE_PATH.test(parsed.pathname)

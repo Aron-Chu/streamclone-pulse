@@ -5,15 +5,20 @@ const valid = (value: number | null | undefined): value is number => typeof valu
 const display = (value: number | null | undefined) => valid(value) ? value.toLocaleString() : 'Not available'
 
 /** Arithmetic description of one measured bucket, never a Pulse score or viewer engagement estimate. */
-export function emoteShare(uses: number, total: number | null): string | null {
-  return valid(uses) && valid(total) && total > 0 && uses <= total ? `${(100 * uses / total).toFixed(1)}%` : null
+export function emoteShare(uses: number, total: number | null, digits = 1): string | null {
+  return valid(uses) && valid(total) && total > 0 && uses <= total ? `${(100 * uses / total).toFixed(digits)}%` : null
 }
 
-export function MomentStats({ context }: { context: MomentContext }) {
+/** Compact is Preview's three tiles, with no density line or how-it's-measured note. */
+export function MomentStats({ context, compact = false }: { context: MomentContext; compact?: boolean }) {
+  if (compact) return <dl className="pl-moment-stats pl-around-tiles" aria-label="Selected minute statistics">
+    {([['Viewers', context.selectedViewers], ['Chat / min', context.selectedMessages], ['Emotes / min', context.selectedEmotes]] as const).map(([label, value]) =>
+      <div key={label}><dt>{label}</dt><dd>{display(value)}</dd></div>)}
+  </dl>
   const density = valid(context.selectedEmotes) && valid(context.selectedMessages) && context.selectedMessages > 0
     ? (100 * context.selectedEmotes / context.selectedMessages).toFixed(1) : 'Not available'
   return <section className="pl-stack" aria-label="Selected minute statistics">
-    <div className="pl-row pl-between"><h3>At this moment</h3><span className="pl-muted">Selected minute · {context.coverage} coverage</span></div>
+    <h3>At this moment</h3>
     <dl className="pl-metrics pl-moment-stats">
       <div><dt>Viewers</dt><dd>{display(context.selectedViewers)}</dd></div>
       <div><dt>Chat / min</dt><dd>{display(context.selectedMessages)}</dd></div>
@@ -25,7 +30,7 @@ export function MomentStats({ context }: { context: MomentContext }) {
 }
 
 /** Only supplied static provider artwork; no per-message fetches or name-to-provider guesses. */
-function EmoteArtwork({ emote }: { emote: MomentContext['topEmotes'][number] }) {
+export function EmoteArtwork({ emote }: { emote: MomentContext['topEmotes'][number] }) {
   const [failed, setFailed] = useState<string | null>(null)
   const src = emote.staticImageUrl
   let allowed = false
@@ -39,9 +44,20 @@ function EmoteArtwork({ emote }: { emote: MomentContext['topEmotes'][number] }) 
 }
 
 export function MomentEmotes({ context, compact = false }: { context: MomentContext; compact?: boolean }) {
+  // Compact is Preview's top three as bars: uses per minute and the share of the minute's emote uses.
+  if (compact) return context.topEmotes.length ? <ul className="pl-emote-mix pl-emote-mix-line" aria-label="Top emotes in this minute">{context.topEmotes.slice(0, 3).map((emote, index) => {
+    const share = emoteShare(emote.count, context.selectedEmotes, 0)
+    const width = share && valid(context.selectedEmotes) ? 100 * emote.count / context.selectedEmotes : 0
+    return <li key={`${emote.provider ?? 'unknown'}-${emote.name}-${index}`} title={emote.provider ?? 'Provider unverified'}>
+      <EmoteArtwork emote={emote} />
+      <span className="pl-emote-name"><strong>{emote.name}</strong></span>
+      <span className="pl-emote-track" aria-hidden="true"><i style={{ width: `${width}%` }} /></span>
+      <span className="pl-emote-usage">{valid(emote.count) ? `${emote.count.toLocaleString()}/min` : 'Not available'}{share ? ` · ${share}` : ''}</span>
+    </li>
+  })}</ul> : <p className="pl-muted">No emote breakdown is available for this minute.</p>
   return <section className="pl-stack" aria-label="Emote usage in selected minute">
     <div className="pl-row pl-between"><h3>Emote mix</h3><span className="pl-muted">7TV + other detected providers</span></div>
-    {context.topEmotes.length ? <ul className="pl-emote-mix">{context.topEmotes.slice(0, compact ? 3 : 10).map((emote, index) => {
+    {context.topEmotes.length ? <ul className="pl-emote-mix">{context.topEmotes.slice(0, 10).map((emote, index) => {
       const share = emoteShare(emote.count, context.selectedEmotes)
       return <li key={`${emote.provider ?? 'unknown'}-${emote.name}-${index}`}>
         <EmoteArtwork emote={emote} />
@@ -49,7 +65,7 @@ export function MomentEmotes({ context, compact = false }: { context: MomentCont
         <div className="pl-emote-usage"><strong>{display(emote.count)} uses / min</strong><span className="pl-muted">{share ? `${share} of emote uses` : 'Usage share unavailable'}</span></div>
       </li>
     })}</ul> : <p className="pl-muted">No emote breakdown is available for this minute.</p>}
-    <details><summary>About emote usage</summary><p>Usage share = this emote’s occurrences ÷ all measured emote occurrences in the same minute. Not a sentiment score. Provider and artwork come from resolved metadata, not guessed names. Missing artwork keeps its readable name.{compact && context.topEmotes.length > 3 ? ' More in Analysis.' : ''}</p></details>
+    <details><summary>About emote usage</summary><p>Usage share = this emote’s occurrences ÷ all measured emote occurrences in the same minute. Not a sentiment score. Provider and artwork come from resolved metadata, not guessed names. Missing artwork keeps its readable name.</p></details>
   </section>
 }
 

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './helpers/portalMockedTest'
 import {
   assertNoUnexpected,
   buildDetail,
@@ -93,6 +93,9 @@ test.describe('portal games (mocked)', () => {
       'src',
       /509658-210x280\.jpg/,
     )
+    // A cover the page checks against Twitch's grey "?" stays hidden until the
+    // check passes: wait for it to show.
+    await expect(strip.locator('img').first()).toHaveCSS('opacity', '1')
 
     for (const name of [...new Set(GAME_NAMES)]) {
       await expect(strip.getByRole('listitem', { name: new RegExp(name, 'i') }).first()).toBeVisible()

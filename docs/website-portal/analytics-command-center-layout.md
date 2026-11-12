@@ -1,5 +1,8 @@
 # Analytics command center layout
 
+> Retired: the Command Center was removed. `/analytics` is the d3-v5 hub
+> (`AnalyticsHubV5Page`); this page is its history.
+
 ## Compact desktop density (2026-10-08)
 
 The owner preferred the hub at 75% browser zoom ("at 100% it's too fat"). His
@@ -178,7 +181,7 @@ card space without presenting fabricated content or an empty-result claim.
 
 | | |
 |---|---|
-| **Status** | Active (2026-07) |
+| **Status** | Retired (`/analytics` is the d3-v5 hub) |
 | **Surface** | `/analytics` hub landing — `AnalyticsLandingPage` + `figma-activity-hub` |
 | **Code** | `streampulse-web/src/routes/analytics/AnalyticsLandingPage.tsx`, `PulseMomentsLivePanel`, `FigmaGlobalActivityPanel` |
 
@@ -1012,15 +1015,13 @@ Those peaks can predate the Global Activity chart range; the hub response labels
 the feed `livePulseMomentsScope=current_live_session_peaks` for this reason.
 Saved remains a browser-local shortlist.
 
-**2026-10-06 note (owner request):** History and Explore are hidden while the
-ranked backend is not deployed, so the tab row is Latest → Saved. One
-`/v1/public/discovery/ranked/availability` read per page session decides this:
-HTTP 404 hides both tabs, a ready response brings back all four tabs without a
-redeploy, and a 503, timeout or invalid response keeps them with their existing
-unavailable panels. Tabs stay hidden while the read is pending. Latest's first
-screen makes no discovery read: the check starts about two seconds after that
-screen settles (or after Saved opens), and a ranked view reuses its own
-retention read instead. Bookmarked `view=history`, `view=explore` and
+**2026-10-06 note (owner request), updated 2026-10-27:** History and Explore are
+hidden while the ranked backend is not deployed, so the tab row is Latest →
+Saved. The site hides them itself: Latest and Saved make no
+`/v1/public/discovery/ranked/availability` read (the once-per-session check was
+removed on 2026-10-27; it had returned 404 on every visit since 2026-09-24).
+A ready ranked backend does not bring the tabs back on its own: that needs a
+site change and a deploy. Bookmarked `view=history`, `view=explore` and
 `collection=history` links keep their selected tab and the not-deployed panel
 with Browse Latest moments. While History is hidden, Latest and Saved creator
 links open `/analytics/:login` (“All … broadcasts”) instead.

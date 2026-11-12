@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { extensionResolve, sharedOutput } from './vite.shared.ts'
+import { extensionResolve, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 
@@ -15,6 +15,10 @@ const root = fileURLToPath(new URL('.', import.meta.url))
 export default defineConfig({
   root,
   resolve: extensionResolve(),
+  // Shared code drops its development-only paths from store builds.
+  define: {
+    __EXTENSION_STORE_BUILD__: JSON.stringify(isStoreBuild),
+  },
   build: {
     minify: 'terser',
     terserOptions: {

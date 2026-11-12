@@ -9,7 +9,6 @@ import { RankedExploreControls } from '../src/ui/components/moments/RankedExplor
 import { normalizeApiError } from '../src/lib/apiClient'
 import { usePublicHubData } from '../src/hooks/usePublicHubData'
 import { useRankedRetention } from '../src/hooks/useDiscoveryCatalogue'
-import { clearRankedFeatureCheckForTests } from '../src/hooks/useRankedFeatureAvailability'
 import { CREATOR_COMMIT_DELAY_MS } from '../src/ui/components/moments/useCreatorDraft'
 
 vi.mock('../src/hooks/useMomentProfiles', () => ({ useMomentProfiles: (rows: unknown) => rows }))
@@ -46,7 +45,6 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 afterEach(async () => {
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
   vi.restoreAllMocks()
-  clearRankedFeatureCheckForTests()
 })
 it('defaults to Latest without requesting undeployed ranked discovery', async () => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
@@ -79,7 +77,7 @@ it('reports undeployed Explore on plain-text 404 and offers a working Latest rou
   fireEvent.click(screen.getByRole('link', { name: 'Browse Latest moments' }))
   expect(screen.getByRole('tab', { name: 'Latest' }).getAttribute('aria-selected')).toBe('true')
   expect(screen.queryByLabelText('Ranked order')).toBeNull()
-  // The bookmarked view's 404 hides both ranked tabs for the rest of the session.
+  // Latest offers neither ranked view as a tab.
   expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Latest', 'Saved (0)'])
 })
 it('hides filters that cannot apply when ranked Explore is not deployed', async () => {
@@ -338,7 +336,13 @@ function TestBack() {
   const navigate = useNavigate()
   return <button type="button" onClick={() => navigate(-1)}>Test back</button>
 }
-for (const path of ['History tab', 'Back'] as const) it(`does not show Explore rows under a History creator while that creator is checked again (${path})`, async () => {
+/** A link to a ranked view: neither ranked view offers the other as a tab while ranked is not deployed. */
+function TestOpen({ to, name }: { to: string; name: string }) {
+  const navigate = useNavigate()
+  return <button type="button" onClick={() => navigate(to)}>{name}</button>
+}
+const HISTORY_CREATOR = '/analytics/moments?view=history&scope=creator&creator=creator'
+for (const path of ['History link', 'Back'] as const) it(`does not show Explore rows under a History creator while that creator is checked again (${path})`, async () => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   const today = new Date().toISOString().slice(0, 10)
   const boundary = new Date(Date.parse(today) - 5 * 86_400_000).toISOString().slice(0, 10)
@@ -348,11 +352,12 @@ for (const path of ['History tab', 'Back'] as const) it(`does not show Explore r
     ? Promise.resolve(certifiedAvailability(boundary))
     : new Promise(resolve => { releaseCreator = resolve }))
   const fetch = vi.spyOn(transport, 'fetchRankedDiscovery').mockImplementation(async scope => rankedRow(scope, boundary))
-  render(<MemoryRouter initialEntries={['/analytics/moments?view=history&scope=creator&creator=creator']}><AnalyticsMomentsPage /><TestBack /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={[HISTORY_CREATOR]}><AnalyticsMomentsPage /><TestBack />
+    <TestOpen to="/analytics/moments?view=explore" name="Test Explore" /><TestOpen to={HISTORY_CREATOR} name="Test History" /></MemoryRouter>)
   await screen.findByText('creator reaction')
-  fireEvent.click(screen.getByRole('tab', { name: 'Explore' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Test Explore' }))
   await screen.findByText('globalrow reaction')
-  fireEvent.click(path === 'Back' ? screen.getByRole('button', { name: 'Test back' }) : screen.getByRole('tab', { name: 'History' }))
+  fireEvent.click(screen.getByRole('button', { name: path === 'Back' ? 'Test back' : 'Test History' }))
   await screen.findByRole('heading', { name: 'Checking certified dates…' })
   expect(creatorChecks).toBe(2)
   // Explore's ranking never stands in for the creator's while the creator's dates are checked.
