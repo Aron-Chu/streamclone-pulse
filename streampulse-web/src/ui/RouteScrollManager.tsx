@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { NavigationType, useLocation, useNavigationType } from 'react-router-dom'
-import { hashTargetId, holdHashScroll, routeScrollIntent, scrollToHashTarget } from '../lib/routeScroll'
+import { hashTargetId, holdHashScroll, openFoldsAround, routeScrollIntent, scrollToHashTarget } from '../lib/routeScroll'
 
 interface SeenLocation {
   entry: string
@@ -85,7 +85,11 @@ export function RouteScrollManager() {
       // The browser restores a raw offset, which misses when the content above
       // the target renders later or at another height (the hub's sections).
       const place = entry ? places.current.get(entry) : undefined
-      return id && place !== undefined ? scrollToHashTarget(id, { top: place }) : undefined
+      if (id && place !== undefined) return scrollToHashTarget(id, { top: place })
+      // A native #link to a section on this page reports as a pop. The browser has
+      // scrolled, but a closed fold hiding the target still needs opening.
+      if (id && from.pathname === location.pathname && from.hash !== location.hash) openFoldsAround(id)
+      return undefined
     }
     const pathChanged = from !== null && from.pathname !== location.pathname
     // A page that replaces its own entry (a live broadcast becoming its session) keeps the reader's place.

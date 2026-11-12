@@ -25,13 +25,7 @@ export default function Refunds() {
           <Link to="/" className="text-zinc-400 hover:text-white inline-flex items-center gap-1">← StreamPulse Home</Link>
         </p>
         <header className="mb-6 border-b border-white/[0.08] pb-6">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Pulse Supporter billing
-            </span>
-          </div>
-          <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Cancellation &amp; Refunds</h1>
+          <h1>Cancellation &amp; Refunds</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Last updated: October 13, 2026 · Applies to the Pulse Supporter subscription.
           </p>
@@ -39,7 +33,7 @@ export default function Refunds() {
 
         <PrelaunchNotice />
 
-        <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
+        <section className="mt-8 border-t border-white/[0.08] pt-6">
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
             Once sign-ups open, you can cancel whenever you like and keep
