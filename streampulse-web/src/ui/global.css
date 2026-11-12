@@ -595,6 +595,15 @@ h1.public-title {
   box-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
 }
 
+.status-card__dot--down {
+  background: #f87171;
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.6);
+}
+
+.status-card__dot--unchecked {
+  background: #a1a1aa;
+}
+
 .status-card__detail {
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -1017,7 +1026,7 @@ h1.public-title {
 .app-shell pre { max-width: 100%; overflow-x: auto; }
 .app-shell code { overflow-wrap: anywhere; }
 .app-shell input, .app-shell textarea, .app-shell select { max-width: 100%; }
-.app-shell :is(a, button, input, textarea, select):focus-visible {
+.app-shell :is(a, button, input, textarea, select, summary):focus-visible {
   outline: 2px solid #c4b5fd;
   outline-offset: 3px;
 }

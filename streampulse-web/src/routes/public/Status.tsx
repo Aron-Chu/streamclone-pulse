@@ -11,11 +11,12 @@ interface PublicStatusPayload {
   components?: { api?: string; coverage?: string; corpus?: string }
 }
 interface ExtensionHealthPayload { ok?: boolean; version?: string }
-type ProbeResult<T> = { data: T | null; error: string | null }
+type ProbeResult<T> = { data: T | null; error: string | null; unchecked?: boolean }
 /** The overall line when the service runs and only coverage or chat tracking is behind. */
 export const QUIET_ONLY_LINE = 'Running · a few channels are quiet'
 
-type State = 'operational' | 'degraded' | 'unavailable' | 'unknown'
+// 'unchecked' is this browser failing to ask (timeout, no network), not the service being down.
+type State = 'operational' | 'degraded' | 'unavailable' | 'unchecked' | 'unknown'
 
 const PORTAL_VERSION_DISPLAY = portalReleaseShort()
 
@@ -28,11 +29,11 @@ function normalizedState(value: unknown): State {
   return 'unknown'
 }
 function stateLabel(state: State) {
-  return state === 'operational' ? 'Working' : state === 'degraded' ? 'Slow' : state === 'unavailable' ? 'Down' : 'Unknown'
+  return state === 'operational' ? 'Working' : state === 'degraded' ? 'Slow' : state === 'unavailable' ? 'Down' : state === 'unchecked' ? "Couldn't check" : 'Unknown'
 }
 /** The worst of several states; an unknown one is never read as working. */
 function worstState(states: State[]): State {
-  for (const state of ['unavailable', 'degraded', 'unknown'] as const) if (states.includes(state)) return state
+  for (const state of ['unavailable', 'unchecked', 'degraded', 'unknown'] as const) if (states.includes(state)) return state
   return 'operational'
 }
 function safeDataTime(value?: string): string {
@@ -48,7 +49,9 @@ async function probeJson<T>(url: string, signal: AbortSignal): Promise<ProbeResu
     const response = await apiClient<T>(url, { signal, timeoutMs: 8_000, maxResponseBytes: 64 * 1024 })
     return { data: response.data, error: null }
   } catch (error) {
-    return { data: null, error: signal.aborted ? 'Status probe timed out' : error instanceof Error ? error.message : 'Status probe failed' }
+    const kind = (error as { kind?: unknown } | null)?.kind
+    const unchecked = signal.aborted || kind === 'timeout' || kind === 'unreachable' || kind === 'aborted'
+    return { data: null, error: signal.aborted ? 'Status probe timed out' : error instanceof Error ? error.message : 'Status probe failed', unchecked }
   }
 }
 
@@ -59,6 +62,7 @@ export default function Status() {
   const [healthProbe, setHealthProbe] = useState<ProbeResult<ExtensionHealthPayload>>({ data: null, error: null })
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
   const [loading, setLoading] = useState(true)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -72,12 +76,15 @@ export default function Status() {
       setStatusProbe(status); setHealthProbe(health); setCheckedAt(new Date()); setLoading(false)
     }).finally(() => window.clearTimeout(timeout))
     return () => { cancelled = true; window.clearTimeout(timeout); controller.abort() }
-  }, [backendUrl])
+  }, [backendUrl, attempt])
 
-  const statusState: State = statusProbe.error ? 'unavailable' : normalizedState(statusProbe.data?.status)
+  const probeState = (probe: ProbeResult<unknown>): State => probe.unchecked ? 'unchecked' : 'unavailable'
+  const statusState: State = statusProbe.error ? probeState(statusProbe) : normalizedState(statusProbe.data?.status)
   const componentStates = Object.values(statusProbe.data?.components ?? {}).map(normalizedState)
+  const probeFailures = [statusProbe, healthProbe].filter(probe => probe.error)
   const overall: State = loading ? 'unknown'
-    : statusProbe.error || healthProbe.error || componentStates.includes('unavailable') ? 'unavailable'
+    : probeFailures.some(probe => !probe.unchecked) || componentStates.includes('unavailable') ? 'unavailable'
+    : probeFailures.length ? 'unchecked'
     : statusProbe.data?.degraded || healthProbe.data?.ok === false || componentStates.includes('degraded') ? 'degraded'
     : statusState === 'operational' && healthProbe.data?.ok === true ? 'operational' : statusState === 'operational' ? 'unknown' : statusState
   const errors = [statusProbe.error, healthProbe.error].filter(Boolean)
@@ -89,30 +96,34 @@ export default function Status() {
     normalizedState(components.api ?? statusProbe.data?.api ?? 'operational') === 'operational' &&
     (['coverage', 'corpus'] as const).some((key) => normalizedState(components[key]) === 'degraded') &&
     Object.entries(components).every(([key, value]) => key === 'coverage' || key === 'corpus' || normalizedState(value) === 'operational')
-  const fromStatus = (value: unknown): State => loading ? 'unknown' : statusProbe.error ? 'unavailable' : normalizedState(value)
+  const fromStatus = (value: unknown): State => loading ? 'unknown' : statusProbe.error ? probeState(statusProbe) : normalizedState(value)
   const websiteState = fromStatus(statusProbe.data?.components?.api ?? statusProbe.data?.api)
   const chatTrackingState = fromStatus(statusProbe.data?.components?.corpus)
   // What the Twitch panel shows comes from the extension API and the coverage engine behind it.
   const panelState = worstState([
-    loading ? 'unknown' : healthProbe.error ? 'unavailable' : healthProbe.data?.ok === true ? 'operational' : healthProbe.data?.ok === false ? 'degraded' : 'unknown',
+    loading ? 'unknown' : healthProbe.error ? probeState(healthProbe) : healthProbe.data?.ok === true ? 'operational' : healthProbe.data?.ok === false ? 'degraded' : 'unknown',
     fromStatus(statusProbe.data?.components?.coverage),
   ])
+  const dotClass = (state: State) => state === 'operational' ? 'status-card__dot--operational' : state === 'degraded' ? 'status-card__dot--degraded' : state === 'unavailable' ? 'status-card__dot--down' : 'status-card__dot--unchecked'
+  const textClass = (state: State) => state === 'operational' ? 'text-emerald-400' : state === 'degraded' ? 'text-amber-400' : state === 'unavailable' ? 'text-red-400' : 'text-zinc-400'
   const row = (label: string, state: State) => <div className="status-card">
     <div className="status-card__header"><span className="status-card__label">{label}</span><span className="status-card__indicator">
-      <span className={`status-card__dot ${state === 'operational' ? 'status-card__dot--operational' : 'status-card__dot--degraded'}`} />
-      <span className={state === 'operational' ? 'text-emerald-400' : state === 'unknown' ? 'text-zinc-400' : 'text-amber-400'}>{stateLabel(state)}</span>
+      <span className={`status-card__dot ${dotClass(state)}`} />
+      <span className={textClass(state)}>{stateLabel(state)}</span>
     </span></div>
   </div>
+  const couldntCheck = !loading && probeFailures.some(probe => probe.unchecked)
 
   return <PublicLayout><section className="panel" data-testid="status-page">
     <header className="mb-6 border-b border-white/[0.08] pb-6"><div className="flex flex-wrap items-center justify-between gap-4">
       <div><h1 className="public-title">System Status</h1><p className="mt-1 text-sm text-zinc-400">Public service health. Open the <Link to="/analytics" className="public-inline-link">Hub</Link> for coverage detail.</p></div>
-      <div data-testid="status-overall" className={`inline-flex items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-bold ${overall === 'operational' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : overall === 'unknown' || quietOnly ? 'border-white/15 bg-white/5 text-zinc-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
+      <div data-testid="status-overall" className={`inline-flex items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-bold ${overall === 'operational' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : overall === 'unknown' || overall === 'unchecked' || quietOnly ? 'border-white/15 bg-white/5 text-zinc-300' : overall === 'unavailable' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
         <span>{loading ? 'Checking systems…' : quietOnly ? QUIET_ONLY_LINE : stateLabel(overall)}</span>
       </div>
     </div></header>
     {loading ? <div className="flex items-center gap-2.5 py-8 text-zinc-400"><span className="analytics-route-fallback__spinner" /><span>Probing StreamPulse services…</span></div> : null}
     {errors.length ? <div className="alert alert-error my-4" role="alert">Some checks could not be completed: {errors.join('; ')}</div> : null}
+    {couldntCheck ? <button type="button" className="btn btn-secondary" onClick={() => { setLoading(true); setAttempt(value => value + 1) }}>Retry</button> : null}
     <div className="status-grid">
       {row('Website', websiteState)}
       {row('Live chat tracking', chatTrackingState)}

@@ -151,7 +151,7 @@ function Confirm() {
     catch (error) { setError(accountErrorText(error)) }
     finally { setBusy(false) }
   }
-  return <><h1>{complete ? 'You’re signed in' : 'Confirm your sign-in'}</h1>
+  return <><h1>{complete ? 'You’re signed in' : token ? 'Confirm your sign-in' : 'This sign-in link has expired'}</h1>
     {complete ? returnTo === ACCOUNT_LINK_DEVICE_PATH
       ? <><p className="pulse-account-intro">Go back to the StreamPulse tab where you started. It continues by itself, and you can close this tab.</p><p>That tab closed? Reopen the link from your extension’s settings, or <Link to={ACCOUNT_LINK_DEVICE_PATH}>enter the extension code here</Link>.</p></>
       : returnTo && clipPageReturnPath(returnTo)
@@ -160,9 +160,9 @@ function Confirm() {
       ? <><p className="pulse-account-intro">You can now review your Supporter membership.</p><Link className="pulse-account-button pulse-account-primary" to={returnTo}>Continue to billing</Link></>
       : <><p className="pulse-account-intro">You can now link your StreamPulse extension.</p><Link className="pulse-account-button pulse-account-primary" to="/account/link-device">Link extension</Link></>
       : token ? <><p className="pulse-account-intro">Continue only if you requested this sign-in link.</p><button className="pulse-account-primary" onClick={() => void confirm()} disabled={busy}>{busy ? 'Confirming…' : 'Confirm sign-in'}</button></>
-      : <p>This link is missing or expired. Request a new link in this browser.</p>}
+      : <><p className="pulse-account-intro">This link is missing or expired. Request a new link in this browser.</p><Link className="pulse-account-button pulse-account-primary" to={accountBillingSignInHref(returnTo)}>Send a new sign-in link</Link></>}
     {error ? <p role="alert">{error}</p> : null}
-    {!complete ? <p className="pulse-account-standalone"><Link to={accountBillingSignInHref(returnTo)}>Request another sign-in link</Link></p> : null}</>
+    {!complete && token ? <p className="pulse-account-standalone"><Link to={accountBillingSignInHref(returnTo)}>Request another sign-in link</Link></p> : null}</>
 }
 
 type Session = 'loading' | 'ready' | 'signed_out' | 'error'
@@ -359,7 +359,7 @@ function LinkDevice() {
       : session === 'signed_out' || phase === 'needs_sign_in' ? phase === 'needs_sign_in' && session === 'ready'
         ? <SignInForm returnTo={ACCOUNT_LINK_DEVICE_PATH} heading={sent => sent ? 'Check your email' : 'Confirm it’s you'} intro="Connecting an extension needs a sign-in from the last 10 minutes. Your extension’s request stays ready in this tab." sentDetail={signInWaiting} />
         : <SignInForm returnTo={ACCOUNT_LINK_DEVICE_PATH} heading={sent => sent ? 'Check your email' : waitingForCode ? 'Sign in to connect your extension' : 'Sign in to link your extension'} intro={waitingForCode ? 'Your extension is waiting for approval. Sign in with email; no password needed.' : 'Sign in with email to link your extension. No password needed.'} sentDetail={waitingForCode ? signInWaiting : undefined} />
-      : session === 'error' ? <><h1>Link your extension</h1><p>Account services could not be reached. Your extension keeps its request; try again in a moment.</p><div className="pulse-account-actions"><button className="pulse-account-primary" onClick={() => { setError(''); void checkSession() }}>Try again</button></div></>
+      : session === 'error' ? <><h1>Link your extension</h1><p role="alert">Account services could not be reached. Your extension keeps its request; try again in a moment.</p><div className="pulse-account-actions"><button className="pulse-account-primary" onClick={() => { setError(''); setSession('loading'); void checkSession() }}>Try again</button></div></>
       : phase === 'approved' ? <div role="status"><h1>Extension connected</h1><p className="pulse-account-intro">Return to your extension. It finishes connecting by itself, and you can close this tab.</p><p className="pulse-account-standalone"><Link to="/account/billing">Membership &amp; billing</Link></p></div>
       : phase === 'denied' ? <div role="status"><h1>Request declined</h1><p className="pulse-account-intro">This request cannot connect to your account.</p></div>
       : phase === 'invalid' ? <><h1>This request is no longer valid</h1><p className="pulse-account-intro">Extension requests last ten minutes and work once. Start again from your extension’s settings and this page opens with a fresh request.</p><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="Or check the code and enter it again, exactly as your extension shows it." /></>

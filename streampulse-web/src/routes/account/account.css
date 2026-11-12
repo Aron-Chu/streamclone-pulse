@@ -7,7 +7,7 @@
   background: #15151b;
   box-shadow: 0 16px 48px rgb(0 0 0 / 16%);
   color: #fafafc;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: var(--font);
 }
 
 .pulse-account h1 {
