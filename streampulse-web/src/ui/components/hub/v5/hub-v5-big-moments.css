@@ -26,6 +26,15 @@
     grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "most most" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
   }
 }
+/* A1 (11-12): from 1440 px the two lists that follow each other, Picking up now and Top moments today, sit side by side; the order does not change */
+@media (min-width: 1440px) {
+  .hub-v5.hub-d3:has(> .hv5-big) {
+    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "act act" "intv intv" "rail big" "emo games" "chan chan" "meas meas";
+  }
+  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
+    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "most most" "act act" "intv intv" "rail big" "emo games" "chan chan" "meas meas";
+  }
+}
 
 /* the base rules the other sections get */
 .hub-v5 .hv5-big :is(*, *::before, *::after) { box-sizing: border-box; }

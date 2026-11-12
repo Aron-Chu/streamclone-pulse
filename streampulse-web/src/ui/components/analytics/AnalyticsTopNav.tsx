@@ -95,6 +95,13 @@ export function AnalyticsTopNav({
               <Menu size={18} aria-hidden="true" />
             </button>
             <div ref={panelRef} id={panelId} className="analytics-topnav__more-links" data-state={isOpen ? 'open' : 'closed'} aria-hidden={!isOpen}>
+              <div className="analytics-topnav__more-nav">
+                {items.map((item) => (
+                  <NavLink key={item.to} to={item.to} end={item.end} onClick={() => closeMenu()}>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
               <Link to={FEEDBACK_PATH} onClick={() => closeMenu()}>Send feedback</Link>
               <Link to="/docs" onClick={() => closeMenu()}>Extension guide</Link>
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>

@@ -3,7 +3,7 @@
   max-width: 1440px;
   min-width: 0;
   margin: 0 auto;
-  padding: 28px 32px;
+  padding: 28px 0;
   background: var(--fma-bg, hsl(var(--sc-background)));
   color: var(--fma-text, hsl(var(--sc-foreground)));
 }
@@ -475,7 +475,7 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 }
 
 @media (max-width: 850px) {
-  .moments-workspace { padding: 20px 16px; }
+  .moments-workspace { padding-block: 20px; }
   .moments-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .moments-detail { padding: 18px; }
   .moments-result,
@@ -494,7 +494,6 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 }
 
 @media (min-width: 851px) and (max-width: 1100px) {
-  .moments-workspace { padding-inline: 20px; }
   .moments-detail { padding: 16px; }
 }
 

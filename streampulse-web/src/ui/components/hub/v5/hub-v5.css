@@ -19,21 +19,12 @@
   /* K1 pace heat on the emote map: taking off, cooling (validated on the #17171a tile) */
   --hv5-rise: #d9733a;
   --hv5-cool: #5a8be8;
-  --hv5-gutter: 24px;
+  --hv5-gutter: var(--fa-gutter, 24px);
 }
 
 /* the frame is as wide as the mockup's (2200 px, 24 px gutters; 16 px on phones) */
 .figma-analytics .figma-analytics__frame:has(.hub-v5) {
   max-width: 2200px;
-  padding-left: 24px;
-  padding-right: 24px;
-}
-@media (max-width: 719px) {
-  .figma-analytics .figma-analytics__frame:has(.hub-v5) {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-  .hub-v5 { --hv5-gutter: 16px; }
 }
 
 /* the skip link's "Analytics content" target sits beside .hub-v5 in <main>; the old hub
@@ -162,6 +153,10 @@
 @media (max-width: 719px) {
   .hv5-busiest { margin-top: 4px; }
   .hv5-activity { margin-top: 10px; }
+}
+/* A1 (11-12): the row lists stop near 720 px, as they read on a tablet, so a name stays beside its number */
+@media (min-width: 720px) {
+  .hv5-f3-peek, .hv5-latest, .hv5-channels { max-width: 720px; }
 }
 
 /* ---------- section heads and controls (shared.css) ---------- */
