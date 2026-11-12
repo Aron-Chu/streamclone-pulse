@@ -137,44 +137,26 @@
 .hv5-mast { grid-area: mast; }
 .hv5-busiest { grid-area: busy; margin-top: 8px; }
 .hv5-activity { grid-area: act; margin-top: 16px; min-width: 0; }
-.hv5-latest { grid-area: rail; margin-top: 8px; }
+.hv5-latest { grid-area: rail; margin-top: 32px; }
 .hv5-emotes { grid-area: emo; margin-top: 32px; display: flex; flex-direction: column; }
 .hv5-games { grid-area: games; margin-top: 32px; display: flex; flex-direction: column; container: hv5grk / inline-size; }
-/* phones: a 3-row "Top today" peek under the hero; the rail stays where it is */
-.hv5-f3-peek { grid-area: peek; display: none; margin-top: 12px; }
+/* a 3-row "Top today" peek under the hero, at every width since desktop took the phone order (B1, 11-11) */
+.hv5-f3-peek { grid-area: peek; margin-top: 12px; }
 @media (max-width: 719px) {
-  .hv5-f3-peek { display: block; }
   /* while it waits, the height its rows land in: the 43 px head with its age line and three 53 px rows
      (.hv5-top .hv5-rh in section 3b, .hv5-tm-row and its rule) */
   .hv5-f3-peek[data-wait] { min-height: 202px; }
 }
+/* from 720 px its rows are 45 px (44 + the 1 px rule): 43 + 3 x 45 (B1, 11-11) */
+@media (min-width: 720px) { .hv5-f3-peek[data-wait] { min-height: 178px; } }
 .hv5-channels { grid-area: chan; margin-top: 32px; scroll-margin-top: 72px; }
 .hv5-dis { grid-area: meas; margin-top: 32px; }
 .hv5-sec { min-width: 0; }
-@media (max-width: 1535px) {
-  .hv5-latest { margin-top: 32px; }
-}
-@media (min-width: 720px) and (max-width: 1099px) {
+/* B1 (11-11): desktop takes the phone's order, in the two columns 720 px already used; only Top emotes and Where chat is share a row */
+@media (min-width: 720px) {
   .hub-v5.hub-d3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "mast mast" "fol fol" "busy busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
-  }
-}
-@media (min-width: 1100px) and (max-width: 1535px) {
-  .hub-v5.hub-d3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
-  }
-}
-@media (min-width: 1536px) {
-  .hub-v5.hub-d3 {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px;
-    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
-  }
-  .hv5-latest {
-    position: sticky;
-    top: 72px;
-    align-self: start;
+    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
   }
 }
 @media (max-width: 719px) {
@@ -348,13 +330,7 @@
     radial-gradient(42% 70% at 50% 34%, rgb(94 234 212 / 0.085), transparent 72%),
     radial-gradient(26% 50% at 50% 50%, rgb(139 92 246 / 0.07), transparent 70%);
 }
-.hv5-hero-k {
-  font: 600 12px/16px var(--sp-font);
-  color: var(--hv5-accent);
-  letter-spacing: 0.01em;
-}
 .hub-v5 .hv5-mast .hv5-hero-h {
-  margin-top: 6px;
   font: 700 40px/46px var(--sp-font);
   letter-spacing: -0.03em;
   color: var(--sp-text-1);
@@ -795,10 +771,22 @@
 }
 .hv5-hero-install :is(.chrome-mark, .edge-mark, .firefox-mark) { width: 20px; height: 20px; }
 .hv5-hero-install .chrome-mark::after { inset: 5.6px; }
-/* stacked between phone and desktop: the stage full width, the words under it */
-@media (min-width: 720px) and (max-width: 1023px) {
-  .hv5-promo { grid-template-columns: minmax(0, 1fr); gap: 18px; width: min(760px, 100%); padding: 12px 12px 18px; }
-  .hv5-pr-copy { padding: 0 8px; }
+/* B1 (11-11): above 719 px the promo is one slim line, its title and "Free · no account", with the same Add to Chrome
+   button at its end; the sample stage and the paragraph stay on the phone card's "See how it works" only */
+@media (min-width: 720px) {
+  .hub-v5 .hv5-mast .hv5-promo {
+    display: flex;
+    align-items: center;
+    width: min(980px, 100%);
+    padding: 8px 8px 8px 20px;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  }
+  .hub-v5 .hv5-mast :is(.hv5-pr-stage, .hv5-pr-p) { display: none; }
+  .hv5-pr-copy { flex: 1 1 auto; flex-flow: row wrap; align-items: center; gap: 4px 12px; }
+  .hub-v5 .hv5-mast .hv5-pr-h { font: 700 16px/22px var(--sp-font); letter-spacing: 0; }
+  .hub-v5 .hv5-mast .hv5-pr-free { margin-top: 0; }
+  .hub-v5 .hv5-mast .hv5-promo a.hv5-hero-install { order: 1; margin-left: auto; }
 }
 .hv5-hero-try {
   display: flex;
@@ -1406,19 +1394,9 @@
 .hub-v5.hub-d3:has(> .hv5-most) {
   grid-template-areas: "mast" "fol" "peek" "busy" "most" "act" "intv" "rail" "emo" "games" "chan" "meas";
 }
-@media (min-width: 720px) and (max-width: 1099px) {
+@media (min-width: 720px) {
   .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast" "fol fol" "busy busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
-  }
-}
-@media (min-width: 1100px) and (max-width: 1535px) {
-  .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "most most most" "act act act" "intv intv intv" "rail emo games" "chan chan chan" "meas meas meas";
-  }
-}
-@media (min-width: 1536px) {
-  .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "most most rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
   }
 }
 /* the base rules the other sections get */
@@ -1608,7 +1586,7 @@
 /* "5.0× more emotes" (games first, 10-22: as Moments writes it) */
 .hv5-f2-x { flex: none; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
 .hv5-f2-x b { font-weight: 600; color: var(--hv5-accent); }
-/* Picking up now under 1100 px: the first 6, then Show all N */
+/* Picking up now: the first 6, then Show all N (every width since B1, 11-11) */
 .hv5-fd-more { display: flex; justify-content: center; padding: 6px 0 0; }
 @media (max-width: 719px) {
   .hub-v5 .hv5-feed .hv5-fd { height: 56px; }
@@ -2271,11 +2249,11 @@
 /* ---------- 3b. Top moments today (D1 C1 F1 O1, 10-30; board artifacts/moments-top-today-20261030): the rail, and the phone peek's rows ---------- */
 /* a game chip's count: the day's moments in that game that hold up */
 .hv5-tm-games small { flex: none; font: 500 10.5px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-3); }
-/* a scroll box, so in the sticky column (>= 1536 px) it would shrink with the head when the rows overflow: it doesn't */
+/* a scroll box: it never shrinks with the head (it did in the old >= 1536 px sticky column, gone since B1, 11-11) */
 .hv5-tm-games { flex: none; mask-image: linear-gradient(90deg, #000 88%, transparent); }
 /* "Top moments today" leaves no room beside it for the age line (59 px at 1536 px and up, 14 px at 1100), so the line sits
    under the heading, lined up with its words, and keeps its height before the first answer. The head is a whole 43 px
-   (1 + 4 + 22 + 16; the phone peek's wait counts on it) and never shrinks in the sticky column when the rows overflow */
+   (1 + 4 + 22 + 16; the phone peek's wait counts on it) and never shrinks */
 .hv5-top .hv5-rh { flex: none; flex-wrap: wrap; row-gap: 0; }
 .hv5-top .hv5-rh h2 { line-height: 22px; }
 .hv5-top .hv5-rh .hv5-f2-fresh { order: 1; flex-basis: 100%; min-height: 16px; margin-left: 0; padding-left: 16px; }
@@ -2338,32 +2316,13 @@
 
 /* the list's last line: nothing to show, that's all (the hub's rows), or unavailable with Try again */
 .hub-v5 .hv5-top .hv5-tm-q { margin: 12px 0 4px; padding: 10px 12px; border: 1px dashed var(--sp-line-strong); border-radius: 9px; background: rgb(255 255 255 / 0.03); font: 500 12.5px/1.4 var(--sp-font); color: var(--sp-text-2); }
-/* Picking up now (M1 + P1, 11-02), the whole rail: a row is the face, "4.2× usual · +340/min · game" and the cover. From 1100 to 1535 px
-   it takes the height Top emotes and Where chat is give the row and its list scrolls inside it, as the sticky column's does from 1536 */
+/* Picking up now (M1 + P1, 11-02), the whole rail: a row is the face, "4.2× usual · +340/min · game" and the cover. It has a
+   row of its own at every width since desktop took the phone order (B1, 11-11): the first 6, then "Show all N" */
 .hv5-up-n { font: 600 12px/1 var(--sp-font); color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
 .hub-v5 .hv5-up .hv5-fd { grid-template-columns: 28px minmax(0, 1fr) auto; height: 48px; }
 .hv5-up .hv5-fd-av, .hv5-up .hv5-fd-av .hv5-av { width: 28px; height: 28px; }
 .hv5-up-add { flex: none; color: var(--hv5-chat); font-variant-numeric: tabular-nums; }
 .hv5-up-gm { display: flex; }
-@media (min-width: 1100px) and (max-width: 1535px) {
-  .hv5-feed.hv5-up { contain: size; min-height: 432px; display: flex; flex-direction: column; }
-  .hv5-up .hv5-tm-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
-  .hv5-up .hv5-tm-body[data-more] { mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent); }
-  .hv5-up .hv5-tm-body::-webkit-scrollbar { display: none; }
-}
-/* >= 1536 the rail is sticky: the list scrolls inside the window (scrollbar hidden), its last rows fading under the footer while more is below (data-more) */
-@media (min-width: 1536px) {
-  .hv5-feed.hv5-top { display: flex; flex-direction: column; max-height: calc(100vh - 88px); }
-  .hv5-top .hv5-tm-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: none;
-  }
-  .hv5-top .hv5-tm-body[data-more] { mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent); }
-  .hv5-top .hv5-tm-body::-webkit-scrollbar { display: none; }
-}
 @media (max-width: 719px) {
   .hub-v5 .hv5-top .hv5-tm-row { min-height: 52px; }
   /* a peek row or "Top moments ↓" brings the rail up: it lands under the sticky nav (about 101 px), not behind it */

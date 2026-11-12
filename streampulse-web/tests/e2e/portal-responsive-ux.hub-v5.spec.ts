@@ -295,13 +295,13 @@ test('Top moments and Channels render while a legacy successful history reply aw
     await expect(rows.first()).toBeVisible()
     const momentsBefore = await rows.allTextContents()
     const count = page.locator('#channels [data-hv5-channel-count]')
-    await expect(count).toHaveText('14 of 96 live')
+    await expect(count).toHaveText('Showing 14 of 96 live')
     await expect(page.locator('#channels tbody tr')).toHaveCount(10)
     releaseRepair()
     await expect(chart.getByText('Loading measured activity…', { exact: true })).toHaveCount(0)
     await expect(chart.locator('.spc-bar')).toHaveCount(30)
     expect(await rows.allTextContents()).toEqual(momentsBefore)
-    await expect(count).toHaveText('14 of 96 live')
+    await expect(count).toHaveText('Showing 14 of 96 live')
   } finally {
     releaseRepair()
   }

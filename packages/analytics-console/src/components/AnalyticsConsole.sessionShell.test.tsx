@@ -25,6 +25,8 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('../api.ts', () => api)
+const twitch = vi.hoisted(() => ({ lookupTwitchChannel: vi.fn() }))
+vi.mock('../twitchChannelLookup.ts', () => twitch)
 vi.mock('../hooks/useAnalyticsLive.ts', () => ({
   useAnalyticsLive: () => ({ data: undefined, isLoading: false, refetch: vi.fn() }),
 }))
@@ -101,6 +103,7 @@ beforeEach(() => {
   api.getStreamSummary.mockResolvedValue(null)
   api.getReplayHeatmap.mockResolvedValue(null)
   api.watchAnalyticsChannel.mockResolvedValue(undefined)
+  twitch.lookupTwitchChannel.mockResolvedValue({ state: 'unknown' })
 })
 
 afterEach(() => cleanup())
@@ -122,7 +125,7 @@ function statLabels() {
 }
 
 describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
-  it('drops the badge row and the separate Refresh button; the facts sit on one meta line', async () => {
+  it('leads with the channel name (C1); Ended, then the facts, on one meta line; the title is one grey line', async () => {
     renderConsole({ enableLayoutControls: true })
     await screen.findByTestId('analytics-chart')
     await waitFor(() => expect(within(header()).getByRole('link', { name: 'Watch VOD' })).toBeTruthy())
@@ -131,14 +134,24 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
     expect(within(header()).queryByRole('link', { name: 'Analytics hub' })).toBeNull()
     expect(within(header()).queryByText(/^live$|^historical$/i)).toBeNull()
 
+    // The channel's name is the headline, its picture (decorative) beside it, with no live ring on an ended stream.
     const h1 = within(header()).getByRole('heading', { level: 1 })
-    expect(h1.textContent).toBe('Shell fixture')
-    expect(h1.className.split(' ')).toContain('line-clamp-2')
+    expect(h1.textContent).toBe('xQc')
+    expect(h1.hasAttribute('data-channel-name')).toBe(true)
     expect(h1.className.split(' ')).not.toContain('truncate')
+    const avatar = header().querySelector<HTMLElement>('[data-channel-avatar]')!
+    expect(avatar.getAttribute('aria-hidden')).toBe('true')
+    expect(avatar.hasAttribute('data-live')).toBe(false)
+
+    // The stream's own title: one line under the header, whole in the page and on hover.
+    const title = header().querySelector<HTMLElement>('[data-session-title]')!
+    expect(title.textContent).toBe('Shell fixture')
+    expect(title.title).toBe('Shell fixture')
 
     const items = [...header().querySelectorAll<HTMLElement>('.ssp-meta > .mi')]
     const text = items.map(item => item.textContent ?? '')
-    expect(text[0]).toBe('xQc')
+    expect(text[0]).toBe('Ended')
+    expect(items[0]!.getAttribute('data-session-state')).toBe('ended')
     expect(text[1]).toBe('Grand Theft Auto V')
     // An ended stream says when it streamed and for how long, not the read time (which reads as live).
     expect(text[2]).toMatch(/^Streamed Jul 1[56] · 3m\. /)
@@ -163,6 +176,39 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
     // The coverage banner, the lifecycle row and the VOD note are gone from the centre column.
     expect(document.querySelector('[data-session-status-row]')).toBeNull()
     expect(screen.queryByText(/open the full VOD/)).toBeNull()
+  })
+
+  it('shows Twitch\'s picture beside the name, and the name\'s first letter until then (C1)', async () => {
+    let answer: (value: unknown) => void = () => {}
+    twitch.lookupTwitchChannel.mockReturnValue(new Promise(resolve => { answer = resolve }))
+    renderConsole()
+    await screen.findByText('Shell fixture', { selector: '[data-session-title]' })
+    const avatar = header().querySelector<HTMLElement>('[data-channel-avatar]')!
+    expect(avatar.querySelector('img')).toBeNull()
+    expect(avatar.textContent).toBe('X')
+    answer({ state: 'found', displayName: 'xQcOW', avatar: 'https://static-cdn.jtvnw.net/jtv_user_pictures/x.png' })
+    await waitFor(() => expect(avatar.querySelector('img')?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/jtv_user_pictures/x.png'))
+    expect(avatar.querySelector('img')!.getAttribute('alt')).toBe('')
+    expect(twitch.lookupTwitchChannel).toHaveBeenCalledWith('xqc')
+    // StreamPulse's own name for the stream wins over Twitch's.
+    expect(within(header()).getByRole('heading', { level: 1 }).textContent).toBe('xQc')
+  })
+
+  it('leads a live stream\'s meta line with Live and rings the picture red', async () => {
+    const base = detail()
+    const recent = new Date(Date.now() - 30 * 60_000).toISOString()
+    api.getAnalyticsStream.mockResolvedValue({
+      ...base,
+      state: 'live',
+      stream: { ...base.stream, startedAt: recent, endedAt: undefined, lifecycleState: 'confirmed_live', lifecycleDetectedAt: undefined },
+    })
+    api.getAnalyticsStreams.mockResolvedValue({
+      items: [{ streamId, login: 'xqc', title: 'Shell fixture', startedAt: recent, viewerSamples: 1, chatMessages: 10, peakViewers: 120 }],
+    })
+    renderConsole()
+    await waitFor(() => expect(header().querySelector('[data-session-state]')?.getAttribute('data-session-state')).toBe('live'))
+    expect(header().querySelector('.ssp-meta > .mi')!.textContent).toBe('Live')
+    expect(header().querySelector('[data-channel-avatar]')!.hasAttribute('data-live')).toBe(true)
   })
 
   it('keeps Hide streams and Focus chart at the top right, from 1280 px only', async () => {
@@ -207,6 +253,8 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
     expect(sessionUpdatedText()).toMatch(/^Updated /)
     expect(sessionUpdatedText()).not.toMatch(/Ended/)
     expect(statLabels()[0]).toBe('Latest viewers')
+    // Neither Live nor Ended: the badge says only what the data says.
+    expect(header().querySelector('[data-session-state]')).toBeNull()
   })
 
   it('names the end of an older row that states no lifecycle, from its stored end', async () => {
@@ -236,7 +284,7 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
   it('"Data" opens the Status tab, whose panel is always in the page, and moves focus to it', async () => {
     renderConsole()
     // The tab resets to Moments when the stream resolves, so wait for it first.
-    await screen.findByRole('heading', { name: 'Shell fixture' })
+    await screen.findByText('Shell fixture', { selector: '[data-session-title]' })
     const data = screen.getByRole('button', { name: /^Data: / })
     expect(data.getAttribute('aria-controls')).toBe('session-panel-status')
     const statusPanel = document.getElementById('session-panel-status')!
@@ -255,7 +303,7 @@ describe('AnalyticsConsole session page shell (d3-v2 session-original)', () => {
 
   it('puts the Moments explainer behind an (i) beside the tabs, only while Moments is open', async () => {
     renderConsole()
-    await screen.findByRole('heading', { name: 'Shell fixture' })
+    await screen.findByText('Shell fixture', { selector: '[data-session-title]' })
     const info = screen.getByRole('button', { name: 'About Pulse Moments' })
     expect(info.closest('[role="tablist"]')).toBeNull()
     const cell = info.closest('.ssp-tl-i')!

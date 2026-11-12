@@ -5,15 +5,12 @@
  * minutes ran at least 1.5× its own usual, strongest × first, with how many more
  * messages a minute beside it (hubV5FeedModel). Each row opens the stream page.
  *
- * From 1100 px the whole list is in the rail and scrolls inside it (the sticky
- * column from 1536 px, the row Top emotes and Where chat is give it from 1100),
- * its bottom fading while more is below. Narrower, the first 6 show and "Show
- * all N" opens the rest in place.
+ * At every width (desktop took the phone order, B1 11-11) the first 6 show and
+ * "Show all N" opens the rest in place.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fx } from '../../../../lib/momentsChecked'
-import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { HubToggletip } from '../d3/HubToggletip'
 import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
@@ -23,7 +20,7 @@ import { FEED_ADD_MIN, FEED_NOW_MIN, FEED_UP_MIN, feedFreshText, feedMore, feedS
 import { channelHref, hubSavedClock } from './hubV5Model'
 
 const H_ID = 'hv5-up-h'
-/** Rows under 1100 px before "Show all N". */
+/** Rows before "Show all N". */
 export const UP_FIRST = 6
 const SEP = <span className="hv5-fd-sep" aria-hidden="true">·</span>
 
@@ -67,26 +64,9 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
   const down = top.upDown === true
   const rows = up.up
   const n = rows.length
-  const wide = useMatchMedia('(min-width: 1100px)')
   const [all, setAll] = useState(false)
-  const listed = wide || all ? rows : rows.slice(0, UP_FIRST)
+  const listed = all ? rows : rows.slice(0, UP_FIRST)
   const hidden = n - listed.length
-
-  // the list scrolls inside the rail from 1100 px: its bottom fades only while more of it is below (hub-v5.css)
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const [more, setMore] = useState(false)
-  const measureMore = useCallback(() => {
-    const body = bodyRef.current
-    setMore(!!body && body.scrollHeight - body.scrollTop - body.clientHeight > 1)
-  }, [])
-  useLayoutEffect(() => measureMore())
-  useEffect(() => {
-    const body = bodyRef.current
-    if (!body || typeof ResizeObserver === 'undefined') return undefined
-    const observer = new ResizeObserver(measureMore)
-    observer.observe(body)
-    return () => observer.disconnect()
-  }, [measureMore])
 
   const none = top.shown?.source === 'none'
   // it waits while Top moments today does (the hub read runs), so it never says "nothing" before the answer
@@ -107,7 +87,7 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
         {waiting || none ? null : <HubToggletip tip={UP_TIP} label="About Picking up now" />}
         {n && !down ? <span className="hv5-end hv5-up-n" aria-label={`${n} ${n === 1 ? 'channel' : 'channels'}`}>{n}</span> : null}
       </div>
-      <div ref={bodyRef} className="hv5-tm-body" data-more={more ? '' : undefined} onScroll={measureMore}>
+      <div className="hv5-tm-body">
         {waiting ? (
           <>
             <ol className="hv5-tm-list hv5-tm-wait" aria-busy="true" aria-hidden="true">
@@ -131,7 +111,7 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
         ) : (
           <p className="hv5-tm-q">{none ? UP_UNAVAILABLE : saved ? upSavedNone(saved) : UP_NONE}</p>
         )}
-        {hidden > 0 || (all && !wide && n > UP_FIRST) ? (
+        {hidden > 0 || (all && n > UP_FIRST) ? (
           <div className="hv5-fd-more">
             <button className="hv5-qb" type="button" aria-expanded={all} onClick={() => setAll((v) => !v)}>
               {all ? 'Show fewer' : `Show all ${n}`}

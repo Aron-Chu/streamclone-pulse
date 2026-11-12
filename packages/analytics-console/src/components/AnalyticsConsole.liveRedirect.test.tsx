@@ -157,7 +157,7 @@ describe('AnalyticsConsole: channel route to the live session', () => {
     expect(document.querySelector('[data-stat-label]')?.textContent).toBe('Latest viewers')
 
     await act(async () => answer(endedLiveRead({ chatMessages: 0 })))
-    expect(await screen.findByRole('heading', { name: 'Ended broadcast' })).toBeTruthy()
+    expect(await screen.findByText('Ended broadcast', { selector: '[data-session-title]' })).toBeTruthy()
     expect(screen.getByTestId('path').textContent).toBe('/analytics/xqc')
     expect(document.querySelector('[data-stat-label]')?.textContent).toBe('Latest viewers')
   })

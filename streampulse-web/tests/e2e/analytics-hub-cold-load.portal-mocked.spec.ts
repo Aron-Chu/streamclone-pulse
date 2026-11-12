@@ -8,7 +8,7 @@ import { installHubUxMock } from './helpers/hubUxMock'
 // mock; the 24h reply is held behind a gate.
 
 /** The Channels count once the mock's live rows are on screen. */
-const LIVE_COUNT = /^14 of \d+ live$/
+const LIVE_COUNT = /^Showing 14 of \d+ live$/
 
 const isRecentHubRead = (url: string) =>
   /\/v1\/public\/hub\?/.test(url) &&

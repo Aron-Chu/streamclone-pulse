@@ -37,7 +37,6 @@ export function StreamerChatStats() {
     <section id="streamer-chat-stats" className="streamer-chat-stats" aria-labelledby="streamer-chat-stats-title">
       <div className="streamer-chat-stats__header">
         <div>
-          <p className="streamer-chat-stats__eyebrow">Explore tracked channels</p>
           <h2 id="streamer-chat-stats-title">Twitch chat stats by streamer</h2>
           <p className="streamer-chat-stats__intro">
             Find chat activity, top emotes and reaction moments in broadcasts we’ve tracked.

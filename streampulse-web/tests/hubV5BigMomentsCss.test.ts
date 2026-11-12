@@ -7,7 +7,7 @@ const hub = read('hub-v5.css')
 const css = read('hub-v5-big-moments.css')
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-/** Each rule's grid-template-areas for exactly this selector, in file order: base, 720, 1100, 1536 px. */
+/** Each rule's grid-template-areas for exactly this selector, in file order: phones, then from 720 px (B1, 11-11: desktop takes the phone's order). */
 const areas = (source: string, selector: string) =>
   [...source.matchAll(new RegExp(`(?:^|\\n)\\s*${esc(selector)} \\{[^}]*?grid-template-areas: ([^;]+);`, 'g'))].map((m) => [...m[1]!.matchAll(/"([^"]+)"/g)].map((r) => r[1]!))
 const withoutBig = (rows: string[]) => rows.filter((r) => !r.split(' ').includes('big'))
@@ -20,17 +20,18 @@ describe('Chat’s big moments in the hub’s grid (C1, 11-01)', () => {
     it(`adds only its row above Top emotes at every width, ${name}`, () => {
       const before = areas(hub, theirs)
       const after = areas(css, mine)
-      expect(before).toHaveLength(4)
-      expect(after).toHaveLength(4)
+      expect(before).toHaveLength(2)
+      expect(after).toHaveLength(2)
       after.forEach((rows, i) => {
         expect(withoutBig(rows)).toEqual(before[i])
         const at = rows.findIndex((r) => r.split(' ').includes('big'))
         expect(rows.filter((r) => r.split(' ').includes('big'))).toHaveLength(1)
-        // the next row holds Top emotes; from 1100 px the rail, Top emotes and Games keep sharing theirs
+        // the next row holds Top emotes, right after Picking up now as on phones; from 720 px Where chat is shares it
+        expect(rows[at - 1]!.split(' ')).toContain('rail')
         expect(rows[at + 1]!.split(' ')).toContain('emo')
       })
-      const wide = after[2]!
-      expect(wide.slice(wide.indexOf('big big big'), wide.indexOf('big big big') + 2)).toEqual(['big big big', 'rail emo games'])
+      const wide = after[1]!
+      expect(wide.slice(wide.indexOf('big big'), wide.indexOf('big big') + 2)).toEqual(['big big', 'emo games'])
     })
   }
 

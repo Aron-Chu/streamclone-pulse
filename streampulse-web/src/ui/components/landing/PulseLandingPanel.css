@@ -203,8 +203,10 @@
   margin: 0;
   padding: 0.35rem 1rem 0.75rem;
   color: hsl(var(--sc-muted-foreground));
-  font-size: 0.68rem;
+  /* 11 px floor; balanced so the last word never sits alone. */
+  font-size: 0.7rem;
   text-align: center;
+  text-wrap: balance;
 }
 
 .sl-xtour__stage .pulse-landing-panel {

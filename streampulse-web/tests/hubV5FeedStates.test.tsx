@@ -325,7 +325,7 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     const busiest = container.querySelector('#busiest')!
     expect(busiest.querySelector('.hv5-bzs-wait')).toBeTruthy()
     expect(busiest.querySelector('.hv5-bzc-it')).toBeNull()
-    expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toBe(`3 of 500 live at ${hubClock(cachedAt)}`)
+    expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toBe(`Showing 3 of 500 live at ${hubClock(cachedAt)}`)
     expect(screen.getByText(`Cached snapshot · Saved at ${hubClock(cachedAt)} · refreshing...`)).toBeTruthy()
     expect(peekEl().querySelector('h2')!.textContent).toBe('Top today')
   })
@@ -377,7 +377,7 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     expect(screen.getByText(`Cached snapshot · Saved yesterday, ${hubClock(late)} · refreshing...`)).toBeTruthy()
     expect(screen.getByText(/^Cached snapshot · Saved yesterday, 11:30\sPM · refreshing\.\.\.$/)).toBeTruthy()
     // U7: no "at" before a day.
-    expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toMatch(/^3 of 500 live yesterday, 11:30\sPM$/)
+    expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toMatch(/^Showing 3 of 500 live yesterday, 11:30\sPM$/)
   })
 
   it('says the day in Top moments today’s line, age and (i) on a copy saved before today (Q1b)', () => {

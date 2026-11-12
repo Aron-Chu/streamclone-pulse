@@ -187,7 +187,7 @@ function Hero({
     <section className="sl-hero sl-hero--stage" aria-labelledby="hero-headline">
       <div className="sl-stage">
         <h1 id="hero-headline">
-          Find the Twitch moments people <span className="sl-grad">actually reacted to.</span>
+          Find the Twitch moments people <span className="sl-accent">actually reacted to.</span>
         </h1>
         <p>Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
         <div className="sl-search">

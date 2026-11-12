@@ -25,7 +25,7 @@ const BAKE_TIMEOUT_MS = 5000
 
 export interface HubV5ConveyorRefs {
   mast: RefObject<HTMLElement | null>
-  kicker: RefObject<HTMLElement | null>
+  title: RefObject<HTMLElement | null>
   field: RefObject<HTMLElement | null>
   tryRow: RefObject<HTMLElement | null>
   getRow?: RefObject<HTMLElement | null>
@@ -152,12 +152,12 @@ export function HubV5Conveyor({ points, refs }: { points: readonly HubActivityPo
     }
     // keep the title, search, Add to Chrome and Try rows clear: the mask's clear oval follows them
     const place = () => {
-      const k = refs.kicker.current
+      const title = refs.title.current
       const field = refs.field.current
-      if (!k || !field) return
+      if (!title || !field) return
       const low = [refs.tryRow.current, refs.getRow?.current, field].filter((el): el is HTMLElement => Boolean(el && el.getClientRects().length))
       const r = fx.getBoundingClientRect()
-      const top = k.getBoundingClientRect().top - r.top
+      const top = title.getBoundingClientRect().top - r.top
       const bot = Math.max(...low.map((el) => el.getBoundingClientRect().bottom)) - r.top
       host.style.setProperty('--cy', `${Math.round((top + bot) / 2)}px`)
       host.style.setProperty('--rx', `${Math.round(Math.min(field.offsetWidth / 2 + 110, r.width * 0.72))}px`)

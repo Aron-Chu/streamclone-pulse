@@ -248,7 +248,7 @@
   line-height: 1.05;
   letter-spacing: 0;
   font-weight: 850;
-  /* Without this the last line orphans a two-letter word under the gradient. */
+  /* Without this the last line orphans a two-letter word. */
   text-wrap: balance;
 }
 
@@ -258,11 +258,9 @@
   }
 }
 
-.sl-grad {
-  background: linear-gradient(90deg, hsl(var(--sc-chart-5)), hsl(var(--sc-chart-2)), hsl(var(--sc-chart-1)));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+/* The reacted-to phrase: one solid accent, not gradient text (impeccable polish, 11-11). */
+.sl-accent {
+  color: hsl(var(--sc-chart-2));
 }
 
 .sl-stage > p {
@@ -271,6 +269,7 @@
   color: hsl(var(--sc-muted-foreground));
   font-size: 1.125rem;
   line-height: 1.65;
+  text-wrap: pretty;
 }
 
 .sl-hero__actions {
@@ -729,25 +728,18 @@
   border-right: 1px solid hsl(var(--sc-border));
   background: hsl(var(--sc-card));
   color: hsl(var(--sl-ticker-accent));
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 900;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-/* Size and glow used to arrive from LiveSignalScrollGraph.css, which the landing
-   imported for every page; they live here now that the replay left the landing. */
+/* A plain status dot: no glow, no endless blink; the moving ticker already says live. */
 .sl-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 8px 1px currentColor;
-  animation: sl-blink 1.3s infinite;
-}
-
-@keyframes sl-blink {
-  50% { opacity: 0.35; }
 }
 
 .sl-ticker__marquee {
@@ -833,10 +825,13 @@
 }
 
 .sl-section-head p {
+  /* About 75 characters a line. */
+  max-width: 36rem;
   margin: 0;
   color: hsl(var(--sc-muted-foreground));
   font-size: 1.02rem;
   line-height: 1.65;
+  text-wrap: pretty;
 }
 
 [data-reveal] {
@@ -914,7 +909,9 @@
   gap: 0.28rem;
   padding: 0.75rem 0 0.75rem 1rem;
   border-left: 2px solid hsl(var(--sc-border));
-  opacity: 0.62;
+  /* Dimmed, but its text still reads at 4.5:1: the kicker is grey until its step is active. */
+  opacity: 0.8;
+  --sl-step-kicker: var(--sc-muted-foreground);
 }
 
 .sl-xtour[data-step='1'] .sl-xtour__step[data-step='1'],
@@ -923,11 +920,12 @@
 .sl-xtour[data-step='4'] .sl-xtour__step[data-step='4'] {
   border-left-color: hsl(var(--sc-chart-2));
   opacity: 1;
+  --sl-step-kicker: var(--sc-chart-2);
 }
 
 .sl-xtour__step-kicker {
-  color: hsl(var(--sc-chart-2));
-  font-size: 0.65rem;
+  color: hsl(var(--sl-step-kicker));
+  font-size: 0.75rem;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1116,6 +1114,7 @@
 .sl-xtour[data-static] .sl-xtour__step[data-step] {
   border-left-color: hsl(var(--sc-chart-2) / 0.35);
   opacity: 1;
+  --sl-step-kicker: var(--sc-chart-2);
 }
 .sl-xtour[data-static] .sl-ext__scrollport,
 .sl-xtour[data-static] .sl-ext__scrollport.is-playing {

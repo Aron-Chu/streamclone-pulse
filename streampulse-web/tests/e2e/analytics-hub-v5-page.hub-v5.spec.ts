@@ -77,25 +77,22 @@ for (const [label, featuredSession] of [['with', READY_FEATURED_SESSION], ['with
     }).toPass(SETTLED)
     await noSideScroll(page)
 
-    await page.setViewportSize({ width: 1440, height: 900 })
-    await expect(async () => {
-      const [latest, emotes, games] = [await box(page, '#latest'), await box(page, '#emotes'), await box(page, '#games')]
-      expect(Math.abs(latest.y - emotes.y)).toBeLessThanOrEqual(1)
-      expect(Math.abs(emotes.y - games.y)).toBeLessThanOrEqual(1)
-      expect(latest.x + latest.width).toBeLessThanOrEqual(emotes.x + 1)
-      expect(emotes.x + emotes.width).toBeLessThanOrEqual(games.x + 1)
-    }).toPass(SETTLED)
-    await noSideScroll(page)
-
-    await page.setViewportSize({ width: 1920, height: 1000 })
-    await expect(async () => {
-      const [activity, rail] = [await box(page, '#activity'), await box(page, '#latest')]
-      expect(rail.x).toBeGreaterThanOrEqual(activity.x + activity.width - 1)
-      const [emotesWide, gamesWide] = [await box(page, '#emotes'), await box(page, '#games')]
-      expect(Math.abs(emotesWide.y - gamesWide.y)).toBeLessThanOrEqual(1)
-      expect(emotesWide.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
-    }).toPass(SETTLED)
-    await noSideScroll(page)
+    // desktop takes the phone's order (B1, 11-11): every section full width, only Top emotes and Where chat is side by side
+    for (const [width, height] of [[1440, 900], [1920, 1000]] as const) {
+      await page.setViewportSize({ width, height })
+      await expect(async () => {
+        const tops: number[] = []
+        for (const selector of order) tops.push((await box(page, selector)).y)
+        expect(tops).toEqual([...tops].sort((a, b) => a - b))
+        const [activity, rail, emotes, games] = [await box(page, '#activity'), await box(page, '#latest'), await box(page, '#emotes'), await box(page, '#games')]
+        expect(Math.abs(rail.x - activity.x)).toBeLessThanOrEqual(1)
+        expect(Math.abs(rail.width - activity.width)).toBeLessThanOrEqual(1)
+        expect(emotes.y).toBeGreaterThanOrEqual(rail.y + rail.height - 1)
+        expect(Math.abs(emotes.y - games.y)).toBeLessThanOrEqual(1)
+        expect(emotes.x + emotes.width).toBeLessThanOrEqual(games.x + 1)
+      }).toPass(SETTLED)
+      await noSideScroll(page)
+    }
   })
 }
 
@@ -115,8 +112,8 @@ test('the Featured stream sits under Busiest now with its moments and no chat/mi
   await expect(card.locator('.hv5-mst-mo')).toHaveText(['0:13:54 YappingDuck 930', '1:35:54 NotLikeThis 1,286', '0:41:54 YappingDuck 319'])
   await expect(card.getByRole('link', { name: 'Open stream: xQc' })).toHaveAttribute('href', '/analytics/xqc/s1')
 
-  // one column on a phone, then the main column on desktop, then beside the rail on a wide screen; each side of the
-  // card's template breakpoints (720, 1100, 1536)
+  // under Busiest now and as wide as Activity at every width (desktop took the phone order, B1 11-11); each side of
+  // the card's old template breakpoints (720, 1100, 1536)
   for (const [width, height] of [[360, 780], [719, 900], [720, 900], [1099, 900], [1100, 900], [1535, 900], [1536, 900], [1920, 1000]]) {
     await page.setViewportSize({ width, height })
     await expect(async () => {
@@ -125,7 +122,6 @@ test('the Featured stream sits under Busiest now with its moments and no chat/mi
       expect(activity.y).toBeGreaterThanOrEqual(most.y + most.height - 1)
       expect(Math.abs(most.x - activity.x)).toBeLessThanOrEqual(1)
       expect(Math.abs(most.width - activity.width)).toBeLessThanOrEqual(1)
-      if (width >= 1536) expect(most.x + most.width).toBeLessThanOrEqual((await box(page, '#latest')).x + 1)
     }).toPass(SETTLED)
     await noSideScroll(page)
   }
@@ -358,7 +354,7 @@ test('Where chat is filters Channels to one game and the chip clears it', async 
   await channels.getByRole('button', { name: 'Remove the Minecraft filter' }).click()
   await expect(channels.locator('[data-chip="game"]')).toHaveCount(0)
   await expect(minecraft).toHaveAttribute('aria-pressed', 'false')
-  await expect(channels.locator('[data-hv5-channel-count]')).toHaveText('14 of 96 live')
+  await expect(channels.locator('[data-hv5-channel-count]')).toHaveText('Showing 14 of 96 live')
   await expect(channels.getByRole('textbox', { name: 'Filter channels or games' })).toBeFocused()
 })
 
@@ -531,10 +527,12 @@ test('on a phone the promo opens on See how it works, and Find emote clears with
   await expect(emotes.locator('.hv5-em-ly:not([data-out]) > .hv5-em-t[data-found]')).toHaveCount(0)
   await noSideScroll(page)
 
-  // a desktop keeps the promo as it was: the scene and the install button, no phone line or button
+  // a desktop gets the slim promo (B1, 11-11): one line and the same install button, no scene, no phone line or button
   await page.setViewportSize({ width: 1440, height: 900 })
-  await expect(promo.locator('.hv5-pr-stage')).toBeVisible()
+  await expect(promo.locator('.hv5-pr-h')).toBeVisible()
   await expect(promo.locator('.hv5-hero-install')).toBeVisible()
-  await expect(promo.locator('.hv5-pr-sub')).toBeHidden()
+  await expect(promo.locator('.hv5-hero-install')).toHaveAttribute('data-cta', 'chrome-install-hub-hero')
+  for (const selector of ['.hv5-pr-stage', '.hv5-pr-p', '.hv5-pr-sub']) await expect(promo.locator(selector)).toBeHidden()
   await expect(more).toBeHidden()
+  expect((await promo.boundingBox())!.height).toBeLessThanOrEqual(64)
 })

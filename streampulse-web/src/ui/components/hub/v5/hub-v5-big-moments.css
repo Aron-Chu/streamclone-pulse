@@ -8,42 +8,22 @@
  * by specificity, so they hold whichever file the bundle puts first.
  */
 .hv5-big { grid-area: big; margin-top: 32px; }
+/* after Picking up now and above Top emotes, as on phones; desktop takes that order too (B1, 11-11) */
 .hub-v5.hub-d3:has(> .hv5-big) {
   grid-template-areas: "mast" "fol" "peek" "busy" "act" "intv" "rail" "big" "emo" "games" "chan" "meas";
 }
-@media (min-width: 720px) and (max-width: 1099px) {
+@media (min-width: 720px) {
   .hub-v5.hub-d3:has(> .hv5-big) {
-    grid-template-areas: "mast mast" "fol fol" "busy busy" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
-  }
-}
-/* a row of its own above the rail, Top emotes and Games, which keep sharing theirs */
-@media (min-width: 1100px) and (max-width: 1535px) {
-  .hub-v5.hub-d3:has(> .hv5-big) {
-    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "act act act" "intv intv intv" "big big big" "rail emo games" "chan chan chan" "meas meas meas";
-  }
-}
-@media (min-width: 1536px) {
-  .hub-v5.hub-d3:has(> .hv5-big) {
-    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "act act rail" "intv intv rail" "big big rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
   }
 }
 /* with the featured stream's row too */
 .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
   grid-template-areas: "mast" "fol" "peek" "busy" "most" "act" "intv" "rail" "big" "emo" "games" "chan" "meas";
 }
-@media (min-width: 720px) and (max-width: 1099px) {
+@media (min-width: 720px) {
   .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
-    grid-template-areas: "mast mast" "fol fol" "busy busy" "most most" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
-  }
-}
-@media (min-width: 1100px) and (max-width: 1535px) {
-  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
-    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy busy" "most most most" "act act act" "intv intv intv" "big big big" "rail emo games" "chan chan chan" "meas meas meas";
-  }
-}
-@media (min-width: 1536px) {
-  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
-    grid-template-areas: "mast mast mast" "fol fol rail" "busy busy rail" "most most rail" "act act rail" "intv intv rail" "big big rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "most most" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
   }
 }
 

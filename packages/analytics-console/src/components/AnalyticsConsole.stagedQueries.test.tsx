@@ -159,7 +159,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
         stream: { ...detail.stream, endedAt: null, lifecycleState: 'unknown' },
         availability: { liveDvrState: 'live', vodState: 'unavailable' } })
       renderConsole()
-      await screen.findByRole('heading', { name: 'Staging fixture' })
+      await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
       expect(screen.queryByText(/^live$/i)).toBeNull()
       await act(async () => { await vi.advanceTimersByTimeAsync(90_000) })
       expect(api.getStreamMinutesTail).not.toHaveBeenCalled()
@@ -183,7 +183,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
   it('supports roving keyboard focus and associated session tab panels', async () => {
     renderConsole()
     await screen.findByText('Moment details')
-    await screen.findByRole('heading', { name: 'Staging fixture' })
+    await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
     await screen.findByText('Recap')
     const moments = screen.getByRole('tab', { name: 'Moments' })
 
@@ -205,7 +205,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       renderConsole()
-      await screen.findByRole('heading', { name: 'Staging fixture' })
+      await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
       // (fix, 10-30) VOD-4: the list is two reads, the first 12 rows then 100.
       await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2))
       expect(api.getAnalyticsStreams).toHaveBeenNthCalledWith(1, expect.any(String), 12)
@@ -255,7 +255,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     })
     renderConsole('staged')
 
-    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).toBeTruthy()
+    expect(await screen.findByText('Staging fixture', { selector: '[data-session-title]' })).toBeTruthy()
     expect(screen.getByTestId('analytics-chart')).toBeTruthy()
   })
 
@@ -279,7 +279,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     mockedLive.data = confirmedLiveDetail
     renderConsole('staged')
 
-    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).toBeTruthy()
+    expect(await screen.findByText('Staging fixture', { selector: '[data-session-title]' })).toBeTruthy()
     expect(screen.getByTestId('analytics-chart')).toBeTruthy()
     expect(screen.getByTestId('session-signal-tape')).toBeTruthy()
     expect(api.getAnalyticsStream).not.toHaveBeenCalled()
@@ -302,7 +302,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     expect(screen.queryByText(/No verified archive link/)).toBeNull()
 
     await act(async () => answer(verifiedSessionDetail))
-    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).toBeTruthy()
+    expect(await screen.findByText('Staging fixture', { selector: '[data-session-title]' })).toBeTruthy()
     expect(screen.getByTestId('analytics-chart')).toBeTruthy()
     expect(document.querySelector('[data-console-skeleton="chart"]')).toBeNull()
     expect(document.querySelector('[data-session-watch-vod]')?.getAttribute('href')).toBe('https://www.twitch.tv/videos/2222222222')
@@ -316,7 +316,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     mockedLive.data = endedLiveFrame
     renderConsole('staged')
 
-    expect(await screen.findByRole('heading', { name: 'Live frame title' })).toBeTruthy()
+    expect(await screen.findByText('Live frame title', { selector: '[data-session-title]' })).toBeTruthy()
     expect(screen.getByTestId('analytics-chart')).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByText(new RegExp(`Session not found for`))).toBeNull()
@@ -336,7 +336,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     expect(screen.queryByText('Other stream title')).toBeNull()
 
     await act(async () => answer(detail))
-    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).toBeTruthy()
+    expect(await screen.findByText('Staging fixture', { selector: '[data-session-title]' })).toBeTruthy()
     expect(screen.queryByText('Other stream title')).toBeNull()
   })
 
@@ -345,7 +345,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     mockedLive.data = endedLiveFrame
     renderConsole('staged')
 
-    expect(await screen.findByRole('heading', { name: 'Live frame title' })).toBeTruthy()
+    expect(await screen.findByText('Live frame title', { selector: '[data-session-title]' })).toBeTruthy()
     await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalled())
     expect(await screen.findByText('No VOD linked yet.')).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
@@ -370,7 +370,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     expect(screen.queryByRole('heading', { name: `Session ${streamId} not found` })).toBeNull()
 
     await act(async () => answer(detail))
-    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).toBeTruthy()
+    expect(await screen.findByText('Staging fixture', { selector: '[data-session-title]' })).toBeTruthy()
     expect(screen.queryByText('Other creator broadcast')).toBeNull()
   })
 
@@ -388,7 +388,7 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
   it('enables heatmap and sync immediately after explicit tab engagement', async () => {
     renderConsole('staged')
 
-    expect(await screen.findByRole('heading', { name: 'Staging fixture' })).not.toBeNull()
+    expect(await screen.findByText('Staging fixture', { selector: '[data-session-title]' })).not.toBeNull()
     expect(screen.getByTestId('analytics-chart')).not.toBeNull()
     expect(api.getReplayHeatmap).not.toHaveBeenCalled()
     expect(api.getSyncStatus).not.toHaveBeenCalled()
@@ -471,7 +471,7 @@ describe('AnalyticsConsole Stream Recap slot', () => {
     api.getPulseStreamRecap.mockImplementation(read)
     renderConsole()
 
-    await screen.findByRole('heading', { name: 'Staging fixture' })
+    await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
     await waitFor(() => expect(api.getPulseStreamRecap).toHaveBeenCalled())
     // A failed read is asked once more (retry: 1) before it settles.
     await waitFor(() => expect(recapSlot()).toBeNull(), { timeout: 3_000 })

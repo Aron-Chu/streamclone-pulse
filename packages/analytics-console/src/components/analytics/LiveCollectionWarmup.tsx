@@ -88,7 +88,7 @@ export default function LiveCollectionWarmup({
         {!reducedMotion ? (
           <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-violet-500/30 border-t-violet-400" />
         ) : null}
-        <h3 className="text-base font-black text-zinc-100">{COLLECTING_FIRST_MINUTES_MESSAGE}</h3>
+        <h2 className="text-base font-black text-zinc-100">{COLLECTING_FIRST_MINUTES_MESSAGE}</h2>
       </div>
 
       <p className="mt-2 text-sm font-semibold text-zinc-400">

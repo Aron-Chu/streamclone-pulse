@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest'
 
 const css = readFileSync(resolve(process.cwd(), 'src/ui/charts/sp-session-page.css'), 'utf8')
 const H1 = '.analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1'
+const STATUS = `${H1}:not([data-channel-name])`
+const NAME = `${H1}[data-channel-name]`
 
 function escape(selector: string): string {
   return selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -16,14 +18,31 @@ function ruleBelow(maxWidth: number, selector: string): string {
 }
 
 describe('session heading on phones', () => {
-  it('keeps room for two title lines below 640 px (2 x the 1.08 line height)', () => {
+  it('keeps room for two lines below 640 px (2 x the 1.08 line height) for a status heading', () => {
     expect(css).toMatch(new RegExp(`${escape(H1)} \\{[^}]*line-height: 1\\.08;`))
-    expect(ruleBelow(639, H1)).toMatch(/min-height:\s*2\.16em;/)
+    expect(ruleBelow(639, STATUS)).toMatch(/min-height:\s*2\.16em;/)
+    expect(ruleBelow(639, H1)).not.toMatch(/min-height/)
   })
 
-  it('reserves it for every heading the h1 shows (stream, not-recorded, error), and only on phones', () => {
+  it('reserves it for the status headings only (not recorded, not found, an error), and only on phones', () => {
     const reservations = [...css.matchAll(/([^{}\n]*h1\.ssp-h1[^{}\n]*)\{[^}]*min-height/g)].map(m => m[1].trim())
-    expect(reservations).toEqual([H1])
+    expect(reservations).toEqual([STATUS])
     expect(css).not.toContain('data-session-title')
+  })
+})
+
+describe('channel name heading (C1, 11-11)', () => {
+  it('is one line, cut with an ellipsis, beside the picture', () => {
+    const name = css.match(new RegExp(`${escape(NAME)} \\{([^}]*)\\}`))?.[1] ?? ''
+    expect(name).toContain('white-space: nowrap;')
+    expect(name).toContain('text-overflow: ellipsis;')
+    expect(name).toContain('overflow: hidden;')
+  })
+
+  it('puts the stream title on one grey line that keeps its slot', () => {
+    const title = css.match(/header\[data-session-header\] > \.ssp-title \{([^}]*)\}/)?.[1] ?? ''
+    expect(title).toContain('white-space: nowrap;')
+    expect(title).toContain('text-overflow: ellipsis;')
+    expect(title).toMatch(/min-height: 22px;/)
   })
 })

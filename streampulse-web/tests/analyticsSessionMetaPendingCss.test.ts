@@ -13,17 +13,17 @@ function pendingMinHeightBelow(maxWidth: number): string | null {
 }
 
 describe('session meta line while the first read is out', () => {
-  it('hides the line and reserves its loaded rows: 3 below 456 px, 2 up to 797 px, 1 from 798 px', () => {
+  it('hides the line and reserves its loaded rows: 3 below 394 px, 2 up to 777 px, 1 from 778 px', () => {
     // 24 px rows with 2 px row gaps (.ssp-meta row-gap, .mi min-height).
     expect(css).toMatch(/\.analytics-console \.ssp-meta \{[^}]*row-gap: 2px;/)
     expect(css).toMatch(/\.analytics-console \.ssp-meta > \.mi \{[^}]*min-height: 24px;/)
     const base = css.match(/\.analytics-console \.ssp-meta-w\[data-session-meta-pending\] \{([^}]*)\}/)?.[1] ?? ''
     expect(base).toContain('visibility: hidden;')
     expect(base).not.toContain('min-height')
-    expect(pendingMinHeightBelow(455)).toBe('76px')
-    expect(pendingMinHeightBelow(797)).toBe('50px')
-    // The 3-row rule comes after the 2-row rule, so it wins below 456 px.
-    expect(css.indexOf('@media (max-width: 455px)')).toBeGreaterThan(css.indexOf('@media (max-width: 797px)'))
+    expect(pendingMinHeightBelow(393)).toBe('76px')
+    expect(pendingMinHeightBelow(777)).toBe('50px')
+    // The 3-row rule comes after the 2-row rule, so it wins below 394 px.
+    expect(css.indexOf('@media (max-width: 393px)')).toBeGreaterThan(css.indexOf('@media (max-width: 777px)'))
   })
 
   it('reserves rows only while pending, never on the loaded line', () => {
