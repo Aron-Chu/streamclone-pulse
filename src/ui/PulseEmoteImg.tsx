@@ -205,7 +205,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     color: theme.textSecondary,
     display: 'inline-flex',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 700,
     justifyContent: 'center',
     overflow: 'hidden',
@@ -223,7 +223,7 @@ const styles: Record<string, CSSProperties> = {
   previewName: {
     color: theme.textPrimary,
     display: 'block',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 800,
     marginTop: 4,
     maxWidth: 72,
@@ -247,7 +247,7 @@ const styles: Record<string, CSSProperties> = {
   previewProvider: {
     color: theme.accentSoft,
     display: 'block',
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: 700,
     maxWidth: 150,
     overflow: 'hidden',
@@ -257,7 +257,7 @@ const styles: Record<string, CSSProperties> = {
   previewCount: {
     color: theme.textMuted,
     display: 'block',
-    fontSize: 9,
+    fontSize: 11,
     fontVariantNumeric: 'tabular-nums',
     fontWeight: 700,
     marginTop: 2,

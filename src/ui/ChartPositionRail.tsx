@@ -616,7 +616,7 @@ const styles: Record<string, CSSProperties> = {
   labelRow: {
     color: theme.textMuted,
     display: 'flex',
-    fontSize: 10,
+    fontSize: 11,
     justifyContent: 'flex-end',
     letterSpacing: 0.2,
     lineHeight: '12px',

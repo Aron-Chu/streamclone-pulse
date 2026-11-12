@@ -103,7 +103,7 @@ import {
   canShowVodBackfillCTA,
 } from './missedMoments.ts'
 import { initPulseDebug, pulseDebug } from '../shared/pulseDebug.ts'
-import { resolveMostReactedHeat } from './mostReacted.ts'
+import { resolveMostReactedHeat, sortLiveHeatPoints } from './mostReacted.ts'
 import { MomentBookmarkToast, MomentBookmarksProvider, endedStreamVodId } from './momentBookmarks.tsx'
 import { useArchiveVodId, useLiveVodId, useMomentCapture } from './momentPicture.ts'
 import { StreamRecapSection } from './StreamRecapSection.tsx'
@@ -1848,6 +1848,11 @@ function OverlayMain({
   }
 
   if (resolvedMode === 'mini') {
+    // The first row the panel's Top moments list would show, ranked as it ranks.
+    const dockTopMoment = !isVodPage && canRenderPayload && pulseSupported && pulseLiveAccess.state === 'full_live'
+      && panelSections?.showMostReacted && mostReactedHeat?.visible
+      ? sortLiveHeatPoints(mostReactedHeat.points, 'reaction')[0] ?? null
+      : null
     return (
       <section className={shellClass} data-pulse-density={density} style={sidebarBodyOnly ? styles.miniHost : undefined} aria-label="StreamPulse mini overlay">
         <MiniDock
@@ -1861,6 +1866,8 @@ function OverlayMain({
           onSettings={openInlineSettings}
           onHide={() => void hideOverlay()}
           onTrack={localStackBackend ? () => void startTracking() : undefined}
+          topMoment={dockTopMoment}
+          onJumpTopMoment={point => jumpToOffset(reactionAnalyticalOffset(point))}
         />
       </section>
     )
