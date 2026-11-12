@@ -102,7 +102,7 @@ button { font: inherit; color: inherit; }
   align-self: start;
   padding: 4px 6px; border-radius: 4px;
   background: var(--pp-live); color: #fff;
-  font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; line-height: 1;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.04em; line-height: 1;
   text-transform: uppercase;
 }
 .pp-badge[data-tone="offline"] { background: var(--pp-well); color: var(--pp-text-2); box-shadow: 0 0 0 1px var(--pp-line) inset; }
@@ -124,7 +124,7 @@ button { font: inherit; color: inherit; }
 }
 .pp-spark-dot { fill: var(--pp-chart); }
 .pp-spark-halo { fill: var(--pp-chart); transform-box: fill-box; transform-origin: center; animation: pp-halo 2.4s ease-out 700ms infinite; opacity: 0; }
-.pp-axis { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10.5px; color: var(--pp-text-3); }
+.pp-axis { display: flex; justify-content: space-between; margin-top: 3px; font-size: 11px; color: var(--pp-text-3); }
 
 .pp-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 0; }
 .pp-stat { min-width: 0; padding: 6px 10px; border-radius: 8px; background: var(--pp-well); }
@@ -211,7 +211,7 @@ button.pp-chan-row:hover { background: var(--pp-hover); }
 .pp-chan-text small { font-size: 11.5px; color: var(--pp-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pp-chan-rate { display: grid; justify-items: end; gap: 4px; font-variant-numeric: tabular-nums; }
 .pp-chan-rate b { font-size: 12.5px; font-weight: 700; }
-.pp-chan-rate small { font-size: 10.5px; font-weight: 600; color: var(--pp-text-3); }
+.pp-chan-rate small { font-size: 11px; font-weight: 600; color: var(--pp-text-3); }
 .pp-chan-bar { width: 56px; height: 4px; border-radius: 2px; background: var(--pp-well); overflow: hidden; }
 .pp-chan-bar span { display: block; height: 100%; border-radius: 2px; background: var(--pp-chart); transform-origin: left; animation: pp-grow 700ms 150ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 
@@ -280,7 +280,7 @@ button.pp-chan-row:hover { background: var(--pp-hover); }
 .pp-dot[data-tone="ok"] { background: var(--pp-ok); }
 .pp-dot[data-tone="bad"] { background: var(--pp-bad); }
 .pp-source { padding: 1px 5px; border-radius: 4px; box-shadow: 0 0 0 1px var(--pp-line-strong) inset; color: var(--pp-text-2); }
-.pp-version { margin-left: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; }
+.pp-version { margin-left: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
 
 @keyframes pp-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes pp-fade { from { opacity: 0; } to { opacity: 1; } }

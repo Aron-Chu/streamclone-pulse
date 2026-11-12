@@ -212,6 +212,7 @@ export const shadowStyles = `
     background: rgba(255, 255, 255, 0.03);
   }
   .pulse-seven-tv-toggle:focus-visible,.pulse-seven-tv-more:focus-visible,.pulse-seven-tv-chip:focus-visible{outline:2px solid rgba(var(--pulse-accent-light-rgb,196,181,253),.95);outline-offset:2px}
+  :host :is(button, a, [tabindex]):focus-visible { outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95); outline-offset: 2px; }
   .pulse-seven-tv-chip {
     transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
   }
@@ -1050,7 +1051,7 @@ export const shadowStyles = `
   }
   .pulse-quick-group-title {
     color: ${theme.textSecondary};
-    font-size: 10.5px;
+    font-size: 12px;
     font-weight: 800;
     letter-spacing: 0.07em;
     margin: 0 0 6px 2px;
@@ -1094,7 +1095,7 @@ export const shadowStyles = `
   }
   .pulse-settings-section-heading h2 {
     color: ${theme.textPrimary};
-    font-size: 10px;
+    font-size: 11px;
     margin: 0;
     text-transform: uppercase;
   }
@@ -1165,7 +1166,7 @@ export const shadowStyles = `
   }
   /* Selected marker for compact pickers, matching PulseThemedSelect. Styled
      here rather than inline so it follows the stylesheet like every sibling. */
-  .pulse-choice-check { flex: none; font-size: 9px; line-height: 1; margin-left: 2px; }
+  .pulse-choice-check { flex: none; font-size: 11px; line-height: 1; margin-left: 2px; }
   .pulse-placement-icon {
     border: 1px solid currentColor;
     border-radius: 2px;
@@ -1194,7 +1195,7 @@ export const shadowStyles = `
     border-radius: 999px;
     color: var(--pulse-accent-ink, #ddd6fe);
     flex: none;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     padding: 3px 6px;
   }
@@ -1228,7 +1229,7 @@ export const shadowStyles = `
   .pulse-settings-channel-copy :is(strong, span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-settings-channel-copy span { color: ${theme.textSecondary}; font-size: 11.5px; }
   .pulse-settings-channel-live { align-self: start; display: grid; gap: 4px; justify-items: end; padding-top: 2px; }
-  .pulse-settings-channel-live b { background: #eb0400; border-radius: 4px; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; line-height: 1; padding: 3px 5px; }
+  .pulse-settings-channel-live b { background: #eb0400; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; line-height: 1; padding: 3px 5px; }
   .pulse-settings-channel-live span { color: ${theme.textSecondary}; font-size: 11px; font-variant-numeric: tabular-nums; }
   .pulse-settings-footer-error { margin: 0 2px 6px; }
   .pulse-settings-status-dot[data-tone="ok"] { background: ${theme.liveSoft}; }

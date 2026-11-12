@@ -96,7 +96,7 @@ export function panelComponentCss(): string {
   .pulse-games-track { align-items: center; display: flex; gap: ${CHIP_GAP}px; min-height: ${CHIP_H + 4}px; min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; padding: 2px 3px; scrollbar-width: none; width: 100%; }
   .pulse-games-item { flex: 0 0 ${CHIP_W}px; position: relative; }
   .pulse-games-card { align-items: center; background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 8px; box-sizing: border-box; cursor: pointer; display: flex; height: ${CHIP_H}px; justify-content: center; overflow: hidden; padding: 2px; position: relative; text-align: center; transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; width: ${CHIP_W}px; }
-  .pulse-games-card-active { background: rgba(139, 92, 246, 0.14); border: 1px solid ${theme.borderAccent}; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.18), 0 5px 16px rgba(0,0,0,0.24); transform: translateY(-2px) scale(1.02); }
+  .pulse-games-card-active { background: rgba(139, 92, 246, 0.14); border: 1px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.18), 0 5px 16px rgba(0,0,0,0.24); transform: translateY(-2px) scale(1.02); }
   /* After the active rule: a clipped game keeps its dashed edge while highlighted. */
   .pulse-games-card-clipped { border-style: dashed; }
   .pulse-games-art { border-radius: 7px; display: block; height: ${ART_H}px; overflow: hidden; position: relative; width: ${ART_W}px; }
