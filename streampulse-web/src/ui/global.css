@@ -394,13 +394,11 @@ h1.public-title {
   font-weight: 600;
 }
 
-/* Privacy "At a glance" box and its contents list (audit row 1, 11-02). */
+/* Privacy "At a glance": plain section under a hairline, no box (audit row 1, 11-02). */
 .public-glance {
   margin-top: 2rem;
-  padding: 1.5rem;
-  border: 1px solid rgb(255 255 255 / 0.08);
-  border-radius: 0.75rem;
-  background: rgb(0 0 0 / 0.2);
+  padding-top: 1.5rem;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
 }
 
 .public-glance ul {

@@ -23,12 +23,6 @@ export default function Terms() {
           <Link to="/" className="text-zinc-400 hover:text-white inline-flex items-center gap-1">← StreamPulse Home</Link>
         </p>
         <header className="mb-6 border-b border-white/[0.08] pb-6">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Website, extension and Supporter
-            </span>
-          </div>
           <h1>Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Last updated: October 26, 2026 · Applies to{' '}
@@ -39,7 +33,7 @@ export default function Terms() {
 
         <PrelaunchNotice />
 
-        <section className="mt-8 rounded-xl border border-white/[0.08] bg-black/20 p-6">
+        <section className="mt-8 border-t border-white/[0.08] pt-6">
           <h2 className="!mt-0">Summary</h2>
           <p className="text-zinc-300">
             StreamPulse is a free Twitch analytics site and browser extension. Pulse Supporter is an

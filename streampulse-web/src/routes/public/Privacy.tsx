@@ -23,12 +23,6 @@ export default function Privacy() {
           <Link to="/" className="text-zinc-400 hover:text-white inline-flex items-center gap-1">← StreamPulse Home</Link>
         </p>
         <header className="mb-6 border-b border-white/[0.08] pb-6">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Extension and website privacy
-            </span>
-          </div>
           <h1>Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Last updated: November 2, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
