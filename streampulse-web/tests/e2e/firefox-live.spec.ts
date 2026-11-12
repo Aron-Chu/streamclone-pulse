@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test'
-import { seedBetaKey } from './helpers/auth'
 
 /**
  * @firefox LIVE (un-mocked) capture against whatever backend the dev server
@@ -8,7 +7,6 @@ import { seedBetaKey } from './helpers/auth'
  */
 test.describe('@firefox live portal capture', () => {
   test.beforeEach(async ({ page }) => {
-    await seedBetaKey(page)
     await page.emulateMedia({ reducedMotion: 'reduce' })
   })
 

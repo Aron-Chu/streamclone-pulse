@@ -122,7 +122,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/v1/**', route => route.fulfill({ status: 503, json: { error: 'unmocked_endpoint' } }))
   await installHubUxMock(page)
   await installNewsroomMock(page)
-  // Ranked discovery deployed but down keeps History reachable from Latest.
+  // Ranked discovery deployed but down: a bookmarked History shows its unavailable panel.
   await page.route(/\/v1\/public\/discovery\/ranked\/availability(?:\?.*)?$/, route => route.fulfill({ status: 503, json: { error: 'discovery_unavailable' } }))
   await page.route('**/v1/portal/analytics/streams/*', async route => {
     const streamId = new URL(route.request().url()).pathname.split('/').pop()
@@ -295,27 +295,6 @@ test('legacy Saved title stays historical when an exact recap adds reactions', a
   await expect(detail.getByLabel('Why keep this moment?')).toHaveValue('Keep this one')
 })
 
-test('Live Wire preserves opened measurements when Recent no longer supplies the detection', async ({ page }) => {
-  await page.goto('/analytics')
-  const open = page.getByRole('link', { name: /^Open moment for xQc/ }).first()
-  await expect(open).toBeVisible()
-  await installHubUxMock(page, { mode: 'empty' })
-  await open.click()
-  const detail = page.getByRole('region', { name: /^Selected moment: / })
-  const measurement = detail.getByRole('region', { name: 'Moment measurement' })
-  await expect(measurement.locator('dd').nth(0)).toHaveText('393')
-  await expect(measurement.locator('dd').nth(1)).toHaveText('133')
-  await page.reload()
-  await expect(page.locator('.moments-result')).toHaveCount(0)
-  await expect(measurement.locator('dd').nth(0)).toHaveText('393')
-  await expect(measurement.locator('dd').nth(1)).toHaveText('133')
-  await expect(detail.getByText('Selection outside loaded matches', { exact: true })).toBeVisible()
-  await expect(detail.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
-  // A different exact URL must never inherit the previously opened row.
-  await page.goto('/analytics/moments?view=recent&login=xqc&stream=s1&offset=9999')
-  await expect(measurement.locator('dd').nth(0)).toHaveText('Unavailable')
-})
-
 test('exact moment source, device save, reload and legacy session link', async ({ page }) => {
   const exactRefreshes: string[] = []
   page.on('request', request => { if (request.url().includes('momentOffsetSeconds=')) exactRefreshes.push(request.url()) })
@@ -325,13 +304,6 @@ test('exact moment source, device save, reload and legacy session link', async (
   await expect(page.locator('.moments-result')).toHaveCount(2)
   await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
   await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
-  const prepare = page.getByRole('link', { name: /Prepare clip in ReplayForge/ })
-  if (process.env.VITE_REPLAYFORGE_UI_ORIGIN) {
-    await expect(prepare).toHaveAttribute('href', `${process.env.VITE_REPLAYFORGE_UI_ORIGIN}/handoff/streampulse/cr_Y2NfYWJj`)
-    await expect(prepare).not.toHaveAttribute('href', /cr_c3RhbGU/)
-  } else {
-    await expect(prepare).toHaveCount(0)
-  }
   await page.locator('.moments-detail').getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click()
   await expect(page.getByText('Saved in this browser · not synced to the extension or your account.')).toBeVisible()
@@ -340,11 +312,6 @@ test('exact moment source, device save, reload and legacy session link', async (
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()
   await expect(page.getByRole('link', { name: /^Open VOD at/ })).toBeVisible()
   await expect.poll(() => exactRefreshes.some(url => new URL(url).searchParams.get('momentOffsetSeconds') === '120')).toBe(true)
-  if (process.env.VITE_REPLAYFORGE_UI_ORIGIN) {
-    await expect(page.getByRole('link', { name: /Prepare clip in ReplayForge/ })).toHaveAttribute('href', `${process.env.VITE_REPLAYFORGE_UI_ORIGIN}/handoff/streampulse/cr_Y2NfYWJj`)
-  } else {
-    await expect(page.getByRole('link', { name: /Prepare clip in ReplayForge/ })).toHaveCount(0)
-  }
   expect(await page.evaluate(() => localStorage.getItem('streampulse.saved-moments.v2'))).not.toContain('handoffRef')
   await page.goto('/analytics/newsroom/story-xqc?window=live#keep')
   await expect(page).toHaveURL(/\/analytics\/moments$/)
@@ -366,33 +333,22 @@ test('category survives detail and browser back; retired Sessions bookmarks reac
   await expect(page.getByRole('tablist', { name: 'Moment views' })).toBeVisible()
 })
 
-test('creator navigation opens stored history and Back restores browse filters', async ({ page }) => {
+test('creator links open the channel while History is hidden; a History creator link and Back keep browse filters', async ({ page }) => {
   await page.route('**/v1/public/discovery/ranked?*', route => route.fulfill({ status: 404, json: {} }))
   await page.goto('/analytics/moments')
   await page.getByRole('combobox', { name: 'Category', exact: true }).click()
   await page.getByRole('option', { name: 'Minecraft', exact: true }).click()
   await expect(page.locator('.moments-result')).toHaveCount(1)
-  const creator = page.locator('.moments-result').getByRole('link', { name: /^Browse .* history$/ })
-  const href = await creator.getAttribute('href')
-  const creatorUrl = new URL(href!, 'http://127.0.0.1:5173')
-  expect(creatorUrl.pathname).toBe('/analytics/moments')
-  expect(creatorUrl.searchParams.get('view')).toBe('history')
-  expect(creatorUrl.searchParams.get('scope')).toBe('creator')
-  expect(creatorUrl.searchParams.get('creator')).toBe('xqc')
-  await creator.click()
-  await expect(page).toHaveURL(url => {
-    const next = new URL(url)
-    return next.pathname === '/analytics/moments'
-      && next.searchParams.get('view') === 'history'
-      && next.searchParams.get('scope') === 'creator'
-      && next.searchParams.get('creator') === 'xqc'
-  })
+  // History is not offered while ranked is not deployed: the creator opens their broadcasts.
+  await expect(page.locator('.moments-result').getByRole('link', { name: /^All .+ broadcasts$/ })).toHaveAttribute('href', '/analytics/xqc')
+  await expect(page.locator('.moments-result').getByRole('link', { name: /^Browse .* history$/ })).toHaveCount(0)
+  // A bookmarked History creator link still opens stored history.
+  await page.goto('/analytics/moments?view=history&scope=creator&creator=xqc')
   await expect(page.getByRole('heading', { name: 'History unavailable' })).toBeVisible()
   await expect(page.locator('.moments-detail')).toHaveCount(0)
   await page.goBack()
   await expect(page.getByRole('combobox', { name: 'Category', exact: true })).toHaveText('Minecraft')
   await expect(page.locator('.moments-result')).toHaveCount(1)
-  await expect(creator).toBeFocused()
 })
 
 test('in-page Back does not leave a detail entry that browser Back reopens', async ({ page }) => {
@@ -608,7 +564,7 @@ test('loaded search and ordering survive exact-detail Back and refresh', async (
   await page.getByRole('option', { name: 'Category A–Z', exact: true }).click()
   await page.getByLabel('Find loaded moments').fill('xqc')
   await expect(page.locator('.moments-result')).toHaveCount(1)
-  await expect(page.getByText('For earlier broadcasts, open History.', { exact: false })).toBeVisible()
+  await expect(page.getByText('A detection may be older than the chart range.', { exact: false })).toBeVisible()
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()
   await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
   await page.goBack()

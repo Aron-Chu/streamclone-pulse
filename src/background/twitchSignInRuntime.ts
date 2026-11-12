@@ -1,6 +1,7 @@
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
 import { ACCOUNT_BACKEND_URL, accountRequestsAllowed, bindTwitchStepUp, supporterAccount, twitchSignInMetaRecord } from './supporterAccountRuntime.ts'
 import { TwitchSignIn, twitchSurface, type WebAuthFlowDetails } from './twitchSignIn.ts'
+import { accountHooks } from './accountHooks.ts'
 
 type IdentityApi = {
   launchWebAuthFlow?: (details: WebAuthFlowDetails) => Promise<string | undefined>
@@ -49,6 +50,8 @@ export const twitchSignIn = new TwitchSignIn({
       else await session.set({ [PROFILE_KEY]: value })
     },
   },
+  flushAccount: () => accountHooks.flush(),
+  accountSeen: accountId => accountHooks.seen(accountId),
 })
 
 // Managing a subscription asks for a recent Twitch check when the server requires one.

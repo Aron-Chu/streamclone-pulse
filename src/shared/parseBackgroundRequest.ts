@@ -2,6 +2,7 @@ import { normalizeLogin } from './login.ts'
 import { parseMyMoments } from './myMoments.ts'
 import { parseMomentPicture } from './momentPictureMessages.ts'
 import { validBookmarkCursor, validBookmarkPageLimit } from './bookmarkPage.ts'
+import { keptVodOriginDelta, resolveVodOriginAlignment } from './vodOriginAlignment.ts'
 import type { BackgroundRequest, CreatePulseBookmarkInput } from './messages.ts'
 
 const KNOWN_MESSAGE_TYPES = new Set<string>([
@@ -14,6 +15,9 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'SUPPORTER_APPEARANCE',
   'SUPPORTER_FINISH_INTENT',
   'SUPPORTER_CARD_SCRIPT',
+  'SUPPORTER_CHAT_BADGE',
+  'SUPPORTER_TWITCH_LINK',
+  'CHAT_BADGES',
   'MOMENT_FRAMES_SCRIPT',
   'MOMENT_PICTURE',
   'CATCH_ME_UP_SCRIPT',
@@ -54,6 +58,8 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'CLEAR_PULSE_DEBUG_LOG',
   'REPORT_EXTENSION_DIAGNOSTIC',
   'EMIT_EXTENSION_ANALYTICS',
+  'PREPARE_ANALYTICS_CONSENT_GRANT',
+  'SET_ANALYTICS_CONSENT',
   'ENROLL_DEVICE',
   'GET_DEVICE_AUTH_STATUS',
   'ROTATE_DEVICE',
@@ -246,10 +252,16 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'SAVE_BOOKMARK': {
       const bookmark = parseBookmarkInput(raw.bookmark)
       if (!bookmark) return null
-      if (raw.restoreOf === undefined) return { type, bookmark }
+      // A delta belongs to the VOD it was reported for: never without one. Zero
+      // is the identity mapping, so it is accepted and not kept.
+      const rawDelta = raw.vodOriginDeltaSeconds
+      if (rawDelta !== undefined && (typeof rawDelta !== 'number' || resolveVodOriginAlignment(rawDelta).kind !== 'aligned' || !bookmark.vodId)) return null
+      const delta = keptVodOriginDelta(rawDelta)
+      const extra = delta === undefined ? {} : { vodOriginDeltaSeconds: delta }
+      if (raw.restoreOf === undefined) return { type, bookmark, ...extra }
       const restoreOf = requireString(raw.restoreOf)
       if (!restoreOf || restoreOf.length > 200) return null
-      return { type, bookmark, restoreOf }
+      return { type, bookmark, restoreOf, ...extra }
     }
     case 'DELETE_BOOKMARK': {
       const id = requireString(raw.id)
@@ -292,7 +304,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       // a caller-controlled destination into this content-script-reachable action.
       if ('url' in raw || 'path' in raw || 'target' in raw) return null
       const section =
-        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'help' || raw.section === 'developer' || raw.section === 'pulse-background'
+        raw.section === 'moments' || raw.section === 'pulse' || raw.section === 'supporter' || raw.section === 'privacy' || raw.section === 'updates' || raw.section === 'help' || raw.section === 'developer' || raw.section === 'pulse-background' || raw.section === 'moments-history'
           ? raw.section
           : raw.section == null ? undefined : null
       if (section === null) return null
@@ -325,7 +337,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     }
     case 'SUPPORTER_BILLING':
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'action')) return null
-      return raw.action === 'status' || raw.action === 'check' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' || raw.action === 'portal_confirm' ? { type, action: raw.action } : null
+      return raw.action === 'status' || raw.action === 'check' || raw.action === 'connect' || raw.action === 'checkout' || raw.action === 'resume' || raw.action === 'portal' || raw.action === 'portal_confirm' ? { type, action: raw.action } : null
     case 'SUPPORTER_RESTORE': {
       if (Object.keys(raw).some(key => !['type', 'action', 'email'].includes(key))) return null
       if (raw.action === 'status' || raw.action === 'check' || raw.action === 'cancel') return 'email' in raw ? null : { type, action: raw.action }
@@ -346,6 +358,20 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
       if (Object.keys(raw).some(key => key !== 'type' && key !== 'finish')) return null
       if (!('finish' in raw)) return { type }
       return raw.finish === null || raw.finish === 'glass' || raw.finish === 'etched' || raw.finish === 'halo' ? { type, finish: raw.finish } : null
+    case 'SUPPORTER_CHAT_BADGE': {
+      const keys = Object.keys(raw)
+      if (raw.action === 'status' || raw.action === 'on' || raw.action === 'off') return keys.length === 2 ? { type, action: raw.action } : null
+      if (raw.action !== 'style' || keys.length !== 3) return null
+      return raw.wave === 'smooth' || raw.wave === 'ripple' || raw.wave === 'chrome' || raw.wave === 'aurora' ? { type, action: 'style', wave: raw.wave } : null
+    }
+    case 'SUPPORTER_TWITCH_LINK':
+      return (raw.action === 'link' || raw.action === 'unlink') && Object.keys(raw).length === 2 ? { type, action: raw.action } : null
+    case 'CHAT_BADGES': {
+      const keys = Object.keys(raw)
+      if (keys.some(key => key !== 'type' && key !== 'have')) return null
+      if (raw.have === undefined) return { type }
+      return typeof raw.have === 'string' && /^[0-9]{1,16}\.[0-9]{1,16}$/.test(raw.have) ? { type, have: raw.have } : null
+    }
     case 'SUPPORTER_ENTITLEMENT':
     case 'SUPPORTER_APPEARANCE':
     // No file, tab or frame comes from the caller: the worker injects one fixed script into the sender's own frame.
@@ -429,6 +455,17 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'EMIT_EXTENSION_ANALYTICS': {
       if (raw.name !== 'pulse_load_completed' && raw.name !== 'extension_error_shown') return null
       return { type, name: raw.name }
+    }
+    case 'PREPARE_ANALYTICS_CONSENT_GRANT': {
+      return Object.keys(raw).every(key => key === 'type') ? { type } : null
+    }
+    case 'SET_ANALYTICS_CONSENT': {
+      if (Object.keys(raw).some(key => key !== 'type' && key !== 'granted' && key !== 'grantTicket')) return null
+      if (typeof raw.granted !== 'boolean') return null
+      if (raw.grantTicket === undefined) return { type, granted: raw.granted }
+      if (!raw.granted || typeof raw.grantTicket !== 'string' ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw.grantTicket)) return null
+      return { type, granted: true, grantTicket: raw.grantTicket }
     }
     case 'APPEND_PULSE_DEBUG': {
       if (!isObject(raw.entry)) return null

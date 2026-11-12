@@ -4,8 +4,6 @@
  * Never invent these from client poll history or local scoring.
  */
 
-export type ChannelScreenerView = 'overview' | 'momentum' | 'coverage' | 'anomalies'
-
 export interface HubChannelScreenerFields {
   chatAcceleration?: number
   emoteAcceleration?: number
@@ -86,19 +84,6 @@ export function normalizeHubChannelScreenerFields(
   }
 
   return hasServerField ? out : null
-}
-
-export function screenerViewLabel(view: ChannelScreenerView): string {
-  switch (view) {
-    case 'overview':
-      return 'Overview'
-    case 'momentum':
-      return 'Momentum'
-    case 'coverage':
-      return 'Coverage'
-    case 'anomalies':
-      return 'Anomalies'
-  }
 }
 
 /* ---------------------------------------------------------------------------

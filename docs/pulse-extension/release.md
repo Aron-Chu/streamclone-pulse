@@ -33,11 +33,14 @@ Generation must not broaden production permissions beyond the audited set.
 `validate:package` is the **development** target only and is not uploadable.
 Do **not** upload until RPR-9.
 
-Working-tree candidate version is **0.2.2** (device bookmarks, the redesigned
-popup, Supporter perks, and Supporter purchase and recovery, plus the earlier
-selected-minute/settings work). Manifests, `package.json`, and the
-current `src/shared/release-notes.json` entry all read `0.2.2`. It remains unreleased;
-local builds and mocked checks do not prove the owner purchase or Store gates.
+The October 31 draft source candidate is **0.2.7**, preparing Supporter email
+recovery and refund/rejoin handling. Manifests, root package/lock metadata and
+the current release-notes entry read `0.2.7`. Its notes remain `unreleased`
+with no date until a separately approved packaging commit records the real
+submission date. Supporter sales remain closed. The notes retain 0.2.6 as a
+released entry dated October 27; the last recorded public Chrome listing was
+0.2.6 on October 29. Recheck the publisher dashboard before the next upload.
+Local source/build checks do not establish store acceptance or publication.
 The public Chrome Web Store listing reported **0.2.1**
 on 2026-09-24 (its "Updated" date read as 2026-08-31 or 2026-09-01 in separate
 checks; only the publisher dashboard is authoritative), so these newer
@@ -54,7 +57,10 @@ update, and its size (314,509 bytes) does not match the listing's reported
 commit or ZIP as the published 0.2.1 unless the publisher dashboard package is
 matched to it.
 
-The owner-reviewed October 5 closeout scope authorizes the `0.2.2` source bump.
+The October 5 closeout authorized the earlier `0.2.2` source bump, and the
+owner chose `0.2.6` on October 27. The subsequent `0.2.7` preparation follows
+the owner's recovery/withdrawal release work; its submission date remains
+unset until the separately approved packaging step.
 Publisher dashboard version/support checks and candidate acceptance still gate
 Store submission. No Store package is authorized for upload by this source bump.
 The default chart range is **Full stream**

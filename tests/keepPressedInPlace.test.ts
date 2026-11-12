@@ -257,22 +257,45 @@ function runAllFrames() {
 }
 
 describe('revealCardBelow (an arrival)', () => {
-  /** A 500 px panel with the chip at `chipTop` in its content and the card's slot right after it. */
-  function arrival({ chipTop = 600, cardHeight = 0 } = {}) {
+  /** Stands in for the browser's ResizeObserver: `resize()` reports a layout change to every live one. */
+  let observers: Array<{ callback: () => void; watched: Element[] }> = []
+  function resize() {
+    for (const observer of observers) if (observer.watched.length) observer.callback()
+  }
+  beforeEach(() => {
+    observers = []
+    vi.stubGlobal('ResizeObserver', class {
+      private entry: { callback: () => void; watched: Element[] }
+      constructor(callback: () => void) {
+        this.entry = { callback, watched: [] }
+        observers.push(this.entry)
+      }
+      observe(target: Element) { this.entry.watched.push(target) }
+      disconnect() { this.entry.watched = [] }
+    })
+  })
+
+  /**
+   * A panel (top `panelTop`, `panelHeight` tall) with the chip at `chipTop`
+   * in the window and the card's slot right after it, in the panel's content.
+   */
+  function arrival({ chipTop = 600, cardHeight = 0, panelTop = 0, panelHeight = 500 } = {}) {
     const scroller = document.createElement('div')
     scroller.className = 'pulse-panel-body'
+    const content = document.createElement('div')
     const chip = document.createElement('div')
     const slot = document.createElement('div')
     slot.className = 'pulse-moment-slot'
-    scroller.append(chip, slot)
+    content.append(chip, slot)
+    scroller.append(content)
     document.body.append(scroller)
     // `above` grows the content over the chip, as a summary that loads taller.
     const layout = { cardHeight, above: 0 }
     const rect = (top: number, height: number) => ({ top, bottom: top + height, height } as DOMRect)
-    scroller.getBoundingClientRect = () => rect(0, 500)
+    scroller.getBoundingClientRect = () => rect(panelTop, panelHeight)
     chip.getBoundingClientRect = () => rect(chipTop + layout.above - scroller.scrollTop, 24)
     slot.getBoundingClientRect = () => rect(chipTop + layout.above + 30 - scroller.scrollTop, layout.cardHeight)
-    return { scroller, chip, layout }
+    return { scroller, content, chip, layout }
   }
 
   it('scrolls just far enough for the card, following it while it opens', () => {
@@ -310,8 +333,12 @@ describe('revealCardBelow (an arrival)', () => {
     revealCardBelow(chip)
     frame()
     expect(scroller.scrollTop).toBe(288)
-    layout.cardHeight = 330
+    // The card has opened: no more frames, only layout changes.
+    frame(700)
+    expect(frames).toEqual([])
     frame(3000)
+    layout.cardHeight = 330
+    resize()
     expect(scroller.scrollTop).toBe(468)
   })
 
@@ -328,11 +355,11 @@ describe('revealCardBelow (an arrival)', () => {
   })
 
   it('follows the chip when it moves to the card that opens', () => {
-    const { scroller, chip } = arrival({ cardHeight: 200 })
+    const { scroller, content, chip } = arrival({ cardHeight: 200 })
     // The chip first renders under the chart, with no card after it.
     const early = document.createElement('div')
     early.getBoundingClientRect = () => ({ top: 300 - scroller.scrollTop, bottom: 324 - scroller.scrollTop, height: 24 } as DOMRect)
-    scroller.prepend(early)
+    content.prepend(early)
     let current: HTMLElement = early
     revealCardBelow(() => current)
     frame()
@@ -360,6 +387,23 @@ describe('revealCardBelow (an arrival)', () => {
     expect(scroller.scrollTop).toBe(508)
   })
 
+  // Real-Twitch check, 2026-10-19: at 1038×1078 the card fit until its picture landed,
+  // past the old five-second window, and pushed the card's actions out of view.
+  it('keeps the card\'s actions in view at 1038×1078 when its picture lands 12 s later', () => {
+    vi.stubGlobal('innerHeight', 1078)
+    const { scroller, content, chip, layout } = arrival({ chipTop: 760, cardHeight: 200, panelTop: 140, panelHeight: 860 })
+    revealCardBelow(chip)
+    expect(observers.map(observer => observer.watched)).toEqual([[scroller, content]])
+    frame()
+    // Card bottom 990 + 8 is inside the panel's end at 1000.
+    expect(scroller.scrollTop).toBe(0)
+    frame(12_000)
+    layout.cardHeight = 400
+    resize()
+    // Card bottom 1190 + 8 - 1000.
+    expect(scroller.scrollTop).toBe(198)
+  })
+
   it('leaves a card already in view alone', () => {
     const { scroller, chip } = arrival({ chipTop: 100, cardHeight: 200 })
     revealCardBelow(chip)
@@ -367,21 +411,26 @@ describe('revealCardBelow (an arrival)', () => {
     expect(scroller.scrollTop).toBe(0)
   })
 
-  it('stops at the viewer\'s first input, and on its own once the card has opened', () => {
+  it('stops at the viewer\'s first input, and on its own after a minute', () => {
     const first = arrival()
     revealCardBelow(first.chip)
     first.scroller.dispatchEvent(new Event('wheel'))
     frame()
     expect(first.scroller.scrollTop).toBe(0)
     expect(frames).toEqual([])
+    first.layout.cardHeight = 200
+    resize()
+    expect(first.scroller.scrollTop).toBe(0)
 
     const second = arrival()
     revealCardBelow(second.chip)
-    frame(5100)
-    expect(frames).toEqual([])
-    second.layout.cardHeight = 200
     frame()
     expect(second.scroller.scrollTop).toBe(138)
+    frame(60_100)
+    second.layout.cardHeight = 200
+    resize()
+    expect(second.scroller.scrollTop).toBe(138)
+    expect(observers.every(observer => observer.watched.length === 0)).toBe(true)
   })
 
   it('stops when anything else scrolls the panel, such as its scrollbar', () => {
@@ -394,5 +443,7 @@ describe('revealCardBelow (an arrival)', () => {
     frame()
     expect(scroller.scrollTop).toBe(0)
     expect(frames).toEqual([])
+    resize()
+    expect(scroller.scrollTop).toBe(0)
   })
 })

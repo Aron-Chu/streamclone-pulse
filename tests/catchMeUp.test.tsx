@@ -407,7 +407,7 @@ describe('Stream recap: summary, games, chart and Top moments, as on live', () =
     const card = element.querySelector('[data-top-moment-card="selected"]')!
     expect(card.textContent).toContain('Minecraft')
     // Its height reserves the game line, so swapping moments moves nothing.
-    expect(card.querySelector<HTMLElement>('.pulse-moment-slot-inner > div > div')!.style.minHeight)
+    expect(card.querySelector<HTMLElement>('[data-moment-reserve]')!.style.minHeight)
       .toBe(`${MOMENT_CARD_HEIGHT + MOMENT_CARD_GAME_LINE_HEIGHT}px`)
   })
 

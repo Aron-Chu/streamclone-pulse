@@ -101,6 +101,8 @@
   color: var(--sp-text-3);
   font: inherit;
   cursor: pointer;
+  /* the colour eases on hover (2026-11-02); the token is zero under reduced motion */
+  transition: color var(--sp-dur-quick);
 }
 
 /* 44 px hit area on a 20 px control */
@@ -143,6 +145,14 @@
   color: var(--sp-text-1);
   font: 400 var(--sp-fs-label) / 16px var(--sp-font);
   font-variant-numeric: tabular-nums;
+}
+
+/* it fades in and drops 4 px into place (2026-11-02); the individual translate leaves any transform alone */
+@keyframes hub-tip-pop-in {
+  from { opacity: 0; translate: 0 -4px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hub-tip-pop { animation: hub-tip-pop-in var(--sp-dur-quick) var(--sp-ease); }
 }
 
 .hub-tip-pop a {

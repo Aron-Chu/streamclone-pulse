@@ -830,7 +830,7 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
             const gid = uid + 'g' + k + '-' + j
             return (
               // a plotted emote's line draws in from the left when it mounts (sp-chart.css .spc-line-in)
-              <g key={e.key} className={L.lines ? 'spc-line-in' : undefined}>
+              <g key={e.key} className={fitOn && L.lines ? 'spc-line-in' : undefined}>
                 {e.fill && L.gradient && (
                   <defs>
                     <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">

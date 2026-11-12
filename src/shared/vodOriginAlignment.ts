@@ -37,6 +37,16 @@ export function resolveVodOriginAlignment(raw: unknown): VodOriginAlignment {
   return { kind: 'aligned', originDeltaSeconds: raw }
 }
 
+/**
+ * The delta a saved moment keeps beside its VOD id: a usable, non-zero skew.
+ * Zero and absent both mean the identity mapping, so neither is stored. It keeps
+ * exactly what `resolveVodOriginAlignment` aligns, checked directly so the
+ * content script carries this and not the whole parser.
+ */
+export function keptVodOriginDelta(raw: unknown): number | undefined {
+  return typeof raw === 'number' && Number.isInteger(raw) && raw !== 0 && Math.abs(raw) <= MAX_ORIGIN_DELTA_SECONDS ? raw : undefined
+}
+
 export function isVodOriginAligned(
   alignment: VodOriginAlignment,
 ): alignment is { kind: 'aligned'; originDeltaSeconds: number } {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LibraryWorkspace } from '../ui/library/LibraryWorkspace.tsx'
-import type { LibraryCommand, LibraryMoment, LibraryRepository } from '../ui/library/model.ts'
+import type { LibraryCommand, LibraryMoment, LibraryRepository, LibraryView, MomentReference } from '../ui/library/model.ts'
 import type { MomentContext, MomentContextState } from '../ui/library/MomentPreview.tsx'
 import { MY_MOMENTS_CHANGED, type MyMomentsCommand, type MyMomentsSnapshot } from '../shared/myMoments.ts'
 import { usePortalOrigin } from './usePortalOrigin.ts'
@@ -9,18 +9,38 @@ import { momentIdentity } from '../background/myMomentsStore.ts'
 import { momentPictures, type SavedPicture } from '../shared/momentPictureStore.ts'
 import { getMomentPicturesEnabled } from '../shared/storage.ts'
 
+/** Only a reference's own fields cross to the worker: a row's note, dates and other enrichment stay here. */
+function reference(r: MomentReference): MomentReference {
+  const { id, channel, title, vodId, streamId, offsetSeconds, vodOriginDeltaSeconds, availability } = r
+  return { id, channel, title, vodId, streamId, offsetSeconds, ...(vodOriginDeltaSeconds === undefined ? {} : { vodOriginDeltaSeconds }), availability }
+}
+/** Worker sentences written for people; anything else is told in one of the lines below. */
+const WORKER_SENTENCE = /^(My Moments is|Device connection|Your Pulse account|Added \d|Could not add to your account|Sign in|Connect a Pulse|Bookmark unavailable|That save|Synced History)/
+/**
+ * What failed, in words (F9): a full browser, StreamPulse out of reach, or a
+ * change or load that did not go through. Never "check your connection" when
+ * the connection was fine.
+ */
+export function myMomentsProblem(raw: unknown, change: boolean): string {
+  const text = typeof raw === 'string' ? raw : raw instanceof Error ? raw.message : ''
+  if (/allowance|quota/i.test(text)) return 'This browser’s storage is full. Remove or export some saves.'
+  if (WORKER_SENTENCE.test(text)) return text
+  if (/reach StreamPulse|extension_api_|fetch|network|timeout|account_temporarily_unavailable|\b5\d\d\b/i.test(text)) return 'Couldn’t reach StreamPulse. Your saves on this browser are safe.'
+  return change ? 'Couldn’t save that. Try again.' : 'Couldn’t load your moments. Try again.'
+}
 export function createMyMomentsRepository(): LibraryRepository {
   let scope: string | undefined
   async function request(command?: LibraryCommand): Promise<MyMomentsSnapshot> {
     if (command && (!scope || ['interaction', 'create-collection'].includes(command.kind))) throw new Error('This action is unavailable.')
-    if (command?.kind === 'save') {
-      const { id, channel, title, vodId, streamId, offsetSeconds, availability } = command.reference
-      command = { kind: 'save', reference: { id, channel, title, vodId, streamId, offsetSeconds, availability } }
-    }
-    const result = await chrome.runtime.sendMessage(command
-      ? { type: 'MY_MOMENTS', action: 'mutate', scope, command: command as MyMomentsCommand }
-      : { type: 'MY_MOMENTS', action: 'load' })
-    if (result?.type !== 'MY_MOMENTS' || !result.snapshot?.production) throw new Error('Could not load or save My Moments. Check your device connection and retry.')
+    if (command?.kind === 'save' || command?.kind === 'remove-visit') command = { ...command, reference: reference(command.reference) }
+    if (command?.kind === 'restore-visit') command = { ...command, reference: reference(command.reference) }
+    let result: { type?: string; snapshot?: MyMomentsSnapshot; error?: unknown } | undefined
+    try {
+      result = await chrome.runtime.sendMessage(command
+        ? { type: 'MY_MOMENTS', action: 'mutate', scope, command: command as MyMomentsCommand }
+        : { type: 'MY_MOMENTS', action: 'load' })
+    } catch (error) { throw new Error(myMomentsProblem(error, !!command)) }
+    if (result?.type !== 'MY_MOMENTS' || !result.snapshot?.production) throw new Error(myMomentsProblem(result?.error, !!command))
     scope = result.snapshot.scope
     return result.snapshot
   }
@@ -152,7 +172,9 @@ function MyMomentsWorkspace({ repository }: { repository: LibraryRepository }) {
     minutes.show(moments)
     pictures.show(moments)
   }, [minutes.show, pictures.show])
-  return <LibraryWorkspace repository={repository} analyticsOrigin={analyticsOrigin} previewContexts={minutes.contexts} presentations={pictures.presentations}
+  // The panel's View after a jump that joined History opens on History.
+  const [initialView] = useState<LibraryView>(() => location.hash === '#moments-history' ? 'recent' : 'saved')
+  return <LibraryWorkspace repository={repository} initialView={initialView} analyticsOrigin={analyticsOrigin} previewContexts={minutes.contexts} presentations={pictures.presentations}
     onShowMoments={showMoments} onExport={json => {
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
     const link = document.createElement('a')

@@ -1,0 +1,86 @@
+Reviewed recap pilot
+
+content/recap-pilot.json is the only production allowlist. The first supply
+check found no sampled session meeting the old absolute score gate, so the owner
+replaced that gate (below). The build must not invent pages to reach the planned
+count of twenty.
+
+Each manually reviewed entry is an aggregate snapshot from the sanitized portal
+API. scripts/recap-pilot.mjs validates the strict field allowlist, exact source
+identity, the duration and top-3 gate, honest coverage and review dates.
+It does not fetch data, recalculate scores, discover channels or admit collectors.
+
+The gate (owner decision 2026-11-05, "Top 3 per stream"):
+- The stream ran at least 60 minutes, or at least 30 of its minutes were measured.
+- Coverage is honestly complete or partial.
+- The page lists that stream's own top 3 measured moments (3 to 20 moments),
+  ranked within the stream. Scores are relative to the stream, so no absolute
+  score is required. This replaces "three moments scoring 70 or more, or a
+  documented peak chat threshold", which no sampled stream passed. The
+  peakChatThreshold field went with it.
+Take the top 3 as the portal ranks them: the /streams/<id>/recap moments ordered
+by pulse-core mergeRecapMoments, leaving out the opening and closing minutes
+(hello and goodbye spam).
+
+Before adding an entry:
+1. Read the current SEO strategy gate in the control plane. It remains a draft
+   internal quality policy, not a Google threshold. Only the owner changes it.
+2. Verify source identity, measured duration/minutes, actual reaction scores,
+   coverage state and unique explanatory text. Include measured top emotes.
+   Check the duration against /streams/<id>/minutes: the last measured minute
+   should be within 30 minutes of the recorded end. Many recorded ends are
+   hours late, and those pages are skipped rather than given a shorter length.
+   Skip a stream whose emote count is a small fraction of its chat with next to
+   no 7TV: its top emotes are missing the 7TV ones.
+3. Record review approval, the UTC review time, a future review expiry, the exact
+   sanitized recap/live API URL and the review's evidence/limitations.
+4. To include replay actions, separately verify the exact VOD ID, signed alignment
+   offset, observed archive duration, check time and a future availability review
+   expiry. A VOD ID alone is insufficient. Missing/expired verification displays
+   an archive summary with replay links disabled, while retaining useful analysis.
+5. Keep the pilot to at most twenty distinct pages. Channel summaries are scoped
+   to the supplied broadcast measurements; do not imply complete channel history.
+
+The required schema is executable in scripts/recap-pilot.mjs. The synthetic sample
+in scripts/fixtures/recap-pilot.mjs demonstrates fields but is test data only and
+must never be copied into the production manifest. Unknown fields (including raw
+chat, private identity or arbitrary image URLs) are rejected.
+
+Preparation runs before dev, build and typecheck. It generates two runtime files:
+- src/generated/recap-page-paths.json: canonical paths and coarse categories only,
+  used by consented measurement. Never transmit the path to analytics.
+- src/generated/recap-page-metadata.json: public metadata retained after app boot.
+Commit these generated files with a reviewed manifest change, and regenerate them
+before a release. An expired review fails the next build; production snapshots
+still need a scheduled human/approved build review before their review window
+ends. This static pipeline does not introduce a background expiry service.
+
+prerender.mjs emits eligible summaries under /_recap-pages/ and exact public-path
+rewrites ahead of the dynamic fallbacks. This ordering is essential: Cloudflare
+Pages applies a matching redirect even when an HTML asset exists. Canonical
+/analytics paths remain the public URLs; internal assets are not sitemap entries.
+Non-allowlisted deep links use a separate /analytics-fallback/ document whose
+initial HTML says noindex. The /analytics hub stays indexable. The client does not
+remove an initial noindex tag to make a page eligible.
+
+Checks:
+  node --test scripts/recap-pilot.test.mjs
+  npx vitest run tests/pageMetadata.test.ts tests/recapPageMetadata.test.ts
+  npm run build:ci
+
+Local Cloudflare routing proof:
+  npx wrangler pages dev dist --port <free-port>
+For isolated positive-fixture HTTP/initial-HTML proof, first build, then run:
+  node scripts/recap-pages-proof.mjs
+It copies the repository into an isolated temporary fixture workspace, writes a
+nonempty synthetic manifest there, and runs the actual build:ci pipeline. It
+prints the resulting dist directory and build-log path. Serve that directory
+with wrangler pages dev on a free loopback port. It is visibly synthetic and must
+not be uploaded. The runtime bundle includes only its local fixture allowlist,
+so this can prove initial HTML, routing and persistent client summary behavior.
+It does not prove public data qualification, deployed indexing or acquisition.
+The original production manifest and generated maps remain unchanged.
+
+Before promotion, inspect Search Console for existing indexed URLs and evaluate
+the noindex impact. Existing release/freeze and owner publication gates remain.
+Local build success does not establish deployment, indexing or acquisition.

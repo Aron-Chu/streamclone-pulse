@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './helpers/portalMockedTest'
 import { buildMinutes, installPortalAcceptanceHarness, openAnalyticsSession } from './helpers/portalAcceptanceHarness'
 
 // U8 (plan §1.2, §3 A2-A6): the session page's chart part is d3's (toolbar,
@@ -216,7 +216,7 @@ test.describe('session chart part (d3) at 1440', () => {
     await expect(touch).toHaveAttribute('data-chart-viewport-end', /\d/)
   })
 
-  test('Show on chart starts with every marker off; Emote overlays, under the chart, adds emote lines', async ({ page }) => {
+  test('Show on chart starts with every marker off; Emotes on chart, under the chart, adds emote lines', async ({ page }) => {
     await open(page)
     await page.locator(PART).scrollIntoViewIfNeeded()
     const toggle = page.locator(SHOW)
@@ -257,6 +257,9 @@ test.describe('session chart part (d3) at 1440', () => {
     await page.locator('[data-session-series-seg] button').filter({ hasText: /^All$/ }).click()
     await settle(page)
     await expect(drawn).toHaveCount(before + 1)
+    // The current picker closes when focus moves to a series control outside it.
+    await expect(manage).toHaveAttribute('aria-expanded', 'false')
+    await manage.click()
     await strip.locator(`[data-chart-overlay-chip="${key}"]`).click()
     await settle(page)
     await expect(tokens).toHaveCount(before)

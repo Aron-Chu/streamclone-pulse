@@ -12,9 +12,8 @@ import { PRIVACY_PATH } from '../../lib/externalLinks'
  * Supporter chat badges spec (2026-10-10): opt-in in the extension, off by
  * default; the public list holds Twitch user ID, username, crest level and
  * paint only; the extension downloads the whole list about once an hour and
- * matches chat locally; an entry leaves within about an hour of opt-out,
- * Twitch disconnect or account deletion; stored ID and username are deleted on
- * opt-out and 30 days after a membership ends.
+ * matches chat locally; a withdrawal is reflected in future lists, while
+ * cached lists may remain visible until they refresh or expire.
  */
 
 /** Terms, Supporter section: replaces the "What you do not get" bullet and adds the perk's terms. */
@@ -32,7 +31,7 @@ export function TermsSeenInChatBullets() {
         your Twitch username, Twitch user ID, crest level and paint in a public list that the
         StreamPulse extension uses to show your crest and paint in Twitch chat to its users who
         haven&rsquo;t hidden crests. Anyone can download that list. Turn it off at any time; your
-        entry leaves the list within about an hour. See the{' '}
+        entry is removed from future lists, while cached copies may take time to refresh or expire. See the{' '}
         <Link to={PRIVACY_PATH}>privacy policy</Link>.
       </li>
     </>
@@ -57,8 +56,9 @@ export function SupporterSeenInChat() {
       extension&rsquo;s Account &amp; Supporter settings. When it&rsquo;s on, StreamPulse publishes
       your Twitch username, Twitch user ID, crest level and paint in a public list, and other
       StreamPulse extension users who haven&rsquo;t hidden crests see your crest beside your name and
-      your paint on it in Twitch chat. People without StreamPulse see normal chat, and nothing is sent
-      to Twitch. Turn it off there at any time: your entry leaves the list within about an hour. See
+      your paint on it in Twitch chat. People without StreamPulse see normal chat. The chat decorator
+      does not send chat lines to Twitch. Turn it off there at any time: your entry is removed from
+      future lists, while cached copies may take time to refresh or expire. See
       the <Link to={PRIVACY_PATH}>privacy policy</Link>.
     </p>
   )
@@ -90,11 +90,17 @@ export function PrivacyObservesChatUsernames() {
 export const PRIVACY_TWITCH_THIRD_PARTY_SEEN_IN_CHAT =
   'If you turned on Seen in chat, StreamPulse also uses that notification to delete your Seen in chat entry. For Supporters who turned on Seen in chat, StreamPulse asks Twitch’s API about once an hour for the current username of each Twitch user ID in the list, so a renamed account keeps its crest.'
 
-/** Privacy: the Seen in chat section. */
-export function PrivacySeenInChat() {
+/** Privacy: the Seen in chat section's heading. */
+export const PRIVACY_SEEN_IN_CHAT_HEADING = 'Seen in chat (optional, Supporters only)'
+
+/**
+ * Privacy: the Seen in chat section's text. The page writes the `<section>` and
+ * its `<h2>` itself, so FoldedSections finds the heading and folds the section
+ * under it (it can't see a heading inside a component).
+ */
+export function PrivacySeenInChatBody() {
   return (
-    <section data-testid="privacy-seen-in-chat">
-      <h2 id="seen-in-chat">Seen in chat (optional, Supporters only)</h2>
+    <>
       <p>
         <strong>What is stored.</strong> Nothing until you turn it on. When an active Supporter turns
         on Seen in chat in the extension and confirms with Twitch that it&rsquo;s their account,
@@ -111,8 +117,10 @@ export function PrivacySeenInChat() {
         downloads the whole list about once an hour while a Twitch page is open, without your
         account, credentials or any channel information, and compares it with chat usernames in your
         browser. It then shows the crest and paint to its own user. Downloading the list
-        doesn&rsquo;t tell StreamPulse which channels or chats you open. Twitch chat itself never
-        changes: people without StreamPulse see normal chat, and nothing is sent to Twitch. You can
+        doesn&rsquo;t tell StreamPulse which channels or chats you open. Other StreamPulse features
+        may send channel information as described elsewhere in this policy. Twitch chat itself never
+        changes: people without StreamPulse see normal chat, and the chat decorator does not send
+        chat lines to Twitch. You can
         hide everyone&rsquo;s crests in the extension&rsquo;s settings; then it doesn&rsquo;t
         download the list.
       </p>
@@ -122,14 +130,15 @@ export function PrivacySeenInChat() {
       </p>
       <p>
         <strong>Turning it off and deletion.</strong> Turning Seen in chat off deletes the Twitch user
-        ID and username StreamPulse stored for it, and your entry leaves the list within about an
-        hour. The same happens if you disconnect StreamPulse in your Twitch settings or delete your
-        account. If your membership ends, your entry leaves the list within about an hour and the
+        ID and username StreamPulse stored for it, and your entry is removed from future published
+        lists. Other viewers may still see a cached copy until it refreshes or expires. The same
+        deletion happens if you disconnect StreamPulse in your Twitch settings or delete your
+        account. If your membership ends, your entry is removed from future lists and the
         stored ID and username are deleted 30 days later, unless you support again before then.
         An extension that can&rsquo;t refresh stops using its copy of the list after 36 hours at
         most. Because the list is public, a copy someone saved outside the extension is beyond
         StreamPulse&rsquo;s control.
       </p>
-    </section>
+    </>
   )
 }

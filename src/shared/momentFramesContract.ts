@@ -60,7 +60,7 @@ export interface MomentFramesApi {
   keep: (spans: ReadonlyArray<readonly [number, number]>) => void
   /** Draws a picture into an element the caller leaves empty; the returned function removes it. */
   mount: (element: HTMLElement, view: MomentPictureView, at?: MomentPictureAt) => () => void
-  /** Twitch's title, cover and scrub sheets of the stream's VOD, asked once per VOD. */
+  /** Twitch's title, cover and scrub sheets of the stream's VOD, asked once per VOD (again later while it has no sheets). */
   vod: (at?: MomentPictureAt) => Promise<import('./vodPictures.ts').VodPictures | null>
 }
 

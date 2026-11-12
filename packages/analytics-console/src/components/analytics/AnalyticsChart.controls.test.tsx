@@ -103,11 +103,11 @@ describe('AnalyticsChart session toolbar', () => {
     const { container } = render(<Harness />)
     const selected = () => screen.getByTestId('harness').getAttribute('data-selected-emotes')
     const strip = container.querySelector<HTMLElement>('[data-chart-overlay-selector]')!
-    expect(strip.textContent).toContain('Emote overlays')
+    expect(strip.textContent).toContain('Emotes on chart')
     expect(strip.querySelectorAll('[data-chart-overlay-plotted]')).toHaveLength(0)
     expect(container.querySelector('[data-session-overlay-line], .spc-line-overlay')).toBeNull()
 
-    const manage = within(strip).getByRole('button', { name: /^Emote overlays/ })
+    const manage = within(strip).getByRole('button', { name: 'Add emote' })
     expect(manage.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(manage)
     expect(manage.getAttribute('aria-expanded')).toBe('true')

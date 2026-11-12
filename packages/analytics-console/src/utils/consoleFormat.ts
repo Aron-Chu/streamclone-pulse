@@ -49,6 +49,16 @@ export function formatDateTime(value?: string): string {
   return monthDayFormat.format(date) + ' ' + hourMinuteFormat.format(date)
 }
 
+/** "Nov 1 · 7:21 PM": a stream row's start, in plain case. */
+export function formatDateDotTime(value?: string): string {
+  const ts = value ? measurementTimeMs(value) : null
+  if (ts == null) return '-'
+  const date = new Date(ts)
+  if (!monthDayFormat) monthDayFormat = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' })
+  if (!hourMinuteFormat) hourMinuteFormat = new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' })
+  return `${monthDayFormat.format(date)} · ${hourMinuteFormat.format(date)}`
+}
+
 function formatDurationMinutes(minutes: number): string {
   const total = Math.max(0, Math.round(minutes))
   if (total < 60) return `${total}m`

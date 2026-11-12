@@ -1,21 +1,27 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { CheckCircle2, Mail, Puzzle, ShieldCheck } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountFooter } from './AccountFooter'
 import { AccountSteps, LINK_JOURNEY_STEPS, SUPPORTER_JOURNEY_STEPS, accountReference } from './AccountJourney'
+import { AccountSignInGate } from './AccountSignedIn'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
 import { clearAccountConfirmation, getAccountConfirmation } from '../../lib/accountConfirmation'
 import { clearAccountDeviceCode, getAccountDeviceCode, getAccountDeviceContinuation } from '../../lib/accountDeviceCode'
 import { ACCOUNT_LINK_DEVICE_PATH, accountBillingReturnFromSearch, accountBillingSignInHref, consumeAccountBillingReturn, readAccountBillingReturn, rememberAccountBillingReturn } from '../../lib/accountBillingReturn'
 import { accountSignInAge, announceAccountSignedIn, onAccountSessionSignal, RECENT_SIGN_IN_MS } from '../../lib/accountSessionSignal'
 import { PRIVACY_PATH, TERMS_PATH } from '../../lib/externalLinks'
+import { refreshAccountSession } from '../../lib/accountSession'
+import { twitchSignInEnabled } from '../../lib/twitchSignInFlag'
+import { clipPageReturnPath } from '../../lib/nativeClipsFlag'
+import { beginTwitchFlow, twitchErrorCode, type TwitchErrorCode } from '../../lib/twitchSignIn'
+import { TwitchButton, TwitchErrorNotice } from './TwitchSignIn'
 import './account.css'
 
 export default function AccountPage() {
   const pathname = useLocation().pathname.replace(/\/+$/, '')
   return <PublicLayout><section className="pulse-account" aria-label="StreamPulse account">
-    {pathname === '/account/sign-in' ? <SignIn /> : pathname === '/account/confirm' ? <Confirm /> : <LinkDevice />}
+    {/* With Sign in with Twitch on, someone already signed in gets a way onward instead of the form. */}
+    {pathname === '/account/sign-in' ? twitchSignInEnabled() ? <AccountSignInGate><SignIn /></AccountSignInGate> : <SignIn /> : pathname === '/account/confirm' ? <Confirm /> : <LinkDevice />}
     <AccountFooter />
   </section></PublicLayout>
 }
@@ -35,27 +41,50 @@ function SignIn() {
   useEffect(() => onAccountSessionSignal(signal => {
     if (signal === 'signed-in' && returnTo) navigate(returnTo)
   }), [navigate, returnTo])
-  return <><p className="pulse-account-kicker"><Mail size={16} aria-hidden="true" /> StreamPulse account</p>
-    <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : 'Tester sign-in'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined}
-      lead={<p className="pulse-account-intro" data-testid="twitch-coming-soon">Twitch sign-in is coming soon. {FREE_TOOLS_LINE}</p>} /></>
+  return <>
+    {twitchSignInEnabled()
+      ? <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : 'Sign in to StreamPulse'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined}
+        withTwitch />
+      : <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : 'Tester sign-in'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined}
+        lead={<p className="pulse-account-intro" data-testid="twitch-coming-soon">Twitch sign-in is coming soon. {FREE_TOOLS_LINE}</p>} />}</>
 }
 
 /**
  * The email sign-in form, on its own page or inside the extension-link page.
  * Embedded, the tab keeps its prepared extension code in memory while the user
  * confirms the email in another tab, then continues by itself.
+ *
+ * `withTwitch` (VITE_TWITCH_SIGNIN=1, sign-in page only) puts Twitch first and
+ * folds the email form behind "Use email instead". The extension-link page
+ * never offers it: leaving for Twitch would drop the code held in memory.
  */
-function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No password needed.', sentDetail, lead }: {
+function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No password needed.', sentDetail, lead, withTwitch = false }: {
   returnTo: string | null
   heading: (sent: boolean) => string
   intro?: string
   sentDetail?: string
   lead?: ReactNode
+  withTwitch?: boolean
 }) {
+  const { search } = useLocation()
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+  const [emailOpen, setEmailOpen] = useState(() => !withTwitch || new URLSearchParams(search).get('method') === 'email')
+  const emailToggled = useRef(false)
+  const emailInput = useRef<HTMLInputElement>(null)
+  const emailFormId = useId()
+  const [twitchBusy, setTwitchBusy] = useState(false)
+  const [twitchError, setTwitchError] = useState<TwitchErrorCode | null>(null)
+  useEffect(() => { if (emailOpen && emailToggled.current) emailInput.current?.focus() }, [emailOpen])
+  async function signInWithTwitch() {
+    if (twitchBusy) return
+    setTwitchBusy(true); setTwitchError(null)
+    // On success the page leaves for Twitch, so the button stays busy.
+    try { await beginTwitchFlow({ purpose: 'signin', returnTo }) }
+    catch (failure) { setTwitchError(twitchErrorCode(failure)); setTwitchBusy(false) }
+  }
   async function submit(event: FormEvent) {
     event.preventDefault(); if (busy) return
     setBusy(true); setError('')
@@ -70,10 +99,24 @@ function SignInForm({ returnTo, heading, intro = 'We’ll email you a link. No p
   // The pilot notice is the same static text for every address, before and after
   // sending, so it never reveals whether a given address is on the tester list.
   return <><h1>{heading(sent)}</h1>
+    <p className="pulse-account-intro" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p>
     {!sent && lead ? lead : null}
-    {sent ? <div role="status"><p className="pulse-account-intro">Open the sign-in link in this browser, then confirm. The link expires after 15 minutes.</p>{sentDetail ? <p className="pulse-account-waiting" data-testid="sign-in-waiting"><span className="pulse-account-spinner" aria-hidden="true" />{sentDetail}</p> : null}<p className="pulse-account-pilot" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><button onClick={() => setSent(false)}>Use another email</button></div>
-      : <form onSubmit={submit}><p className="pulse-account-intro">{intro}</p><p className="pulse-account-pilot" data-testid="pilot-sign-in-note">{PILOT_SIGN_IN_NOTE}</p><label htmlFor="account-email">Email address</label>
-        <input id="account-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
+    {!sent && withTwitch ? <div className="pulse-account-twitch" data-testid="twitch-sign-in">
+      <p className="pulse-account-intro">Keeps your saves, notes and watched streams together, on the site and in the extension.</p>
+      <TwitchButton busy={twitchBusy} busyLabel="Opening Twitch…" onClick={() => void signInWithTwitch()}>Continue with Twitch</TwitchButton>
+      {twitchError ? <TwitchErrorNotice code={twitchError} purpose="signin" returnTo={returnTo} current="/account/sign-in"
+        onEmail={() => { emailToggled.current = true; setEmailOpen(true) }} /> : null}
+      <button type="button" className="pulse-account-disclosure pulse-account-backup" aria-expanded={emailOpen} aria-controls={emailFormId}
+        onClick={() => { emailToggled.current = true; setEmailOpen(open => !open) }}>Email sign-in stays as the backup.</button>
+      <p className="pulse-account-privacy">
+        StreamPulse receives your Twitch user ID, display name and profile picture, never your Twitch password or email. See the{' '}
+        <Link to={PRIVACY_PATH}>privacy policy</Link> and <Link to={TERMS_PATH}>terms of use</Link>.
+      </p>
+    </div> : null}
+    {sent ? <div role="status"><p className="pulse-account-intro">Open the sign-in link in this browser, then confirm. The link expires after 15 minutes.</p>{sentDetail ? <p className="pulse-account-waiting" data-testid="sign-in-waiting"><span className="pulse-account-spinner" aria-hidden="true" />{sentDetail}</p> : null}<button onClick={() => setSent(false)}>Use another email</button></div>
+      : !emailOpen ? null
+      : <form id={emailFormId} onSubmit={submit}><p className="pulse-account-intro">{intro}</p><label htmlFor="account-email">Email address</label>
+        <input ref={emailInput} id="account-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
         <button className="pulse-account-primary" disabled={busy}>{busy ? 'Sending…' : 'Send sign-in link'}</button>
         {/* The policy has to be reachable where the address is actually asked
             for, not only from the footer. */}
@@ -103,20 +146,23 @@ function Confirm() {
       // A tab waiting on this sign-in (an extension approval or billing)
       // re-checks its session and continues; nothing secret is shared.
       announceAccountSignedIn()
+      void refreshAccountSession()
     }
     catch (error) { setError(accountErrorText(error)) }
     finally { setBusy(false) }
   }
-  return <><p className="pulse-account-kicker">{complete ? <CheckCircle2 size={16} aria-hidden="true" /> : <ShieldCheck size={16} aria-hidden="true" />} Secure sign-in</p><h1>{complete ? 'You’re signed in' : 'Confirm your sign-in'}</h1>
+  return <><h1>{complete ? 'You’re signed in' : token ? 'Confirm your sign-in' : 'This sign-in link has expired'}</h1>
     {complete ? returnTo === ACCOUNT_LINK_DEVICE_PATH
       ? <><p className="pulse-account-intro">Go back to the StreamPulse tab where you started. It continues by itself, and you can close this tab.</p><p>That tab closed? Reopen the link from your extension’s settings, or <Link to={ACCOUNT_LINK_DEVICE_PATH}>enter the extension code here</Link>.</p></>
+      : returnTo && clipPageReturnPath(returnTo)
+      ? <><p className="pulse-account-intro">You can now review and comment on the clip.</p><Link className="pulse-account-button pulse-account-primary" to={returnTo}>Back to the clip</Link></>
       : returnTo
       ? <><p className="pulse-account-intro">You can now review your Supporter membership.</p><Link className="pulse-account-button pulse-account-primary" to={returnTo}>Continue to billing</Link></>
       : <><p className="pulse-account-intro">You can now link your StreamPulse extension.</p><Link className="pulse-account-button pulse-account-primary" to="/account/link-device">Link extension</Link></>
       : token ? <><p className="pulse-account-intro">Continue only if you requested this sign-in link.</p><button className="pulse-account-primary" onClick={() => void confirm()} disabled={busy}>{busy ? 'Confirming…' : 'Confirm sign-in'}</button></>
-      : <p>This link is missing or expired. Request a new link in this browser.</p>}
+      : <><p className="pulse-account-intro">This link is missing or expired. Request a new link in this browser.</p><Link className="pulse-account-button pulse-account-primary" to={accountBillingSignInHref(returnTo)}>Send a new sign-in link</Link></>}
     {error ? <p role="alert">{error}</p> : null}
-    {!complete ? <p className="pulse-account-standalone"><Link to={accountBillingSignInHref(returnTo)}>Request another sign-in link</Link></p> : null}</>
+    {!complete && token ? <p className="pulse-account-standalone"><Link to={accountBillingSignInHref(returnTo)}>Request another sign-in link</Link></p> : null}</>
 }
 
 type Session = 'loading' | 'ready' | 'signed_out' | 'error'
@@ -308,13 +354,12 @@ function LinkDevice() {
   const showProgress = waitingForCode && phase !== 'invalid'
   const signInWaiting = 'Keep this tab open. When you confirm in the email’s tab, this page continues by itself.'
 
-  return <><p className="pulse-account-kicker"><Puzzle size={16} aria-hidden="true" /> {purchase ? 'Become a Supporter' : 'Account connection'}</p>
-    {showProgress ? <AccountSteps labels={steps} steps={progress} /> : null}
+  return <>{showProgress ? <AccountSteps labels={steps} steps={progress} /> : null}
     {session === 'loading' ? <><h1>Link your extension</h1><p role="status" className="pulse-account-waiting"><span className="pulse-account-spinner" aria-hidden="true" />Checking your account…</p></>
       : session === 'signed_out' || phase === 'needs_sign_in' ? phase === 'needs_sign_in' && session === 'ready'
         ? <SignInForm returnTo={ACCOUNT_LINK_DEVICE_PATH} heading={sent => sent ? 'Check your email' : 'Confirm it’s you'} intro="Connecting an extension needs a sign-in from the last 10 minutes. Your extension’s request stays ready in this tab." sentDetail={signInWaiting} />
         : <SignInForm returnTo={ACCOUNT_LINK_DEVICE_PATH} heading={sent => sent ? 'Check your email' : waitingForCode ? 'Sign in to connect your extension' : 'Sign in to link your extension'} intro={waitingForCode ? 'Your extension is waiting for approval. Sign in with email; no password needed.' : 'Sign in with email to link your extension. No password needed.'} sentDetail={waitingForCode ? signInWaiting : undefined} />
-      : session === 'error' ? <><h1>Link your extension</h1><p>Account services could not be reached. Your extension keeps its request; try again in a moment.</p><div className="pulse-account-actions"><button className="pulse-account-primary" onClick={() => { setError(''); void checkSession() }}>Try again</button></div></>
+      : session === 'error' ? <><h1>Link your extension</h1><p role="alert">Account services could not be reached. Your extension keeps its request; try again in a moment.</p><div className="pulse-account-actions"><button className="pulse-account-primary" onClick={() => { setError(''); setSession('loading'); void checkSession() }}>Try again</button></div></>
       : phase === 'approved' ? <div role="status"><h1>Extension connected</h1><p className="pulse-account-intro">Return to your extension. It finishes connecting by itself, and you can close this tab.</p><p className="pulse-account-standalone"><Link to="/account/billing">Membership &amp; billing</Link></p></div>
       : phase === 'denied' ? <div role="status"><h1>Request declined</h1><p className="pulse-account-intro">This request cannot connect to your account.</p></div>
       : phase === 'invalid' ? <><h1>This request is no longer valid</h1><p className="pulse-account-intro">Extension requests last ten minutes and work once. Start again from your extension’s settings and this page opens with a fresh request.</p><ManualCode code={code} setCode={setCode} busy={busy} onSubmit={() => void inspect(code)} help="Or check the code and enter it again, exactly as your extension shows it." /></>

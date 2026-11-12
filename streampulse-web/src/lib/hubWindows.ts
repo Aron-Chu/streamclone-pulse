@@ -59,7 +59,7 @@ export function hubWindowMinutes(key: HubUrlWindow): number {
 }
 
 /**
- * Same rule as `AnalyticsLandingPage.tsx` (`window` first, then
+ * Same rule as `AnalyticsHubV5Page.tsx` (`window` first, then
  * `activityWindow`; anything unknown is 24h). A Set lookup instead of the
  * page's `in` check, so `?window=toString` is not accepted.
  */

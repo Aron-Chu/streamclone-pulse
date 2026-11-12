@@ -35,7 +35,10 @@ export async function waitForPulseRoot(page: Page, timeoutMs = 20_000): Promise<
     rootId => {
       const host = document.getElementById(rootId)
       if (!host) return false
-      return getComputedStyle(host).display !== 'none'
+      // The host stays hidden until its stylesheet loads; a click before then
+      // lands on Twitch, not the panel.
+      const style = getComputedStyle(host)
+      return style.display !== 'none' && style.visibility !== 'hidden'
     },
     PULSE_ROOT_ID,
     { timeout: timeoutMs },
@@ -135,44 +138,37 @@ export async function assertLiveGameCapPresent(page: Page): Promise<void> {
   }).toPass({ timeout: 20_000 })
 }
 
-/** Selected moment card uses "Bookmark" (not legacy "Save"). The card's bookmark is an
- *  icon, so its aria-label ("Bookmark moment at …") counts as well as button text. */
+/** Selected moment card saves with a labelled "Save" button (H3, 2026-11-02), not the
+ *  icon-only bookmark; its aria-label reads "Save moment at …" ("Saved …" once saved). */
 export async function assertBookmarkLabel(page: Page): Promise<void> {
   await expect(async () => {
     const labels = await page.evaluate(rootId => {
       const host = document.getElementById(rootId)
       const root = host?.shadowRoot
       if (!root) return []
-      return [...root.querySelectorAll('button')]
+      return [...root.querySelectorAll('[data-moment-action="bookmark"]')]
         .flatMap(btn => [btn.textContent ?? '', btn.getAttribute('aria-label') ?? ''])
         .map(label => label.replace(/\s+/g, ' ').trim())
         .filter(Boolean)
     }, PULSE_ROOT_ID)
-    expect(labels.some(l => l === 'Bookmark' || l.startsWith('Bookmark')), 'Bookmark CTA').toBe(
-      true,
-    )
-    expect(
-      labels.some(l => l === 'Save' || l === 'Saving…' || l === 'Saving...'),
-      'legacy Save CTA must be gone',
-    ).toBe(false)
+    expect(labels.some(l => l === 'Save' || l === '✓ Saved'), 'labelled Save CTA').toBe(true)
+    expect(labels.some(l => /^Saved? (moment|minute|range) at /.test(l)), 'Save aria-label').toBe(true)
+    expect(labels.some(l => l.startsWith('Bookmark')), 'icon-only Bookmark must be gone').toBe(false)
   }).toPass({ timeout: 20_000 })
 }
 
-/** Click the selected-moment Bookmark button inside the Pulse shadow root. */
+/** Click the selected-moment Save button inside the Pulse shadow root. */
 export async function clickBookmarkButton(page: Page): Promise<void> {
   const clicked = await page.evaluate(rootId => {
     const host = document.getElementById(rootId)
     const root = host?.shadowRoot
     if (!root) return false
-    const btn = [...root.querySelectorAll('button')].find(el => {
-      const t = (el.getAttribute('aria-label') || el.textContent || '').replace(/\s+/g, ' ').trim()
-      return t === 'Bookmark' || t.startsWith('Bookmark')
-    })
+    const btn = root.querySelector<HTMLButtonElement>('[data-moment-action="bookmark"]')
     if (!btn) return false
     btn.click()
     return true
   }, PULSE_ROOT_ID)
-  expect(clicked, 'Bookmark button').toBe(true)
+  expect(clicked, 'Save button').toBe(true)
 }
 
 /**
@@ -286,7 +282,7 @@ export function assertProductionManifestPermissions(): void {
     name?: string
   }
 
-  expect(manifest.name).toBe('StreamPulse')
+  expect(manifest.name).toBe('StreamPulse: Twitch Chat Stats & Top Moments')
   expect(manifest.permissions ?? []).toEqual([...EXPECTED_MANIFEST_PERMISSIONS])
   expect(manifest.host_permissions ?? []).toEqual([...EXPECTED_HOST_PERMISSIONS])
   expect(manifest.optional_host_permissions ?? []).toEqual([...EXPECTED_OPTIONAL_HOST_PERMISSIONS])

@@ -5,7 +5,7 @@ import { configureAnalyticsApi, type AnalyticsApi } from '../../configureApi.ts'
 import { setStripPinHover } from '../../utils/sessionStripMoments.ts'
 import { resetVodFrameCache } from '../../utils/vodFrames.ts'
 import { SESSION_OWNER_SWITCHES } from '../../sessionOwnerSwitches.ts'
-import { reelIntervalLabel, reelNote, reelScrubOffsets, reelScrubStep } from './MomentReel.tsx'
+import { reelCardEmote, reelIntervalLabel, reelNote, reelScrubOffsets, reelScrubStep } from './MomentReel.tsx'
 import { SessionRecapMomentsStrip } from './SessionRecapMomentsStrip.tsx'
 
 const START = '2026-09-08T18:00:00Z'
@@ -98,10 +98,19 @@ describe('MomentReel helpers', () => {
       "Pictures are Twitch's VOD preview frames, one every 4 min 9 s. Move across one to step through them.",
     )
     expect(reelNote({ frame: { ...frame, intervalSec: null }, reason: null, loading: false, hasArt: true })).toMatch(/not the exact second/)
-    expect(reelNote({ frame: null, reason: 'recording', loading: false, hasArt: true })).toBe('Twitch publishes preview frames when the VOD finishes.')
-    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: true })).toMatch(/box art/)
-    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: false })).toBeNull()
+    expect(reelNote({ frame: null, reason: 'recording', loading: false, hasArt: true })).toBe('No preview frames while live.')
+    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: true }))
+      .toBe("Preview frames aren't available right now. Pictures are the game's box art.")
+    // (fix, 10-30, PIC-3) no cover, no claim about box art: just the reason (it said nothing until 10-30)
+    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: false })).toBe("Preview frames aren't available right now.")
     expect(reelNote({ frame: null, reason: null, loading: true, hasArt: true })).toBeNull()
+  })
+
+  it("follows the page's recording flag over the frame answer's reason (fix, 10-30, PIC-3)", () => {
+    // every VOD answers no_storyboard today (F6), the live one too
+    expect(reelNote({ frame: null, reason: 'no_storyboard', loading: false, hasArt: true, recording: true })).toBe('No preview frames while live.')
+    expect(reelNote({ frame: null, reason: 'recording', loading: false, hasArt: true, recording: false }))
+      .toBe("Preview frames aren't available right now. Pictures are the game's box art.")
   })
 })
 
@@ -137,7 +146,7 @@ describe('SessionRecapMomentsStrip reel', () => {
     const onSelectOffset = vi.fn()
     const onReleaseOffset = vi.fn()
     const onPlayOffset = vi.fn()
-    render(reel({ onSelectOffset, onReleaseOffset, onPlayOffset, vodId: VOD }))
+    render(reel({ onSelectOffset, onReleaseOffset, onPlayOffset, vodId: VOD, vodAlignSeconds: 0 }))
     fireEvent.click(card(2))
     expect(onSelectOffset).toHaveBeenLastCalledWith(1200)
     expect(card(2).getAttribute('aria-pressed')).toBe('true')
@@ -177,17 +186,29 @@ describe('SessionRecapMomentsStrip reel', () => {
     expect(screen.getByText(/one every 4 min 9 s/)).toBeTruthy()
   })
 
-  it('asks for no frame without a verified alignment, and shows the box art as a sharp cover with its note', async () => {
+  it('asks for no frame without a verified alignment, and shows the box art with its note', async () => {
     const get = vi.fn(async (_vod: string, offset: number) => tileFor(offset))
     configure(get)
     render(reel({ vodId: VOD }))
     expect(get).not.toHaveBeenCalled()
     expect(card(1).dataset.momentFrame).toBe('fallback')
-    expect(card(1).querySelector('img.ssr-rc-cover')!.getAttribute('src')).toBe(GAMES[0]!.boxArtUrl)
-    // The cover sits outside the full-bleed picture layer: no blurred, zoomed backdrop (2026-10-21).
+    // (candidate, 10-30, PIC-2) the cover whole and sharp in the corner, at ~2x its drawn size; nothing blurred
+    // fills the card
+    expect(card(1).querySelector('img.ssr-rc-cover')!.getAttribute('src'))
+      .toBe('https://static-cdn.jtvnw.net/ttv-boxart/32982_IGDB-216x288.jpg')
+    expect(card(2).querySelector('img.ssr-rc-cover')!.getAttribute('src'))
+      .toBe('https://static-cdn.jtvnw.net/ttv-boxart/32982_IGDB-144x192.jpg')
     expect(card(1).querySelector('.ssr-rc-pic img')).toBeNull()
-    expect(card(1).classList.contains('has-art')).toBe(true)
-    expect(screen.getByText("No VOD preview frames for this stream: the covers are the game's box art.")).toBeTruthy()
+    expect(document.querySelector('.ssr-rc-art')).toBeNull()
+    expect(screen.getByText("Preview frames aren't available right now. Pictures are the game's box art.")).toBeTruthy()
+  })
+
+  it("a cover that fails at the asked size reports the games answer's URL, so the next candidate takes over", () => {
+    configure(vi.fn(async () => ({ reason: 'no_storyboard' })))
+    render(reel({ vodId: VOD }))
+    fireEvent.error(card(1).querySelector('img.ssr-rc-cover')!)
+    const next = card(1).querySelector('img.ssr-rc-cover')?.getAttribute('src') ?? null
+    expect(next).toBe('https://static-cdn.jtvnw.net/ttv-boxart/32982-216x288.jpg')
   })
 
   it('a VOD with no storyboard asks once and falls back to the box art', async () => {
@@ -199,12 +220,12 @@ describe('SessionRecapMomentsStrip reel', () => {
     expect(get).toHaveBeenCalledTimes(1)
   })
 
-  it('a VOD still recording says when frames come', async () => {
+  it('a VOD still recording says there are no preview frames while the stream is live', async () => {
     configure(async () => {
       throw Object.assign(new Error('forbidden'), { status: 403 })
     })
     render(reel({ vodId: VOD, vodAlignSeconds: ALIGN }))
-    await waitFor(() => expect(screen.getByText('Twitch publishes preview frames when the VOD finishes.')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('No preview frames while live.')).toBeTruthy())
   })
 
   it('moving across a picture steps through the tiles either side; leaving puts the moment back', async () => {
@@ -241,5 +262,35 @@ describe('SessionRecapMomentsStrip reel', () => {
     rerender(reel({ recap: recapWith(2) }))
     expect(cards().map((c) => c.dataset.momentCard)).toEqual(['hero', 'small'])
     expect(document.querySelector('[data-moment-list-more]')).toBeNull()
+  })
+
+  it('no frame means no box: compact cards, with or without a cover', async () => {
+    const { unmount } = render(reel({ games: [] }))
+    await waitFor(() => expect(cards()[0]!.dataset.momentFrame).toBe('fallback'))
+    for (const card of cards()) expect(card.className.split(' ')).toContain('flat')
+    unmount()
+    render(reel())
+    await waitFor(() => expect(cards()[0]!.dataset.momentFrame).toBe('fallback'))
+    for (const card of cards()) expect(card.className.split(' ')).toContain('flat')
+  })
+})
+
+describe('reelCardEmote (Just Chatting / IRL cards)', () => {
+  const emote = { name: 'HUH', count: 56, provider: '7tv', id: '01HUH', imageUrl: 'https://cdn.7tv.app/emote/01HUH/1x.webp' }
+  it('shows the top emote with a picture on a Just Chatting or IRL moment', () => {
+    expect(reelCardEmote({ game: { name: 'Just Chatting', artUrls: [] }, emotes: [{ name: 'x', count: 1 }, emote] })?.emote.name).toBe('HUH')
+    expect(reelCardEmote({ game: { name: 'IRL', artUrls: [] }, emotes: [emote] })?.src).toBeTruthy()
+  })
+  it('never on a game, nor without an emote picture', () => {
+    expect(reelCardEmote({ game: { name: 'Grand Theft Auto V', artUrls: [] }, emotes: [emote] })).toBeNull()
+    expect(reelCardEmote({ game: { name: 'Just Chatting', artUrls: [] }, emotes: [] })).toBeNull()
+    expect(reelCardEmote({ game: null, emotes: [emote] })).toBeNull()
+  })
+  it('binds only an https emote CDN URL, never a payload URL from elsewhere', () => {
+    const game = { name: 'Just Chatting', artUrls: [] }
+    expect(reelCardEmote({ game, emotes: [emote] })?.src).toBe('https://cdn.7tv.app/emote/01HUH/1x.webp')
+    for (const imageUrl of ['javascript:alert(1)', 'http://cdn.7tv.app/emote/01HUH/1x.webp', 'https://evil.example/huh.webp']) {
+      expect(reelCardEmote({ game, emotes: [{ name: 'HUH', count: 56, imageUrl }] })).toBeNull()
+    }
   })
 })

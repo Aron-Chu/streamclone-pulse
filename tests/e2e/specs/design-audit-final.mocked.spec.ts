@@ -233,7 +233,7 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
 
-    // The failed first load shows the outage card (with its own "Open settings"), not an endless "Loading Pulse".
+    // The failed first load shows the outage card (Retry, and Back to chat in the sidebar), not an endless "Loading Pulse".
     await expect(
       extension.page.locator(`#${PULSE_ROOT_ID}`).getByRole('heading', { name: "Can't reach StreamPulse" }),
     ).toBeVisible()
@@ -267,7 +267,7 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     const shell = extension.page.locator('#streamclone-pulse-root .pulse-shell')
     await expect(shell).toBeVisible()
 
-    await assertPulseShadowContains(extension.page, /Not tracked|IRC pool|Partial|Warming|tracking/i)
+    await assertPulseShadowContains(extension.page, /Not charted|IRC pool|Partial|Warming|tracking/i)
     await saveScreenshot(extension.page, '21-failure-state-live-partial.png', shell)
   })
 

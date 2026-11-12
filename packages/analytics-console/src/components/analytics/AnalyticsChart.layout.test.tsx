@@ -93,10 +93,10 @@ describe('AnalyticsChart stable regions', () => {
     expect(container.querySelector('[data-chart-overlay-focus-row]')).toBeNull()
     expect(screen.getAllByRole('button', { name: 'Expand' })).toHaveLength(1)
     expect(container.querySelector('[data-selected-moment-shell]')).toBeNull()
-    // The plotted emotes are the wide "Emote overlays" panel under the chart (back 2026-10-21), outside
+    // The wide picker keeps the existing named Emotes on chart line, outside
     // `section.ssc`, whose button reset would strip its borders and chips.
     expect(bar.querySelector('[data-session-overlay-toggle], [data-chart-overlay-selector]')).toBeNull()
-    expect(container.querySelector('[data-session-emotes-on-chart]')).toBeNull()
+    expect(container.querySelector('[data-session-emotes-on-chart]')?.textContent).toContain('Emotes on chart')
     const overlays = container.querySelector('[data-chart-overlay-selector]')!
     expect(overlays.closest('.ssc')).toBeNull()
     expect(part.compareDocumentPosition(overlays) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -289,6 +289,7 @@ describe('AnalyticsChart stable regions', () => {
       />,
     )
     const runTimes = [...container.querySelectorAll('[data-games-played-run-time]')].map(el => el.textContent)
-    expect(runTimes).toEqual(['30m', '2h 30m'])
+    // (fix, 10-30) GP-3: the cut-off game says its length is not known ("+").
+    expect(runTimes).toEqual(['30m', '2h 30m+'])
   })
 })

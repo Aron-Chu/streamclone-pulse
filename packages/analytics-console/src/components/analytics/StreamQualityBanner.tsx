@@ -1,5 +1,7 @@
 import type { StreamQualityDiagnosis } from '../../utils/streamQuality.ts'
 
+const VISITOR_HIDDEN = ['syncing', 'viewer_resync', 'partial_chat'] as const
+
 export function StreamQualityBanner({
   diagnosis,
   syncing,
@@ -14,6 +16,13 @@ export function StreamQualityBanner({
   onSyncViewers?: () => void
 }) {
   if (!diagnosis) return null
+  // "Refresh data reloads charts … use sync actions below" is a note for whoever
+  // runs the sync actions. Visitors have none, so for them it points at nothing.
+  if (diagnosis.issues.includes('refresh_only_hint') && !canSync) return null
+  // The sync notes ("A full sync can fill missing segments", "may need a refresh", a sync running)
+  // speak to whoever runs the sync actions; visitors have none. They keep the lines that explain
+  // the chart itself: stats only, and the live viewer warm-up.
+  if (!canSync && VISITOR_HIDDEN.some((issue) => diagnosis.issues.includes(issue))) return null
 
   const tone =
     diagnosis.issues.includes('syncing')

@@ -28,6 +28,14 @@ export type AnalyticsQualityLabel = 'Good' | 'Partial' | 'Limited' | 'No data'
 const COVERAGE_START_TOLERANCE_SECONDS = 120
 
 /**
+ * Share of a stream's minutes with data at which "Data: Good" starts, the
+ * backend's own line: summarizeStreamMetrics marks a summary "partial" under
+ * it and portalQualityFromMetrics calls it full_pulse at or above it. The list
+ * badge uses the same line (pick 11A, 10-30).
+ */
+export const GOOD_COVERAGE_PCT = 80
+
+/**
  * Prefer backend-authored analyticsQuality / availability.chartState.
  * Only fall back to rollup presence when the BFF omitted quality.
  */
@@ -54,9 +62,9 @@ export function deriveAnalyticsQualityLabel(input: {
 
   if (rollups === 0 && !hasChat && (coverage == null || coverage <= 0)) return 'No data'
   if (syncHealth === 'partial' && coverage == null) return 'Partial'
-  if (coverageHasGap || (coverage != null && coverage < 80)) return 'Partial'
+  if (coverageHasGap || (coverage != null && coverage < GOOD_COVERAGE_PCT)) return 'Partial'
   // A stale quality label must not hide a healthy, explicitly synced summary.
-  if (summaryUsesCoverage && coverage != null && coverage >= 80) return 'Good'
+  if (summaryUsesCoverage && coverage != null && coverage >= GOOD_COVERAGE_PCT) return 'Good'
 
   if (quality === 'full_pulse') return 'Good'
   if (quality === 'partial_pulse') return 'Partial'
@@ -73,6 +81,22 @@ export function deriveAnalyticsQualityLabel(input: {
   if (rollups === 0 && !hasChat) return 'No data'
   if (rollups > 0 || hasChat) return 'Partial'
   return 'No data'
+}
+
+/** The open session's "Data: <label>": the header button and the selected list row both read it (pick 11A review, 10-30). */
+export function sessionDataQualityLabel(
+  detail?: AnalyticsStreamDetail,
+  summaryMetrics?: StreamSummaryMetrics,
+): AnalyticsQualityLabel {
+  return deriveAnalyticsQualityLabel({
+    analyticsQuality: detail?.analyticsQuality,
+    summaryMetrics,
+    rollupCount: detail?.timelineMinutes ?? detail?.rollups?.length,
+    chatMessages: detail?.stream?.chatMessages,
+    vodId: detail?.vodId ?? detail?.stream?.vodId,
+    chartState: detail?.availability?.chartState,
+    chartUsable: detail?.availability?.chartUsable,
+  })
 }
 
 export function analyticsQualityChipClass(label: AnalyticsQualityLabel): string {
@@ -165,7 +189,7 @@ export function diagnoseStreamQuality(input: {
   const summaryOverridesStaleQuality =
     ['synced', 'partial', 'ready', 'ok'].includes(syncHealth)
     && coverage != null
-    && coverage >= 80
+    && coverage >= GOOD_COVERAGE_PCT
     && !coverageHasGap
   const issues: StreamQualityIssue[] = []
 

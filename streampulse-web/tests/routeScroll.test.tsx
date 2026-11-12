@@ -1,11 +1,10 @@
 import { StrictMode, useState } from 'react'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { BrowserRouter, MemoryRouter, NavigationType, Outlet, Route, Router, Routes, useNavigate, type NavigateFunction, type Navigator } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, NavigationType, Route, Router, Routes, useNavigate, type NavigateFunction, type Navigator } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AppRoutes } from '../src/routes/index'
-import { RequireAuth } from '../src/routes/guards'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AppRoutes, preloadOpeningPage } from '../src/routes/index'
 import { RouteScrollManager, useHashScrollHold } from '../src/ui/RouteScrollManager'
 import { hashTargetId } from '../src/lib/routeScroll'
 
@@ -93,6 +92,9 @@ function renderApp(path: string) {
   )
 }
 
+// Public pages load on demand; load them first, as main.tsx does for the page a visit opens on.
+beforeAll(() => Promise.all(['/docs', '/privacy', '/terms', '/refunds', '/support', '/status', '/changelog'].map(preloadOpeningPage)))
+
 beforeEach(() => {
   frames = []
   vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
@@ -160,6 +162,27 @@ describe('route change scroll (OP1-FUN-008)', () => {
     await settleMicrotasks()
     const target = document.getElementById('api')
     expect(target).toBeTruthy()
+    expect(target?.closest('details')?.open).toBe(true)
+    expect(scrolledElements()).toContain(target)
+  })
+
+  it('opens the Pulse Supporter section of the Terms for /terms#supporter, and only that one', async () => {
+    renderApp('/terms#supporter')
+    await settleMicrotasks()
+    const target = document.getElementById('supporter')
+    expect(target).toBeTruthy()
+    const fold = target?.closest('details')
+    expect(fold?.open).toBe(true)
+    expect(scrolledElements()).toContain(target)
+    const others = [...document.querySelectorAll<HTMLDetailsElement>('details[data-fold]')].filter((other) => other !== fold)
+    expect(others.length).toBeGreaterThan(5)
+    expect(others.every((other) => !other.open)).toBe(true)
+  })
+
+  it('opens the Feedback form section of the Privacy policy for /privacy#feedback-form', async () => {
+    renderApp('/privacy#feedback-form')
+    await settleMicrotasks()
+    const target = document.getElementById('feedback-form')
     expect(target?.closest('details')?.open).toBe(true)
     expect(scrolledElements()).toContain(target)
   })
@@ -249,6 +272,25 @@ describe('route change scroll (OP1-FUN-008)', () => {
     runFrames(120)
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
     expect(scrollTo).not.toHaveBeenCalled()
+  })
+
+  it('opens a closed fold for a native #fragment link without scrolling', async () => {
+    const navigator = { createHref: () => '', go: () => {}, push: () => {}, replace: () => {} } as unknown as Navigator
+    const at = (hash: string) => (
+      <Router location={{ pathname: '/docs', search: '', hash, state: null, key: 'default' }} navigationType={NavigationType.Pop} navigator={navigator}>
+        <RouteScrollManager />
+        <main><section id="first">First</section><details><summary>More</summary><section id="inside">Inside</section></details></main>
+      </Router>
+    )
+    const view = render(at('#first'))
+    await settleMicrotasks()
+    runFrames(120)
+    scrollIntoView.mockClear()
+    view.rerender(at('#inside'))
+    await settleMicrotasks()
+    runFrames(120)
+    expect(document.getElementById('inside')!.closest('details')!.open).toBe(true)
+    expect(scrollIntoView).not.toHaveBeenCalled()
   })
 
   it('animates an in-page hash change unless the reader prefers reduced motion', async () => {
@@ -741,31 +783,5 @@ describe('replaced pages (path-changing REPLACE)', () => {
     await settleMicrotasks()
     expect(scrollTo).not.toHaveBeenCalled()
     expect(scrolledElements()).toEqual([document.getElementById('coverage')])
-  })
-
-  it('opens the hub at the top when Back reaches a gated page without its key', async () => {
-    render(
-      <MemoryRouter initialEntries={['/dashboard', '/support']} initialIndex={1}>
-        <NavigateProbe />
-        <RouteScrollManager />
-        <Routes>
-          <Route path="/support" element={<p>Support</p>} />
-          <Route path="/analytics" element={<p>Hub</p>} />
-          <Route element={<RequireAuth />}><Route path="/dashboard" element={<Outlet />} /></Route>
-        </Routes>
-      </MemoryRouter>,
-    )
-    await settleMicrotasks()
-    // The browser restores the dashboard's offset, then the gate redirects.
-    setScrollY(1500)
-    act(() => { navigate(-1) })
-    expect(await screen.findByText('Hub')).toBeTruthy()
-    await settleMicrotasks()
-    expect(scrollTo).toHaveBeenCalledWith(0, 0)
-  })
-
-  it('sends the sign-out redirect to the top of the hub', () => {
-    const main = readFileSync(resolve(import.meta.dirname, '../src/main.tsx'), 'utf8')
-    expect(main).toContain("navigate('/analytics', { replace: true, state: routeScrollState('top') })")
   })
 })

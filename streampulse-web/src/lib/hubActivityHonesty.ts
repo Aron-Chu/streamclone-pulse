@@ -1,5 +1,6 @@
 import { formatActivityWindowLabel } from './hubActivitySummary'
 import type { HubActivity, HubActivityPoint } from './publicHub'
+import { HUB_URL_ONLY_WINDOWS, HUB_VISIBLE_WINDOWS } from './hubWindows'
 
 /** Backend HubActivity.source when long-window projection is unavailable. */
 export const HUB_ACTIVITY_SOURCE_LIVE_POOL_FALLBACK = 'live_pool_fallback'
@@ -10,6 +11,13 @@ export const HUB_ACTIVITY_SOURCE_HISTORICAL_PROJECTION = 'historical_projection'
 /** Backend HubActivity.reason for projection-ineligible long windows. */
 export const HUB_ACTIVITY_REASON_HISTORICAL_UNAVAILABLE =
   'historical_projection_unavailable'
+
+/**
+ * Portal-only HubActivity.reason (fix, 10-30): the portal's own 30m read stands
+ * in for a longer window that has not answered (usePublicHubData). The backend
+ * never sends it, and the portal never claims the backend's reason for it.
+ */
+export const HUB_ACTIVITY_REASON_PORTAL_STAND_IN = 'portal_stand_in'
 
 /** Backend / portal marker for an attested registered known-gap bucket. */
 export const HUB_ACTIVITY_GAP_KIND_ATTESTED = 'attested'
@@ -119,6 +127,47 @@ export function isHubActivityLivePoolFallback(activity: HubActivity): boolean {
   )
 }
 
+/** The portal's own 30m stand-in for a longer window (fix, 10-30). */
+export function isHubActivityStandIn(activity: HubActivity): boolean {
+  return (
+    activity.source === HUB_ACTIVITY_SOURCE_LIVE_POOL_FALLBACK &&
+    activity.reason === HUB_ACTIVITY_REASON_PORTAL_STAND_IN
+  )
+}
+
+/** A live-pool fallback the backend itself served, not the portal's stand-in (fix, 10-30). */
+export function isHubActivityBackendFallback(activity: HubActivity): boolean {
+  return isHubActivityLivePoolFallback(activity) && !isHubActivityStandIn(activity)
+}
+
+const requestedMinutes = (activity: HubActivity) =>
+  Math.max(1, validWindowMinutes(activity.requestedWindowMinutes) ?? validWindowMinutes(activity.windowMinutes) ?? 30)
+
+/** The requested window as its button names it ("24h", "7d"), else "1 day" style (fix, 10-30). */
+function requestedWindowButtonLabel(activity: HubActivity): string {
+  const minutes = requestedMinutes(activity)
+  const option = [...HUB_VISIBLE_WINDOWS, ...HUB_URL_ONLY_WINDOWS].find((o) => o.minutes === minutes)
+  return option?.label ?? formatActivityWindowLabel(minutes)
+}
+
+/** "the last 30 minutes": the served window, in words (fix, 10-30). */
+export function hubActivityLastServedWords(activity: HubActivity): string {
+  const served = resolveHubActivityChartWindowMinutes(activity)
+  if (served >= 60 && served % 60 === 0) return served === 60 ? 'the last hour' : `the last ${served / 60} hours`
+  return served === 1 ? 'the last minute' : `the last ${served} minutes`
+}
+
+/**
+ * The visible line for the portal's stand-in (fix, 10-30): the requested window
+ * is still loading, or did not load. It never says why. Null for anything else.
+ */
+export function hubActivityStandInLine(activity: HubActivity, loading: boolean): string | null {
+  if (!isHubActivityStandIn(activity)) return null
+  const requested = requestedWindowButtonLabel(activity)
+  const served = hubActivityLastServedWords(activity)
+  return loading ? `Loading ${requested}… showing ${served} meanwhile` : `${requested} didn't load. Showing ${served}.`
+}
+
 /**
  * True only when a healthy historical projection has no registered gaps and
  * measured coverage (when present) spans the full request. Never true when
@@ -221,6 +270,10 @@ export function formatHubActivityServedLabel(activity: HubActivity): string {
 
 /** Longer explanation for title/tooltip when degraded or attested gaps exist. */
 export function hubActivityHonestyDetail(activity: HubActivity): string | null {
+  // the portal's stand-in knows no cause: it says only what is shown (fix, 10-30)
+  if (isHubActivityStandIn(activity)) {
+    return `The ${requestedWindowButtonLabel(activity)} view is not loaded. Showing ${hubActivityLastServedWords(activity)} of live-pool activity only. Missing history is not invented.`
+  }
   if (isHubActivityLivePoolFallback(activity)) {
     const requested = formatActivityWindowLabel(Math.max(1, activity.windowMinutes || 30))
     const availableMinutes = resolveHubActivityChartWindowMinutes(activity)

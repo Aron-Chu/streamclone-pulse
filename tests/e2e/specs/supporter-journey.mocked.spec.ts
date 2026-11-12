@@ -4,7 +4,7 @@ import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 
 /**
  * The invited-tester Supporter journey with Twitch sign-in off (stage A),
- * packaged, with fixture APIs only: Connect this extension from the closed
+ * packaged, with fixture APIs only: Connect tester account from the closed
  * tester disclosure → (website sign-in + one approval, simulated by the poll
  * fixture) → Continue to checkout on the website → delayed payment
  * confirmation → membership and a pre-chosen finish reach settings and an
@@ -100,18 +100,18 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   await expect.poll(() => bannerFinish(cdp)).toBe(null)
   await settings.bringToFront()
 
-  // Optional explicit finish choice before purchase: a preview, nothing equipped.
-  await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
-  await settings.getByRole('button', { name: 'Save for when Supporter opens', exact: true }).click()
-  await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
-  expect(cosmeticWrites).toEqual([])
+  // While signed out, the closed studio is try-on only and offers no saved choice.
+  await settings.getByText('Preview Supporter looks', { exact: true }).click()
+  await expect(settings.locator('.pulse-supporter-studio .pulse-account-link-actions')).toHaveCount(0)
 
-  // Signed out, the page sells nothing; an invited tester connects from the closed disclosure.
-  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(0)
+  // Signed out, the page offers only the one-click Become a Supporter; an
+  // invited tester connects from the closed disclosure instead.
+  await expect(settings.getByRole('button', { name: 'Become a Supporter', exact: true })).toHaveCount(1)
+  await expect(settings.getByRole('button', { name: 'Connect this extension', exact: true })).toHaveCount(0)
   const openedTabs = await recordOpenedTabs(settings)
   const opened = context.waitForEvent('page')
-  await settings.getByText('Invited tester? Connect this extension', { exact: true }).click()
-  await settings.getByRole('button', { name: 'Connect this extension', exact: true }).click()
+  await settings.getByText('Invited tester? Connect a tester account', { exact: true }).click()
+  await settings.getByRole('button', { name: 'Connect tester account', exact: true }).click()
   const portal = await opened
   expect(await openedTabs()).toEqual(['https://streampulse.stream/account/link-device#code=ABCDE12345'])
   await expect(settings.locator('[data-journey-state="link-pending"]')).toBeVisible()
@@ -124,6 +124,13 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   await expect(settings.locator('[data-journey-state="offer"]')).toBeVisible({ timeout: 20_000 })
   await expect(settings.getByText('Connected to this extension · ··1a1b2c')).toBeVisible()
   await settings.bringToFront()
+  // The connected account now has an explicit checkoutEnabled: true answer.
+  // Only this open state may keep a paint for the membership to apply later.
+  await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
+  await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
+  await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
+  await expect(settings.getByText('We keep this choice for 7 days.', { exact: true })).toBeVisible()
+  expect(cosmeticWrites).toEqual([])
   const checkout = context.waitForEvent('page')
   await settings.locator('a[data-supporter-action="billing"]').click()
   await checkout
@@ -132,11 +139,11 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   // Stripe's webhook is delayed: pending, then active. No refresh button is pressed.
   status = 'pending'
   await expect(settings.locator('[data-journey-state="payment-pending"]')).toBeVisible({ timeout: 20_000 })
-  await expect(settings.getByText('you do not need to pay again', { exact: false })).toBeVisible()
+  await expect(settings.getByText("Stripe is still confirming your payment. Supporter turns on by itself. Don't pay again.", { exact: true })).toBeVisible()
   await settings.screenshot({ path: info.outputPath('journey-2-payment-pending.png'), fullPage: true, animations: 'disabled' })
   status = 'active'
   await expect(settings.locator('[data-journey-state="active"]')).toBeVisible({ timeout: 30_000 })
-  await expect(settings.getByText('You are a Supporter', { exact: true })).toBeVisible()
+  await expect(settings.getByText("You're a Supporter", { exact: true })).toBeVisible()
 
   // The worker applied the explicit choice once access was verified.
   await expect.poll(() => cosmeticWrites).toEqual([{ enabled: true, finish: 'halo' }])

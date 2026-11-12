@@ -42,12 +42,13 @@ export function useSupporterPaintStyle() {
 }
 
 /** Wave and sheen pickers, as rows of pills. The Your look preview above shows each choice in the paint being tried. */
-export function SupporterPaintStyleFields({ style, onChoose }: {
+export function SupporterPaintStyleFields({ style, onChoose, disabled = false }: {
   style: SupporterPaintStyle
   onChoose: (next: SupporterPaintStyle) => void
+  disabled?: boolean
 }) {
   return <>
-    <fieldset className="pulse-supporter-look-row"><legend>Wave</legend>
+    <fieldset className="pulse-supporter-look-row" disabled={disabled}><legend>Wave</legend>
       <div className="pulse-supporter-tiles">
         {SUPPORTER_WAVE_OPTIONS.map(option => <label key={option.id} className="pulse-supporter-tile" title={option.description}>
           <input
@@ -62,7 +63,7 @@ export function SupporterPaintStyleFields({ style, onChoose }: {
         </label>)}
       </div>
     </fieldset>
-    <fieldset className="pulse-supporter-look-row"><legend>Sheen</legend>
+    <fieldset className="pulse-supporter-look-row" disabled={disabled}><legend>Sheen</legend>
       <div className="pulse-supporter-tiles">
         {SUPPORTER_SHEEN_OPTIONS.map(option => <label key={option.id} className="pulse-supporter-tile" title={option.description}>
           <input

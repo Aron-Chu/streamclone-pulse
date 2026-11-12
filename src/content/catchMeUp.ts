@@ -24,7 +24,7 @@ const CSS = `
 .pcu-sum:has(>.pcu-sum-cover){grid-template-columns:112px minmax(0,1fr)}
 .pcu-sum-cover{position:relative;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:repeating-linear-gradient(135deg,rgba(255,255,255,.06) 0 3px,rgba(255,255,255,.02) 3px 7px)}
 .pcu-sum-cover img{display:block;width:100%;height:100%;object-fit:cover}
-.pcu-sum-cover span{position:absolute;right:4px;bottom:4px;padding:0 4px;border-radius:3px;background:rgba(0,0,0,.75);color:#fff;font-size:9px;font-weight:800;line-height:14px;font-variant-numeric:tabular-nums}
+.pcu-sum-cover span{position:absolute;right:4px;bottom:4px;padding:0 4px;border-radius:3px;background:rgba(0,0,0,.75);color:#fff;font-size:11px;font-weight:800;line-height:14px;font-variant-numeric:tabular-nums}
 .pcu-sum-text{display:grid;gap:1px;min-width:0}
 .pcu-sum-title{overflow:hidden;color:#fafafc;font-size:12.5px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
 .pcu-sum-games{display:-webkit-box;overflow:hidden;color:#a1a1b2;font-size:11px;font-weight:700;line-height:1.35;-webkit-box-orient:vertical;-webkit-line-clamp:2}

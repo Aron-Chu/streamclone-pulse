@@ -9,6 +9,7 @@ import { resolveAnalyticsVodId } from '../../utils/twitchVodUrl.ts'
 import {
   analyticsQualityChipClass,
   deriveAnalyticsQualityLabel,
+  sessionDataQualityLabel,
   type AnalyticsQualityLabel,
   type StreamSummaryMetrics,
 } from '../../utils/streamQuality.ts'
@@ -55,15 +56,7 @@ export function deriveSessionDataQuality(
   detail?: AnalyticsStreamDetail,
   summaryMetrics?: StreamSummaryMetrics,
 ): SessionDataQuality {
-  const label = deriveAnalyticsQualityLabel({
-    analyticsQuality: detail?.analyticsQuality,
-    summaryMetrics,
-    rollupCount: detail?.timelineMinutes ?? detail?.rollups?.length,
-    chatMessages: detail?.stream?.chatMessages,
-    vodId: detail?.vodId ?? detail?.stream?.vodId,
-    chartState: detail?.availability?.chartState,
-    chartUsable: detail?.availability?.chartUsable,
-  })
+  const label = sessionDataQualityLabel(detail, summaryMetrics)
   const vodState = (detail?.availability?.vodState ?? '').toLowerCase()
   const hasVod = Boolean(resolveAnalyticsVodId(detail))
   return {
@@ -221,7 +214,7 @@ export function DataQualityDisclosure({
     return (
       <div className="text-xs normal-case">
         <span
-          className="flex min-h-11 items-center rounded border border-white/10 bg-white/[0.04] px-3 py-2 font-black uppercase text-zinc-500"
+          className="flex min-h-11 items-center rounded border border-white/10 bg-white/[0.04] px-3 py-2 font-black uppercase text-zinc-400"
           data-data-quality-pending
           aria-label="Data quality: not known yet"
         >

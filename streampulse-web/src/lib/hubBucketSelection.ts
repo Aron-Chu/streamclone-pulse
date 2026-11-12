@@ -185,6 +185,12 @@ export interface HubChartBridge {
   plotElement(): HTMLElement | null
   /** Pan (not zoom) so that `ms` is in view. */
   panToMs(ms: number): void
+  /** The bar before (-1) or after (1) the one holding `ms`, at the chart's current level; null at either end. */
+  stepBar?(ms: number, dir: -1 | 1): Pick<HubBucketSelectionValue, 't' | 'endT' | 'barMinutes'> | null
+  /** Zoom (animated) so that [startMs, endMs) fills the plot. */
+  zoomToMs?(startMs: number, endMs: number): void
+  /** Focus the plot (where focus goes back when the card closes). */
+  focusPlot?(): void
 }
 
 let bridge: HubChartBridge | null = null

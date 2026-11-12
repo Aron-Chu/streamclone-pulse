@@ -11,11 +11,10 @@ export function PrelaunchNotice() {
     <p
       role="note"
       data-testid="prelaunch-notice"
-      className="mt-6 rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-4 text-sm text-amber-100"
+      className="mt-6 max-w-none rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-4 text-sm text-amber-100"
     >
-      <strong>Supporter sign-ups are not open yet.</strong> Pulse Supporter cannot be bought on this
-      site today. Where this page describes Supporter billing, it describes how the membership will
-      work once sign-ups open.
+      <strong>Supporter sign-ups aren&rsquo;t open yet</strong>, so you can&rsquo;t buy it today. Billing
+      details here describe how it will work once they open.
     </p>
   )
 }

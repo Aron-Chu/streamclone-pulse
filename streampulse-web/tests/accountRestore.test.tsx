@@ -36,6 +36,9 @@ describe('restore secret custody', () => {
     expect(isPrivateSupporterRoute('/supporter/thanks')).toBe(true)
     expect(isPrivateSupporterRoute('/account/restore')).toBe(true)
     expect(isPrivateSupporterRoute('/supporter')).toBe(false)
+    expect(isPrivateSupporterRoute('/account')).toBe(true)
+    expect(isPrivateSupporterRoute('/account/')).toBe(true)
+    expect(isPrivateSupporterRoute('/accounts')).toBe(false)
   })
 })
 

@@ -12,9 +12,10 @@ export interface HostNavItem {
 
 function initialSection(navItems: ReadonlyArray<HostNavItem>): SettingsHostSection {
   if (typeof window === 'undefined') return navItems[0]?.id ?? 'pulse'
-  // A place inside a section opens that section (#pulse-background: Pulse, Background & motion).
+  // A place inside a section opens that section (#pulse-background: Pulse, Background & motion;
+  // #moments-history: My Moments on History).
   // Help & Feedback is gone (2026-10-11): an old #help link lands on Updates & Changelog.
-  const hash = window.location.hash.replace(/^#/, '').replace(/^pulse-background$/, 'pulse').replace(/^help$/, 'updates')
+  const hash = window.location.hash.replace(/^#/, '').replace(/^pulse-background$/, 'pulse').replace(/^moments-history$/, 'moments').replace(/^help$/, 'updates')
   return navItems.some(item => item.id === hash) ? hash as SettingsHostSection : navItems[0]?.id ?? 'pulse'
 }
 
@@ -42,8 +43,8 @@ export function SettingsHostShell({
   useEffect(() => {
     function syncFromHash(): void {
       const nextSection = initialSection(navItems)
-      // #pulse-background stays in the address so Background & motion can open whenever it mounts.
-      const valid = window.location.hash === '#pulse-background' || navItems.some(item => `#${item.id}` === window.location.hash)
+      // #pulse-background (#moments-history) stays in the address so Background & motion (History) can open whenever it mounts.
+      const valid = window.location.hash === '#pulse-background' || window.location.hash === '#moments-history' || navItems.some(item => `#${item.id}` === window.location.hash)
       if (!valid) window.history.replaceState(null, '', `#${nextSection}`)
       setActiveSection(nextSection)
     }
@@ -114,7 +115,8 @@ export function SettingsHostShell({
         </div>
 
         <div className="pulse-host-main">
-          {activeSection !== 'supporter'
+          {/* My Moments is a working page; the banner stays off it. */}
+          {activeSection !== 'supporter' && activeSection !== 'moments'
             ? <SupporterBanner onOpen={() => navigateToSection('supporter')} onPerks={setSupporterPerks} />
             : null}
           {typeof children === 'function' ? children(activeSection, supporterPerks) : children}

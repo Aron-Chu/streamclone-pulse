@@ -11,6 +11,42 @@ async function readBlob(blob: Blob): Promise<string> {
 }
 
 describe('native public capture transport privacy boundary', () => {
+  it('sends only fixed tool and outcome values, with no inputs, profile or persistent identity', async () => {
+    const beacon = vi.fn(() => true)
+    Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: beacon })
+    let allowed = true
+    const client = createPublicCaptureClient('phc_testonly', category => allowed && category === 'tool')
+    client.captureTimestampLinkBuilt()
+    const event = JSON.parse(await readBlob((beacon.mock.calls as unknown as [string, Blob][])[0]![1]))
+    expect(event.event).toBe('portal_public_tool_completed')
+    expect(event.properties).toEqual({ page_category: 'tool', tool: 'twitch_vod_timestamp_link', outcome: 'link_built', $process_person_profile: false, $geoip_disable: true })
+    expect(JSON.stringify(event)).not.toMatch(/current_url|referrer|video_id|timestamp_input|session_id/)
+    allowed = false
+    client.captureTimestampLinkBuilt()
+    client.stop()
+    allowed = true
+    client.captureTimestampLinkBuilt()
+    expect(beacon).toHaveBeenCalledTimes(1)
+    expect(Object.keys(localStorage)).toEqual([])
+  })
+
+  it('accepts summary categories without transmitting channel, stream or location data', async () => {
+    const beacon = vi.fn(() => true)
+    Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: beacon })
+    const client = createPublicCaptureClient('phc_testonly', () => true)
+    client.capturePage('channel_summary')
+    client.captureCta('stream_recap', 'install_extension')
+    expect(beacon).toHaveBeenCalledTimes(2)
+    const events = await Promise.all((beacon.mock.calls as unknown as [string, Blob][]).map(async ([, blob]) => JSON.parse(await readBlob(blob))))
+    expect(events[0].properties.page_category).toBe('channel_summary')
+    expect(events[1].properties).toEqual({page_category: 'stream_recap', cta: 'install_extension', $process_person_profile: false, $geoip_disable: true})
+    expect(JSON.stringify(events)).not.toMatch(/fixturechan|12345|pathname|referrer|current_url/)
+    client.capturePage('tool')
+    client.captureCta('guide', 'install_extension')
+    expect(beacon).toHaveBeenCalledTimes(4)
+    client.stop()
+  })
+
   afterEach(() => { vi.unstubAllEnvs() })
 
   it('sends only a generated capture API envelope; refused beacons have no fallback, retry or shutdown/unload flush', async () => {
@@ -24,7 +60,7 @@ describe('native public capture transport privacy boundary', () => {
     expect(beacon).toHaveBeenCalledTimes(2)
     let distinctId: string | undefined
     for (const [url, payload] of beacon.mock.calls as unknown as [string, Blob][]) {
-      expect(url).toBe('https://us.i.posthog.com/i/v0/e/')
+      expect(url).toBe('https://i.streampulse.stream/i/v0/e/')
       expect(payload.type).toBe('application/json')
       const body = await readBlob(payload)
       expect(body).not.toMatch(/private|secret|email|current_url|referrer|session_id|device_id|window_id|pathname/)

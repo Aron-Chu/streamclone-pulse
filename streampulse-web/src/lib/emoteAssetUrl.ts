@@ -83,6 +83,7 @@ export function preferResolvableEmoteUrl(
  * 7TV / hosted proxy: …/{1x|2x|4x}.webp
  * Twitch static CDN: …/{1.0|2.0|3.0}
  * FFZ: trailing /{1|2|4}
+ * BTTV: trailing /{1x|2x|3x}, with or without .webp/.gif/.png; its biggest is 3x, so 4x asks 3x
  */
 export function emoteUrlForScale(url: string | undefined, scale: EmoteDisplayScale): string | undefined {
   const abs = absolutizeEmoteAssetUrl(url)
@@ -104,33 +105,57 @@ export function emoteUrlForScale(url: string | undefined, scale: EmoteDisplaySca
       u.pathname = u.pathname.replace(/\/[124]$/i, `/${ffz}`)
       return u.toString()
     }
+    if (host === 'cdn.betterttv.net') {
+      const bttv = scale === '4x' ? '3x' : scale
+      u.pathname = u.pathname.replace(/\/[123]x(\.(?:webp|gif|png))?$/i, `/${bttv}$1`)
+      return u.toString()
+    }
   } catch {
     return abs
   }
   return abs
 }
 
-/** Build srcset for ordinary card/row sizes (prefer 1x/2x; include 4x for high-DPI). */
-export function emoteSrcSet(url: string | undefined): string | undefined {
-  const u1 = emoteUrlForScale(url, '1x')
-  const u2 = emoteUrlForScale(url, '2x')
-  const u4 = emoteUrlForScale(url, '4x')
+/** A Twitch emote drawn this small or smaller uses its still (not animated) file. */
+export const STATIC_EMOTE_MAX_PX = 20
+/** Only a picture drawn this wide or wider may ask for the 4x file; below it the biggest is 2x. */
+export const WIDE_EMOTE_MIN_PX = 64
+
+/**
+ * Twitch's still file for an emote URL (`…/default/dark/2.0` → `…/static/dark/2.0`).
+ * An animated emote is up to ~200 KB at 2.0; the first frame draws the same at 20 px.
+ * Other URLs come back unchanged.
+ */
+export function staticTwitchEmoteUrl(url: string | undefined): string | undefined {
+  if (!url) return url
+  return url.replace(/^(https:\/\/static-cdn\.jtvnw\.net\/emoticons\/v2\/[^/]+\/)default\//i, '$1static/')
+}
+
+/**
+ * Build srcset for ordinary card/row sizes: 1x and 2x, so a 3x phone gets 2x, not
+ * the biggest file. The 4x file is offered only to a picture drawn `cssPx` >= 64.
+ */
+export function emoteSrcSet(url: string | undefined, cssPx = 28): string | undefined {
+  const still = (value: string | undefined) => (cssPx <= STATIC_EMOTE_MAX_PX ? staticTwitchEmoteUrl(value) : value)
+  const u1 = still(emoteUrlForScale(url, '1x'))
+  const u2 = still(emoteUrlForScale(url, '2x'))
+  const u4 = cssPx >= WIDE_EMOTE_MIN_PX ? still(emoteUrlForScale(url, '4x')) : undefined
   if (!u1 || !u2) return undefined
-  if (u1 === u2 && u2 === u4) return undefined
+  if (u1 === u2 && (!u4 || u4 === u2)) return undefined
   const parts = [`${u1} 1x`, `${u2} 2x`]
   if (u4 && u4 !== u2) parts.push(`${u4} 4x`)
   return parts.join(', ')
 }
 
-/** Default display URL for small cards/rows — 1x, not 4x. */
+/** Default display URL for small cards/rows: 1x (still for Twitch under ~20 px), not 4x. */
 export function emoteDisplaySrc(url: string | undefined, cssPx = 28): string | undefined {
   const scaled =
-    cssPx >= 64
+    cssPx >= WIDE_EMOTE_MIN_PX
       ? emoteUrlForScale(url, '4x') ?? absolutizeEmoteAssetUrl(url)
       : cssPx >= 40
         ? emoteUrlForScale(url, '2x') ?? absolutizeEmoteAssetUrl(url)
         : emoteUrlForScale(url, '1x') ?? absolutizeEmoteAssetUrl(url)
-  return sanitizeEmoteImageUrl(scaled)
+  return sanitizeEmoteImageUrl(cssPx <= STATIC_EMOTE_MAX_PX ? staticTwitchEmoteUrl(scaled) : scaled)
 }
 
 /**

@@ -142,7 +142,8 @@ for (const surface of [
     // Still nothing a few seconds in, after the panel has settled.
     await extension.page.waitForTimeout(2_000)
     await expectNothingPicked()
-    if (surface.name === 'live') await expect(root.locator('[data-featured-moment="true"]')).toContainText('Biggest moment so far')
+    // The Biggest-moment strip is gone (panel-first board, 2026-11-11).
+    if (surface.name === 'live') await expect(root.locator('[data-featured-moment]')).toHaveCount(0)
 
     // A pick selects, highlights and locks; picking it again releases all of it.
     await pick.click()
@@ -382,9 +383,10 @@ test('live: ranked picks show in the Top Moments card, chart minutes keep the ch
   await expect(chart).toBeVisible()
   await expect(card).toHaveCount(0)
 
-  // The strongest-moment shortcut sits with the chart, but a ranked moment
-  // shows in the Top Moments card, not under the chart.
-  await root.locator('[data-featured-moment="true"]').click()
+  // A ranked moment picked on the chart (its spike marker) shows in the Top
+  // Moments card, not under the chart.
+  await root.getByRole('button', { name: 'Show spike markers' }).click()
+  await root.locator('[data-chart-moment-marker="true"]').first().click()
   await expect(card).toHaveCount(1)
   await expect(row).toHaveAttribute('aria-pressed', 'true')
   await expect(chartCard).toHaveCount(0)

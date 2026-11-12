@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './helpers/portalMockedTest'
 import {
   assertEmotePlotLines,
   assertNoUnexpected,
@@ -60,7 +60,7 @@ test.describe('portal emote plotting (mocked)', () => {
     expect((await bttvCdn.count()) + (await proxyOnly.count())).toBeGreaterThan(0)
 
     // The chart starts with the session leader plotted. Add five more from the
-    // "Emote overlays" panel and assert that each selected emote produces a real trace.
+    // "Emotes on chart" panel and assert that each selected emote produces a real trace.
     await assertEmotePlotLines(page, 1)
     // The 7TV and BTTV Clap are two emotes: each plots its own trace.
     await plotSessionEmotes(page, ['7tv:Clap:Clap', 'bttv:Clap:Clap'])

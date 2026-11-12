@@ -91,8 +91,8 @@
  * Fill mode `backwards`, so nothing holds a property after it ends.
  * Presses and hovers: analytics-console.css. The chart's own motion (Expand,
  * lanes, plotted lines): AnalyticsChart.tsx and sp-chart.css. */
-.sc-reveal,
-[data-chart-data-alternative][open] > :not(summary) {
+.analytics-console .sc-reveal,
+.analytics-console [data-chart-data-alternative][open] > :not(summary) {
   animation: sc-reveal 0.22s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
@@ -103,8 +103,8 @@
   }
 }
 
-.ssp-tp,
-.ssr-row {
+.analytics-console .ssp-tp,
+.analytics-console .ssr-row {
   animation: sc-fade-in 0.24s ease-out backwards;
 }
 
@@ -114,7 +114,7 @@
   }
 }
 
-.sc-ov-chip {
+.analytics-console .sc-ov-chip {
   animation: sc-chip-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) backwards;
   animation-delay: calc(min(var(--i, 0), 14) * 18ms);
 }
@@ -126,7 +126,7 @@
   }
 }
 
-.sc-ov-pop {
+.analytics-console .sc-ov-pop {
   animation: sc-badge-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
 
@@ -138,17 +138,17 @@
 }
 
 /* Show on chart and the info tip open downward, the zoom help upward. */
-.ssc-panel:not([hidden]),
-.ssp-pop {
+.analytics-console .ssc-panel:not([hidden]),
+.analytics-console .ssp-pop {
   transform-origin: 100% 0;
   animation: sc-pop 0.18s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
-.ssp-pop {
+.analytics-console .ssp-pop {
   transform-origin: 0 0;
 }
 
-.spc-nav__pop:not([hidden]) {
+.analytics-console .spc-nav__pop:not([hidden]) {
   transform-origin: 100% 100%;
   animation: sc-pop-up 0.18s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
@@ -168,11 +168,11 @@
 }
 
 /* Show on chart's chevron turns over while its panel is open. */
-.ssc-chev {
+.analytics-console .ssc-chev {
   transition: rotate 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.ssc-qb[aria-expanded='true'] .ssc-chev {
+.analytics-console .ssc-qb[aria-expanded='true'] .ssc-chev {
   rotate: 180deg;
 }
 
@@ -184,19 +184,19 @@
   .sc-moment-row-selected::after,
   .ssr-mpop,
   .sc-stat-card[data-value-changed='true'] .sc-stat-card__value,
-  .sc-reveal,
-  [data-chart-data-alternative][open] > :not(summary),
-  .ssp-tp,
-  .ssr-row,
-  .sc-ov-chip,
-  .sc-ov-pop,
-  .ssc-panel,
-  .ssp-pop,
-  .spc-nav__pop {
+  .analytics-console .sc-reveal,
+  .analytics-console [data-chart-data-alternative][open] > :not(summary),
+  .analytics-console .ssp-tp,
+  .analytics-console .ssr-row,
+  .analytics-console .sc-ov-chip,
+  .analytics-console .sc-ov-pop,
+  .analytics-console .ssc-panel,
+  .analytics-console .ssp-pop,
+  .analytics-console .spc-nav__pop {
     animation: none !important;
   }
 
-  .ssc-chev {
+  .analytics-console .ssc-chev {
     transition: none;
   }
 }

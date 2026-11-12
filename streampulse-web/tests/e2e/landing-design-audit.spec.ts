@@ -54,7 +54,6 @@ async function collectLandingDom(page: Page) {
       chatBackdrop: Boolean(document.querySelector('.sl-chatbg')),
       tickers: document.querySelectorAll('.sl-ticker').length,
       extensionTour: Boolean(document.querySelector('.sl-xtour, #demo')),
-      signalGraph: Boolean(document.querySelector('#analysis')),
     }
     return {
       title: document.querySelector('#hero-headline')?.textContent?.replace(/\s+/g, ' ').trim() ?? null,

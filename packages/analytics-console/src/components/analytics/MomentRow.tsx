@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { NO_VOD_LINKED_COPY } from '../../utils/sessionState.ts'
 import { momentRankAccent, momentReasonChipTone } from '../../utils/momentListDisplay.tsx'
+import { boxArtAtSize } from '../../utils/boxArtSize.ts'
 import { count, getEmoteImageUrl } from '../../utils/consoleFormat.ts'
 import {
   momentRowHms,
@@ -10,6 +12,7 @@ import {
 } from '../../utils/momentRowDisplay.ts'
 import { alignedVodOffset, buildTwitchVodUrl } from '../../utils/twitchVodUrl.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
+import { PREVIEW_PLAYER_LOADS_COPY, previewMissLine } from './MomentPreviewTile.tsx'
 import { MomentRowSpark, momentRowSparkNote } from './MomentRowSpark.tsx'
 
 export interface MomentRowEmote {
@@ -62,7 +65,7 @@ function MomentIntensityBar({ ratio, score }: { ratio: number; score: number }) 
           style={{ width: `${Math.max(6, clamped * 100)}%` }}
         />
       </span>
-      <span className="w-5 text-right text-xs font-black tabular-nums text-zinc-500">
+      <span className="w-5 text-right text-xs font-black tabular-nums text-zinc-400">
         {score}
       </span>
     </span>
@@ -126,7 +129,7 @@ export function MomentRow({
             {model.primaryTime}
           </span>
           {model.secondaryTime ? (
-            <span className="truncate text-xs font-semibold text-zinc-600">
+            <span className="truncate text-xs font-semibold text-zinc-400">
               {model.secondaryTime}
             </span>
           ) : null}
@@ -143,14 +146,14 @@ export function MomentRow({
         {model.snapshotOnly ? (
           <span
             title="No measured minute lines up with this detection, so the numbers come from the detection window itself."
-            className="inline-flex shrink-0 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-xs font-black uppercase text-zinc-500"
+            className="inline-flex shrink-0 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-xs font-black uppercase text-zinc-400"
           >
             Snapshot
           </span>
         ) : null}
       </div>
 
-      <div className="min-w-0 truncate text-xs font-semibold tabular-nums text-zinc-500">
+      <div className="min-w-0 truncate text-xs font-semibold tabular-nums text-zinc-400">
         {model.statsLine}
       </div>
 
@@ -169,9 +172,9 @@ export function MomentRow({
                 width={14}
                 height={14}
                 className="h-3.5 w-3.5 shrink-0 object-contain"
-                fallbackClassName="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-500"
+                fallbackClassName="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-400"
               />
-              <span className="text-xs font-bold tabular-nums text-zinc-500">
+              <span className="text-xs font-bold tabular-nums text-zinc-400">
                 {count(emote.count)}
               </span>
             </span>
@@ -185,7 +188,7 @@ export function MomentRow({
 /** Shared legend so the intensity bar is never an unexplained decoration. */
 export function MomentListLegend() {
   return (
-    <p className="text-xs font-semibold text-zinc-600">
+    <p className="text-xs font-semibold text-zinc-400">
       Select a moment to review its minute and watch the source. The bar shows reaction
       intensity relative to this stream&rsquo;s loudest moment — Pulse ranks reactions, not
       clip quality.
@@ -203,9 +206,10 @@ export function MomentListLegend() {
 //
 // The row's backdrop is the moment's VOD frame in the mockup. The rows load
 // no frames (F6), so they draw no backdrop: the game's small cover by its name
-// is the only picture. The blurred, zoomed box art that stood in until
-// 2026-10-21 read as a broken preview (Aron: "why is everything blurred").
-// Never a live frame, never a stand-in.
+// is the only picture (candidate, 10-30, PIC-2). The blurred, zoomed box art
+// that stood in until 10-30 read as a broken preview (Aron 10-21: "why is
+// everything blurred"). Never a live frame, never a stand-in. Frames on the
+// rows (PIC-6) are not wired: they would slot in where `.ssr-fr` was.
 // ---------------------------------------------------------------------------
 
 /** The row player starts this many seconds before the moment. */
@@ -231,7 +235,7 @@ export interface SessionMomentRowModel {
   spark: MomentRowSparkBar[]
   game: { name: string; artUrls: string[] } | null
   emotes: MomentRowEmote[]
-  /** Title of "emote names not captured", when the minute names under 25 % of its uses. */
+  /** Title of "names not in this update", when the minute names under 25 % of its uses. */
   namesNotCaptured: string | null
   /** No measured minute lines up: the emotes come from the detection snapshot. */
   snapshotOnly: boolean
@@ -312,6 +316,7 @@ export function SessionMomentRow({
   onHover?: (hovering: boolean) => void
   onArtError?: (url: string) => void
 }) {
+  // no blurred backdrop, no hover dwell to light it (candidate, 10-30, PIC-2)
   const [popDone, setPopDone] = useState(0)
 
   const showPop = pop > 0 && pop !== popDone && locked && !prefersReducedMotion()
@@ -363,7 +368,7 @@ export function SessionMomentRow({
             <span className="ssr-gm">
               {artUrl ? (
                 <img
-                  src={artUrl}
+                  src={boxArtAtSize(artUrl, 30, 40)}
                   alt=""
                   width={15}
                   height={20}
@@ -376,7 +381,7 @@ export function SessionMomentRow({
             </span>
           ) : null}{' '}
           {model.namesNotCaptured ? (
-            <span className="ssr-nn" title={model.namesNotCaptured}>emote names not captured</span>
+            <span className="ssr-nn" title={model.namesNotCaptured}>names not in this update</span>
           ) : model.emotes.length > 0 ? (
             <span
               className="ssr-toks"
@@ -446,8 +451,10 @@ export function momentRowVodStart(args: {
 
 /**
  * The row's player box (moment-rows.js playerHTML, without a frame: F6). The
- * Twitch player loads only when Play is pressed. U14's MomentPreviewTile can
- * replace `.ssr-pl-pic` once frames load.
+ * Twitch player loads only when Play is pressed. A plain dark box, no blurred
+ * box art behind it (candidate, 10-30, PIC-2); `artUrl` only lets the note say
+ * the pictures are box art. U14's MomentPreviewTile can take the box over once
+ * frames load.
  */
 export function SessionMomentPlayer({
   model,
@@ -457,7 +464,6 @@ export function SessionMomentPlayer({
   vodDurationSeconds,
   vodRecording = false,
   autoPlay = false,
-  onArtError,
 }: {
   model: SessionMomentRowModel
   artUrl: string | null
@@ -466,6 +472,7 @@ export function SessionMomentPlayer({
   vodDurationSeconds?: number | null
   vodRecording?: boolean
   autoPlay?: boolean
+  /** Unused since 10-30 (no picture in the box to fail); kept so callers need no change. */
   onArtError?: (url: string) => void
 }) {
   const start = momentRowVodStart({ offsetSeconds: model.offsetSeconds, vodId, vodAlignSeconds, vodDurationSeconds })
@@ -492,7 +499,6 @@ export function SessionMomentPlayer({
     if (playing) boxRef.current?.focus({ preventScroll: true })
   }, [playing])
 
-  const loads = "Twitch's player loads only when you press play."
   return (
     <div className="ssr-pl">
       <div
@@ -511,20 +517,8 @@ export function SessionMomentPlayer({
           />
         ) : (
           <>
-            <span className="ssr-pl-pic" aria-hidden="true">
-              {artUrl ? (
-                <img
-                  className="ssr-pl-bg"
-                  src={artUrl}
-                  alt=""
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                  onError={() => onArtError?.(artUrl)}
-                />
-              ) : null}
-            </span>
             {start == null ? (
-              <p className="ssr-pl-msg">{vodId ? "This minute isn't in the VOD yet." : 'No VOD for this stream yet.'}</p>
+              <p className="ssr-pl-msg">{!vodId ? NO_VOD_LINKED_COPY : vodAlignSeconds == null ? 'Timestamp alignment is not verified.' : "This minute isn't in the VOD yet."}</p>
             ) : (
               <button type="button" className="ssr-pl-go" data-moment-play onClick={play}>
                 <MomentPlayIcon />
@@ -532,8 +526,9 @@ export function SessionMomentPlayer({
               </button>
             )}
             <p className="ssr-pl-note">
-              <span>{vodRecording ? 'Twitch publishes preview frames when the VOD finishes.' : 'No preview frame for this minute.'}</span>
-              {start == null ? null : <span className="t3">{loads}</span>}
+              {/* the reel's and the bar's line (fix, 10-30, PIC-3) */}
+              <span>{previewMissLine({ recording: vodRecording, hasArt: Boolean(artUrl) })}</span>
+              {start == null ? null : <span className="t3">{PREVIEW_PLAYER_LOADS_COPY}</span>}
             </p>
           </>
         )}

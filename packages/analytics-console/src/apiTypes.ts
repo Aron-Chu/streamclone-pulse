@@ -260,6 +260,8 @@ export interface PulseRecapMoment {
   emoteCount?: number;
   /** Backend-authored peak confirmation; omitted until the BFF emits it. */
   peakObservation?: PeakObservationFact;
+  /** "opening" / "closing" for hello / goodbye spam, ranked last (pulse-core streamEdges). */
+  streamEdge?: string;
 }
 
 export interface PulseStreamRecap {

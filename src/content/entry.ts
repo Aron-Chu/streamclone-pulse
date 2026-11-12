@@ -85,6 +85,14 @@ function hydrateLivePollPreferences(): void {
 }
 
 hydrateLivePollPreferences()
+
+/**
+ * The one place the live poll learns what this channel is: charted on the
+ * chart cadence, or off the list and rechecked every 10 minutes.
+ */
+function syncLivePoll(login: string, context: TwitchPageContext, hosted: boolean): void {
+  livePoll.sync(login, context, lastCollecting && lastRosterEligible, hosted, !lastRosterEligible)
+}
 const VOD_LIVE_POLL_INTERVAL_MS = 30_000
 let vodLivePollTimer: ReturnType<typeof setTimeout> | null = null
 let vodLivePollInFlight = false
@@ -215,11 +223,12 @@ async function fetchChannelPulse(login: string): Promise<PulseUpdateMessage> {
 }
 
 async function loadInitialChannelPayload(
+  pulse: Promise<PulseUpdateMessage>,
   login: string,
   autoTrack: boolean,
   hosted: boolean,
 ): Promise<PulseUpdateMessage> {
-  const response = await fetchChannelPulse(login)
+  const response = await pulse
 
   if (hosted || !autoTrack || !isPulseRosterEligible(response.payload)) {
     return response
@@ -317,11 +326,13 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   installOverlayPrefsListener()
 
   const pageIsLive = detectTwitchChannelLive(context)
-  const generation = activationGate.begin()
   const intendedLogin = login
   const intendedPath = window.location.pathname
 
   if (activeSession?.kind === 'channel' && activeSession.login === login) {
+    // Same channel (Twitch rewrites the URL while it boots): never cancel this
+    // channel's first load still in flight. A real navigation still does.
+    const generation = activationGate.current()
     updateOverlayContext(context)
     updateOverlayVodState({ vodPulse: null, loading: false })
     if (pageIsLive !== lastPageIsLive) {
@@ -339,11 +350,21 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
     ) {
       return
     }
-    livePoll.sync(login, context, lastCollecting && lastRosterEligible, hostedNow)
+    syncLivePoll(login, context, hostedNow)
     return
   }
 
+  const generation = activationGate.begin()
   resetAnalyticsActivationLatches()
+
+  // Ask for the chart first: the worker answers while the settings load. A
+  // superseded activation never reads it, so its rejection is handled here.
+  const pulse = fetchChannelPulse(intendedLogin)
+  const answered = pulse.catch(() => {})
+  // With no panel up yet, the empty one waits a moment for that answer, as the
+  // route debounce used to: a channel with nothing to chart then opens on Chat,
+  // never on Pulse's loading card.
+  const firstAnswer = !activeSession && Promise.race([answered, new Promise(resolve => setTimeout(resolve, NAV_DEBOUNCE_MS))])
 
   // Capture session intent before any await that could race with navigation.
   activeSession = { kind: 'channel', login: intendedLogin }
@@ -353,7 +374,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
   lastRosterEligible = true
   lastPageIsLive = pageIsLive
 
-  const backendUrl = await getBackendUrl()
+  const [backendUrl] = await Promise.all([getBackendUrl(), firstAnswer])
   if (generation !== activationGate.current()) return
   if (activeSession?.kind !== 'channel' || activeSession.login !== intendedLogin) return
   if (window.location.pathname !== intendedPath && parseTwitchPage(window.location.pathname).login !== intendedLogin) {
@@ -369,7 +390,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
     ...overlayMountOptions,
   })
   updateOverlayVodState({ vodPulse: null, loading: false })
-  livePoll.sync(intendedLogin, context, false, hosted)
+  syncLivePoll(intendedLogin, context, hosted)
 
   const [policy, watchlist] = await Promise.all([getAutoTrackPolicy(), getWatchlist()])
   if (generation !== activationGate.current()) return
@@ -377,7 +398,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
 
   const onWatchlist = watchlist.includes(intendedLogin.toLowerCase())
   const autoTrack = localStack && (policy === 'followed' || (policy === 'ask' && onWatchlist))
-  const message = await loadInitialChannelPayload(intendedLogin, autoTrack, hosted)
+  const message = await loadInitialChannelPayload(pulse, intendedLogin, autoTrack, hosted)
     // A rejected worker call (e.g. a closed message port) is a failed load, not a pending one.
     .catch((): PulseUpdateMessage => ({ type: 'PULSE_UPDATE', login: intendedLogin, payload: null, error: 'request_failed' }))
   if (generation !== activationGate.current()) return
@@ -404,7 +425,7 @@ async function activateChannel(context: TwitchPageContext): Promise<void> {
     requestPulseLoadCompletedAnalytics()
   }
 
-  livePoll.sync(intendedLogin, contextNow, lastCollecting && lastRosterEligible, hosted)
+  syncLivePoll(intendedLogin, contextNow, hosted)
 }
 
 async function activateVod(context: TwitchPageContext): Promise<void> {
@@ -563,7 +584,7 @@ onPulseUpdate((message: PulseUpdateMessage) => {
     void getBackendUrl().then(url => {
       if (generationSnapshot !== activationGate.current()) return
       if (!activeSession || activeSession.kind !== 'channel' || activeSession.login !== sessionLogin) return
-      livePoll.sync(sessionLogin, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(url))
+      syncLivePoll(sessionLogin, context, isHostedBackendUrl(url))
     })
   }
 })
@@ -645,12 +666,14 @@ setInterval(() => {
     void getBackendUrl().then(url => {
       if (generationSnapshot !== activationGate.current()) return
       if (!activeSession || activeSession.kind !== 'channel' || activeSession.login !== login) return
-      livePoll.sync(login, context, lastCollecting && lastRosterEligible, isHostedBackendUrl(url))
+      syncLivePoll(login, context, isHostedBackendUrl(url))
     })
   }
 }, 5000)
 
-routeSync.schedule()
+// The page is already settled at document_idle: check it now. Only later URL
+// changes wait out the debounce.
+syncFromLocation()
 }
 
 export {}

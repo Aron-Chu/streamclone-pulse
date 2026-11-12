@@ -3,6 +3,8 @@ import { formatHeatOffset } from '@streampulse/pulse-core'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import type { CreatePulseBookmarkInput, PulseBookmark } from '../shared/messages.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
+import { keptVodOriginDelta } from '../shared/vodOriginAlignment.ts'
+import { ReviewRequest } from './ReviewRequest.tsx'
 
 /** What a moment card saves: the ranked moment it shows, or its raw chart minute (no score). */
 export interface BookmarkTarget {
@@ -46,6 +48,8 @@ export interface BookmarkToast {
   undo?: () => void
   /** Offers to connect an account (a save that needs one). */
   connect?: boolean
+  /** Where View opens My Moments: on History for a moment that joined it; Saved otherwise. */
+  view?: 'moments-history'
 }
 
 interface MomentBookmarksValue {
@@ -57,7 +61,7 @@ interface MomentBookmarksValue {
   toggle: (target: BookmarkTarget) => void
   toast: BookmarkToast | null
   dismissToast: () => void
-  openSettings: (section: 'moments' | 'supporter') => void
+  openSettings: (section: 'moments' | 'moments-history' | 'supporter') => void
 }
 
 const MomentBookmarksContext = createContext<MomentBookmarksValue | null>(null)
@@ -105,19 +109,34 @@ async function firstDeviceSave(): Promise<boolean> {
 const NO_OFFSETS: readonly number[] = []
 
 /**
+ * An ended stream's archive, from stream history (LIST_PAST_VODS): only the
+ * row with this exact stream id, never the channel's latest VOD.
+ */
+export async function endedStreamVodId(login: string, streamId: string): Promise<string | null> {
+  const result = await sendBackgroundMessage({ type: 'LIST_PAST_VODS', login })
+  return 'type' in result && result.type === 'PAST_VODS' ? result.items.find(item => item.streamId === streamId && item.videoId)?.videoId ?? null : null
+}
+
+/**
  * Free, on-demand bookmarks for the panel's moment cards. Account credentials
  * never leave the worker; without an account it keeps saves on this device.
  *
  * One provider holds the saves of the stream or VOD the panel shows, so the
  * chart's card, the Top Moments card and the rows agree on what is saved.
  */
-export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, momentOffsets = NO_OFFSETS, notice, children }: {
+export function MomentBookmarksProvider({ login, streamId, vodId, vodOriginDeltaSeconds, resolveVodId, momentOffsets = NO_OFFSETS, notice, children }: {
   login: string
   streamId?: string
   vodId?: string
   /**
-   * Live only: finds the live archive's VOD id. A save with only the stream
-   * stays "Replay not linked" in My Moments for good (PAGE-1).
+   * How far `vodId`'s archive starts after the stream, from the same payload.
+   * A save on that VOD keeps it, so its link lands on the moment.
+   */
+  vodOriginDeltaSeconds?: number
+  /**
+   * Finds the stream's archive when the page has no VOD id: the live archive,
+   * or an ended stream's (`endedStreamVodId`). A save with only the stream
+   * stays "Replay not linked" until My Moments links it (PAGE-1).
    */
   resolveVodId?: () => Promise<string | null>
   /** The listed moments' offsets, so a save near two goes to the nearer one. */
@@ -129,6 +148,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
   const [items, setItems] = useState<PulseBookmark[]>([])
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<BookmarkToast | null>(null)
+  const [reviewRequested, setReviewRequested] = useState(false)
   const generation = useRef(0)
   const pending = useRef(false)
   const toastKey = useRef(0)
@@ -140,6 +160,8 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
   offsetsRef.current = momentOffsets
   const resolveRef = useRef(resolveVodId)
   resolveRef.current = resolveVodId
+  const deltaRef = useRef(vodOriginDeltaSeconds)
+  deltaRef.current = vodOriginDeltaSeconds
 
   useEffect(() => {
     let active = true
@@ -147,6 +169,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
       generation.current++
       pending.current = false
       setItems([]); setToast(null); setBusy(false)
+      setReviewRequested(false)
     }
     const hydrate = () => {
       const current = generation.current
@@ -178,7 +201,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
     setToast({ tone: 'info', ...next, key: ++toastKey.current })
 
   useEffect(() => {
-    if (notice) show({ text: notice.text })
+    if (notice) show({ text: notice.text, view: 'moments-history' })
   }, [notice?.key])
 
   /** Runs one bookmark change at a time; a change of account or stream drops its result. */
@@ -197,11 +220,15 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
   }
 
   async function create(input: CreatePulseBookmarkInput, current: number, restoreOf?: string) {
-    const result = await sendBackgroundMessage({ type: 'SAVE_BOOKMARK', bookmark: input, ...(restoreOf ? { restoreOf } : {}) })
+    // Only the payload's own VOD has this delta; an archive found by lookup has none.
+    const delta = input.vodId && input.vodId === validVodId ? keptVodOriginDelta(deltaRef.current) : undefined
+    const result = await sendBackgroundMessage({ type: 'SAVE_BOOKMARK', bookmark: input, ...(restoreOf ? { restoreOf } : {}),
+      ...(delta === undefined ? {} : { vodOriginDeltaSeconds: delta }) })
     if (current !== generation.current) return null
     if ('error' in result && result.error) throw new Error(result.error)
     if (!('type' in result) || result.type !== 'BOOKMARK') throw new Error('invalid_bookmark_response')
     setItems(previous => [result.item, ...previous.filter(item => item.id !== result.item.id)])
+    if (result.reviewRequest === true && !restoreOf) setReviewRequested(true)
     return { item: result.item, device: result.device === true }
   }
 
@@ -227,7 +254,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
   const unsave = (item: PulseBookmark, undoing = false) => run(async current => {
     if (!await remove(item, current)) return
     if (undoing) setToast(null)
-    else show({ text: `Removed bookmark at ${formatHeatOffset(item.offsetSeconds)}.`, undo: () => void restore(item) })
+    else show({ text: `Removed at ${formatHeatOffset(item.offsetSeconds)}`, undo: () => void restore(item) })
   })
 
   const save = (target: BookmarkTarget) => run(async current => {
@@ -245,7 +272,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
       const existing = matchBookmark(result.items.filter(inContext), target, offsetsRef.current)
       if (existing) {
         setItems(previous => [...previous.filter(item => item.id !== existing.id), existing])
-        show({ text: `Already bookmarked at ${formatHeatOffset(existing.offsetSeconds)}.` })
+        show({ text: `Already saved at ${formatHeatOffset(existing.offsetSeconds)}` })
         return
       }
       cursor = result.nextCursor
@@ -260,9 +287,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
     const saved = await create({ login, streamId, ...(saveVodId ? { vodId: saveVodId } : {}), offsetSeconds: offset,
       label: target.label, source: 'extension' }, current)
     if (!saved) return
-    const at = formatHeatOffset(offset)
-    const text = !saved.device ? `Saved to your account at ${at}.`
-      : await firstDeviceSave() ? 'Saved on this device · Sign in to sync' : `Saved on this device at ${at}.`
+    const text = saved.device && await firstDeviceSave() ? 'Saved on this device · Sign in to sync' : `Saved at ${formatHeatOffset(offset)}`
     if (current !== generation.current) return
     show({ text, undo: () => void unsave(saved.item, true) })
   })
@@ -286,7 +311,10 @@ export function MomentBookmarksProvider({ login, streamId, vodId, resolveVodId, 
     // The handlers read refs, or what these change with.
   }), [items, busy, toast, canSave, momentOffsets, login, streamId, validVodId])
 
-  return <MomentBookmarksContext.Provider value={value}>{children}</MomentBookmarksContext.Provider>
+  return <MomentBookmarksContext.Provider value={value}>
+    {children}
+    {reviewRequested ? <ReviewRequest onDismiss={() => setReviewRequested(false)} /> : null}
+  </MomentBookmarksContext.Provider>
 }
 
 /** The bookmark mark: an outline to save, filled once saved. */
@@ -328,7 +356,7 @@ export function MomentBookmarkToast() {
   const dismiss = bookmarks?.dismissToast
   useEffect(() => {
     if (!toast || held || !dismiss) return
-    const timer = setTimeout(dismiss, toast.tone === 'error' ? 8000 : 4200)
+    const timer = setTimeout(dismiss, toast.tone === 'error' ? 8000 : 6000)
     return () => clearTimeout(timer)
   }, [toast, held, dismiss])
   useEffect(() => setHeld(false), [toast?.key])
@@ -355,7 +383,7 @@ export function MomentBookmarkToast() {
               {TWITCH_SIGNIN_ENABLED ? 'Connect' : 'Settings'}
             </button>
           ) : (
-            <button type="button" data-bookmark-toast-action="library" onClick={() => bookmarks.openSettings('moments')}>My Moments</button>
+            <button type="button" data-bookmark-toast-action="view" onClick={() => bookmarks.openSettings(toast.view ?? 'moments')}>View</button>
           )}
         </div>
       ) : null}

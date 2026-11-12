@@ -371,7 +371,7 @@ div.spc-layer {
 }
 
 /* a plotted emote's line wipes in from the left when it mounts (2026-10-21) */
-.spc .spc-line-in {
+.analytics-console .spc .spc-line-in {
   animation: spc-line-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
@@ -389,7 +389,7 @@ div.spc-layer {
 
 @media (prefers-reduced-motion: reduce) {
   .spc-ring,
-  .spc .spc-line-in {
+  .analytics-console .spc .spc-line-in {
     animation: none;
   }
 }

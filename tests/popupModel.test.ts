@@ -6,6 +6,7 @@ import {
   formatCount,
   formatSince,
   formatUptime,
+  notChartedNote,
   popupShowsDeviceHistory,
   popupTabView,
   safeImageUrl,
@@ -114,6 +115,29 @@ describe('popup channel summary', () => {
     expect(summary.biggest).toEqual({ label: 'Peak chat', offsetSeconds: 101 * 60 + 50, agoSeconds: 18 * 60 + 10 })
   })
 
+  it('gives a tied score to the earlier peak whatever order the peaks arrive in', () => {
+    const earlier = { offsetSeconds: 60 * 60, score: 55, reasons: [], dominantSignal: 'seventv' }
+    const later = { offsetSeconds: 100 * 60, score: 55, reasons: [], dominantSignal: 'seventv' }
+    for (const peaks of [[earlier, later], [later, earlier]]) {
+      expect(summarizeChannel('fixturechan', livePayload({ peaks }), null, NOW).biggest?.offsetSeconds).toBe(60 * 60)
+    }
+  })
+
+  it('skips a hello spike in the first five minutes unless nothing else ranked', () => {
+    const hello = { offsetSeconds: 60, score: 99, reasons: [], dominantSignal: 'seventv', reasonLabel: 'Emote spike' }
+    const real = { offsetSeconds: 60 * 60, score: 40, reasons: [], dominantSignal: 'chat', reasonLabel: 'Chat spike' }
+    expect(summarizeChannel('fixturechan', livePayload({ peaks: [hello, real] }), null, NOW).biggest?.offsetSeconds).toBe(60 * 60)
+    expect(summarizeChannel('fixturechan', livePayload({ peaks: [hello] }), null, NOW).biggest?.offsetSeconds).toBe(60)
+  })
+
+  it('skips a goodbye spike in the last ten minutes of a finished stream', () => {
+    const rollups = Array.from({ length: 96 }, (_, minute) => rollup(minute, 20))
+    const goodbye = { offsetSeconds: 94 * 60, score: 99, reasons: [], dominantSignal: 'seventv', reasonLabel: 'Emote spike' }
+    const real = { offsetSeconds: 50 * 60, score: 40, reasons: [], dominantSignal: 'chat', reasonLabel: 'Chat spike' }
+    const ended = livePayload({ isLive: false, endedAt: '2026-10-01T20:00:00.000Z', rollups: [], fullRollups: rollups, peaks: [goodbye, real] })
+    expect(summarizeChannel('fixturechan', ended, null, NOW).biggest?.offsetSeconds).toBe(50 * 60)
+  })
+
   it('summarises a finished stream across its whole length', () => {
     const rollups = Array.from({ length: 96 }, (_, minute) => rollup(minute, minute % 2 ? 10 : 30))
     const summary = summarizeChannel('fixturechan', livePayload({
@@ -144,6 +168,16 @@ describe('popup channel summary', () => {
   it('marks channels outside the hosted roster and survives a missing payload', () => {
     expect(summarizeChannel('fixturechan', livePayload({ rosterEligible: false }), null, NOW).tracked).toBe(false)
     expect(summarizeChannel('fixturechan', null, null, NOW)).toMatchObject({ displayName: 'fixturechan', isLive: false, spark: [], biggest: null })
+  })
+
+  it('says why a channel off the list has no chart, and stays quiet otherwise', () => {
+    expect(notChartedNote(summarizeChannel('fixturechan', livePayload({ rosterEligible: false }), null, NOW))).toEqual({
+      title: 'Not charted',
+      reason: 'StreamPulse only charts Twitch’s busiest channels.',
+    })
+    expect(notChartedNote(summarizeChannel('fixturechan', livePayload(), null, NOW))).toBeNull()
+    expect(notChartedNote(summarizeChannel('fixturechan', null, null, NOW))).toBeNull()
+    expect(notChartedNote(null)).toBeNull()
   })
 
   it('never renders emote images from hosts the extension does not trust', () => {

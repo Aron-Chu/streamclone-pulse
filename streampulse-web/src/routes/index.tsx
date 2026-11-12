@@ -1,44 +1,101 @@
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
-import { RequireAuth } from './guards'
 import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
 import Landing from './public/Landing'
-import Docs from './public/Docs'
-import Status from './public/Status'
-import Privacy from './public/Privacy'
-import Terms from './public/Terms'
-import Refunds from './public/Refunds'
-import Supporter from './public/Supporter'
-import SupporterThanks from './public/SupporterThanks'
-import Support from './public/Support'
-import Feedback from './public/Feedback'
-import Discord from './public/Discord'
-import Changelog from './public/Changelog'
+// The public pages' styles stay in the first stylesheet, in the order the
+// pages brought them when they were imported here: a prerendered page paints
+// styled before its chunk loads, and the cascade is unchanged.
+import './account/account.css'
+import './public/support.css'
+import './public/growth-guides.css'
 import NotFound from './public/NotFound'
 import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
 import { retiredExplorerPath } from '../lib/momentsNavigation'
+import { twitchSignInEnabled } from '../lib/twitchSignInFlag'
+import { accountMomentsEnabled } from '../lib/accountMoments'
 
-// The d3-v5 hub (VITE_PUBLIC_HUB_V5, PR 1 of 5: data layer + activity chart).
-// Read inline so a production build folds the test: a flag-off build is
-// exactly the Command Center page and never emits the v5 chunk.
-const AnalyticsLandingPage = lazy(() =>
-  import.meta.env.VITE_PUBLIC_HUB_V5 === 'on' || import.meta.env.VITE_PUBLIC_HUB_V5 === '1'
-    ? import('./analytics/AnalyticsHubV5Page')
-    : import('./analytics/AnalyticsLandingPage'),
-)
+const AnalyticsHubV5Page = lazy(() => import('./analytics/AnalyticsHubV5Page'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
-const DashboardShell = lazy(() => import('./dashboard/DashboardShell'))
-const DashboardHome = lazy(() => import('./dashboard/Home'))
-const ClipsPage = lazy(() => import('./dashboard/Clips'))
+// A clip's own page exists only in a build with the Clips tab; read inline so a build without it folds the route away.
+const clipsBuildFlag = import.meta.env.VITE_PUBLIC_NATIVE_CLIPS
+const clipsRouteOn = clipsBuildFlag === 'on' || clipsBuildFlag === '1'
+const NativeClipWatchPage = clipsRouteOn ? lazy(() => import('./analytics/NativeClipWatchPage')) : null
 const AccountPage = lazy(() => import('./account/AccountPage'))
 const AccountSettings = lazy(() => import('./account/AccountSettings'))
 const BillingPage = lazy(() => import('./account/BillingPage'))
 const AccountRestore = lazy(() => import('./account/AccountRestore'))
+// Sign in with Twitch and My Moments pages exist only in builds with their
+// switches on; read inline, like the clip page, so a build without them emits
+// no chunk for them.
+const twitchSignInBuild = import.meta.env.VITE_TWITCH_SIGNIN === '1'
+const accountMomentsBuild = import.meta.env.VITE_ACCOUNT_MOMENTS === '1'
+const AccountTwitchCallback = twitchSignInBuild ? lazy(() => import('./account/AccountTwitchCallback')) : null
+const AccountMoments = accountMomentsBuild ? lazy(() => import('./account/AccountMoments')) : null
+const AccountHome = accountMomentsBuild ? lazy(() => import('./account/AccountHome')) : null
+const AccountSync = accountMomentsBuild ? lazy(() => import('../ui/components/AccountSync').then((m) => ({ default: m.AccountSync }))) : null
 const ChannelAnalyticsPage = lazy(() => import('./analytics/ChannelAnalyticsPage'))
 const AnalyticsShell = lazy(() =>
   import('../ui/components/analytics/AnalyticsFigmaShell').then((module) => ({ default: module.AnalyticsFigmaShell })),
 )
+
+/**
+ * A public page loads on demand, so the hub, Moments and stream pages do not
+ * download the help and legal pages. Once its chunk is in it renders at once:
+ * main.tsx loads the opening page before the first render, so a prerendered
+ * page never flashes the loading shell.
+ */
+function onDemandPage(load: () => Promise<{ default: ComponentType }>) {
+  let loaded: ComponentType | null = null
+  const preload = () => load().then((module) => { loaded = module.default })
+  const LazyPage = lazy(() => load().then((module) => { loaded = module.default; return module }))
+  function Page() {
+    const [Ready] = useState(() => loaded)
+    return Ready ? <Ready /> : <LazyPage />
+  }
+  return Object.assign(Page, { preload })
+}
+
+const TwitchTimestampTool = onDemandPage(() => import('./public/TwitchTimestampTool'))
+const FindTwitchMomentsGuide = onDemandPage(() => import('./public/FindTwitchMomentsGuide'))
+const TwitchVodTimestampsGuide = onDemandPage(() => import('./public/TwitchVodTimestampsGuide'))
+
+const Docs = onDemandPage(() => import('./public/Docs'))
+const Status = onDemandPage(() => import('./public/Status'))
+const Privacy = onDemandPage(() => import('./public/Privacy'))
+const Terms = onDemandPage(() => import('./public/Terms'))
+const Refunds = onDemandPage(() => import('./public/Refunds'))
+const Withdraw = onDemandPage(() => import('./public/Withdraw'))
+const Supporter = onDemandPage(() => import('./public/Supporter'))
+const SupporterThanks = onDemandPage(() => import('./public/SupporterThanks'))
+const Support = onDemandPage(() => import('./public/Support'))
+const Feedback = onDemandPage(() => import('./public/Feedback'))
+const Discord = onDemandPage(() => import('./public/Discord'))
+const Changelog = onDemandPage(() => import('./public/Changelog'))
+
+const OPENING_PAGES: Record<string, { preload: () => Promise<void> }> = {
+  '/tools/twitch-vod-timestamp-link': TwitchTimestampTool,
+  '/guides/find-twitch-moments': FindTwitchMomentsGuide,
+  '/guides/twitch-vod-timestamps': TwitchVodTimestampsGuide,
+  '/docs': Docs,
+  '/status': Status,
+  '/privacy': Privacy,
+  '/terms': Terms,
+  '/refunds': Refunds,
+  '/withdraw': Withdraw,
+  '/supporter': Supporter,
+  '/supporter/thanks': SupporterThanks,
+  '/support': Support,
+  '/feedback': Feedback,
+  '/discord': Discord,
+  '/changelog': Changelog,
+}
+
+/** Load the public page a visit opens on, before the first render. Other paths resolve at once. */
+export function preloadOpeningPage(pathname: string): Promise<void> {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  return OPENING_PAGES[path]?.preload() ?? Promise.resolve()
+}
 
 /**
  * Backcompat alias: /analytics/:login/s/:streamId → /analytics/:login/:streamId.
@@ -73,6 +130,12 @@ function AnalyticsAliasRedirect() {
   return <Navigate to={`/analytics${search}${hash}`} replace />
 }
 
+/** Matches the static install redirect during local dev and client navigation. */
+function InstallRedirect() {
+  const { search } = useLocation()
+  return <Navigate to={`/docs${search}#extension`} replace />
+}
+
 /** Pulse Explorer and the older Newsroom are retired: a broadcast opens its stream page, the rest open Moments. */
 function RetiredExplorerRedirect() {
   const { broadcastId, storyId } = useParams<{ broadcastId?: string; storyId?: string }>()
@@ -103,6 +166,7 @@ export function AppRoutes() {
   return (
     <PageErrorBoundary shell={(panel, moduleLoadFailed) => routeErrorShell(pathname, panel, moduleLoadFailed)}>
       <PortalRoutes />
+      {AccountSync && accountMomentsEnabled() ? <Suspense fallback={null}><AccountSync /></Suspense> : null}
     </PageErrorBoundary>
   )
 }
@@ -113,7 +177,11 @@ function PortalRoutes() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/setup" element={<AnalyticsAliasRedirect />} />
+        <Route path="/tools/twitch-vod-timestamp-link" element={<TwitchTimestampTool />} />
+        <Route path="/guides/find-twitch-moments" element={<FindTwitchMomentsGuide />} />
+        <Route path="/guides/twitch-vod-timestamps" element={<TwitchVodTimestampsGuide />} />
         <Route path="/docs" element={<Docs />} />
+        <Route path="/install" element={<InstallRedirect />} />
         <Route path="/docs/getting-started" element={<Navigate to="/docs#extension" replace />} />
         <Route path="/docs/coverage" element={<Navigate to="/docs#coverage" replace />} />
         <Route path="/docs/api" element={<Navigate to="/docs#api" replace />} />
@@ -122,6 +190,7 @@ function PortalRoutes() {
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/refunds" element={<Refunds />} />
+        <Route path="/withdraw" element={<Withdraw />} />
         {/* Public offer page. The extension's Supporter card links here, so it
             must stay a real route — never a redirect into a gated surface. */}
         <Route path="/supporter" element={<Supporter />} />
@@ -141,6 +210,16 @@ function PortalRoutes() {
         <Route path="/account/link-device" element={<AccountPage />} />
         <Route path="/account/billing" element={<BillingPage />} />
         <Route path="/account/billing/return" element={<BillingPage />} />
+        {/* Sign in with Twitch (VITE_TWITCH_SIGNIN=1). While off, the path is
+            the ordinary 404; main.tsx still strips any token from its URL.
+            Show my Twitch follows returns here too, and main.tsx moves that
+            return back to the page that asked before the routes render. */}
+        {AccountTwitchCallback && twitchSignInEnabled() ? <Route path="/account/twitch/callback" element={<AccountTwitchCallback />} /> : null}
+        {/* My Moments (VITE_ACCOUNT_MOMENTS=1); while off, the ordinary 404. */}
+        {AccountMoments && accountMomentsEnabled() ? <Route path="/account/moments" element={<AccountMoments />} /> : null}
+        {/* The one Account page and My Moments' short address, with My Moments on. */}
+        {AccountHome && accountMomentsEnabled() ? <Route path="/account" element={<AccountHome />} /> : null}
+        {AccountMoments && accountMomentsEnabled() ? <Route path="/moments" element={<Navigate to="/account/moments" replace />} /> : null}
 
         {/* Public analytics is a no-login surface. The legacy beta-key /login
             screen is gone — point old links at the public analytics hub. */}
@@ -148,7 +227,7 @@ function PortalRoutes() {
 
         {/* Public aggregate analytics — single landing. /hub kept as a permanent
             redirect so old links/bookmarks resolve to the one analytics page. */}
-        <Route path="/analytics" element={<AnalyticsLandingPage />} />
+        <Route path="/analytics" element={<AnalyticsHubV5Page />} />
         <Route path="/analytics/hub" element={<AnalyticsAliasRedirect />} />
         <Route path="/analytics/emotes" element={<AnalyticsAliasRedirect />} />
         <Route path="/atlas" element={<AnalyticsAliasRedirect />} />
@@ -156,6 +235,8 @@ function PortalRoutes() {
 
         {/* Fixed discovery routes must precede dynamic channel routes. */}
         <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
+        {/* Without the clip page, a clip address is a 404, never a channel named "clips". */}
+        {NativeClipWatchPage ? <Route path="/analytics/clips/:clipId" element={<NativeClipWatchPage />} /> : <Route path="/analytics/clips/*" element={<NotFound />} />}
         <Route path="/analytics/newsroom" element={<RetiredExplorerRedirect />} />
         <Route path="/analytics/newsroom/:storyId" element={<RetiredExplorerRedirect />} />
         <Route path="/analytics/explore" element={<RetiredExplorerRedirect />} />
@@ -169,14 +250,6 @@ function PortalRoutes() {
         {/* Short public aliases used by extension/share links. */}
         <Route path="/s/:login" element={<ShortSessionRedirect />} />
         <Route path="/s/:login/:streamId" element={<ShortSessionRedirect />} />
-
-        {/* Dashboard remains a separate, gated product surface. */}
-        <Route element={<RequireAuth />}>
-          <Route path="/dashboard" element={<DashboardShell />}>
-            <Route index element={<DashboardHome />} />
-            <Route path="clips" element={<ClipsPage />} />
-          </Route>
-        </Route>
 
         {/* /admin is not a public operator console. Cloudflare Access for API
             /v1/admin/* remains an external ops/promotion blocker. */}

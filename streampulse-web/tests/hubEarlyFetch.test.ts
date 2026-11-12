@@ -4,6 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   hasPrimedPublicHub,
+  HUB_READ_HARD_CAP_MS,
   hubReadTimeoutMs,
   PRIMED_HUB_TTL_MS,
   primedHubRequestForLocation,
@@ -50,6 +51,11 @@ function hubBody(windowMinutes: number) {
   }
 }
 
+/** The signal main.tsx's primed request runs with. */
+function primedRequestSignal(): AbortSignal {
+  return (api.apiClient.mock.calls[0][1] as { signal: AbortSignal }).signal
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (error: unknown) => void
@@ -58,8 +64,6 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
-  // The primed hand-over is the d3-v5 hub's (VITE_PUBLIC_HUB_V5); the flag-off case is tested below.
-  vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
   resetPrimedPublicHubForTests()
   clearPublicHubCacheForTests()
   localStorage.clear()
@@ -68,7 +72,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  vi.unstubAllEnvs()
   vi.useRealTimers()
   resetPrimedPublicHubForTests()
 })
@@ -83,14 +86,19 @@ describe('hub early fetch: paths', () => {
     expect(hubReadTimeoutMs('24h')).toBe(SLOW_READ_TIMEOUT_MS)
     expect(hubReadTimeoutMs('30m')).toBeUndefined()
     expect(hubReadTimeoutMs('recent')).toBeUndefined()
+    expect(hubReadTimeoutMs('30m', 'tickers')).toBeUndefined()
+    expect(hubReadTimeoutMs('30m', 'moments')).toBe(SLOW_READ_TIMEOUT_MS)
+    expect(hubReadTimeoutMs('recent', 'moments')).toBe(SLOW_READ_TIMEOUT_MS)
   })
 
+  // The hook adopts the primed read as its own, which runs on past its deadline.
   it('primes only /analytics, reading the window like the page', () => {
+    expect(HUB_READ_HARD_CAP_MS).toBe(90_000)
     expect(primedHubRequestForLocation({ pathname: '/analytics', search: '' })).toEqual({
-      path: '/v1/public/hub?activityWindow=24h', activityWindow: '24h', timeoutMs: SLOW_READ_TIMEOUT_MS,
+      path: '/v1/public/hub?activityWindow=24h', activityWindow: '24h', timeoutMs: HUB_READ_HARD_CAP_MS,
     })
     expect(primedHubRequestForLocation({ pathname: '/analytics/', search: '?window=7d' })?.path).toBe('/v1/public/hub?activityWindow=7d')
-    expect(primedHubRequestForLocation({ pathname: '/analytics', search: '?activityWindow=30m' })).toMatchObject({ activityWindow: '30m', timeoutMs: undefined })
+    expect(primedHubRequestForLocation({ pathname: '/analytics', search: '?activityWindow=30m' })).toMatchObject({ activityWindow: '30m', timeoutMs: HUB_READ_HARD_CAP_MS })
     expect(primedHubRequestForLocation({ pathname: '/analytics', search: '?window=bogus' })?.activityWindow).toBe('24h')
     for (const pathname of ['/', '/analytics/xqc/123', '/moments', '/Analytics', '/analyticsx']) {
       expect(primedHubRequestForLocation({ pathname, search: '' })).toBeNull()
@@ -107,7 +115,9 @@ describe('hub early fetch: priming and hand-over', () => {
     expect(primePublicHub({ pathname: '/analytics', search: '?window=7d' })).toBe('/v1/public/hub?activityWindow=7d')
     expect(primePublicHub({ pathname: '/analytics', search: '' })).toBeNull()
     expect(api.apiClient).toHaveBeenCalledTimes(1)
-    expect(api.apiClient).toHaveBeenCalledWith('/v1/public/hub?activityWindow=7d', { timeoutMs: SLOW_READ_TIMEOUT_MS })
+    expect(api.apiClient).toHaveBeenCalledWith('/v1/public/hub?activityWindow=7d', {
+      timeoutMs: HUB_READ_HARD_CAP_MS, signal: expect.any(AbortSignal), slowOrigin: true,
+    })
     expect(hasPrimedPublicHub()).toBe(true)
   })
 
@@ -135,11 +145,24 @@ describe('hub early fetch: priming and hand-over', () => {
     expect(takePrimedPublicHub('/v1/public/hub?activityWindow=24h')).toBeNull()
   })
 
+  // Nobody reads it any more: the origin need not go on building it.
+  it('ends the request once nobody can adopt it', () => {
+    vi.useFakeTimers()
+    api.apiClient.mockReturnValue(new Promise(() => {}))
+    primePublicHub({ pathname: '/analytics', search: '' })
+    const primedSignal = primedRequestSignal()
+    vi.advanceTimersByTime(PRIMED_HUB_TTL_MS)
+    expect(primedSignal.aborted).toBe(false)
+    vi.advanceTimersByTime(1)
+    expect(primedSignal.aborted).toBe(true)
+  })
+
   it('drops the primed request when the backend changed', () => {
     api.apiClient.mockReturnValue(new Promise(() => {}))
     primePublicHub({ pathname: '/analytics', search: '' })
     api.backend = 'http://localhost:8081'
     expect(takePrimedPublicHub('/v1/public/hub?activityWindow=24h')).toBeNull()
+    expect(primedRequestSignal().aborted).toBe(true)
     api.backend = 'https://api.streampulse.stream'
     expect(takePrimedPublicHub('/v1/public/hub?activityWindow=24h')).toBeNull()
   })
@@ -158,10 +181,42 @@ describe('hub early fetch: priming and hand-over', () => {
     gate.resolve({ data: 'body', status: 200 })
     await expect(second).resolves.toEqual({ data: 'body', status: 200 })
     expect(api.apiClient).toHaveBeenCalledTimes(1)
+    // Adopted again in the same tick, as a StrictMode remount does: it runs on.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(primedRequestSignal().aborted).toBe(false)
     // An already-aborted signal never adopts.
     const aborted = new AbortController()
     aborted.abort()
     expect(takePrimedPublicHub('/v1/public/hub?activityWindow=24h', aborted.signal)).toBeNull()
+  })
+
+  it('ends the request when its adopter leaves and nobody takes it back', async () => {
+    api.apiClient.mockReturnValue(new Promise(() => {}))
+    primePublicHub({ pathname: '/analytics', search: '' })
+    const controller = new AbortController()
+    const first = takePrimedPublicHub('/v1/public/hub?activityWindow=24h', controller.signal)!
+    controller.abort()
+    await expect(first).rejects.toMatchObject({ kind: 'aborted' })
+    // The page moved to another window in the same tick.
+    expect(takePrimedPublicHub('/v1/public/hub?activityWindow=7d', new AbortController().signal)).toBeNull()
+    expect(primedRequestSignal().aborted).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(primedRequestSignal().aborted).toBe(true)
+    expect(hasPrimedPublicHub()).toBe(false)
+  })
+
+  it('ends the adopted request when the hook moves to another window', async () => {
+    api.apiClient.mockImplementation((path: string) =>
+      path.includes('=24h') ? new Promise(() => {}) : Promise.resolve({ data: hubBody(10_080), status: 200 }))
+    primePublicHub({ pathname: '/analytics', search: '' })
+    const { rerender, unmount } = renderHook(
+      ({ activityWindow }: { activityWindow: '24h' | '7d' }) => usePublicHubData({ enabled: true, activityWindow, pollMs: 0 }),
+      { initialProps: { activityWindow: '24h' } },
+    )
+    expect(hasPrimedPublicHub()).toBe(false)
+    rerender({ activityWindow: '7d' })
+    await waitFor(() => expect(primedRequestSignal().aborted).toBe(true))
+    unmount()
   })
 
   it('never leaves an unhandled rejection when nobody adopts', async () => {
@@ -185,7 +240,7 @@ describe('hub early fetch: parity with the first read on mount (plan §2.6)', ()
       const minutes = { '30m': 30, '24h': 1440, '7d': 10080, '1m': 43200, '3m': 129600, '1y': 525600 }[windowKey]
       api.apiClient.mockImplementation(async (path: string) => ({ data: hubBody(path.includes('=30m') ? 30 : minutes), status: 200 }))
       const primed = primePublicHub({ pathname: '/analytics', search })
-      // The page mounts the hook with the window from the same rule (AnalyticsLandingPage `usePublicHubData({ enabled: true, activityWindow })`).
+      // The page mounts the hook with the window from the same rule (AnalyticsHubV5Page `usePublicHubData({ enabled: true, activityWindow })`).
       const { result, unmount } = renderHook(() => usePublicHubData({ enabled: true, activityWindow: windowKey, pollMs: 0 }))
       await waitFor(() => expect(result.current.loading).toBe(false))
       expect(api.apiClient.mock.calls[0][0]).toBe(primed)
@@ -195,19 +250,6 @@ describe('hub early fetch: parity with the first read on mount (plan §2.6)', ()
       unmount()
     })
   }
-})
-
-describe('hub early fetch: VITE_PUBLIC_HUB_V5 off', () => {
-  it('never adopts a primed request: the hook makes its own read, as before', async () => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', '')
-    api.apiClient.mockImplementation(async () => ({ data: hubBody(1440), status: 200 }))
-    const primed = primePublicHub({ pathname: '/analytics', search: '' })
-    const { result, unmount } = renderHook(() => usePublicHubData({ enabled: true, activityWindow: '24h', pollMs: 0 }))
-    await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(api.apiClient.mock.calls.filter(([path]) => path === primed)).toHaveLength(2)
-    expect(hasPrimedPublicHub()).toBe(true)
-    unmount()
-  })
 })
 
 describe('hub early fetch: import boundary', () => {

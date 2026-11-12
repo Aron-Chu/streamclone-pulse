@@ -1,3 +1,7 @@
+import TwitchTimestampTool from './routes/public/TwitchTimestampTool'
+import FindTwitchMomentsGuide from './routes/public/FindTwitchMomentsGuide'
+import TwitchVodTimestampsGuide from './routes/public/TwitchVodTimestampsGuide'
+export { GROWTH_PAGES } from './lib/growthPages'
 import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router-dom'
 import Landing from './routes/public/Landing'
@@ -5,6 +9,7 @@ import Docs from './routes/public/Docs'
 import Privacy from './routes/public/Privacy'
 import Terms from './routes/public/Terms'
 import Refunds from './routes/public/Refunds'
+import Withdraw from './routes/public/Withdraw'
 import Supporter from './routes/public/Supporter'
 import SupporterThanks from './routes/public/SupporterThanks'
 import AccountRestore from './routes/account/AccountRestore'
@@ -19,11 +24,15 @@ import { AnalyticsRouteFallback } from './routes/AnalyticsRouteFallback'
 
 /** Render the actual public components, without a network request or private state. */
 export function prerenderPublicPage(path: string): string {
-  const page = path === '/' ? <Landing />
+  const page = path === '/tools/twitch-vod-timestamp-link' ? <TwitchTimestampTool />
+    : path === '/guides/find-twitch-moments' ? <FindTwitchMomentsGuide />
+    : path === '/guides/twitch-vod-timestamps' ? <TwitchVodTimestampsGuide />
+    : path === '/' ? <Landing />
     : path === '/docs' || path.startsWith('/docs/') ? <Docs />
     : path === '/privacy' ? <Privacy />
     : path === '/terms' ? <Terms />
     : path === '/refunds' ? <Refunds />
+    : path === '/withdraw' ? <Withdraw />
     : path === '/supporter' ? <Supporter />
     : path === '/supporter/thanks' ? <SupporterThanks />
     : path === '/account/restore' ? <AccountRestore />

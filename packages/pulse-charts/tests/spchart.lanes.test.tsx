@@ -148,6 +148,17 @@ describe('SpChart lanes mode', () => {
     expect(qa('.spc-line-viewers, .spc-line-emotes')).toHaveLength(0)
   })
 
+  it.each([undefined, false])('keeps line entry animation off for default multi-line consumers (laneFit %s)', laneFit => {
+    show({ data: data(120), laneFit })
+    expect(qa('path[data-lane-line]')).toHaveLength(1)
+    expect(qa('.spc-line-in')).toHaveLength(0)
+  })
+
+  it('keeps the picked line entry animation inside the session opt-in', () => {
+    show({ data: data(120), laneFit: true })
+    expect(q('path[data-lane-line]')?.closest('.spc-line-in')).not.toBeNull()
+  })
+
   it('stands bars on the lane floor at the lane scale, with the spike and partial opacities', () => {
     const d = data(195)
     const ref = show({ data: d })

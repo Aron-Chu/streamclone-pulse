@@ -7,7 +7,7 @@ export function momentReasonLabelStyle(
   reasonLabel?: string,
   size: 'sm' | 'md' = 'sm',
 ): CSSProperties {
-  const fontSize = size === 'md' ? 12 : 10
+  const fontSize = size === 'md' ? 12 : 11
   const base: CSSProperties = { fontSize, fontWeight: 600 }
   if (isEmoteSpikeReason(reason) || isEmoteSpikeReason(reasonLabel ?? '')) {
     return { ...base, color: '#6ee7b7' }
@@ -37,7 +37,7 @@ export const overlayGhostChipButton: CSSProperties = {
   borderRadius: theme.radiusButton,
   color: theme.textSecondary,
   cursor: 'pointer',
-  fontSize: 9,
+  fontSize: 12,
   fontWeight: 700,
   padding: '4px 8px',
   whiteSpace: 'nowrap',

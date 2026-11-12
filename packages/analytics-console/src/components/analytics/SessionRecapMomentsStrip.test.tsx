@@ -111,12 +111,14 @@ describe('SessionRecapMomentsStrip d3-v2 rows', () => {
     expect(screen.getByRole('button', { name: 'Show 3 more moments' })).toBeTruthy()
   })
 
-  it('shows the game and its box art cover; a failed image falls to the next candidate, then to none', () => {
+  it('shows the game and its small sharp cover, no backdrop; a failed image falls to the next candidate, then to none', () => {
     render(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} games={GAMES} onSelectOffset={vi.fn()} />)
     expect(row(1).querySelector('.ssr-gm-n')!.textContent).toBe('Just Chatting')
     expect(row(3).querySelector('.ssr-gm-n')!.textContent).toBe('Grand Theft Auto V')
     const art = () => row(1).querySelector('.ssr-gm img')?.getAttribute('src') ?? null
-    expect(art()).toBe('https://static-cdn.jtvnw.net/ttv-boxart/509658-210x280.jpg')
+    // (candidate, 10-30, PIC-2) asked at 2x its 15x20, and no blurred backdrop
+    expect(art()).toBe('https://static-cdn.jtvnw.net/ttv-boxart/509658-30x40.jpg')
+    expect(row(1).className).toBe('ssr-row')
     expect(row(1).querySelector('.ssr-fr')).toBeNull()
     const seen = new Set<string>()
     for (let guard = 0; guard < 10 && art(); guard += 1) {
@@ -221,6 +223,7 @@ describe('SessionRecapMomentsStrip lock (strip mode)', () => {
         recap={recapWith(5)}
         streamStartedAt={START}
         vodId="2590000000"
+        vodAlignSeconds={0}
         onSelectOffset={onSelectOffset}
         onPlayOffset={onPlayOffset}
         onReleaseOffset={onReleaseOffset}
@@ -235,12 +238,15 @@ describe('SessionRecapMomentsStrip lock (strip mode)', () => {
     expect(onPlayOffset).toHaveBeenCalledTimes(2)
   })
 
-  it('shows the play button only when the stream has a VOD', () => {
+  it('shows the play button only when the stream has a VOD and its verified alignment', () => {
     const { rerender } = render(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} onSelectOffset={vi.fn()} />)
     expect(document.querySelector('[data-moment-row-play]')).toBeNull()
-    rerender(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} vodId="not-a-vod" onSelectOffset={vi.fn()} />)
+    rerender(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} vodId="not-a-vod" vodAlignSeconds={0} onSelectOffset={vi.fn()} />)
     expect(document.querySelector('[data-moment-row-play]')).toBeNull()
+    // a VOD without verified alignment: no Play at all, never a dead one (the hosted case today)
     rerender(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} vodId="2590000000" onSelectOffset={vi.fn()} />)
+    expect(document.querySelector('[data-moment-row-play]')).toBeNull()
+    rerender(<SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} vodId="2590000000" vodAlignSeconds={0} onSelectOffset={vi.fn()} />)
     expect(document.querySelectorAll('[data-moment-row-play]')).toHaveLength(3)
   })
 })
@@ -299,5 +305,40 @@ describe('SessionRecapMomentsStrip row mode', () => {
     fireEvent.click(row(1).querySelector('[data-moment-row-play]')!)
     const frame = document.querySelector('[data-moment-row-detail] iframe')!
     expect(frame.getAttribute('src')).toContain('https://player.twitch.tv/?video=v2590000000&time=9m50s&parent=')
+  })
+})
+
+describe('SessionRecapMomentsStrip Live now (candidate, 10-30, PIC-4)', () => {
+  it("tops the list with Twitch's live picture only when the page passes the login", () => {
+    // the clock at the saved 2026-10-30 answers' time, so the picture's 5-minute bucket is known
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-30T07:19:00Z'))
+    const { rerender } = render(
+      <SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} games={GAMES} onSelectOffset={vi.fn()} reel />,
+    )
+    expect(document.querySelector('[data-live-now]')).toBeNull()
+    rerender(
+      <SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} games={GAMES} onSelectOffset={vi.fn()} reel
+        liveNowLogin="yuyuta0702" liveNowMinuteMs={Date.parse('2026-10-30T07:18:00Z')} />,
+    )
+    const tile = document.querySelector<HTMLElement>('[data-live-now]')!
+    expect(tile.parentElement?.matches('[data-moment-list]')).toBe(true)
+    expect(tile.parentElement?.firstElementChild).toBe(tile)
+    expect(tile.textContent).toBe("Live now · , Twitch's picture, can be a few minutes old")
+    expect(tile.querySelector('img')!.getAttribute('src'))
+      .toBe('https://static-cdn.jtvnw.net/previews-ttv/live_user_yuyuta0702-640x360.jpg?t=5977815')
+    // never on a moment card or row
+    expect(document.querySelector('[data-moment-row] [data-live-now], [data-moment-row] img[src*="previews-ttv"]')).toBeNull()
+    rerender(
+      <SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} games={GAMES} onSelectOffset={vi.fn()} reel
+        liveNowLogin={null} />,
+    )
+    expect(document.querySelector('[data-live-now]')).toBeNull()
+    // a login with a stalled feed (newest minute an hour old): no tile either
+    rerender(
+      <SessionRecapMomentsStrip recap={recapWith(5)} streamStartedAt={START} games={GAMES} onSelectOffset={vi.fn()} reel
+        liveNowLogin="yuyuta0702" liveNowMinuteMs={Date.parse('2026-10-30T06:19:00Z')} />,
+    )
+    expect(document.querySelector('[data-live-now]')).toBeNull()
   })
 })

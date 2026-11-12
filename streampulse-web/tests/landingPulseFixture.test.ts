@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { fixtureEmoteImageUrl } from '../src/ui/components/landing/landingEmoteEnrich.ts'
 import {
   LANDING_PAST_VODS,
@@ -38,6 +38,23 @@ describe('landingPulseFixture', () => {
     expect(a).not.toBe(b)
     expect(a.login).toBe('xqc')
     expect(a.peaks.length).toBe(LANDING_PULSE_PAYLOAD.peaks.length)
+  })
+
+  it('loads an independent fixture when structuredClone is unavailable', () => {
+    vi.stubGlobal('structuredClone', undefined)
+    const parse = vi.spyOn(JSON, 'parse')
+    try {
+      const a = loadLandingPulseFixture()
+      const b = loadLandingPulseFixture()
+      expect(parse).toHaveBeenCalledTimes(2)
+      expect(a).toEqual(LANDING_PULSE_PAYLOAD)
+      expect(a.peaks).not.toBe(b.peaks)
+      a.peaks[0]!.score = 0
+      expect(b.peaks[0]!.score).toBeGreaterThan(0)
+    } finally {
+      parse.mockRestore()
+      vi.unstubAllGlobals()
+    }
   })
 
   it('presents the primary landing demo as healthy full-stream tracking', () => {

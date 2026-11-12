@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './helpers/portalMockedTest'
 import {
   PORTAL_STARTED_AT,
   PORTAL_VOD_ID,
@@ -15,10 +15,11 @@ import {
 // d3-v2 session-original row list (moment-rows.js), not prod's old #N cards.
 // Rows: rank, offset, reason pill, reaction score, game + emote line, rate and
 // a ±8 min spark, no backdrop: the game's small cover is the row's only picture
-// (F6: never a live frame; the blurred box art went 2026-10-21).
+// (F6: never a live frame; candidate 10-30, PIC-2: the blurred box art went).
 // Since 2026-10-16 the top three are the highlight reel (recap-r1 C1, MomentReel.tsx):
-// #1 a large card, #2 and #3 side by side, each the moment's VOD preview frame or
-// the game's box art as a sharp cover; rows start at #4, behind "Show N more moments".
+// #1 a large card, #2 and #3 side by side, each the moment's VOD preview frame or, with no
+// frame, a compact card with the game's box art as a sharp cover (Just Chatting / IRL: the
+// moment's top emote); rows start at #4, behind "Show N more moments".
 const LIST = '[data-moment-list]'
 const ROW = '[data-moment-row]'
 const REEL = '[data-moment-reel]'
@@ -28,6 +29,8 @@ const MORE = '[data-moment-list-more]'
 const CLEAR = 'button[aria-label="Clear selected moment"]'
 const MINUTES = 60
 const OFFSETS = [240, 600, 900, 1200, 1500, 1800, 2100, 2400]
+// The 240 s moment is the best scored, but it is in the stream's first 5 minutes, a hello spike:
+// it ranks after every real moment, so the reel starts at 0:10:00 and 0:04:00 is the last row.
 
 function recap(extra: Record<string, unknown> = {}) {
   return buildRecap({
@@ -60,7 +63,7 @@ async function settle(page: Page, ms = 600) {
   if (typeof clock.runFor === 'function') await clock.runFor(ms)
 }
 
-// 120 s verified alignment (as the bar-strip spec): moment 1 at 240 s asks the tile under VOD 390 s.
+// 120 s verified alignment (as the bar-strip spec): moment 1 at 600 s asks the tile under VOD 750 s.
 const VERIFIED_VOD = {
   vodId: PORTAL_VOD_ID,
   vodAlignSeconds: 120,
@@ -159,17 +162,18 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     await expect(page.locator(LIST_ROW)).toHaveCount(0)
 
     const first = row(page, 1)
-    await expect(first.locator('.ssr-off')).toHaveText('0:04:00')
-    await expect(first.locator('.ssr-why')).toHaveText('Emote spike')
-    await expect(row(page, 2).locator('.ssr-why')).toHaveText('Chat spike')
-    await expect(first.locator('.ssr-sc b')).toHaveText('92')
-    await expect(row(page, 3).locator('.ssr-sc b')).toHaveText('86')
-    await expect(first).toHaveAccessibleName(/^Moment 1 0:04:00 /)
+    await expect(first.locator('.ssr-off')).toHaveText('0:10:00')
+    await expect(first.locator('.ssr-why')).toHaveText('Chat spike')
+    await expect(row(page, 2).locator('.ssr-why')).toHaveText('Emote spike')
+    await expect(first.locator('.ssr-sc b')).toHaveText('89')
+    await expect(row(page, 3).locator('.ssr-sc b')).toHaveText('83')
+    await expect(first).toHaveAccessibleName(/^Moment 1 0:10:00 /)
     // F8: the backend label and score only; no rate or spark on a card.
     await expect(page.locator(`${CARD} .ssr-rt, ${CARD} svg.ssr-msp`)).toHaveCount(0)
 
-    // 16:9 pictures, 8 px radius and weight 400 (the console's button reset would make them 6 px and 600);
-    // #1 is the big one, #2 and #3 share the other column at 1440.
+    // 8 px radius and weight 400 (the console's button reset would make them 6 px and 600);
+    // #1 is the big one, #2 and #3 share the other column at 1440. No frame means no box:
+    // the cards are compact rows, never an empty 16:9 picture.
     const style = await first.evaluate(el => {
       const cs = getComputedStyle(el)
       return { radius: cs.borderTopLeftRadius, weight: cs.fontWeight }
@@ -177,8 +181,9 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     expect(style).toEqual({ radius: '8px', weight: '400' })
     const hero = await box(first)
     const small = await box(row(page, 2))
-    expect(Math.abs(hero.w / hero.h - 16 / 9)).toBeLessThan(0.05)
-    expect(Math.abs(small.w / small.h - 16 / 9)).toBeLessThan(0.05)
+    await expect(page.locator(CARD)).toHaveClass([/\bflat\b/, /\bflat\b/, /\bflat\b/])
+    expect(hero.h).toBeLessThan((hero.w * 9) / 16)
+    expect(small.h).toBeLessThan((small.w * 9) / 16)
     expect(hero.w).toBeGreaterThan(small.w * 1.5)
 
     // No reduced-motion glow, and no frame without a verified VOD: the picture is box art (F6).
@@ -187,7 +192,9 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     expect(await page.locator(CARD).evaluateAll(els => els.map(el => el.getAttribute('data-moment-frame')))).toEqual(['fallback', 'fallback', 'fallback'])
     const srcs = await page.locator(`${CARD} img.ssr-rc-cover`).evaluateAll(els => els.map(el => el.getAttribute('src') ?? ''))
     for (const src of srcs) expect(src.startsWith('https://static-cdn.jtvnw.net/ttv-boxart/')).toBe(true)
-    await expect(page.locator('[data-moment-reel-note]')).toHaveText("No VOD preview frames for this stream: the covers are the game's box art.")
+    // The fixture stream is live with no VOD yet: the reel says why there are no frames, plainly,
+    // never "for this stream" (F6 is our lookup) and never the box-art line over emote cards.
+    await expect(page.locator('[data-moment-reel-note]')).toHaveText('No preview frames while live.')
   })
 
   test('rows from #4 keep the rate and the ±8 min spark', async ({ page }) => {
@@ -195,9 +202,12 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     await showRest(page)
     const fourth = row(page, 4)
     await expect(fourth).not.toHaveAttribute('data-moment-card')
-    await expect(fourth.locator('.ssr-off')).toHaveText('0:20:00')
-    await expect(fourth.locator('.ssr-rt')).toContainText('chat/min')
-    await expect(row(page, 5).locator('.ssr-rt')).toContainText('emotes/min')
+    await expect(fourth.locator('.ssr-off')).toHaveText('0:25:00')
+    await expect(fourth.locator('.ssr-rt')).toContainText('emotes/min')
+    await expect(row(page, 5).locator('.ssr-rt')).toContainText('chat/min')
+    // The hello spike, scored 92, comes last.
+    await expect(row(page, OFFSETS.length).locator('.ssr-off')).toHaveText('0:04:00')
+    await expect(row(page, OFFSETS.length).locator('.ssr-sc b')).toHaveText('92')
 
     // ±8 min spark: measured minutes around the moment, the moment bar highlighted.
     const bars = await fourth.locator('svg.ssr-msp rect').count()
@@ -276,32 +286,40 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
 })
 
 // These need the page to pass the stream's games (and VOD) to the list: the
-// game line, box-art backdrop, hover dwell and preview frames come from them.
+// game line, the covers and preview frames come from them.
 test.describe('session Moments rows: game art', () => {
   test.use({ viewport: { width: 1440, height: 900 } })
 
-  test('the reel shows the game and its box art as a sharp, whole cover; rows keep only the small cover', async ({ page }) => {
+  test('a Just Chatting card shows its top emote large in the cover\'s place; rows keep only the small cover', async ({ page }) => {
     await open(page)
     const first = row(page, 1)
     await expect(first.locator('.ssr-rc-gm'), 'the page passes games= to SessionRecapMomentsStrip').toHaveText('Just Chatting')
-    await expect(first).toHaveClass(/\bhas-art\b/)
-    const art = first.locator('img.ssr-rc-cover')
-    await expect(art).toHaveAttribute('src', /^https:\/\/static-cdn\.jtvnw\.net\/ttv-boxart\//)
-    // No blur and no zoom (2026-10-21): the cover sits inside the card at the box art's own 3:4.
+    // Just Chatting / IRL has no gameplay to picture: the moment's top emote, not the category's box art
+    await expect(first).toHaveClass(/\bhas-emote\b/)
+    await expect(first.locator('img.ssr-rc-cover')).toHaveCount(0)
+    const art = first.locator('img.ssr-rc-emote')
+    await expect(art).toHaveCount(1)
+    await expect(art).toHaveAttribute('loading', 'lazy')
+    await expect(art).toHaveAttribute('data-moment-card-emote', /\S/)
+    // No blur and no zoom: the emote sits whole inside the card.
     expect(await art.evaluate(el => getComputedStyle(el).filter)).toBe('none')
     const card = (await first.boundingBox())!
     const cover = (await art.boundingBox())!
-    expect(Math.abs(cover.width / cover.height - 3 / 4)).toBeLessThan(0.03)
     expect(cover.x).toBeGreaterThanOrEqual(card.x)
     expect(cover.y).toBeGreaterThanOrEqual(card.y)
     expect(cover.x + cover.width).toBeLessThanOrEqual(card.x + card.width)
     expect(cover.y + cover.height).toBeLessThanOrEqual(card.y + card.height)
+    await expect(first.locator('.ssr-rc-pic img')).toHaveCount(0)
 
     await showRest(page)
     const fourth = row(page, 4)
     await expect(fourth.locator('.ssr-gm-n')).toHaveText('Just Chatting')
     await expect(fourth.locator('.ssr-fr')).toHaveCount(0)
-    await expect(fourth.locator('.ssr-gm img')).toHaveAttribute('src', /^https:\/\/static-cdn\.jtvnw\.net\/ttv-boxart\//)
+    await expect(fourth.locator('.ssr-gm img')).toHaveAttribute('src', /^https:\/\/static-cdn\.jtvnw\.net\/ttv-boxart\/.+-30x40\.jpg$/)
+    // The fixture stream is live, but its newest minute (22:27 UTC on 07-25) is about 13.5 h before the
+    // harness's fake clock (SYSTEM_TIME_ISO, 12:00 UTC on 07-26), never the host's date: a stalled feed gets
+    // no Live now tile (candidate, 10-30, PIC-4; the fresh case is in LiveNowTile.test.tsx).
+    await expect(page.locator('[data-live-now]')).toHaveCount(0)
   })
 
   test('the play button shows only when the stream has a VOD', async ({ page }) => {
@@ -310,8 +328,13 @@ test.describe('session Moments rows: game art', () => {
     await expect(page.locator('[data-moment-row-play]')).toHaveCount(0)
   })
 
-  test('with a VOD every card gets the round play button; pressing it locks the moment', async ({ page }) => {
+  test('a VOD without a verified alignment gets no play button: Play could land on the wrong minute', async ({ page }) => {
     await open(page, { vodId: PORTAL_VOD_ID })
+    await expect(page.locator('[data-moment-row-play]')).toHaveCount(0)
+  })
+
+  test('with an aligned VOD every card gets the round play button; pressing it locks the moment', async ({ page }) => {
+    await open(page, {}, { verifiedVod: true, beforeOpen: () => stubStoryboard(page) })
     const shown = await page.locator(ROW).count()
     await expect(page.locator(`${ROW} [data-moment-row-play]`)).toHaveCount(shown)
     expect((await box(row(page, 1).locator('[data-moment-row-play]'))).w).toBe(32)
@@ -328,32 +351,34 @@ test.describe('session Moments rows: game art', () => {
     await open(page, {}, { verifiedVod: true, beforeOpen: async () => { asked = await stubStoryboard(page) } })
     const first = row(page, 1)
     await expect(first).toHaveAttribute('data-moment-frame', 'frame')
+    // An ended stream gets no Live now tile (candidate, 10-30, PIC-4).
+    await expect(page.locator('[data-live-now]')).toHaveCount(0)
     await expect(row(page, 2)).toHaveAttribute('data-moment-frame', 'frame')
     await expect(row(page, 3)).toHaveAttribute('data-moment-frame', 'frame')
     // The tile under the middle of each moment's minute, on the VOD's clock (stream + 120 s).
-    for (const offset of [390, 750, 1050]) expect(asked).toContain(offset)
+    for (const offset of [750, 1050, 1350]) expect(asked).toContain(offset)
     const frame = first.locator('[data-moment-card-frame]')
     expect(await frame.evaluate(el => getComputedStyle(el).backgroundImage)).toContain(`${SHEET_HOST}/fixture_xqc/storyboards/${PORTAL_VOD_ID}-high-0.jpg`)
-    // Tile 1 (249-498 s): the chip shows its start on the stream's clock.
-    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:02:09')
+    // Tile 3 (747-996 s): the chip shows its start on the stream's clock.
+    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:10:27')
     await expect(page.locator('[data-moment-reel-note]')).toHaveText(
       "Pictures are Twitch's VOD preview frames, one every 4 min 9 s. Move across one to step through them.",
     )
 
-    // Hover prefetches the tiles either side; the right edge is three tiles on (VOD 1137 s, tile 4).
+    // Hover prefetches the tiles either side; the right edge is three tiles on (VOD 1497 s, tile 6).
     const b = await first.boundingBox()
     if (!b) throw new Error('no layout box')
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
     await settle(page)
-    for (const offset of [639, 141, 888, 1137]) expect(asked).toContain(offset)
+    for (const offset of [999, 501, 1248, 1497]) expect(asked).toContain(offset)
     await page.mouse.move(b.x + b.width - 2, b.y + b.height / 2)
     await settle(page)
     await expect(first).toHaveClass(/\bscrubbing\b/)
-    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:14:36')
+    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:22:54')
     await page.mouse.move(2, 2)
     await settle(page)
     await expect(first).not.toHaveClass(/\bscrubbing\b/)
-    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:02:09')
+    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:10:27')
   })
 })
 
@@ -365,7 +390,7 @@ test.describe('session Moments rows at 390', () => {
     const list = page.locator(LIST)
     await list.scrollIntoViewIfNeeded()
     const first = row(page, 1)
-    await expect(first.locator('.ssr-off')).toHaveText('0:04:00')
+    await expect(first.locator('.ssr-off')).toHaveText('0:10:00')
     const [hero, two, three] = await Promise.all([1, 2, 3].map(rank => row(page, rank).boundingBox()))
     if (!hero || !two || !three) throw new Error('no layout box')
     expect(Math.abs(two.y - three.y)).toBeLessThan(1)

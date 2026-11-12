@@ -27,7 +27,7 @@ function Harness({ initial = [] as string[], topEmotes = EMOTES }: { initial?: s
 }
 
 const keys = () => screen.getByTestId('plotted').getAttribute('data-keys')
-const manage = () => screen.getByRole('button', { name: /^Emote overlays/ })
+const manage = () => screen.getByRole('button', { name: 'Add emote' })
 const chip = (container: HTMLElement, key: string) =>
   container.querySelector<HTMLButtonElement>(`[data-chart-overlay-chip="${key}"]`)!
 
@@ -35,7 +35,8 @@ describe('PlotOnChartStrip (Emote overlays under the session chart)', () => {
   it('opens a wide panel of the top emotes from a bar that shows the plotted ones', () => {
     const { container } = render(<Harness initial={['Pog']} />)
     expect(manage().getAttribute('aria-expanded')).toBe('false')
-    expect(manage().textContent).toContain('1 active')
+    expect(container.querySelector('[data-session-emotes-on-chart]')?.textContent).toContain('Pog')
+    expect(container.querySelector('[data-session-emotes-on-chart]')?.textContent).not.toContain('Manage')
     expect([...container.querySelectorAll('[data-chart-overlay-plotted]')].map(e => e.getAttribute('data-chart-overlay-plotted'))).toEqual(['Pog'])
     expect(container.querySelector('[data-chart-overlay-chip]')).toBeNull()
 
@@ -119,4 +120,28 @@ describe('PlotOnChartStrip (Emote overlays under the session chart)', () => {
     const { container } = render(<PlotOnChartStrip topEmotes={[]} plottedKeys={[]} onToggleEmote={() => {}} />)
     expect(container.querySelector('[data-chart-overlay-selector]')).toBeNull()
   })
+  it('keeps the current named tokens and removes one without opening the picker', () => {
+    render(<Harness initial={['Pog', 'LUL']} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Pog from the chart' }))
+    expect(keys()).toBe('LUL')
+    expect(manage().getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(manage())
+  })
+
+  it('closes on Escape and restores focus from an open picker', () => {
+    const { container } = render(<Harness initial={['Pog']} />)
+    fireEvent.click(manage())
+    chip(container, 'LUL').focus()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(manage().getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(manage())
+  })
+
+  it('closes on outside pointerdown without taking focus', () => {
+    render(<Harness initial={['Pog']} />)
+    fireEvent.click(manage())
+    fireEvent.pointerDown(document.body)
+    expect(manage().getAttribute('aria-expanded')).toBe('false')
+  })
+
 })

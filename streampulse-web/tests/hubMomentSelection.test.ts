@@ -1,16 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { screenerViewLabel } from '../src/lib/channelScreenerContract'
 import { activityBucketKey } from '../src/lib/hubActivitySummary'
 import { momentRowKey, type FigmaMomentRow } from '../src/lib/figmaSessionAnalytics'
-
-describe('channelScreenerContract', () => {
-  it('labels screener views', () => {
-    expect(screenerViewLabel('overview')).toBe('Overview')
-    expect(screenerViewLabel('momentum')).toBe('Momentum')
-    expect(screenerViewLabel('coverage')).toBe('Coverage')
-    expect(screenerViewLabel('anomalies')).toBe('Anomalies')
-  })
-})
 
 describe('hub moment selection sync helpers', () => {
   it('derives accent bucket from selected moment.at', () => {

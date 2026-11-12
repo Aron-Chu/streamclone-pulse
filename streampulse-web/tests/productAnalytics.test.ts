@@ -1,13 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../src/generated/recap-page-paths.json', () => ({ default: [
+  { path: '/analytics/fixturechan', category: 'channel_summary' },
+  { path: '/analytics/fixturechan/12345', category: 'stream_recap' },
+  { path: '/analytics/fixturechan/67890', category: 'stream_recap' },
+] }))
+
 const transport = vi.hoisted(() => ({
-  clients: [] as { capturePage: ReturnType<typeof vi.fn>; captureCta: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[],
+  clients: [] as { capturePage: ReturnType<typeof vi.fn>; captureCta: ReturnType<typeof vi.fn>; captureTimestampLinkBuilt: ReturnType<typeof vi.fn>; openTimestampFeedback: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[],
   loaded: vi.fn(),
 }))
 vi.mock('../src/lib/productAnalyticsCapture', () => {
   transport.loaded()
   return { createPublicCaptureClient: () => {
-    const client = { capturePage: vi.fn(), captureCta: vi.fn(), stop: vi.fn() }
+    const client = { capturePage: vi.fn(), captureCta: vi.fn(), captureTimestampLinkBuilt: vi.fn(), openTimestampFeedback: vi.fn().mockResolvedValue(null), stop: vi.fn() }
     transport.clients.push(client)
     return client
   } }
@@ -36,6 +42,103 @@ async function allow() {
 }
 
 describe('public product analytics consent boundary', () => {
+  it('classifies only the three supported tools and guides, without their inputs', () => {
+    expect(analytics.publicPageCategory('/tools/twitch-vod-timestamp-link/')).toBe('tool')
+    expect(analytics.publicPageCategory('/guides/find-twitch-moments')).toBe('guide')
+    expect(analytics.publicPageCategory('/guides/twitch-vod-timestamps')).toBe('guide')
+    expect(analytics.publicPageCategory('/tools/private-input')).toBeNull()
+    expect(analytics.publicPageCategory('/guides/unreviewed')).toBeNull()
+  })
+
+  it.each(['sp.websiteAnalytics.v1', 'sp.websiteAnalytics.v2', 'sp.websiteAnalytics.v3'])('requires a new choice after consent scope %s', async oldKey => {
+    localStorage.setItem(oldKey, 'allowed')
+    window.history.replaceState({}, '', '/analytics/fixturechan/12345')
+    analytics.setProductAnalyticsRoute()
+    await Promise.resolve()
+    expect(analytics.getAnalyticsPreference()).toBe('unset')
+    expect(transport.clients).toHaveLength(0)
+    await allow()
+    expect(transport.clients[0]!.capturePage).toHaveBeenLastCalledWith('stream_recap')
+    localStorage.removeItem(oldKey)
+  })
+
+  it('admits tool completion only on the opted-in tool and stops after withdrawal or navigation', async () => {
+    analytics.captureTimestampLinkBuilt()
+    window.history.replaceState({}, '', '/tools/twitch-vod-timestamp-link?private=secret#private')
+    await allow()
+    const client = transport.clients[0]!
+    analytics.captureTimestampLinkBuilt()
+    expect(client.captureTimestampLinkBuilt).toHaveBeenCalledExactlyOnceWith()
+    window.history.replaceState({}, '', '/account/billing')
+    analytics.captureTimestampLinkBuilt()
+    expect(client.captureTimestampLinkBuilt).toHaveBeenCalledTimes(1)
+    window.history.replaceState({}, '', '/tools/twitch-vod-timestamp-link')
+    analytics.setAnalyticsPreference('declined')
+    analytics.captureTimestampLinkBuilt()
+    expect(client.captureTimestampLinkBuilt).toHaveBeenCalledTimes(1)
+  })
+
+  it('admits feedback lookup only with current tool consent and a live request', async () => {
+    const controller = new AbortController()
+    expect(await analytics.openTimestampFeedback(controller.signal)).toBeNull()
+    window.history.replaceState({}, '', '/tools/twitch-vod-timestamp-link')
+    await allow()
+    await analytics.openTimestampFeedback(controller.signal)
+    expect(transport.clients[0]!.openTimestampFeedback).toHaveBeenCalledOnce()
+    controller.abort()
+    await analytics.openTimestampFeedback(controller.signal)
+    window.history.replaceState({}, '', '/account/sign-in')
+    await analytics.openTimestampFeedback(new AbortController().signal)
+    expect(transport.clients[0]!.openTimestampFeedback).toHaveBeenCalledOnce()
+  })
+
+  it.each(['gpc', 'dnt'])('blocks tool completion when %s changes after consent', async signal => {
+    window.history.replaceState({}, '', '/tools/twitch-vod-timestamp-link')
+    await allow()
+    Object.defineProperty(navigator, signal === 'gpc' ? 'globalPrivacyControl' : 'doNotTrack', { configurable: true, value: signal === 'gpc' ? true : '1' })
+    analytics.captureTimestampLinkBuilt()
+    expect(transport.clients[0]!.captureTimestampLinkBuilt).not.toHaveBeenCalled()
+  })
+
+  it('counts consecutive approved recaps separately without sending their paths', async () => {
+    window.history.replaceState({}, '', '/analytics/fixturechan/12345')
+    await allow()
+    const client = transport.clients[0]!
+    analytics.setProductAnalyticsRoute()
+    expect(client.capturePage).toHaveBeenCalledTimes(1)
+    window.history.replaceState({}, '', '/analytics/fixturechan/67890')
+    analytics.setProductAnalyticsRoute()
+    analytics.setProductAnalyticsRoute()
+    expect(client.capturePage).toHaveBeenCalledTimes(2)
+    expect(client.capturePage.mock.calls).toEqual([['stream_recap'], ['stream_recap']])
+  })
+
+  it.each(['gpc', 'dnt'])('does not measure approved summaries when %s is set', async signal => {
+    window.history.replaceState({}, '', '/analytics/fixturechan/12345')
+    Object.defineProperty(navigator, signal === 'gpc' ? 'globalPrivacyControl' : 'doNotTrack', { configurable: true, value: signal === 'gpc' ? true : '1' })
+    analytics.setAnalyticsPreference('allowed')
+    analytics.capturePublicCta('install_extension')
+    await Promise.resolve()
+    expect(transport.clients).toHaveLength(0)
+  })
+
+  it('measures approved summaries as coarse categories only and stops on another stream', async () => {
+    window.history.replaceState({}, '', '/analytics/fixturechan/12345?secret=private#notes')
+    analytics.setProductAnalyticsRoute()
+    await Promise.resolve()
+    expect(transport.clients).toHaveLength(0)
+    await allow()
+    const client = transport.clients[0]!
+    expect(client.capturePage).toHaveBeenLastCalledWith('stream_recap')
+    analytics.capturePublicCta('install_extension')
+    expect(client.captureCta).toHaveBeenLastCalledWith('stream_recap', 'install_extension')
+    window.history.replaceState({}, '', '/analytics/fixturechan/99999')
+    analytics.capturePublicCta('install_extension')
+    analytics.setProductAnalyticsRoute()
+    expect(client.captureCta).toHaveBeenCalledTimes(1)
+    expect(client.stop).toHaveBeenCalledOnce()
+  })
+
   it('does not import or start capture before explicit consent', async () => {
     analytics.setProductAnalyticsRoute()
     await Promise.resolve()

@@ -62,7 +62,7 @@ export function TopMomentCard({ id, point, onClear, ...card }: TopMomentCardProp
       data-top-moment-card={shown.exiting ? 'closing' : 'selected'}
       onKeyDown={event => { if (event.key === 'Escape') clear() }}
     >
-      <MomentCardSlot exiting={shown.exiting}>
+      <MomentCardSlot exiting={shown.exiting} momentKey={shown.point.minuteTs}>
         {/* Moments with no, one or three top emotes all open to one height. The
             frames script adds a picture top's height to it (data-moment-reserve). */}
         <div data-moment-reserve={games ? 'games' : ''} style={{ minHeight: height }}>

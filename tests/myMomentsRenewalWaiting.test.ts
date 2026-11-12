@@ -22,6 +22,7 @@ const f = vi.hoisted(() => ({
 vi.mock('../src/background/supporterAccountRuntime.ts', () => ({ ACCOUNT_BACKEND_URL: 'https://api.streampulse.stream', bindAccountDataForget: () => undefined, supporterAccount: {
   run: (action: 'status') => f.coordinator.run(action),
   localAccountId: () => f.coordinator.localAccountId(),
+  isInstallationIdentity: () => f.coordinator.isInstallationIdentity(),
   withCredential: (operation: (token: string) => Promise<{ status: number }>, id?: string) => f.coordinator.withCredential(operation, id),
 } }))
 vi.mock('../src/shared/storage.ts', async original => ({ ...await original<object>(), getBackendUrl: async () => root }))
@@ -71,16 +72,6 @@ describe('bookmarks while account renewal is waiting', () => {
       stored = credentials(30_000)
       request.mockResolvedValue({ status: 404, body: null })
     }],
-    ['an installation account whose refresh failed on the network', () => {
-      stored = { ...credentials(0), installation: true }
-      installationKey = { key: 'c'.repeat(64), state: 'claimed', accountId }
-      request.mockRejectedValue(new Error('network interrupted'))
-    }],
-    ['an installation account whose refresh hit a 5xx', () => {
-      stored = { ...credentials(0), installation: true }
-      installationKey = { key: 'c'.repeat(64), state: 'claimed', accountId }
-      request.mockResolvedValue({ status: 502, body: null })
-    }],
   ])('keeps %s on the account instead of the device', async (_name, arrange) => {
     arrange()
     expect(await f.coordinator.run('status')).toEqual({ state: 'unavailable', reason: 'temporarily_unavailable', linked: true })
@@ -103,6 +94,38 @@ describe('bookmarks while account renewal is waiting', () => {
     // Nothing was written to the device store.
     expect([...f.data.values()].every(data => data.bookmarks.length === 0)).toBe(true)
     expect(f.data.get(`${root}|local`)?.bookmarks ?? []).toEqual([])
+  })
+
+  // Become a Supporter without an account only pays: its moments never sync.
+  it.each([
+    ['a key-only connection', () => {
+      stored = { ...credentials(3_600_000), installation: true }
+      installationKey = { key: 'c'.repeat(64), state: 'claimed', accountId }
+    }],
+    ['a key-only connection whose refresh failed on the network', () => {
+      stored = { ...credentials(0), installation: true }
+      installationKey = { key: 'c'.repeat(64), state: 'claimed', accountId }
+      request.mockRejectedValue(new Error('network interrupted'))
+    }],
+    ['a key-only connection whose refresh hit a 5xx', () => {
+      stored = { ...credentials(0), installation: true }
+      installationKey = { key: 'c'.repeat(64), state: 'claimed', accountId }
+      request.mockResolvedValue({ status: 502, body: null })
+    }],
+    ['a connection whose only installation evidence is the claimed key', () => {
+      stored = credentials(3_600_000)
+      installationKey = { key: 'c'.repeat(64), state: 'claimed', accountId }
+    }],
+  ])('keeps the saves of %s in this browser', async (_name, arrange) => {
+    arrange()
+    expect(await saveFromTwitch()).toMatchObject({ type: 'BOOKMARK', device: true, item: { login: 'xqc', offsetSeconds: 120 } })
+    expect(f.data.get(`${root}|local`)?.bookmarks).toHaveLength(1)
+    const { snapshot } = await load()
+    expect(snapshot.scope).toBe(`${root}|local`)
+    expect(snapshot.moments).toHaveLength(1)
+    // Even a direct hosted call never sends the bearer for My Moments.
+    await expect(createPulseBookmark(bookmark)).rejects.toThrow()
+    expect(fetcher).not.toHaveBeenCalled()
   })
 
   it('keeps the same scope once renewal succeeds, so nothing saved meanwhile changes owner', async () => {

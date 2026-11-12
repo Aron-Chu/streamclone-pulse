@@ -83,14 +83,15 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect(container.querySelector('[data-selected-moment-card]')).not.toBeNull()
     expect(container.querySelector('.bkc-s')?.textContent).toBe('Bucket selected · 1 min')
     expect(container.querySelector('.bkc-cat')?.textContent).toBe('Grand Theft Auto V')
-    expect(container.querySelector('img.bkc-art')?.getAttribute('src')).toBe(ART)
+    // the 36x48 cover, asked at 2x (candidate, 10-30, PIC-2)
+    expect(container.querySelector('img.bkc-art')?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/32982_IGDB-72x96.jpg')
     expect([...container.querySelectorAll('.bkc-fig')].map((el) => [
       el.querySelector('.bkc-n')?.textContent, el.querySelector('.bkc-fl')?.textContent,
     ])).toEqual([['19,455', 'viewers'], ['299', 'chat/min'], ['250', 'emotes/min']])
     expect([...container.querySelectorAll('.bkc-el li')].map((li) => [
       li.querySelector('.bkc-en')?.textContent, li.querySelector('.bkc-ec')?.textContent,
     ])).toEqual([['HUH', '56'], ['LOL', '44'], ['LO', '29']])
-    expect(container.querySelector('.bkc-pv .r')?.textContent).toBe('7TV 218·Twitch, BTTV, FFZ 32')
+    expect(container.querySelector('.bkc-pv .r')?.textContent).toBe('7TV 218·other 32')
     // the locked moment is marked
     const row = container.querySelector('[data-strip-moment="3054"]')
     expect(row?.className).toBe('bkc-mr lk')
@@ -106,14 +107,16 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect(getVodStoryboardThumb).toHaveBeenCalledWith(VOD, 3079)
   })
 
-  it('shows a dark box and the reason when there is no frame, and loads nothing from Twitch before Play', async () => {
+  it('shows a plain box with the reason when there is no frame, and loads nothing from Twitch before Play', async () => {
     const { container } = renderStrip()
     await act(async () => {})
     expect(container.querySelector('.mpl-box')?.className).toBe('mpl-box nofr')
-    // no blurred game art behind it (2026-10-21); the art stays sharp in the caption
+    // (candidate, 10-30, PIC-2) no blurred art in the box; the sharp cover stays by the title
     expect(container.querySelector('.mpl-box img')).toBeNull()
-    expect(container.querySelector('img.bkc-art')?.getAttribute('src')).toBe(ART)
-    expect(container.querySelector('.mpl-note')?.textContent).toContain('No preview frame for this minute.')
+    expect(container.querySelector('img.bkc-art')).not.toBeNull()
+    // (fix, 10-30, PIC-3) the reel's line
+    expect(container.querySelector('.mpl-note')?.textContent)
+      .toContain("Preview frames aren't available right now. Pictures are the game's box art.")
     expect(container.querySelector('iframe')).toBeNull()
     expect(container.innerHTML).not.toContain('player.twitch.tv')
     fireEvent.click(screen.getByRole('button', { name: 'Play VOD from 0:50:39' }))
@@ -124,7 +127,15 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
   it('says the VOD is recording for a live archive', async () => {
     const { container } = renderStrip({ vodLinkState: { ...LINKED, label: 'Jump to VOD (live archive)' } as VodLinkState })
     await act(async () => {})
-    expect(container.querySelector('.mpl-note')?.textContent).toContain('Twitch publishes preview frames when the VOD finishes.')
+    expect(container.querySelector('.mpl-note')?.textContent).toContain('No preview frames while live.')
+  })
+
+  it('claims box art only while the cover shows (fix, 10-30, PIC-3)', async () => {
+    const { container } = renderStrip()
+    await act(async () => {})
+    fireEvent.error(container.querySelector('img.bkc-art')!)
+    expect(container.querySelector('img.bkc-art')).toBeNull()
+    expect(container.querySelector('.mpl-note span:first-child')?.textContent).toBe("Preview frames aren't available right now.")
   })
 
   it('plays from the bar start without lead-in when the bar holds no moment', async () => {
@@ -138,8 +149,7 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect(screen.getByRole('button', { name: 'Play from 0:49:49' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Open VOD at 0:49:49' })).toBeTruthy()
     expect(document.querySelector('.bkc-mom .r')?.textContent).toBe('none')
-    // the title says 0:49:54 (stream clock) and Play 0:49:49 (VOD clock): the caption says why
-    expect(document.querySelector('.mpl-cap span[title]')?.textContent).toBe("On the VOD's clock · , 5\u00a0s behind the stream's")
+    expect(document.querySelector('.mpl-cap')).toBeNull()
   })
 
   it('offers no Play and no timed link when the VOD alignment is not verified', async () => {
@@ -154,7 +164,7 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
   it('says there is no VOD yet while live', async () => {
     renderStrip({ vodId: null, vodLinkState: { status: 'live', label: 'Live', detail: '' } as VodLinkState })
     await act(async () => {})
-    expect(screen.getByText('No VOD for this stream yet.')).toBeTruthy()
+    expect(screen.getByText('No VOD linked yet.')).toBeTruthy()
     expect(screen.queryByRole('link')).toBeNull()
   })
 
@@ -200,6 +210,18 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect(container.querySelector('.bkc-fig')).toBeNull()
     expect(container.querySelector('.bkc-act')).toBeNull()
     expect(container.querySelector('.mpl')).toBeNull()
+  })
+
+  it('says the names are missing, not that chat named none, when the minute counted emote uses (pick 12S, 10-30)', async () => {
+    const counted = minute(3054, { emotes: {} })
+    const { container } = renderStrip({ rollups: [counted], rollup: counted })
+    await act(async () => {})
+    expect(container.querySelector('.bkc-emo .bkc-sl')?.textContent).toBe('Top emotesnames not in this update')
+    cleanup()
+    const none = minute(3054, { totalEmoteCount: 0, seventvEmoteCount: 0, emotes: {} })
+    const second = renderStrip({ rollups: [none], rollup: none })
+    await act(async () => {})
+    expect(second.container.querySelector('.bkc-emo .bkc-sl')?.textContent).toBe('Top emotesnone named in this minute')
   })
 
   it('shows Zoom to bucket only with a hook', async () => {

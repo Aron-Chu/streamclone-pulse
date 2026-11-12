@@ -28,7 +28,7 @@ describe('Supporter legal copy', () => {
   it.each(pages)('%s states that Supporter sign-ups are not open yet', (_, Page, testId) => {
     render(<MemoryRouter><Page /></MemoryRouter>)
     const notice = screen.getByTestId('prelaunch-notice')
-    expect(notice.textContent).toMatch(/^Supporter sign-ups are not open yet\./)
+    expect(notice.textContent).toMatch(/^Supporter sign-ups aren’t open yet, so you can’t buy it today\./)
     expect(screen.getByTestId(testId).contains(notice)).toBe(true)
   })
 
@@ -62,14 +62,15 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/no public Twitch chat badge — it is not included/)
   })
 
-  it('Terms says in one sentence that the selling entity, address and law are stated before sign-ups open', () => {
+  it('Terms states the owner-supplied seller details while keeping sales closed', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
-    const pending = screen.getByTestId('terms-pending-owner-input')
-    expect(pending.textContent?.replace(/\s+/g, ' ')).toContain(
-      'The selling entity, legal address, governing law and consumer cancellation rights will be stated here before paid sign-ups open.',
+    const seller = screen.getByTestId('terms-seller-and-law')
+    expect(seller.textContent?.replace(/\s+/g, ' ')).toContain(
+      'Aron Chu, 906 N Miller Rd, Unit 3099, Tempe, AZ 85288, USA.',
     )
-    // No table of four "Pending" rows: one sentence says it once.
-    expect(screen.getByTestId('terms-of-use').textContent).not.toMatch(/Pending — not yet stated/)
+    expect(seller.textContent).toContain('governed by the law of Arizona, USA')
+    expect(screen.getByTestId('prelaunch-notice').textContent).toContain('aren’t open yet')
+    expect(screen.queryByTestId('terms-pending-owner-input')).toBeNull()
   })
 
   it('Terms gives the Pulse Supporter section an anchor the extension links to (/terms#supporter)', () => {
@@ -78,11 +79,16 @@ describe('Supporter legal copy', () => {
     expect(heading?.textContent).toBe('Pulse Supporter')
   })
 
-  it('Supporter links "contact us" to the privacy mailbox and "Supporter terms" to the Supporter section', () => {
+  it('Supporter links billing help to the public Stripe portal, privacy mailbox and Supporter terms', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     const contact = screen.getByRole('link', { name: 'contact us' })
     expect(contact.getAttribute('href')).toBe('mailto:privacy@streampulse.stream')
-    expect(screen.getByTestId('supporter-lost-twitch').contains(contact)).toBe(true)
+    expect(screen.getByTestId('supporter-billing-help').contains(contact)).toBe(true)
+    const portal = screen.getByRole('link', { name: 'Stripe’s customer portal' })
+    expect(portal.getAttribute('href')).toBe('https://billing.stripe.com/p/login/fZueVd91paK85MAgKt8AE00')
+    expect(portal.getAttribute('target')).toBe('_blank')
+    expect(portal.getAttribute('rel')?.split(/\s+/)).toEqual(expect.arrayContaining(['noopener', 'noreferrer']))
+    expect(screen.getByTestId('supporter-billing-help').contains(portal)).toBe(true)
     expect(screen.getByRole('link', { name: 'Supporter terms' }).getAttribute('href')).toBe('/terms#supporter')
   })
 
@@ -99,22 +105,23 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/Cancelling takes effect at the end of the period you have already paid for/)
   })
 
-  it('Supporter states the USD price, keeps the chat badge excluded and promises nothing more', () => {
+  it('Supporter states the USD price once, keeps the chat badge excluded and promises nothing more', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
-    const terms = screen.getByTestId('supporter-terms').textContent ?? ''
-    expect(terms).toContain('US$4.99 per month, charged in US dollars')
-    expect(terms).toContain('Handled as stated at checkout')
-    expect(terms).toMatch(/7-day grace period/)
-    expect(terms).toMatch(/A full refund ends access for that period; a partial refund keeps it/)
+    const terms = (screen.getByTestId('supporter-terms').textContent ?? '').replace(/\s+/g, ' ')
+    expect(terms).toContain('US$4.99 a month. It renews monthly until you cancel.')
+    expect(terms).toContain('You keep Supporter until the end of the month you paid for.')
+    expect(terms).toContain('Stripe handles payment and shows the total, including any tax, before you pay.')
     const body = screen.getByTestId('supporter-offer').textContent ?? ''
-    expect(body).toMatch(/No public Twitch chat badge\. A chat badge is not included in Supporter/)
+    expect(body.match(/US\$4\.99/g)).toHaveLength(1)
+    expect(body).toMatch(/There’s no public chat badge\. That’s everything Supporter adds\./)
     expect(body).not.toMatch(/at no extra cost/i)
-    expect(body).toMatch(/active for up to 72 hours after the paid period ends/)
+    // Grace, refunds, disputes and the renewal window are in the linked Terms and refund policy.
+    expect(screen.getByRole('link', { name: 'Cancellation & refunds' }).getAttribute('href')).toBe('/refunds')
   })
 
   it('Supporter lists the three perks the extension sells: title paint, the tenure crest and emote rain', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
-    const list = screen.getByRole('heading', { name: 'What Supporter includes' }).nextElementSibling!
+    const list = screen.getByRole('heading', { name: 'What you get' }).nextElementSibling!
     const items = [...list.querySelectorAll('li')].map(item => item.textContent ?? '')
     expect(items.some(item => /^Title paint/.test(item))).toBe(true)
     expect(items.some(item => /^Tenure crest/.test(item))).toBe(true)
@@ -128,14 +135,14 @@ describe('Supporter legal copy', () => {
     expect(body).not.toMatch(/none will be moved|nothing free will move|will never be moved/i)
     expect(body).not.toMatch(/clip downloading/i)
     expect(screen.queryByTestId('supporter-moved')).toBeNull()
-    expect(screen.getByRole('heading', { name: 'What stays free' })).toBeTruthy()
+    expect(body).toContain('All analytics stay free.')
     expect(body).not.toMatch(/moved from free|was free up to|backdrop you saved/i)
     expect(body).not.toMatch(/header accent|overlay finishes/i)
   })
 
   it('Terms keeps the backdrop in the perk list without the removed migration claim', () => {
     const body = textOf(Terms, 'terms-of-use')
-    expect(body).toContain('Emote rain: 7TV emotes behind your Pulse panel header, still or falling: the 7TV header backdrop.')
+    expect(body).toContain('Emote rain: 7TV emotes behind your Pulse panel header, still or falling. This is the 7TV header backdrop.')
     expect(body).not.toMatch(/moved from free|was free up to|backdrop you saved/i)
     expect(body).not.toMatch(/header accent|overlay finishes|none will be moved/i)
   })
@@ -151,47 +158,51 @@ describe('Supporter legal copy', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     expect(screen.getByTestId('privacy-contact').querySelector('a[href="mailto:privacy@streampulse.stream"]')).toBeTruthy()
     const body = screen.getByTestId('privacy-policy').textContent ?? ''
-    expect(body).toMatch(/Supporter sign-ups are not open yet; card details go to Stripe, never to StreamPulse/)
+    expect(body).toMatch(/card details go to Stripe, never to StreamPulse/)
     expect(body).toMatch(/set when you use the account pages on https:\/\/streampulse\.stream/)
     expect(body).not.toMatch(/all set by the StreamPulse API at/)
   })
 
-  it('directs new buyers to the extension and Continue with Twitch, with no competing account choice', () => {
+  it('directs new buyers to a nonpaid extension connection, then a separate offered purchase', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     expect(screen.getByRole('link', { name: 'Get the extension' }).getAttribute('href')).toMatch(/^https:\/\/chromewebstore\.google\.com\//)
-    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/you’ll choose Continue with Twitch, then pay on Stripe/)
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/choose Become a Supporter.*and pay on Stripe/)
+    expect(screen.getByTestId('supporter-availability').textContent).toMatch(/No Twitch sign-in or separate StreamPulse sign-up is needed/)
     expect(screen.queryByRole('link', { name: 'Use a StreamPulse website account' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Open account billing' })).toBeNull()
     expect(screen.getByTestId('supporter-offer').textContent).not.toMatch(/Restore my Supporter|restore link/)
   })
-  it.each([['Privacy', Privacy, 'privacy-policy'], ['Terms', Terms, 'terms-of-use']] as const)('%s leaves the billing email with Stripe and describes no email restore or installation account', (_, Page, testId) => {
+  it.each([['Privacy', Privacy, 'privacy-policy'], ['Terms', Terms, 'terms-of-use']] as const)('%s describes extension connections without requiring a Twitch identity', (_, Page, testId) => {
     const body = textOf(Page, testId)
-    expect(body).not.toMatch(/keyed hash of (your|that) (checkout )?email/i)
-    expect(body).not.toMatch(/membership recovery|recovery link|restore link|installation account/i)
-    expect(body).toMatch(/Continue with Twitch/)
+    expect(body).toMatch(/extension(?:-only)? connections?/i)
+    expect(body).toMatch(/without (a Twitch identity|Twitch)/)
+    expect(body).not.toMatch(/To buy Supporter you'll sign in with Twitch|Continue with Twitch with the same Twitch account/)
+    expect(body).not.toMatch(/does not keep your billing email or a hash of it/)
   })
 
   it('Privacy says what reaches StreamPulse from Stripe instead of claiming the billing email never does', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     const billing = screen.getByTestId('privacy-billing-email').textContent ?? ''
-    expect(billing).toMatch(/payment notifications to StreamPulse\s+can include that email, your name and billing address/)
-    expect(billing).toMatch(/removes those details before saving it/)
-    expect(billing).toMatch(/never matches accounts by email/)
-    // Stripping customer_* fields (backend #162) and the inbox prune (#150) are not
-    // on backend master yet, so this handling is stated for when sign-ups open.
-    expect(billing).toMatch(/Once sign-ups open, StreamPulse\s+checks each notification's signature/)
+    expect(billing).toMatch(/Verified payment notifications can send\s+StreamPulse that email, your name and billing address/)
+    expect(billing).toMatch(/checks the notification's\s+signature and removes contact details before saving the new payment notification/)
+    expect(billing).toMatch(/keyed, one-way hash of the billing email as a recovery\s+lookup, rather than the address itself/)
+    expect(billing).toMatch(/does not automatically combine accounts\s+or grant Supporter access/)
+    expect(screen.getByTestId('privacy-policy').textContent).toMatch(/This section describes what happens once paid sign-ups open/)
+    expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/Looking at your status does not create a connection/)
+    expect(screen.getByTestId('privacy-installation-account').textContent).toMatch(/does not sync My Moments: bookmarks, notes and watched history stay in this browser/)
     const twitch = screen.getByTestId('privacy-continue-with-twitch').textContent ?? ''
     expect(twitch).toMatch(/keyed hash of your Twitch user ID/)
     expect(twitch).toMatch(/never receives your Twitch password, Twitch email or a\s+Twitch access token/)
   })
 
-  it('Terms separates losing Twitch access from cancelling billing in Stripe', () => {
+  it('Terms preserves billing management without promising automatic connection recovery', () => {
     render(<MemoryRouter><Terms /></MemoryRouter>)
     const billing = screen.getByTestId('terms-billing-email').textContent ?? ''
-    expect(billing).toMatch(/you can still cancel billing through Stripe/)
-    expect(billing).toMatch(/moving a\s+membership to another account needs our help/)
-    // Continue with Twitch is not live yet, so the account model is stated conditionally.
-    expect(screen.getByTestId('terms-your-account').textContent).toMatch(/^\s*Once Continue with Twitch is open, your StreamPulse account is your Twitch identity/)
+    expect(billing).toMatch(/reinstalling or using another browser does not\s+restore it automatically/)
+    expect(billing).toMatch(/manage billing through Stripe with the email you\s+paid with/)
+    expect(billing).toMatch(/Billing changes\s+do not move Supporter to another account/)
+    expect(screen.getByTestId('terms-your-account').textContent).toMatch(/private credentials saved in your browser profile/)
+    expect(screen.getByRole('link', { name: "Stripe's billing-email portal" }).getAttribute('href')).toMatch(/^https:\/\/billing\.stripe\.com\/p\/login\//)
   })
 
   it('Privacy says where Twitch display details are kept on the website and in the extension', () => {
@@ -200,35 +211,37 @@ describe('Supporter legal copy', () => {
     expect(body).toMatch(/Extension session storage \(storage\.session\) — short-lived Pulse and coverage caches for the current\s+browser session and, after the extension signs in with Twitch, your Twitch display name\s+and picture/)
   })
 
-  // Sign-in is unavailable in 0.2.2. The policy also explains the first-install
-  // check for builds where Continue with Twitch is available, including that a
-  // proof can then be sent without a click.
-  it('Privacy qualifies the first-install Twitch check for builds where sign-in is available', () => {
+  // Sign-in is unavailable in this release, so this release never runs the silent first-install
+  // check and the policy doesn't describe it. Sign-in is still stated conditionally.
+  it('Privacy leaves out the first-install Twitch check that this release does not run', () => {
     const body = textOf(Privacy, 'privacy-policy')
     expect(body).not.toMatch(/Twitch sign-in only if you choose/)
-    expect(body).not.toMatch(/sent only when you choose\s+Continue with Twitch\)/)
-    expect(body).toMatch(/one check without a window after a\s+fresh install, which can only sign you back in/)
-    const check = screen.getByTestId('privacy-extension-first-install').textContent ?? ''
-    expect(check).toMatch(/This check is not active in 0\.2\.2/)
-    expect(check).toMatch(/When Continue with Twitch is available/)
-    expect(check).toMatch(/checks once with\s+Twitch, without opening a window/)
-    expect(check).toMatch(/This check never creates an account,\s+and it doesn't run again after you sign out/)
-    expect(body).toMatch(/sent only when you choose\s+Continue with Twitch or during the one check after a fresh install/)
+    expect(screen.queryByTestId('privacy-extension-first-install')).toBeNull()
+    expect(body).not.toMatch(/fresh install/)
+    expect(body).toMatch(/Extension Twitch sign-in is not available in this release\. When available, the extension uses Twitch sign-in only to confirm your Twitch\s+user ID, when you choose Continue with Twitch\./)
+    expect(body).toMatch(/sent only when you choose\s+Continue with Twitch, not available in this release\)/)
+    const twitch = screen.getByTestId('privacy-third-party-twitch').textContent ?? ''
+    expect(twitch).toMatch(/only when you choose Continue with Twitch, Twitch's sign-in service/)
   })
 
   it('Privacy describes the server-side extension record and Twitch’s disconnect notification', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     const extensions = screen.getByTestId('privacy-extensions').textContent ?? ''
-    expect(extensions).toMatch(/a label naming the store, the browser family and the sign-in time, plus hashed credentials\s+and their expiry/)
-    expect(extensions).toMatch(/A signed-out or expired\s+extension stays on that record, without access, until the account is deleted/)
+    expect(extensions).toMatch(/a device label, connection time, hashed credentials and\s+their expiry/)
+    expect(extensions).toMatch(/Connection records remain\s+after access ends; revocation is not account deletion/)
+    expect(screen.getByTestId('privacy-policy').textContent).toMatch(/An extension-only account has no account email address/)
+    expect(screen.getByTestId('privacy-policy').textContent).not.toMatch(/email the address below from the account's own address|sessions and device links are revoked and the account record is removed/)
     const twitch = screen.getByTestId('privacy-third-party-twitch').textContent ?? ''
     expect(twitch).toMatch(/If you disconnect StreamPulse in your Twitch settings, Twitch sends\s+StreamPulse a notification with your Twitch user ID/)
     expect(twitch).toMatch(/only to sign\s+that account out everywhere and does not store/)
   })
 
-  it('Refunds asks for requests from the billing email given to Stripe, not an account address', () => {
+  it('Refunds accepts requests after loss of the current billing email without asking for card secrets', () => {
     const body = textOf(Refunds, 'refund-policy')
     expect(body).not.toMatch(/address on the account/)
-    expect(body.match(/from the billing\s+email you gave Stripe at checkout/g)).toHaveLength(2)
+    expect(body).toMatch(/If possible, use\s+your current Stripe billing email/)
+    expect(body).toMatch(/If you cannot access it, contact us anyway/)
+    expect(body).not.toMatch(/from the billing\s+email you gave Stripe at checkout/)
+    expect(body).toMatch(/do not include your full card number\s+or security code/)
   })
 })

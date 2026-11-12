@@ -12,6 +12,8 @@ export const POLL_INTERVAL_MS_KEY = 'pollIntervalMs'
 const OVERLAY_MODE_KEY = 'overlayMode'
 const OVERLAY_PLACEMENT_KEY = 'overlayPlacement'
 const SIDEBAR_TAB_KEY = 'sidebarTab'
+/** Set when the reader dismisses the panel's one-time line about what Pulse is. */
+export const FIRST_RUN_LINE_DISMISSED_KEY = 'firstRunLineDismissed'
 const CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY = 'chatClosedPulseDockEnabled'
 /** @deprecated Migrated to CHAT_CLOSED_PULSE_DOCK_ENABLED_KEY */
 const LEGACY_SIDEBAR_PULSE_TAB_ENABLED_KEY = 'sidebarPulseTabEnabled'
@@ -521,6 +523,15 @@ export async function getSidebarTab(): Promise<SidebarTab> {
 
 export async function setSidebarTab(tab: SidebarTab): Promise<void> {
   await syncStorageSet({ [SIDEBAR_TAB_KEY]: normalizeSidebarTab(tab) })
+}
+
+export async function getFirstRunLineDismissed(): Promise<boolean> {
+  const stored = await syncStorageGet(FIRST_RUN_LINE_DISMISSED_KEY)
+  return stored[FIRST_RUN_LINE_DISMISSED_KEY] === true
+}
+
+export async function setFirstRunLineDismissed(): Promise<void> {
+  await syncStorageSet({ [FIRST_RUN_LINE_DISMISSED_KEY]: true })
 }
 
 export function resolveChatClosedPulseDockEnabled(stored: boolean | undefined): boolean {

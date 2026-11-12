@@ -319,6 +319,91 @@ describe('sortLiveHeatPoints', () => {
   })
 })
 
+describe('tied reaction scores', () => {
+  // zackrawrr, 2026-10-18: the backend re-scores past minutes as the stream
+  // grows, so the 02:02:55 moment drifted between 56 and 55 while the
+  // 05:06:55 one, with twice the emotes, sat at 55.
+  const leader: ExtensionPeak = {
+    offsetSeconds: 7375,
+    score: 56,
+    reactionScore: 56,
+    reasons: ['seventv_spike'],
+    reasonLabel: 'Emote spike',
+    dominantSignal: 'seventv',
+    chatCount: 462,
+    emoteCount: 214,
+  }
+  const tiedLeader: ExtensionPeak = { ...leader, score: 55, reactionScore: 55 }
+  const runnerUp: ExtensionPeak = {
+    offsetSeconds: 18415,
+    score: 55,
+    reactionScore: 55,
+    reasons: ['seventv_spike'],
+    reasonLabel: 'Emote spike',
+    dominantSignal: 'seventv',
+    chatCount: 703,
+    emoteCount: 445,
+  }
+
+  function topMomentOffset(peaks: ExtensionPeak[]): number | undefined {
+    const heat = resolveMostReactedHeat(makePayload({ peaks, currentOffsetSeconds: 19_000 }))
+    return sortLiveHeatPoints(heat.points, 'reaction')[0]?.offsetSeconds
+  }
+
+  it('keeps the #1 moment when its score drifts into a tie', () => {
+    expect(topMomentOffset([leader, runnerUp])).toBe(7375)
+    expect(topMomentOffset([tiedLeader, runnerUp])).toBe(7375)
+  })
+
+  it('picks the same #1 whatever order tied moments arrive in', () => {
+    expect(topMomentOffset([runnerUp, tiedLeader])).toBe(7375)
+    expect(topMomentOffset([tiedLeader, runnerUp])).toBe(7375)
+  })
+})
+
+describe('stream edges in Top moments', () => {
+  // An hour-long stream: hello spam at 00:01, goodbye spam at 00:59, and a
+  // smaller real moment at 00:30.
+  const spike = (offsetSeconds: number, score: number): ExtensionPeak => ({
+    offsetSeconds,
+    score,
+    reactionScore: score,
+    reasons: ['seventv_spike'],
+    reasonLabel: 'Emote spike',
+    dominantSignal: 'seventv',
+    chatCount: 400,
+    emoteCount: 300,
+  })
+  const peaks = [spike(60, 99), spike(1800, 50), spike(3540, 98)]
+  const rollups = Array.from({ length: 61 }, (_, i) => ({ offsetSeconds: i * 60, chatCount: 30, sevenTvEmoteCount: 2 }))
+
+  function topMomentOffsets(payload: PulsePayload): number[] {
+    const heat = resolveMostReactedHeat(payload)
+    return sortLiveHeatPoints(heat.points, 'reaction').map(point => point.offsetSeconds)
+  }
+
+  it('ranks hello and goodbye spikes after the real moment once the stream ended', () => {
+    const ended = makePayload({ isLive: false, endedAt: '2026-06-11T13:00:00.000Z', currentOffsetSeconds: 3600, rollups, peaks })
+    expect(topMomentOffsets(ended)).toEqual([1800, 60, 3540])
+  })
+
+  it('ranks only the hello spike last while the stream is live', () => {
+    const live = makePayload({ currentOffsetSeconds: 3600, rollups, peaks })
+    expect(topMomentOffsets(live)).toEqual([3540, 1800, 60])
+  })
+
+  it('follows the backend flag over the offset', () => {
+    const flagged = makePayload({ currentOffsetSeconds: 3600, rollups, peaks: [spike(1800, 50), { ...spike(2400, 90), streamEdge: 'closing' }] })
+    expect(topMomentOffsets(flagged)).toEqual([1800, 2400])
+  })
+
+  it('keeps the chat and emote sorts by volume', () => {
+    const ended = makePayload({ isLive: false, endedAt: '2026-06-11T13:00:00.000Z', currentOffsetSeconds: 3600, rollups, peaks })
+    const heat = resolveMostReactedHeat(ended)
+    expect(sortLiveHeatPoints(heat.points, 'chat')[0]?.streamEdge).toBe('opening')
+  })
+})
+
 describe('exact moment identity', () => {
   const points = [
     {

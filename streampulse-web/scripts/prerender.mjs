@@ -1,21 +1,52 @@
 /**
  * Post-build prerender: emit static HTML shells for public routes (WEB-002).
- * Dashboard/admin remain SPA-only chunks.
+ * /admin stays SPA-only.
  */
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServer, loadConfigFromFile } from 'vite'
+import { readPilot, writeRuntimeManifests, renderRecapDocument, recapRedirects, sitemapWithRecaps } from './recap-pilot.mjs'
+import { sitemapWithStatedDates, statedUpdateDate } from './sitemap-lastmod.mjs'
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const dist = join(root, 'dist')
 const indexPath = join(dist, 'index.html')
 const indexHtml = readFileSync(indexPath, 'utf8')
 const origin = 'https://streampulse.stream'
+const pilotPages = readPilot(join(root, 'content', 'recap-pilot.json'))
+writeRuntimeManifests(root, pilotPages)
 const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
-  .filter(name => /^(AnalyticsLandingPage|figma-analytics)-.+\.css$/.test(name))
+  .filter(name => /^figma-analytics-.+\.css$/.test(name))
   .map(name => `<link rel="stylesheet" href="/assets/${name}">`)
   .join('\n    ')
+// Public pages load on demand (src/routes/index.tsx). Each prerendered page
+// preloads its own chunks, so they download beside the entry, not after it.
+const manifest = JSON.parse(readFileSync(join(dist, '.vite', 'manifest.json'), 'utf8'))
+const publicPageSources = {
+  'tools/twitch-vod-timestamp-link': 'TwitchTimestampTool',
+  'guides/find-twitch-moments': 'FindTwitchMomentsGuide',
+  'guides/twitch-vod-timestamps': 'TwitchVodTimestampsGuide',
+  docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds', withdraw: 'Withdraw',
+  supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Support',
+  feedback: 'Feedback', discord: 'Discord', changelog: 'Changelog',
+}
+function chunkFiles(key, files = new Set()) {
+  const chunk = manifest[key]
+  if (!chunk || files.has(chunk.file)) return files
+  files.add(chunk.file)
+  for (const imported of chunk.imports ?? []) chunkFiles(imported, files)
+  return files
+}
+const entryChunks = chunkFiles('index.html')
+function pagePreloads(path) {
+  const page = publicPageSources[path]
+  if (!page) return ''
+  return [...chunkFiles(`src/routes/public/${page}.tsx`)]
+    .filter(file => !entryChunks.has(file))
+    .map(file => `<link rel="modulepreload" crossorigin href="/${file}">`)
+    .join('\n    ')
+}
 // Reuse the Vite source aliases/shims; no second page copy and no browser/network fetch.
 const loaded = await loadConfigFromFile({ command: 'serve', mode: 'production' }, undefined, root)
 if (!loaded) throw new Error('Missing Vite configuration for public prerender')
@@ -32,15 +63,17 @@ const server = await createServer({
   optimizeDeps: { noDiscovery: true, include: [] },
   server: { middlewareMode: true, watch: null }, appType: 'custom',
 })
-let prerenderPublicPage
+let prerenderPublicPage, GROWTH_PAGES, GITHUB_REPO_URL
 try {
-  ;({ prerenderPublicPage } = await server.ssrLoadModule('/src/prerender.tsx'))
+  ;({ prerenderPublicPage, GROWTH_PAGES } = await server.ssrLoadModule('/src/prerender.tsx'))
+  ;({ GITHUB_REPO_URL } = await server.ssrLoadModule('/src/lib/externalLinks.ts'))
 } catch (error) {
   await server.close()
   throw error
 }
 
 const routes = [
+  ...GROWTH_PAGES,
   {
     path: 'supporter/thanks',
     title: 'Return to your extension — StreamPulse',
@@ -57,15 +90,15 @@ const routes = [
   },
   {
     path: '',
-    title: 'StreamPulse — Twitch reaction analytics',
-    description: 'StreamPulse finds Twitch moments through coverage-honest chat, emote, viewer, and VOD analytics.',
+    title: 'StreamPulse: Twitch Chat Stats & Top Moments',
+    description: 'Explore Twitch chat stats, top emotes and reaction moments for tracked streams. Add the free Chrome, Edge or Firefox extension beside Twitch chat.',
     canonicalPath: '/',
     robots: 'index,follow',
   },
   {
     path: 'analytics',
-    title: 'StreamPulse Analytics',
-    description: 'Explore aggregate live Twitch activity, Pulse moments, emote signals, and tracked channels.',
+    title: 'Live Twitch Chat Stats & Top Emotes — StreamPulse',
+    description: 'Live Twitch chat stats for the channels StreamPulse tracks: chat per minute, top Twitch and 7TV emotes, and the reaction moments when chat jumps.',
     canonicalPath: '/analytics',
     robots: 'index,follow',
   },
@@ -107,6 +140,13 @@ const routes = [
     robots: 'index,follow',
   },
   {
+    path: 'withdraw',
+    title: 'Withdraw from your contract — StreamPulse',
+    description: 'Send a withdrawal request for your Pulse Supporter subscription.',
+    canonicalPath: '/withdraw',
+    robots: 'noindex,nofollow',
+  },
+  {
     path: 'supporter',
     title: 'Pulse Supporter — StreamPulse',
     description: 'The optional Pulse Supporter membership: price, renewal, cancellation, and what it includes.',
@@ -131,7 +171,8 @@ const routes = [
   },
   {
     // The extension's "Join Discord" opens this page. It only forwards to the
-    // build-time invite (or says there is none), so it stays out of search.
+    // build-time invite (or says there is none), so it stays out of search and
+    // out of public/sitemap.xml.
     path: 'discord',
     title: 'Discord — StreamPulse',
     description: 'Join the public StreamPulse community on Discord.',
@@ -141,7 +182,8 @@ const routes = [
   {
     // The extension's "Release details" links open this page. It describes only
     // released versions and names the one in development; it is kept out of search
-    // because it documents the extension rather than the site.
+    // (and out of public/sitemap.xml) because it documents the extension rather
+    // than the site.
     path: 'changelog',
     title: 'Release Notes — StreamPulse',
     description: 'What changed in each version of the StreamPulse extension.',
@@ -174,6 +216,13 @@ const shareImage = {
   alt: 'StreamPulse: find the Twitch moments people actually reacted to.',
 }
 
+// The extension's store listings, which the home page's structured data names as the same product.
+const storeListings = [
+  'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
+  'https://addons.mozilla.org/en-US/firefox/addon/streampulse/',
+  'https://microsoftedge.microsoft.com/addons/detail/streampulse-twitch-chat-/cnakgkalmjbhelabgjkbinlgjeflebjd',
+]
+
 function escapeAttribute(value) {
   return value
     .replaceAll('&', '&amp;')
@@ -194,6 +243,8 @@ function renderShell(metadata) {
   if (metadata.path === 'analytics' && analyticsCriticalStyles) {
     html = html.replace('</head>', `    ${analyticsCriticalStyles}\n  </head>`)
   }
+  const preloads = pagePreloads(metadata.path)
+  if (preloads) html = html.replace('</head>', `    ${preloads}\n  </head>`)
   html = upsertMeta(html, 'name', 'description', metadata.description)
   html = upsertMeta(html, 'name', 'robots', metadata.robots)
   html = upsertMeta(html, 'property', 'og:title', metadata.title)
@@ -215,6 +266,34 @@ function renderShell(metadata) {
   html = /<link\s+rel="canonical"[^>]*>/i.test(html)
     ? html.replace(/<link\s+rel="canonical"[^>]*>/i, canonicalTag)
     : html.replace('</head>', `    ${canonicalTag}\n  </head>`)
+  if (metadata.path === '') {
+    const software = {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'StreamPulse: Twitch Chat Stats & Top Moments',
+      applicationCategory: 'BrowserApplication',
+      operatingSystem: ['Windows', 'macOS', 'Linux', 'ChromeOS'],
+      softwareRequirements: 'A desktop version of Chrome, Edge or Firefox.',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      url: origin,
+      downloadUrl: storeListings[0],
+      sameAs: storeListings,
+      softwareVersion: '0.2.6',
+      description: metadata.description,
+      publisher: { '@id': `${origin}/#organization` },
+    }
+    // Who makes it and what the site is, for search results: the store listings and the public source code.
+    const site = {
+      '@context': 'https://schema.org',
+      '@graph': [
+        { '@type': 'Organization', '@id': `${origin}/#organization`, name: 'StreamPulse', url: origin, sameAs: [...storeListings, GITHUB_REPO_URL] },
+        { '@type': 'WebSite', '@id': `${origin}/#website`, name: 'StreamPulse', url: origin, inLanguage: 'en', publisher: { '@id': `${origin}/#organization` } },
+      ],
+    }
+    for (const data of [software, site]) {
+      html = html.replace('</head>', `    <script type="application/ld+json">${JSON.stringify(data)}</script>\n  </head>`)
+    }
+  }
   const path = metadata.path == null ? '/404' : `/${metadata.path}`
   const markup = `<div id="root" data-prerendered>${prerenderPublicPage(path)}</div>`
   const boundary = /<!--public-root:start-->[\s\S]*?<!--public-root:end-->/
@@ -222,8 +301,12 @@ function renderShell(metadata) {
   return html.replace(boundary, () => `<!--public-root:start-->${markup}<!--public-root:end-->`)
 }
 
+// The date each page states it was last updated (privacy, terms, refunds), for the sitemap's <lastmod>.
+const statedDates = new Map()
 for (const route of routes) {
   const html = renderShell(route)
+  const stated = route.robots === 'index,follow' ? statedUpdateDate(html) : null
+  if (stated) statedDates.set(new URL(route.canonicalPath, origin).toString(), stated)
   if (!route.path) {
     writeFileSync(indexPath, html)
     continue
@@ -248,6 +331,23 @@ writeFileSync(
     robots: 'noindex,nofollow',
   }),
 )
+
+// A separate document prevents noindex on unreviewed paths from affecting the hub.
+const fallback = renderShell({ path: 'analytics', title: 'StreamPulse Analytics',
+  description: 'Explore tracked Twitch streams. Coverage and replay availability load with the data.',
+  canonicalPath: '/analytics-fallback', robots: 'noindex,nofollow' })
+mkdirSync(join(dist, 'analytics-fallback'), { recursive: true })
+writeFileSync(join(dist, 'analytics-fallback', 'index.html'), fallback)
+writeFileSync(join(dist, 'analytics-fallback.html'), fallback)
+
+for (const page of pilotPages) {
+  const html = renderRecapDocument(renderShell(routes.find(route => route.path === 'analytics')), page)
+  const asset = join(dist, '_recap-pages', page.login, ...(page.kind === 'stream' ? [page.streamId] : []))
+  mkdirSync(asset, { recursive: true })
+  writeFileSync(join(asset, 'index.html'), html)
+}
+writeFileSync(join(dist, '_redirects'), recapRedirects(readFileSync(join(root, 'public', '_redirects'), 'utf8'), pilotPages))
+writeFileSync(join(dist, 'sitemap.xml'), sitemapWithStatedDates(sitemapWithRecaps(readFileSync(join(root, 'public', 'sitemap.xml'), 'utf8'), pilotPages), statedDates))
 
 await server.close()
 console.log('prerender: wrote rendered public pages, analytics loading content, and 404 fallback')

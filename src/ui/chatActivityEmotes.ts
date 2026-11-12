@@ -214,7 +214,7 @@ export function chartTimelineWindowLabel(window: ChartTimelineWindow): string {
 
 export function chartTimelineWindowHeader(window: ChartTimelineWindow, hasFullRollups: boolean): string {
   if (window === 'full' && hasFullRollups) return 'Chat activity (full stream)'
-  if (window === 'full') return 'Chat activity · waiting for rollups'
+  if (window === 'full') return 'Chat activity · waiting for the first minute'
   return `Chat activity (${chartTimelineWindowLabel(window)})`
 }
 
@@ -712,9 +712,12 @@ export function findBucketIndexForOffset(
     const end = next ?? start + bucketWidth
     if (targetOffsetSeconds >= start && targetOffsetSeconds < end) return i
   }
+  // One bucket of slack after the end covers a live chart that lags its newest
+  // peak. Anything later is not on this chart: pinning it to the last bucket
+  // showed that minute's numbers under another moment's time.
   const last = chartOffsets.length - 1
   const lastStart = chartOffsets[last]!
-  return targetOffsetSeconds >= lastStart ? last : null
+  return targetOffsetSeconds >= lastStart && targetOffsetSeconds < lastStart + 2 * bucketWidth ? last : null
 }
 
 /** Bucket-aware peak mapping for full-stream densified charts. */
@@ -780,7 +783,7 @@ export function chartEmptyMessage(options: {
   } = options
   const fullTimelineRequested = chartWindow === 'full'
   if (awaitingFullRollups) {
-    return 'Loading full stream rollups from StreamPulse…'
+    return 'Loading the full stream from StreamPulse…'
   }
   if (visibleRollupCount >= 1) return ''
   if (rollupCount >= 1) {

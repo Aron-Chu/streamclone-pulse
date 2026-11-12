@@ -3,7 +3,17 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { SettingsWorkspace } from '../src/ui/SettingsWorkspace.tsx'
+import { PulseSettingsPanel } from '../src/ui/PulseSettingsPanel.tsx'
+import {
+  AUTO_UPDATE_LABEL,
+  DENSITY_LABEL,
+  DOCK_LABEL,
+  LIVE_SETTINGS_TITLE,
+  PLACEMENT_LABEL,
+  VOD_JUMP_PIN_LABEL,
+} from '../src/ui/settingLabels.ts'
 
 vi.mock('../src/content/bridge.ts', () => ({
   sendBackgroundMessage: vi.fn(async ({ type }) => {
@@ -77,6 +87,23 @@ describe('SettingsWorkspace privacy and cache', () => {
     expect(container?.textContent).not.toContain('Default chart range')
     expect(container?.querySelector('#settings-chart-window')).toBeNull()
     expect(syncStore.defaultChartWindow).toBe('60m')
+  })
+
+  it('gives each setting the name quick settings gives it', async () => {
+    await act(async () => {
+      root?.render(<SettingsWorkspace activeSection="pulse" />)
+      await Promise.resolve()
+    })
+    const full = container?.textContent ?? ''
+    const quick = renderToStaticMarkup(<PulseSettingsPanel />)
+    for (const name of [LIVE_SETTINGS_TITLE, AUTO_UPDATE_LABEL, DOCK_LABEL, VOD_JUMP_PIN_LABEL, DENSITY_LABEL, PLACEMENT_LABEL]) {
+      expect(full, name).toContain(name)
+      expect(quick, name).toContain(name)
+    }
+    for (const old of ['Show VOD jumps on the chart', 'Overlay placement', 'Live data']) {
+      expect(full, old).not.toContain(old)
+      expect(quick, old).not.toContain(old)
+    }
   })
 
   it('rolls back checkbox state and preserves cached count on write failure', async () => {

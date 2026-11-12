@@ -101,7 +101,7 @@ export function PulseMomentRow({
             )}
           </span>
           <span className="pulse-mr-counts">
-            {collecting ? 'Collecting minute rollup…' : formatMomentMetricsLine(point)}
+            {collecting ? 'Counting this minute…' : formatMomentMetricsLine(point)}
           </span>
         </div>
         {point.topEmotes.length > 0 || saved ? (

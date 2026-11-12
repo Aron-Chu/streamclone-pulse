@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { recapMomentAnalyticalOffset } from '@streampulse/pulse-core'
+import { OPENING_STREAM_EDGE, recapMomentAnalyticalOffset, streamEdgesFor } from '@streampulse/pulse-core'
+import type { PulseStreamRecap } from '../apiTypes.ts'
 import {
   getStripPinHover,
   SESSION_PIN_COUNT,
+  sessionStreamEdges,
   sessionStripMoments,
   setStripPinHover,
   stripHasReactionCoverage,
@@ -55,6 +57,20 @@ describe('sessionStripMoments', () => {
     expect(snapshot.emotes[0]?.name).toBe('KEKW')
   })
 
+  it('uses the recap’s names when the measured minute names under a quarter of its emote uses', () => {
+    const aligned = { offsetSeconds: 4_500, score: 90, reasons: ['emote_spike'], chatCount: 10, emoteCount: 10, topEmotes: [{ code: 'KEKW', count: 9 }] }
+    const exactRollup = STRIP_ROLLUPS.find((row) => stripMomentEmotes({ moment: aligned, rollups: [row], streamStartedAt: STRIP_STARTED_AT }).exact)!
+    const named = Object.values(exactRollup.emotes ?? {}).reduce((sum, n) => sum + n, 0)
+    const thin = { ...exactRollup, totalEmoteCount: named * 5 }
+    const out = stripMomentEmotes({ moment: aligned, rollups: [thin], streamStartedAt: STRIP_STARTED_AT, topEmotesCatalog: STRIP_TOP_EMOTES })
+    expect(out).toMatchObject({ exact: true, fromRecap: true })
+    expect(out.emotes[0]?.name).toBe('KEKW')
+    // no recap names to stand in: the minute's own names stay
+    const bare = stripMomentEmotes({ moment: { ...aligned, topEmotes: [] }, rollups: [thin], streamStartedAt: STRIP_STARTED_AT, topEmotesCatalog: STRIP_TOP_EMOTES })
+    expect(bare).toMatchObject({ exact: true, fromRecap: false })
+    expect(bare.emotes[0]?.name).toBe('OMEGALUL')
+  })
+
   it('notifies pin hover listeners once per change', () => {
     const listener = vi.fn()
     const off = subscribeStripPinHover(listener)
@@ -64,5 +80,45 @@ describe('sessionStripMoments', () => {
     setStripPinHover(null)
     expect(listener).toHaveBeenCalledTimes(2)
     off()
+  })
+})
+
+describe('stream edges on the strip', () => {
+  // An hour-long stream: hello spam at 00:01, goodbye spam at 00:59, and a
+  // smaller real moment at 00:30.
+  const startedAt = '2026-06-11T12:00:00.000Z'
+  const minute = (m: number, chatCount = 30) => ({
+    minuteTs: new Date(Date.parse(startedAt) + m * 60_000).toISOString(),
+    chatCount,
+  })
+  const rollups = Array.from({ length: 61 }, (_, m) => minute(m))
+  const recap: PulseStreamRecap = {
+    streamId: 's',
+    topMoments: [
+      { offsetSeconds: 60, score: 99, reasons: ['emote_spike'], chatCount: 300, emoteCount: 200 },
+      { offsetSeconds: 3_540, score: 98, reasons: ['emote_spike'], chatCount: 300, emoteCount: 200 },
+      { offsetSeconds: 1_800, score: 60, reasons: ['chat_spike'], chatCount: 120, emoteCount: 10 },
+    ],
+  }
+
+  it('ends at the last minute with chat or emotes, and only once the stream ended', () => {
+    const viewersOnly = { ...minute(75, 0), viewerAvg: 500 }
+    expect(sessionStreamEdges({ rollups: [...rollups, viewersOnly], streamStartedAt: startedAt, streamEnded: true }))
+      .toEqual(streamEdgesFor(3_600, true))
+    expect(sessionStreamEdges({ rollups, streamStartedAt: startedAt, streamEnded: false })).toEqual(OPENING_STREAM_EDGE)
+    expect(sessionStreamEdges({ rollups, streamEnded: true })).toEqual(OPENING_STREAM_EDGE)
+  })
+
+  it('ranks hello and goodbye spikes after the real moment', () => {
+    const offsets = (streamEnded: boolean) =>
+      sessionStripMoments({
+        recap,
+        hasReactionCoverage: true,
+        streamStartedAt: startedAt,
+        streamEdges: sessionStreamEdges({ rollups, streamStartedAt: startedAt, streamEnded }),
+      }).map((moment) => moment.offsetSeconds)
+    expect(offsets(true)).toEqual([1_800, 60, 3_540])
+    // Live, only the opening edge applies.
+    expect(offsets(false)).toEqual([3_540, 1_800, 60])
   })
 })

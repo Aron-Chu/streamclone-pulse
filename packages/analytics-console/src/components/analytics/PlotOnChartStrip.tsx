@@ -1,14 +1,14 @@
 /**
- * "Emote overlays" under the session chart: a bar with the plotted emotes that opens a wide panel of the
+ * "Emotes on chart" keeps the current named, removable tokens and Add emote action, opening a wide panel of the
  * stream's top emotes as chips (picture, name, uses). Back on the session page on 2026-10-21 (Aron: "why cant
  * we just use the old one where it was a dropdwon that was wide and filled with emotes"), in place of the
- * "Emotes on chart · Add emote" checklist.
+ * narrow checklist. The words and direct removal remain unchanged during current-master integration.
  *
  * Plotted keys can come from the minute rollups ("seventv:LOL:LOL") while the list comes from the summary
  * ("seventv:<id>:LOL"). The chart matches the two by provider and name (pulse-charts chartSeries
  * resolveEmoteMinuteCount); so does this panel, so a 7TV and a BTTV "Clap" stay two emotes.
  */
-import { useId, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import {
   MAX_PLOTTED_EMOTES,
   count,
@@ -41,6 +41,33 @@ export function PlotOnChartStrip({
 }: PlotOnChartStripProps) {
   const [expanded, setExpanded] = useState(false)
   const selectorId = useId()
+  const addRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const close = useCallback((restoreFocus: boolean) => {
+    setExpanded(false)
+    if (restoreFocus) addRef.current?.focus()
+  }, [])
+  useEffect(() => {
+    if (!expanded) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      const active = document.activeElement
+      close(Boolean(active && (panelRef.current?.contains(active) || active === addRef.current)))
+    }
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && (panelRef.current?.contains(target) || addRef.current?.contains(target))) return
+      close(false)
+    }
+    document.addEventListener('keydown', onKey, true)
+    document.addEventListener('pointerdown', onDown, true)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('pointerdown', onDown, true)
+    }
+  }, [close, expanded])
   const emoteOf = (key: string) => topEmotes.find(emote => emote.key === key) ?? topEmotes.find(emote => sameEmoteKey(key, emote.key))
   const plottedKeyOf = (emote: AnalyticsTopEmote) =>
     plottedKeys.find(key => key === emote.key) ?? plottedKeys.find(key => sameEmoteKey(key, emote.key))
@@ -51,56 +78,35 @@ export function PlotOnChartStrip({
 
   return (
     <div className="relative" data-chart-overlay-selector>
-      <button
-        type="button"
-        data-chart-overlay-toggle=""
-        onClick={() => setExpanded(value => !value)}
-        aria-expanded={expanded}
-        aria-controls={selectorId}
-        aria-label={`Emote overlays, ${plottedCount} active, ${Math.max(0, maxPlotted - plottedCount)} slots left, ${expanded ? 'collapse' : 'manage'}`}
-        className="flex min-h-9 w-full items-center gap-2 rounded border border-slate-400/15 bg-slate-400/[0.04] px-2.5 py-1.5 text-left transition hover:border-slate-300/25 hover:bg-slate-400/[0.07]"
-      >
-        <span className="shrink-0 text-xs font-black uppercase tracking-wide text-slate-300">
-          Emote overlays
-        </span>
-        <span className="shrink-0 rounded bg-slate-300/10 px-1.5 py-0.5 text-xs font-black uppercase tracking-wide text-slate-400">
-          {plottedCount} active
-        </span>
-        <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-          {plottedKeys.slice(0, maxPlotted).map(key => {
-            const emote = emoteOf(key)
-            const name = emote?.name ?? parseEmoteKey(key).name
-            const color = emoteChartColorForKey(key, plottedKeys)
-            return (
-              <span
-                key={key}
-                className="sc-ov-pop inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border bg-slate-950/40"
-                style={{ borderColor: `${color}80` }}
-                title={name}
-                data-chart-overlay-plotted={key}
-              >
-                <ConsoleEmoteImg
-                  src={emote ? getEmoteImageUrl(emote) : undefined}
-                  name={name}
-                  className="h-4 w-4 object-contain"
-                  fallbackClassName="inline-flex h-4 w-4 items-center justify-center text-xs font-black text-slate-400"
-                />
-              </span>
-            )
-          })}
-          {plottedCount === 0 ? (
-            <span className="truncate text-xs font-semibold text-slate-500">Aggregate Emotes/min only</span>
-          ) : null}
-        </span>
-        <span className="shrink-0 text-xs font-black uppercase text-slate-300">
-          {expanded ? 'Collapse' : 'Manage'}
-        </span>
-        <span aria-hidden="true" className="shrink-0 text-xs text-slate-500">{expanded ? '−' : '+'}</span>
-      </button>
+      <div className="flex min-h-9 w-full flex-wrap items-center gap-2 rounded border border-slate-400/15 bg-slate-400/[0.04] px-2.5 py-1.5" data-session-emotes-on-chart="">
+        <span className="shrink-0 text-xs font-bold text-slate-300">Emotes on chart</span>
+        {plottedKeys.slice(0, maxPlotted).map(key => {
+          const emote = emoteOf(key)
+          const name = emote?.name ?? parseEmoteKey(key).name
+          const color = emoteChartColorForKey(key, plottedKeys)
+          return (
+            <span key={key} className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-xs" style={{ borderColor: `${color}80`, color }} title={name} data-chart-overlay-plotted={key} data-session-emote-token={key}>
+              <ConsoleEmoteImg src={emote ? getEmoteImageUrl(emote) : undefined} name={name} className="sc-ov-pop h-4 w-4 object-contain" fallbackClassName="sc-ov-pop inline-flex h-4 w-4 items-center justify-center text-xs font-bold text-slate-400" />
+              <span className="max-w-32 truncate">{name}</span>
+              <button type="button" aria-label={`Remove ${name} from the chart`} data-session-emote-remove={key} className="relative grid h-5 w-5 shrink-0 place-items-center rounded text-xs" onClick={() => { onToggleEmote(key); addRef.current?.focus() }}>×</button>
+            </span>
+          )
+        })}
+        <button ref={addRef} type="button" data-chart-overlay-toggle="" data-session-emote-add="" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls={selectorId} className="inline-flex min-h-11 min-w-24 shrink-0 items-center gap-1 rounded border border-slate-400/15 px-2 py-1 text-xs font-bold text-slate-300">
+          <span aria-hidden="true">+</span>Add emote
+        </button>
+      </div>
       {expanded ? (
         // The wheel zooms the chart over the closed bar (it is part of the card) but scrolls over the open panel.
         <div
+          ref={panelRef}
           id={selectorId}
+          role="group"
+          aria-label="Emotes on chart"
+          onBlur={event => {
+            const next = event.relatedTarget as Node | null
+            if (next && !panelRef.current?.contains(next) && next !== addRef.current) close(false)
+          }}
           className="sc-reveal mt-1 rounded border border-slate-400/15 bg-slate-950/75 p-2.5 shadow-lg"
           data-chart-wheel-exempt=""
         >
@@ -115,7 +121,7 @@ export function PlotOnChartStrip({
                   onClick={onClear}
                   aria-label="Clear emote lanes"
                   disabled={plottedCount === 0}
-                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-semibold text-slate-400 transition hover:border-slate-300/25 hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Clear
                 </button>
@@ -125,7 +131,7 @@ export function PlotOnChartStrip({
                   type="button"
                   onClick={onReset}
                   aria-label="Restore default emote lanes"
-                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-black uppercase text-slate-500 transition hover:border-slate-300/25 hover:text-slate-300"
+                  className="rounded border border-slate-400/15 px-2 py-0.5 text-xs font-semibold text-slate-400 transition hover:border-slate-300/25 hover:text-slate-300"
                 >
                   Restore defaults
                 </button>
@@ -182,7 +188,7 @@ export function PlotOnChartStrip({
             </button>
           )
         }) : (
-          <span className="px-0.5 py-1 text-xs font-semibold text-slate-500">
+          <span className="px-0.5 py-1 text-xs font-semibold text-slate-400">
             No individual emotes are available for this stream.
           </span>
         )}

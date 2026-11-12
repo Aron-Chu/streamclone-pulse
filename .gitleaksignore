@@ -1,4 +1,8 @@
 # Reviewed gitleaks false positives (one fingerprint per line: commit:file:rule:line).
+# Deterministic UUID fixture for mocked anonymous withdrawal idempotency. It has
+# never authorized a real request or provider operation. The next commit replaces
+# it with a low-entropy, still-valid v4 UUID; retain only this historic fingerprint.
+a990ff97fa8c6c9a28ce7cd38048ff1722f33c5e:streampulse-web/tests/supporterWithdrawal.test.tsx:generic-api-key:17
 # docs/superpowers/plans/2026-09-13-ranked-portal-inputs.json maps tracked file paths to
 # their SHA-256 content hashes. Paths such as src/background/api.ts and src/lib/sentry.ts
 # make generic-api-key and sentry-access-token match the hashes. All 32 lines were checked
@@ -51,3 +55,18 @@ bca8bcd850bae91dc996f077b644204a76edf6ec:docs/superpowers/plans/2026-09-13-ranke
 # (MOMENT_ARRIVAL_STORAGE_KEY), not a credential. The line now carries gitleaks:allow, so its
 # squash commit passes too (2026-10-19).
 bc6f9a4f8802104983fa21a266a38d8566dbfa45:src/shared/momentArrival.ts:generic-api-key:7
+# Show my Twitch follows (commit 0732b10e): the portal sessionStorage key name 'sp.twitchFollows.v1'
+# (SAVED_KEY) and made-up test tokens in its unit tests. Not credentials. The lines now carry
+# gitleaks:allow, so the squash commit passes too (2026-11-01).
+0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/src/lib/twitchFollows.ts:generic-api-key:23
+0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/tests/hubV5Follows.test.tsx:generic-api-key:16
+0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/tests/twitchFollows.test.tsx:generic-api-key:27
+0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/tests/twitchFollows.test.tsx:generic-api-key:28
+0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/tests/twitchFollowsCallback.test.ts:generic-api-key:17
+0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/tests/twitchFollowsCallback.test.ts:generic-api-key:77
+0732b10e9507c2d01fd5ab967765b7dfed93d53d:streampulse-web/tests/twitchFollowsCallback.test.ts:generic-api-key:78
+# scripts/chat-badge-keys.mjs line 12 is the Ed25519 public verification key derived from
+# the published e2e seed (32 bytes of 0x07). It verifies lists only and is never pinned by
+# a store build. Checked by re-deriving it from the seed (2026-11-03). Later commits carry
+# an inline gitleaks:allow on that line.
+b2d83f94e41c1391adef17905bd8613780ff5dff:scripts/chat-badge-keys.mjs:generic-api-key:12

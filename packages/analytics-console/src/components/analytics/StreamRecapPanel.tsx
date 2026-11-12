@@ -71,7 +71,7 @@ export function StreamRecapPanel({
       data-stream-recap-panel
     >
       <div className="mb-3">
-        <h3 className="m-0 text-sm font-bold text-zinc-200">Stream Recap</h3>
+        <h2 className="m-0 text-sm font-bold text-zinc-200">Stream Recap</h2>
       </div>
       {hasHeadlineMetric ? (
         <div className="grid grid-cols-2 gap-3 border-b border-white/[0.07] pb-3 text-xs">
@@ -320,11 +320,11 @@ function RecapEmoteChip({ emote }: { emote: PulseRecapEmote }) {
           src={imageUrl}
           name={emote.code}
           className="max-h-full max-w-full object-contain"
-          fallbackClassName="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-500"
+          fallbackClassName="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-400"
         />
       </span>
       <span className="max-w-[6rem] truncate" title={emote.code}>{emote.code}</span>
-      <span className="font-mono font-semibold text-zinc-500">{count(emote.count)}</span>
+      <span className="font-mono font-semibold text-zinc-400">{count(emote.count)}</span>
     </span>
   )
 }
@@ -344,7 +344,7 @@ function RecapEmoteRow({ emote }: { emote: PulseRecapEmote }) {
             src={imageUrl}
             name={emote.code}
             className="max-h-full max-w-full object-contain"
-            fallbackClassName="inline-flex h-4 w-4 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-500"
+            fallbackClassName="inline-flex h-4 w-4 items-center justify-center rounded bg-white/[0.06] text-xs font-black text-zinc-400"
           />
         </span>
         <span className="truncate font-semibold text-zinc-300" title={emote.code}>

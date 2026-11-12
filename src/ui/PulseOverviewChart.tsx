@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import type { MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import { formatHeatOffset, momentClockDisplay, reactionAnalyticalOffset } from '@streampulse/pulse-core'
 import {
   GameSegmentOverlay,
@@ -107,6 +107,8 @@ export interface PulseOverviewChartProps {
   backendUrl?: string
   /** Reset ephemeral chart interaction when the live stream/channel changes. */
   interactionResetKey?: string
+  /** Start of the minute the VOD player is on (the readout's minute): a line marks it while in view. */
+  playheadOffsetSeconds?: number | null
 }
 
 /**
@@ -130,6 +132,8 @@ const PAD_LEFT = 4
 const PAD_RIGHT = 12
 const PAD_TOP = 14
 const PAD_BOTTOM = 12
+/** The Viewers lane tag, sized for its 11 px label. */
+const VIEWER_TAG_WIDTH = 54
 const VIEWER_STRIP_SHARE_COLLAPSED = 0.28
 const VIEWER_STRIP_SHARE_EXPANDED = 0.22
 const ACTIVITY_CHAT_FRACTION = 0.54
@@ -416,6 +420,7 @@ function PulseOverviewChartImpl({
   coverageStartSeconds = 0,
   onViewportChange,
   interactionResetKey,
+  playheadOffsetSeconds,
 }: PulseOverviewChartProps) {
   const chartId = useId().replace(/:/g, '')
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -449,6 +454,10 @@ function PulseOverviewChartImpl({
     [visibleRollups, fullIndexByOffset],
   )
   const [width, setWidth] = useState(DEFAULT_WIDTH)
+  const viewerStartLabelRef = useRef<SVGTextElement | null>(null)
+  const viewerEndLabelRef = useRef<SVGTextElement | null>(null)
+  const viewerLabelPlacementRef = useRef<(() => void) | null>(null)
+  const [viewerLabelStackHeight, setViewerLabelStackHeight] = useState(0)
   const [activeMomentMarkerKey, setActiveMomentMarkerKey] = useState<string | null>(null)
   // Pointer previews are committed to lightweight SVG chrome imperatively
   // (Aug-16 hover shell): keeping them out of React prevents every hovered
@@ -529,6 +538,7 @@ function PulseOverviewChartImpl({
     let lastRounded = -1
     const applyWidth = (raw: number) => {
       const next = Math.round(raw)
+      viewerLabelPlacementRef.current?.()
       if (next === lastRounded) return
       lastRounded = next
       captureBoundsRef.current = null
@@ -652,17 +662,6 @@ function PulseOverviewChartImpl({
       ),
     [chat, trendWindow, rollups],
   )
-  const emoteTrendValues = useMemo(
-    () =>
-      rampNullableSeriesFromStreamStart(
-        extendSeriesToTrailingEdge(
-          smoothNullableSeriesValues(emotes, trendWindow),
-          rollups,
-        ),
-        rollups,
-      ),
-    [emotes, trendWindow, rollups],
-  )
   const chatDetailValues = useMemo(
     () =>
       rampNullableSeriesFromStreamStart(
@@ -743,7 +742,10 @@ function PulseOverviewChartImpl({
   const plotBottom = height - PAD_BOTTOM
   const plotHeight = Math.max(48, plotBottom - plotTop)
   const viewerBandTop = plotTop
-  const viewerBandBottom = plotTop + plotHeight * viewerStripShare
+  const viewerBaseBandHeight = plotHeight * viewerStripShare
+  const viewerBandBottom = plotTop + (showViewerStrip ? Math.max(viewerBaseBandHeight, viewerLabelStackHeight) : 0)
+  // A lane too short to stack the Viewers tag over a marker label puts the label beside the tag.
+  const viewerLabelMinX = viewerBaseBandHeight < 38 ? PAD_LEFT + 4 + VIEWER_TAG_WIDTH + 6 : PAD_LEFT + 4
   const activityTop = viewerBandBottom + (showViewerStrip ? 4 : 0)
   const activityBottom = plotBottom
   const chartOffsets = useMemo(
@@ -890,20 +892,6 @@ function PulseOverviewChartImpl({
     )
   }, [chatDetailValues, chatMax, chatTrendAxisMax, width, height, chatLaneTop, chatLaneBottom])
 
-  const emoteLinePath = useMemo(() => {
-    if (emoteMax <= 0) return ''
-    return smoothLinePathInBand(
-      emoteTrendValues,
-      emoteTrendAxisMax,
-      width,
-      height,
-      PAD_LEFT,
-      PAD_RIGHT,
-      emoteLaneTop,
-      emoteLaneBottom,
-    )
-  }, [emoteTrendValues, emoteMax, emoteTrendAxisMax, width, height, emoteLaneTop, emoteLaneBottom])
-
   const emoteDetailLinePath = useMemo(() => {
     if (emoteMax <= 0) return ''
     return smoothLinePathInBand(
@@ -917,6 +905,9 @@ function PulseOverviewChartImpl({
       emoteLaneBottom,
     )
   }, [emoteDetailValues, emoteMax, emoteTrendAxisMax, width, height, emoteLaneTop, emoteLaneBottom])
+  // Emotes come in short bursts that averaging flattens (over a full stream a
+  // one-minute spike drops ~7x), so at rest the line is the hover and lock line.
+  const emoteLinePath = emoteDetailLinePath
 
   const n = visibleRollups.length
 
@@ -958,7 +949,7 @@ function PulseOverviewChartImpl({
         const value = signal === 'viewers'
           ? viewers[sourceIndex]
           : signal === 'emotes'
-            ? emoteTrendValues[sourceIndex]
+            ? emoteDetailValues[sourceIndex]
             : chatTrendValues[sourceIndex]
         const axisMin = signal === 'viewers' ? viewerAxisMin : 0
         const axisMax = signal === 'viewers'
@@ -987,7 +978,7 @@ function PulseOverviewChartImpl({
     chatTrendAxisMax,
     chatTrendValues,
     emoteTrendAxisMax,
-    emoteTrendValues,
+    emoteDetailValues,
     emoteLaneBottom,
     emoteLaneTop,
     internalViewport.endSeconds,
@@ -1186,9 +1177,52 @@ function PulseOverviewChartImpl({
     return interpolatePlotXForOffset(offsetSeconds, visibleRollups, plotWidth)
   }
   const viewerStartMarkerX = visibleViewerMarkerX(viewerSampleStartOffsetSeconds)
+  // A bucket is drawn at its busiest minute, so the edge buckets can miss the playhead's
+  // minute: inside the viewport, the line holds at the edge point.
+  const playheadX = playheadOffsetSeconds != null && n > 0
+    && playheadOffsetSeconds >= internalViewport.startSeconds && playheadOffsetSeconds <= internalViewport.endSeconds
+    ? visibleViewerMarkerX(clampNumber(playheadOffsetSeconds, visibleRollups[0]!.offsetSeconds, visibleRollups[n - 1]!.offsetSeconds))
+    : null
   const viewerEndMarkerX = viewerSampleWindowComplete
     ? visibleViewerMarkerX(viewerSampleEndOffsetSeconds)
     : null
+
+  useIsomorphicLayoutEffect(() => {
+    let disposed = false
+    const placeLabels = () => {
+      if (disposed) return
+      const measure = (node: SVGTextElement | null, marker: number | null) => {
+        if (!node || marker == null || typeof node.getBBox !== 'function') return null
+        let box: DOMRect
+        try { box = node.getBBox() } catch { return null }
+        if (!box.width || !box.height) return null
+        return { node, marker, width: box.width, height: box.height, bearing: box.x - Number(node.getAttribute('x')), left: 0 }
+      }
+      const start = measure(viewerStartLabelRef.current, viewerStartMarkerX)
+      const end = measure(viewerEndLabelRef.current, viewerEndMarkerX)
+      const left = viewerLabelMinX + 1
+      const right = width - PAD_RIGHT - 1
+      const stacked = Boolean(start && end && start.width + end.width + 2 > right - left)
+      setViewerLabelStackHeight(stacked && start && end ? 2 * Math.max(start.height, end.height) + (viewerBaseBandHeight < 38 ? 10 : 31) : 0)
+      if (start) start.left = clampNumber(start.marker + 4, left, right - start.width)
+      if (end) end.left = clampNumber(end.marker - 4 - end.width, left, right - end.width)
+      if (start && end && !stacked && start.left + start.width + 2 > end.left) {
+        end.left = Math.min(right - end.width, start.left + start.width + 2)
+        start.left = Math.max(left, Math.min(start.left, end.left - start.width - 2))
+      }
+      // Clamp measured glyph bounds, not just an SVG anchor. Keep both full
+      // 11 px labels; narrower lanes use two rows instead of overlapping them.
+      for (const label of [start, end]) {
+        if (!label) continue
+        label.node.setAttribute('x', String(label.left - label.bearing))
+        label.node.setAttribute('y', String(viewerBandBottom - 4 - (label === start && stacked ? Math.max(start!.height, end!.height) + 2 : 0)))
+      }
+    }
+    viewerLabelPlacementRef.current = placeLabels
+    placeLabels()
+    void document.fonts?.ready.then(placeLabels)
+    return () => { disposed = true; viewerLabelPlacementRef.current = null }
+  }, [loading, n, showViewerStrip, viewerStartMarkerX, viewerEndMarkerX, viewerLabelMinX, viewerBaseBandHeight, viewerBandBottom, width])
 
   const emoteBars = useMemo(() => {
     if (n === 0) return []
@@ -1536,26 +1570,26 @@ function PulseOverviewChartImpl({
     onSelectIndex?.(clickedFullIndex)
   }
 
-  const shellStyle = { ...styles.shell, height, minHeight: height }
+  const shellStyle = { height, minHeight: height }
 
   if (loading) {
     return (
-      <div ref={containerRef} id={chartRegionId} style={shellStyle}>
-        <div style={styles.empty}>Loading timeline…</div>
+      <div ref={containerRef} id={chartRegionId} className="pulse-oc" style={shellStyle}>
+        <div className="pulse-oc-empty">Loading timeline…</div>
       </div>
     )
   }
 
   if (n === 0) {
     return (
-      <div ref={containerRef} id={chartRegionId} style={shellStyle}>
-        <div style={styles.empty}>{emptyMessage ?? 'No chart data yet'}</div>
+      <div ref={containerRef} id={chartRegionId} className="pulse-oc" style={shellStyle}>
+        <div className="pulse-oc-empty">{emptyMessage ?? 'No chart data yet'}</div>
       </div>
     )
   }
 
   return (
-    <div ref={containerRef} id={chartRegionId} className="pulse-sparkline-wrap" style={shellStyle}>
+    <div ref={containerRef} id={chartRegionId} className="pulse-oc pulse-sparkline-wrap" style={shellStyle}>
       <svg
         ref={svgRef}
         data-testid="pulse-overview-chart"
@@ -1575,13 +1609,15 @@ function PulseOverviewChartImpl({
         data-chart-locked-index={pinIndex ?? undefined}
         data-chart-preview-index={hoveredBucketIndex ?? listPreviewIndex ?? undefined}
         viewBox={`0 0 ${width} ${height}`}
-        role="img"
+        // role="img" hides its children from assistive tech, so it only fits
+        // a chart with nothing to focus; the plot and moment markers are controls.
+        role={onSelectIndex || onSelectMoment || onViewportChange ? 'group' : 'img'}
         className="pulse-overview-chart"
         aria-label="Chat and emote activity timeline with viewer context. Move or drag across the plot to inspect a moment."
         data-chart-mode={detailPresentationState}
         data-chart-presentation={detailPresentationState}
         data-chart-geometry="single"
-        style={{ ...styles.svg, height }}
+        style={{ height }}
       >
         <defs>
           <linearGradient id={svgIds.viewerGradient} x1="0" y1="0" x2="0" y2="1">
@@ -1650,20 +1686,19 @@ function PulseOverviewChartImpl({
             <rect
               x={PAD_LEFT + 4}
               y={viewerBandTop + 4}
-              width={42}
-              height={13}
+              width={VIEWER_TAG_WIDTH}
+              height={17}
               rx={4}
               fill="rgba(8, 15, 24, 0.72)"
               stroke={hexToRgba(CHART_THEME.viewer.color, 0.32)}
               strokeWidth="0.75"
             />
             <text
-              x={PAD_LEFT + 25}
-              y={viewerBandTop + 13}
+              x={PAD_LEFT + 4 + VIEWER_TAG_WIDTH / 2}
+              y={viewerBandTop + 16.5}
               fill={CHART_THEME.viewer.color}
-              fontSize="7.5"
+              fontSize="11"
               fontWeight="800"
-              letterSpacing="0.04em"
               textAnchor="middle"
             >
               Viewers
@@ -1714,10 +1749,11 @@ function PulseOverviewChartImpl({
                 opacity={0.72}
               />
               <text
-                x={Math.min(width - PAD_RIGHT - 4, viewerStartMarkerX + 4)}
+                ref={viewerStartLabelRef}
+                x={Math.min(width - PAD_RIGHT - 4, Math.max(viewerStartMarkerX + 4, viewerLabelMinX))}
                 y={viewerBandBottom - 4}
                 fill={CHART_THEME.viewer.color}
-                fontSize="7.5"
+                fontSize="11"
                 fontWeight="750"
               >
                 Viewer tracking began
@@ -1737,10 +1773,11 @@ function PulseOverviewChartImpl({
                 opacity={0.58}
               />
               <text
-                x={Math.max(PAD_LEFT + 4, viewerEndMarkerX - 4)}
+                ref={viewerEndLabelRef}
+                x={Math.max(viewerLabelMinX, viewerEndMarkerX - 4)}
                 y={viewerBandBottom - 4}
                 fill={CHART_THEME.viewer.color}
-                fontSize="7.5"
+                fontSize="11"
                 fontWeight="700"
                 textAnchor="end"
               >
@@ -1764,7 +1801,7 @@ function PulseOverviewChartImpl({
                 x={width / 2}
                 y={viewerBandBottom - 4}
                 fill={CHART_THEME.viewer.color}
-                fontSize="8"
+                fontSize="11"
                 fontWeight="600"
                 textAnchor="middle"
                 opacity={0.5}
@@ -2069,9 +2106,10 @@ function PulseOverviewChartImpl({
             <text
               key={tickIndex}
               x={insetX}
-              y={height - 4}
+              // Tick labels have no descenders, so the 11 px row sits 2 px off the bottom and clears the plot.
+              y={height - 2}
               fill="rgba(161, 161, 170, 0.95)"
-              fontSize="9"
+              fontSize="11"
               fontWeight="700"
               textAnchor={tickIndex === 0 ? 'start' : isLast ? 'end' : 'middle'}
             >
@@ -2185,6 +2223,12 @@ function PulseOverviewChartImpl({
           }}
         />
 
+        {playheadX != null ? (
+          <g data-chart-playhead="true" pointerEvents="none" aria-hidden="true">
+            <line className="pulse-chart-playhead" x1={playheadX} x2={playheadX} y1={crosshairTop} y2={crosshairBottom} />
+          </g>
+        ) : null}
+
         {/* Paint after the transparent scrubber so opted-in moment dots are
             actual interactive targets instead of being covered by the plot. */}
         {visibleMomentMarkers.length > 0 ? (
@@ -2295,30 +2339,3 @@ function PulseOverviewChartImpl({
 // Memoized (Aug-16 pattern): parent poll renders must not reconcile the whole
 // chart subtree; imperative hover already bypasses React for pointer chrome.
 export const PulseOverviewChart = memo(PulseOverviewChartImpl)
-
-const styles: Record<string, CSSProperties> = {
-  shell: {
-    background: CHART_THEME.background,
-    borderRadius: 8,
-    minWidth: 0,
-    overflow: 'hidden',
-    position: 'relative',
-    width: '100%',
-  },
-  svg: {
-    display: 'block',
-    width: '100%',
-  },
-  empty: {
-    alignItems: 'center',
-    color: 'rgba(161, 161, 170, 0.95)',
-    display: 'grid',
-    fontSize: 11,
-    fontWeight: 700,
-    height: '100%',
-    minHeight: 0,
-    padding: '0 12px',
-    placeItems: 'center',
-    textAlign: 'center',
-  },
-}

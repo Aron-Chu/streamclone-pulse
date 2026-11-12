@@ -67,6 +67,10 @@ describe('content mount error lane', () => {
     expect(panelText()).not.toContain('Loading Pulse')
     expect(panelText()).not.toContain('pulse 500')
     expect(panelButtons('Retry')).toHaveLength(1)
+    // Hosted, floating panel: no Chat tab to go back to, and Settings can't fix
+    // an outage, so Retry stands alone.
+    expect(panelButtons('Back to chat')).toHaveLength(0)
+    expect(panelButtons('Open settings')).toHaveLength(0)
   })
 
   it('LIFE-1: a first load from an orphaned tab mounts the reconnect card with Reload page', async () => {
@@ -110,12 +114,16 @@ describe('content mount error lane', () => {
       coverageTier: 'active_live_coverage',
       hostedCap: { activeCount: 120, activeLimit: 250 },
     } as unknown as ExtensionCoverageTierResponse
+    // Today's not-charting card titles: hosted (PulseNotChartedPanel) and own
+    // stack (PulseLiveUnavailablePanel). The old "live IRC pool right now"
+    // copy is gone from the source, so checking for it could no longer fail.
+    const notChartingTitles = /Not charted|Not tracked live/
     await settle(() => mountOverlay('fixturechan', live, CHANNEL, { sessionOpenedAtMs: Date.now(), coverageTier: tier }))
-    expect(panelText()).not.toContain('live IRC pool right now')
+    expect(panelText()).not.toMatch(notChartingTitles)
 
     // The worker's error broadcast (and a lapsed 60 s coverage cache) carry a null tier.
     await settle(() => updateOverlayPayload(live, 'pulse 503', null))
-    expect(panelText()).not.toContain('live IRC pool right now')
+    expect(panelText()).not.toMatch(notChartingTitles)
   })
 
   it('QUAL-2: the cache handing back the same chart does not end "Live refresh paused"', async () => {

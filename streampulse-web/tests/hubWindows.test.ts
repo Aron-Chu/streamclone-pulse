@@ -53,21 +53,21 @@ describe('hub windows (plan H1 / AD-14)', () => {
     expect(parseHubWindowParam(new URLSearchParams({ window: '1m' }))).toBe('1m')
   })
 
-  it('matches the landing page rule while the page still has its own table', () => {
-    const source = readFileSync(resolve(__dirname, '../src/routes/analytics/AnalyticsLandingPage.tsx'), 'utf8')
-    const table = /const ACTIVITY_WINDOW_MINUTES[^=]*=\s*\{([\s\S]*?)\};/.exec(source)
+  it('matches the hub page rule while the page still has its own table', () => {
+    const source = readFileSync(resolve(__dirname, '../src/routes/analytics/AnalyticsHubV5Page.tsx'), 'utf8')
+    const table = /const ACTIVITY_WINDOW_MINUTES[^=]*=\s*\{([\s\S]*?)\n\}/.exec(source)
     if (!table) {
       // U4 moved the page onto hubWindows: nothing left to compare.
       expect(source).toMatch(/from ["']\.\.\/\.\.\/lib\/hubWindows["']/)
       return
     }
-    const entries = [...table[1].matchAll(/"([^"]+)":\s*([^,\n]+),/g)]
+    const entries = [...table[1].matchAll(/['"]([^'"]+)['"]:\s*([^,\n]+),/g)]
       // Each value is a product of integers ("3 * 30 * 24 * 60"); multiply it out without eval.
       .map(([, key, expr]) => [key, expr.split('*').reduce((product, factor) => product * Number(factor.trim()), 1)] as const)
     const ours = [...HUB_VISIBLE_WINDOWS, ...HUB_URL_ONLY_WINDOWS].map(option => [option.key, option.minutes] as const)
     expect(entries).toEqual(ours)
-    expect(source).toContain('searchParams.get("window") || searchParams.get("activityWindow")')
-    expect(source).toMatch(/:\s*"24h";/)
+    expect(source).toContain("searchParams.get('window') || searchParams.get('activityWindow')")
+    expect(source).toMatch(/^\s*:\s*'24h'$/m)
   })
 
   it('imports nothing (it ships in the entry chunk)', () => {

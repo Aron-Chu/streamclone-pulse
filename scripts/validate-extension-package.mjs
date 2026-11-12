@@ -17,7 +17,9 @@ import {
 } from './extension-package-lib.mjs'
 import {
   assertExactStringList,
+  firefoxDataCollectionErrors,
   permissionAllowlistForTarget,
+  readExportedBooleanFlag,
 } from './extension-permission-allowlists.mjs'
 import { isStoreTarget, loadManifestForTarget, resolveExtensionTarget } from './extension-target.mjs'
 import { REMOTE_CODE_SCAN_NOTE } from './remote-code-scan.mjs'
@@ -87,10 +89,11 @@ function validateManifest(manifest, target) {
     ok('REQUIRED: manifest_version is 3')
   }
 
-  if (manifest.name !== 'StreamPulse') {
-    fail(`manifest name must be StreamPulse, got ${JSON.stringify(manifest.name)}`)
+  const expectedName = 'StreamPulse: Twitch Chat Stats & Top Moments'
+  if (manifest.name !== expectedName) {
+    fail(`manifest name must be ${expectedName}, got ${JSON.stringify(manifest.name)}`)
   } else {
-    ok('REQUIRED: manifest name is StreamPulse')
+    ok(`REQUIRED: manifest name is ${expectedName}`)
   }
 
   const expected = loadManifestForTarget(target)
@@ -144,15 +147,31 @@ function validateManifest(manifest, target) {
       fail('Firefox manifest requires stable browser_specific_settings.gecko.id')
     } else if (manifest.browser_specific_settings?.gecko?.strict_min_version !== '140.0') {
       fail('Firefox desktop manifest requires strict_min_version=140.0 for built-in consent')
-    } else if (
-      JSON.stringify(manifest.browser_specific_settings?.gecko?.data_collection_permissions) !==
-      JSON.stringify({
-        required: ['browsingActivity'],
-      })
-    ) {
-      fail('Firefox manifest data collection declaration drifted')
+    } else if (manifest.browser_specific_settings?.gecko_android?.strict_min_version !== '142.0') {
+      // Firefox for Android reads data_collection_permissions from 142 on;
+      // without this, web-ext lint warns KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION.
+      fail('Firefox manifest requires gecko_android.strict_min_version=142.0 for data_collection_permissions')
     } else {
-      ok('REQUIRED: Firefox background module, Gecko ID, and data declarations configured')
+      try {
+        const analyticsEnabled = readExportedBooleanFlag(
+          readFileSync(join(root, 'src/shared/extensionAnalytics.ts'), 'utf8'),
+          'EXTENSION_ANALYTICS_INGEST_ENABLED',
+        )
+        const diagnosticsEnabled = readExportedBooleanFlag(
+          readFileSync(join(root, 'src/shared/diagnosticsConsent.ts'), 'utf8'),
+          'EXTENSION_DIAGNOSTICS_INGEST_ENABLED',
+        )
+        const errors = firefoxDataCollectionErrors(
+          manifest.browser_specific_settings?.gecko?.data_collection_permissions,
+          expected.browser_specific_settings?.gecko?.data_collection_permissions,
+          analyticsEnabled,
+          diagnosticsEnabled,
+        )
+        for (const err of errors) fail(err)
+        if (errors.length === 0) ok('REQUIRED: Firefox background module, Gecko ID, and data declarations configured')
+      } catch (error) {
+        fail(`Firefox upload switches could not be verified: ${error instanceof Error ? error.message : error}`)
+      }
     }
   }
 

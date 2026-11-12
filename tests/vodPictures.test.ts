@@ -41,6 +41,16 @@ describe("Twitch's pictures of a VOD", () => {
     expect(parseVodPictures(null, null)).toBeNull()
   })
 
+  it('says when Twitch is still recording the VOD, which has no cover or sheets until the stream ends', () => {
+    const live = parseVodPictures(
+      { title: 'still live', status: 'RECORDING', previewThumbnailURL: 'https://vod-secure.twitch.tv/_404/404_processing_640x360.png', seekPreviewsURL: index },
+      null,
+    )
+    expect(live).toEqual({ title: 'still live', sheets: [], cols: 0, rows: 0, count: 0, interval: 0, recording: true })
+    const ended = parseVodPictures({ status: 'RECORDED', seekPreviewsURL: index }, [sheets('high', ['high-0.jpg'])])
+    expect(ended).not.toHaveProperty('recording')
+  })
+
   it('finds the tile nearest a VOD second, and none outside the VOD', () => {
     const pictures = parseVodPictures({ seekPreviewsURL: index }, [sheets('high', ['high-0.jpg', 'high-1.jpg', 'high-2.jpg'])])!
     expect(vodTile(pictures, 0)).toEqual({ sheet: pictures.sheets[0], col: 0, row: 0 })

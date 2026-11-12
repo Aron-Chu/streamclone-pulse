@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { loadManifestForTarget, manifestForTwitchSignInStage, resolveSupporterBackendOrigin, resolveTwitchSignInStage } from './scripts/extension-target.mjs'
+import { resolveChatBadgeDevKeys } from './scripts/chat-badge-keys.mjs'
 import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionTarget, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = __dirname
@@ -26,6 +27,9 @@ function chromeExtensionPlugin() {
       await viteBuild({ configFile: resolve(__dirname, 'vite.content.config.ts') })
       // The Supporter card's stage, injected on demand; never part of content/twitch.js.
       await viteBuild({ configFile: resolve(__dirname, 'vite.supporterCard.config.ts') })
+      // Isolated from the main Twitch bundle; the worker registers it only
+      // when a trusted list has entries to show.
+      await viteBuild({ configFile: resolve(__dirname, 'vite.chatBadges.config.ts') })
       // Moment pictures, injected while Pulse shows; never part of content/twitch.js.
       await viteBuild({ configFile: resolve(__dirname, 'vite.momentFrames.config.ts') })
       // A stream recap's Catch me up block, injected with the recap; never part of content/twitch.js.
@@ -64,6 +68,7 @@ export default defineConfig({
     __EXTENSION_BUILD_ID__: JSON.stringify(extensionBuildId),
     __EXTENSION_RELEASE_PREVIEW__: JSON.stringify(extensionReleasePreview),
     __TWITCH_SIGNIN_STAGE__: JSON.stringify(twitchSignInStage),
+    __CHAT_BADGE_DEV_KEYS__: JSON.stringify(resolveChatBadgeDevKeys(extensionTarget)),
   },
   build: {
     outDir: 'dist',

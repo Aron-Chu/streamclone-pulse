@@ -16,12 +16,12 @@ describe('Supporter perk list', () => {
 
   it('pins what each perk is', () => {
     expect(SUPPORTER_PERKS.details).toEqual({
-      'Title paint': 'your Pulse panel title painted in a Glass, Etched or Halo finish, with the wave and sheen you pick.',
-      'Tenure crest': 'a crest beside your painted title that levels up at 3, 6, 12 and 24 months of support.',
-      'Emote rain': '7TV emotes behind your Pulse panel header, still or falling: the 7TV header backdrop.',
-      'Supporter card': 'your own crest and paint on the Supporter card in quick settings and in settings, as private recognition for supporting.',
+      'Title paint': 'your Pulse panel title in Glass, Etched or Halo paint, with the wave and sheen you pick.',
+      'Tenure crest': 'a crest beside your painted title. It levels up at 3, 6, 12 and 24 months.',
+      'Emote rain': '7TV emotes behind your Pulse panel header, still or falling. This is the 7TV header backdrop.',
+      'Supporter card': 'your crest and paint on your Supporter card in settings.',
     })
-    expect(SUPPORTER_PERKS.onlyYou).toBe('Only you see them, in your own StreamPulse extension. Nothing is added to chat, and nobody else sees them.')
+    expect(SUPPORTER_PERKS.onlyYou).toBe('Only you see these, in your own StreamPulse extension. Nothing is added to Twitch chat.')
   })
 
   it('has no claim that a perk moved from free for store users', () => {

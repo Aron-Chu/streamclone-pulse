@@ -1,0 +1,122 @@
+.streamer-chat-stats {
+  scroll-margin-top: 5rem;
+  padding-top: 2rem;
+  border-top: 1px solid #303039;
+}
+
+.streamer-chat-stats__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+
+.streamer-chat-stats h2 {
+  margin: 0;
+  font-size: clamp(1.4rem, 2.5vw, 2rem);
+  line-height: 1.25;
+  letter-spacing: -.025em;
+}
+
+.streamer-chat-stats .streamer-chat-stats__intro {
+  max-width: 64ch;
+  margin: .85rem 0 0;
+  color: #a1a1aa;
+  font-size: .9375rem;
+  line-height: 1.7;
+}
+
+.streamer-chat-stats__browse {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  flex-shrink: 0;
+  min-height: 44px;
+  color: #d8cbfa;
+  font-size: .875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.streamer-chat-stats__list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0 2rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.streamer-chat-stats__list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  min-height: 48px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: .5rem .25rem;
+  border-bottom: 1px solid #27272f;
+  color: #e4e4e7;
+  font-size: .9375rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.streamer-chat-stats__list li {
+  min-width: 0;
+  margin: 0;
+}
+
+.streamer-chat-stats__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.streamer-chat-stats__name small {
+  display: block;
+  margin-top: .1rem;
+  color: #a1a1aa;
+  font-size: .75rem;
+  font-weight: 400;
+}
+
+.streamer-chat-stats__arrow {
+  color: #9c8ac0;
+  font-size: 1rem;
+}
+
+.streamer-chat-stats a:hover {
+  color: #d8cbfa;
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+
+.streamer-chat-stats a:focus-visible {
+  outline: 3px solid #c4b5fd;
+  outline-offset: 3px;
+}
+
+.streamer-chat-stats .streamer-chat-stats__note {
+  margin: 1rem 0 0;
+  color: #a1a1aa;
+  font-size: .8125rem;
+  line-height: 1.6;
+}
+
+.sl-streamer-stats {
+  padding-top: clamp(2.5rem, 5vw, 4rem);
+  padding-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+/* Outranks the landing page's `.sp-landing a:not(.sc-btn) { color: inherit }`. */
+.streamer-chat-stats p.streamer-chat-stats__note a {
+  color: #d8cbfa;
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+
+@media (max-width: 719px) {
+  .streamer-chat-stats__header { flex-direction: column; gap: .5rem; }
+  .streamer-chat-stats__list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 1rem; margin-top: 1rem; }
+}

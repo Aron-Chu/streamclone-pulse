@@ -36,7 +36,7 @@ vi.mock('../src/lib/publicHub', async () => {
   }
 })
 
-import { HUB_DATA_MARK, resetHubDataMarkForTests, usePublicHubData } from '../src/hooks/usePublicHubData'
+import { HUB_DATA_MARK, HUB_TIMEOUT_MESSAGE, resetHubDataMarkForTests, usePublicHubData } from '../src/hooks/usePublicHubData'
 import { PortalErrorBoundary } from '../src/ui/PortalErrorBoundary'
 
 function sampleHub(poolSize: number): PublicHub {
@@ -204,9 +204,9 @@ function repairHubResult(poolSize = 3, windowMinutes = 1440) {
 }
 
 function deferredHub() {
-  let resolve!: (value: ReturnType<typeof hubResult>) => void
+  let resolve!: (value: ReturnType<typeof hubResult> & { dataAsOf?: number | null }) => void
   let reject!: (reason: unknown) => void
-  const promise = new Promise<ReturnType<typeof hubResult>>((yes, no) => { resolve = yes; reject = no })
+  const promise = new Promise<ReturnType<typeof hubResult> & { dataAsOf?: number | null }>((yes, no) => { resolve = yes; reject = no })
   return { promise, resolve, reject }
 }
 
@@ -242,9 +242,6 @@ function queueIdleCallbacks() {
 
 describe('usePublicHubData', () => {
   beforeEach(() => {
-    // The d3-v5 data layer (idle cache writes, compact snapshot, screener v1, hub-data mark).
-    // The flag-off Command Center path is covered at the end of this file.
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', 'on')
     installIdleCallback((callback) => {
       callback(IDLE_DEADLINE)
       return 0
@@ -261,7 +258,6 @@ describe('usePublicHubData', () => {
   afterEach(() => {
     removeIdleCallback()
     resetHubBucketSelectionForTests()
-    vi.unstubAllEnvs()
   })
 
   it('loads, then exposes normalized data with liveEmpty false when channels exist', async () => {
@@ -342,6 +338,59 @@ describe('usePublicHubData', () => {
     expect(result.current.data?.activity.points.map((point) => point.chat)).toEqual([12, 18])
   })
 
+  it.each([
+    [120_000, 300_000, 300_000],
+    [300_000, 120_000, 300_000],
+    [120_000, null, null],
+    [null, 120_000, null],
+  ])('uses the oldest known data time for merged long-window and recent reads (%s, %s)', async (baseAge, recentAge, expectedAge) => {
+    const now = Date.now()
+    const base = { ...repairHubResult(), dataAsOf: baseAge === null ? null : now - baseAge }
+    const recent = { ...hubResult(99), dataAsOf: recentAge === null ? null : now - recentAge }
+    recent.data.activity.windowMinutes = 30
+    recent.data.activity.points = [{ t: 1_700_001_000_000, chat: 777, emotes: 3, seventv: 3, viewers: 1200 }]
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      Promise.resolve(window === '30m' ? recent : base),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+    await waitFor(() => expect(result.current.data?.activity.points[0]?.chat).toBe(777))
+    expect(result.current.dataAsOf).toBe(expectedAge === null ? null : now - expectedAge)
+    publicHubCache.flushPublicHubCacheWritesForTests()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.dataAsOf).toBe(expectedAge === null ? null : now - expectedAge)
+  })
+
+  it('replaces the interim recent view age with the later long-window answer age', async () => {
+    const pending = deferredHub()
+    const recentAsOf = Date.now() - 60_000
+    const primaryAsOf = recentAsOf - 60_000
+    const recent = { ...hubResult(99), dataAsOf: recentAsOf }
+    recent.data.activity.windowMinutes = 30
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recent) : pending.promise,
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99), { timeout: 2500 })
+    expect(result.current.dataAsOf).toBe(recentAsOf)
+    await act(async () => { pending.resolve({ ...hubResult(42), dataAsOf: primaryAsOf }) })
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
+    expect(result.current.dataAsOf).toBe(primaryAsOf)
+  })
+
+  it('preserves the recent recovery response age after a long-window failure', async () => {
+    const asOf = Date.now() - 60_000
+    const recent = { ...hubResult(99), dataAsOf: asOf }
+    recent.data.activity.windowMinutes = 30
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recent) : Promise.reject({ kind: 'server', status: 503, message: 'unavailable' }),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99))
+    expect(result.current.dataAsOf).toBe(asOf)
+    publicHubCache.flushPublicHubCacheWritesForTests()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.dataAsOf).toBe(asOf)
+  })
+
   describe('independent live lanes during activity repair', () => {
     afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
@@ -400,6 +449,31 @@ describe('usePublicHubData', () => {
       expect(result.current.pollSequence).toBe(2)
       expect(result.current.activityRefreshing).toBe(false)
       expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(7)
+    })
+
+    it.each(['rate_limited', 'unauthorized'])('associates a new repair shell with its own display time after %s', async kind => {
+      writePublicHubCache(getBackendUrl(), '24h', sampleHub(42))
+      const key = publicHubCacheKey(getBackendUrl(), '24h')
+      const saved = JSON.parse(localStorage.getItem(key)!)
+      const startedAt = Date.now()
+      saved.cachedAt = startedAt - 2 * 60 * 60_000
+      localStorage.setItem(key, JSON.stringify(saved))
+      fetchPublicHubBase.mockResolvedValueOnce(repairHubResult(7))
+        .mockRejectedValueOnce({ kind, status: kind === 'rate_limited' ? 429 : 401, message: 'stop' })
+
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      expect(result.current.displayedSnapshotAt).toBe(saved.cachedAt)
+      await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+
+      expect(result.current.data?.poolSize).toBe(7)
+      expect(result.current.loadSource).toBe('full')
+      expect(result.current.displayedSnapshotAt).toBeGreaterThanOrEqual(startedAt)
+      expect(result.current.displayedSnapshotAt).toBeLessThanOrEqual(Date.now())
+      expect(result.current.lastSuccessfulPollAt).toBe(saved.cachedAt)
+      expect(result.current.pollSequence).toBe(1)
+      expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(42)
+      expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
     })
 
     it.each(['server', 'timeout', 'unreachable', 'unhealthy'])('accepts an honest empty activity projection after %s repair failure', async kind => {
@@ -561,6 +635,37 @@ describe('usePublicHubData', () => {
     expect(result.current.hubEndpointOk).toBe(false)
   })
 
+  it.each(['moments', 'tickers'] as const)('passes a failed %s projection read on without waiting on totals', async (projection) => {
+    fetchPublicHubBase.mockRejectedValue({ kind: 'timeout', status: 0, message: 'Request deadline exceeded' })
+    fetchPublicHubStatsFallback.mockResolvedValue(statsFallbackResult(0))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '30m', projection }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+    expect(result.current.error).toBe(HUB_TIMEOUT_MESSAGE)
+    expect(result.current.data).toBeNull()
+    expect(result.current.loadSource).toBeNull()
+    expect(result.current.hubEndpointOk).toBe(false)
+  })
+
+  it('keeps an unhealthy projection read off totals too', async () => {
+    fetchPublicHubStatsFallback.mockResolvedValue(statsFallbackResult(2))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '30m', projection: 'moments' }))
+    await waitFor(() => expect(result.current.error).toBe('hub offline'))
+    expect(result.current.loading).toBe(false)
+    expect(result.current.data).toBeNull()
+    expect(fetchPublicHubStatsFallback).not.toHaveBeenCalled()
+  })
+
+  it('still shows totals after a failed read without a projection', async () => {
+    fetchPublicHubBase.mockRejectedValue({ kind: 'timeout', status: 0, message: 'Request deadline exceeded' })
+    fetchPublicHubStatsFallback.mockResolvedValue(statsFallbackResult(0))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '30m' }))
+    await waitFor(() => expect(result.current.loadSource).toBe('stats-fallback'))
+    expect(fetchPublicHubStatsFallback).toHaveBeenCalledTimes(1)
+    expect(result.current.error).toBeNull()
+  })
+
   it('preserves a prior measured snapshot when both window reads fail', async () => {
     writePublicHubCache(getBackendUrl(), '24h', sampleHub(42))
     fetchPublicHubBase.mockRejectedValue({ kind: 'server', status: 503, message: 'unavailable' })
@@ -684,6 +789,43 @@ describe('usePublicHubData', () => {
     await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalled())
   })
 
+  it('keeps source data age separate from polling and across a six-hour saved copy', async () => {
+    const receipt = Date.now()
+    fetchPublicHubBase.mockResolvedValue({ ...hubResult(42), dataAsOf: receipt - 15 * 60_000 })
+    const { result, unmount } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
+    expect(result.current.dataAsOf).toBe(receipt - 15 * 60_000)
+    expect(result.current.lastSuccessfulPollAt).toBeGreaterThanOrEqual(receipt)
+    publicHubCache.flushPublicHubCacheWritesForTests()
+    const key = publicHubCacheKey(getBackendUrl(), '24h')
+    const stored = JSON.parse(localStorage.getItem(key)!)
+    expect(stored.dataAsOf).toBe(receipt - 15 * 60_000)
+    unmount()
+    // Move both anchors together to model an unchanged copy after 5h59m.
+    stored.cachedAt -= (5 * 60 + 59) * 60_000
+    stored.dataAsOf -= (5 * 60 + 59) * 60_000
+    localStorage.setItem(key, JSON.stringify(stored))
+    fetchPublicHubBase.mockReturnValue(new Promise(() => {}))
+    const restored = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    expect(restored.result.current.dataAsOf).toBe(stored.dataAsOf)
+    expect(Date.now() - restored.result.current.dataAsOf!).toBeGreaterThanOrEqual((6 * 60 + 14) * 60_000)
+  })
+
+  it.each([undefined, null])('upgrades a legacy or unknown saved age without extending lifetime (%s)', (priorAge) => {
+    const now = Date.now()
+    const hub = sampleHub(8)
+    writePublicHubCache(getBackendUrl(), '24h', hub, undefined, priorAge)
+    const key = publicHubCacheKey(getBackendUrl(), '24h')
+    const previous = JSON.parse(localStorage.getItem(key)!)
+    previous.cachedAt = now - 60_000
+    localStorage.setItem(key, JSON.stringify(previous))
+    writePublicHubCache(getBackendUrl(), '24h', hub, undefined, now - 15_000)
+    const updated = JSON.parse(localStorage.getItem(key)!)
+    expect(updated.cachedAt).toBe(previous.cachedAt)
+    expect(updated.dataAsOf).toBe(previous.cachedAt)
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.dataAsOf).toBe(previous.cachedAt)
+  })
+
   it('fetches fresh data after cache hydration', async () => {
     writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
     fetchPublicHubBase.mockResolvedValue(hubResult(42))
@@ -696,6 +838,38 @@ describe('usePublicHubData', () => {
     expect(fetchPublicHubBase).toHaveBeenCalled()
     expect(result.current.loadSource).toBe('full')
     expect(result.current.refreshing).toBe(false)
+  })
+
+  it('shows a saved copy up to 6 hours old as cached data until the fresh read replaces it', async () => {
+    writePublicHubCache(getBackendUrl(), '24h', sampleHub(8))
+    const key = publicHubCacheKey(getBackendUrl(), '24h')
+    const savedAt = Date.now() - (5 * 60 + 59) * 60_000
+    localStorage.setItem(key, localStorage.getItem(key)!.replace(/"cachedAt":\d+/, `"cachedAt":${savedAt}`))
+    const fresh = deferredHub()
+    fetchPublicHubBase.mockReturnValue(fresh.promise)
+
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+
+    expect(result.current.data?.poolSize).toBe(8)
+    expect(result.current).toMatchObject({ loading: false, refreshing: true, loadSource: 'cache', cachedAt: savedAt, lastUpdated: savedAt })
+    await act(async () => { fresh.resolve(hubResult(42)) })
+    expect(result.current).toMatchObject({ refreshing: false, loadSource: 'full', cachedAt: null })
+    expect(result.current.data?.poolSize).toBe(42)
+  })
+
+  it.each([
+    ['a 24h copy that is a 30m live-pool fallback', '24h'],
+    ['a 30m tab copy', '30m'],
+  ] as const)('does not show %s saved 30 minutes ago', async (_label, window) => {
+    writePublicHubCache(getBackendUrl(), window, window === '24h' ? repairHubResult(8).data : sampleHub(8))
+    const key = publicHubCacheKey(getBackendUrl(), window)
+    const savedAt = Date.now() - 30 * 60_000
+    localStorage.setItem(key, localStorage.getItem(key)!.replace(/"cachedAt":\d+/, `"cachedAt":${savedAt}`))
+    fetchPublicHubBase.mockReturnValue(deferredHub().promise)
+
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: window }))
+
+    expect(result.current).toMatchObject({ data: null, loading: true, loadSource: null, cachedAt: null })
   })
 
   it('shows refreshing while background fetch runs after cache hydration', async () => {
@@ -715,7 +889,8 @@ describe('usePublicHubData', () => {
     expect(result.current.data?.poolSize).toBe(42)
   })
 
-  it('manual refresh aborts an in-flight fetch and applies the latest result', async () => {
+  // D3 (10-28): the origin may still be building the read; starting over would only push its answer back.
+  it('manual refresh waits on the read under way instead of starting it over', async () => {
     let resolveFirst: ((value: ReturnType<typeof hubResult>) => void) | undefined
     fetchPublicHubBase
       .mockImplementationOnce(
@@ -729,8 +904,15 @@ describe('usePublicHubData', () => {
     const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
     await waitFor(() => expect(fetchPublicHubBase).toHaveBeenCalledTimes(1))
 
-    result.current.refresh()
-    resolveFirst?.(hubResult(1))
+    act(() => result.current.refresh())
+    expect(result.current.loading).toBe(true)
+    expect((fetchPublicHubBase.mock.calls[0][0] as AbortSignal).aborted).toBe(false)
+    await act(async () => { resolveFirst?.(hubResult(1)) })
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(1))
+    expect(fetchPublicHubBase).toHaveBeenCalledTimes(1)
+
+    // Once it has settled, refresh reads anew.
+    await act(async () => { result.current.refresh() })
     await waitFor(() => expect(result.current.data?.poolSize).toBe(99))
     expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
   })
@@ -1248,10 +1430,8 @@ describe('usePublicHubData', () => {
       const pressed = deferredHub()
       fetchPublicHubBase
         .mockResolvedValueOnce(hubResult(5))
-        // The poll in flight when Try again is pressed; the press aborts it.
-        .mockImplementationOnce((signal: AbortSignal) => new Promise((_, reject) => {
-          signal.addEventListener('abort', () => reject(signal.reason))
-        }))
+        // A healthy poll, settled before Try again is pressed (a press waits on a read under way).
+        .mockResolvedValueOnce(hubResult(5))
         .mockImplementationOnce(() => pressed.promise)
         .mockResolvedValue(hubResult(6))
       // random 0: a healthy poll comes 15% early, every 38.25 s.
@@ -1261,7 +1441,7 @@ describe('usePublicHubData', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(38_250) })
       expect(fetchPublicHubBase).toHaveBeenCalledTimes(2)
 
-      // The aborted poll arms the next one 38.25 s out; then the pressed read names a 60 s pause.
+      // The poll arms the next one 38.25 s out; then the pressed read names a 60 s pause.
       await act(async () => {
         result.current.refresh()
         await vi.advanceTimersByTimeAsync(1_000)
@@ -1283,6 +1463,54 @@ describe('usePublicHubData', () => {
       expect(result.current.retryBlocked).toBe(false)
       expect(fetchPublicHubBase).toHaveBeenCalledTimes(4)
       expect(result.current.data?.poolSize).toBe(6)
+    })
+  })
+  // The hub rail reads the Moments list once for each hub read, answered or not (useTopToday's attempt).
+  describe('pollAttempt', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('counts a read that failed, and Try again', async () => {
+      fetchPublicHubBase.mockRejectedValue({ kind: 'server', status: 503, message: 'unavailable' })
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      expect(result.current.data?.poolSize).not.toBe(5)
+      expect(result.current.pollAttempt).toBe(1)
+
+      fetchPublicHubBase.mockResolvedValue(hubResult(5))
+      await act(async () => { result.current.refresh() })
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(5))
+      expect(result.current.pollAttempt).toBe(2)
+    })
+
+    it('does not count Try again while a read runs: it waits on that read', async () => {
+      const first = deferredHub()
+      fetchPublicHubBase.mockImplementation(() => first.promise)
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
+      expect(result.current.pollAttempt).toBe(1)
+      act(() => result.current.refresh())
+      expect(result.current.pollAttempt).toBe(1)
+      await act(async () => { first.resolve(hubResult(5)) })
+      await waitFor(() => expect(result.current.data?.poolSize).toBe(5))
+      expect(result.current.pollAttempt).toBe(1)
+    })
+
+    it('does not count a Try again or a poll inside a Retry-After pause', async () => {
+      vi.useFakeTimers()
+      fetchPublicHubBase.mockRejectedValueOnce({ kind: 'rate_limited', status: 429, message: 'wait', retryAfterMs: 75_000 })
+        .mockResolvedValue(hubResult(5))
+      const { result } = renderHook(() => usePublicHubData({ pollMs: 45_000, random: () => 0.5 }))
+      await act(async () => { await Promise.resolve() })
+      expect(result.current.pollAttempt).toBe(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45_000)
+        result.current.refresh()
+      })
+      expect(result.current.pollAttempt).toBe(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+      expect(result.current.pollAttempt).toBe(2)
+      expect(result.current.data?.poolSize).toBe(5)
     })
   })
   describe('idle snapshot persistence and the hub-data mark (plan §2.6, §4.5)', () => {
@@ -1412,41 +1640,63 @@ describe('usePublicHubData', () => {
   })
 })
 
-describe('usePublicHubData with VITE_PUBLIC_HUB_V5 off (the Command Center path)', () => {
+// IRC-10 (fix, 10-30): the portal's own 30m read standing in for a longer window is tagged as such. It never
+// carries the backend's historical_projection_unavailable, which only a backend fallback may state.
+describe('usePublicHubData stand-in reason (IRC-10 fix, 10-30)', () => {
   beforeEach(() => {
-    vi.stubEnv('VITE_PUBLIC_HUB_V5', '')
+    installIdleCallback((callback) => {
+      callback(IDLE_DEADLINE)
+      return 0
+    })
+    resetHubBucketSelectionForTests()
     clearPublicHubCacheForTests()
-    resetHubDataMarkForTests()
-    fetchPublicHub.mockReset()
     fetchPublicHubBase.mockReset()
     fetchPublicHubStatsFallback.mockReset()
     fetchPublicHubStatsFallback.mockRejectedValue(new Error('Public hub unavailable'))
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllEnvs()
-    resetHubDataMarkForTests()
+    removeIdleCallback()
+    resetHubBucketSelectionForTests()
   })
 
-  it('writes the snapshot straight away (no idle scheduling) as a plain version-1 entry', async () => {
-    const write = vi.spyOn(publicHubCache, 'writePublicHubCacheForCurrentBackend')
-    const schedule = vi.spyOn(publicHubCache, 'schedulePublicHubCacheWrite')
-    fetchPublicHubBase.mockResolvedValue(hubResult(41))
-    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
-    await waitFor(() => expect(result.current.data?.poolSize).toBe(41))
-    await waitFor(() => expect(readPublicHubCache(getBackendUrl(), '24h')?.data.poolSize).toBe(41))
-    expect(write).toHaveBeenCalled()
-    expect(schedule).not.toHaveBeenCalled()
-    expect(hasPendingPublicHubCacheWrite()).toBe(false)
-    expect(JSON.parse(localStorage.getItem(publicHubCacheKey(getBackendUrl(), '24h'))!).version).toBe(1)
+  const recentRead = () => {
+    const recent = hubResult(99)
+    recent.data.activity.windowMinutes = 30
+    return recent
+  }
+
+  it('tags the early 30m view as the portal stand-in while the long window loads', async () => {
+    const pending = deferredHub()
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recentRead()) : pending.promise,
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99), { timeout: 2500 })
+    expect(result.current.activityRefreshing).toBe(true)
+    expect(result.current.data?.activity).toMatchObject({ source: 'live_pool_fallback', reason: 'portal_stand_in', requestedWindowMinutes: 1440 })
+    await act(async () => { pending.resolve(hubResult(42)) })
   })
 
-  it('sets no sp:hub-data mark', async () => {
-    const mark = vi.spyOn(performance, 'mark')
-    fetchPublicHubBase.mockResolvedValue(hubResult(42))
-    const { result } = renderHook(() => usePublicHubData({ pollMs: 0 }))
-    await waitFor(() => expect(result.current.data?.poolSize).toBe(42))
-    expect(mark.mock.calls.filter(([name]) => name === HUB_DATA_MARK)).toEqual([])
+  it('tags the recovery after a failed long-window read as the portal stand-in, saved copy included', async () => {
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      window === '30m' ? Promise.resolve(recentRead()) : Promise.reject({ kind: 'server', status: 503, message: 'unavailable' }),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(99))
+    await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+    expect(result.current.data?.activity).toMatchObject({ source: 'live_pool_fallback', reason: 'portal_stand_in' })
+    publicHubCache.flushPublicHubCacheWritesForTests()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.data.activity.reason).toBe('portal_stand_in')
+  })
+
+  it('keeps the backend reason when the backend itself sent the fallback', async () => {
+    fetchPublicHubBase.mockImplementation((_signal?: AbortSignal, window?: PublicHubActivityWindow) =>
+      Promise.resolve(window === '30m' ? recentRead() : repairHubResult()),
+    )
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(3))
+    await waitFor(() => expect(result.current.activityRefreshing).toBe(false))
+    expect(result.current.data?.activity).toMatchObject({ source: 'live_pool_fallback', reason: 'historical_projection_unavailable' })
   })
 })

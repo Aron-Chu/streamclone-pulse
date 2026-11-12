@@ -1,0 +1,233 @@
+/*
+ * The d3-v5 hub's bar lock (L1, bar-lock board 2026-11-01): the emote lock's
+ * list (hv5-el-*) for one chart bar. A hairline, one header row, then the
+ * bar's busiest chats in two columns of three and its top emotes on the right.
+ * No boxes or tiles, sentence case, no text under 12 px. Every rule sits under
+ * .hub-v5 .hv5-bk.
+ *
+ * The classes are .hbk-* (not the mockup's .bkc-*): the session page's card
+ * (sp-session-strip.css) styles .bkc-* globally, and its rules would reach
+ * this lock after an in-app move from a session page to the hub.
+ */
+
+.hub-v5 .hv5-bk {
+  grid-area: intv;
+  position: relative;
+  min-width: 0;
+  container: hbk / inline-size;
+}
+
+/* ---------- base (the page's resets do not reach the lock) ---------- */
+.hub-v5 .hv5-bk .hbk {
+  --hbk-dy: -4px;
+  position: relative;
+  box-sizing: border-box;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sp-line);
+  color: var(--sp-text-1);
+  font: 400 14px/20px var(--sp-font);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  transition:
+    opacity 120ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* resets at zero specificity, so the page's .hv5-ib keeps its size and hover */
+:where(.hub-v5 .hv5-bk .hbk) :where(*, *::before, *::after) { box-sizing: border-box; }
+:where(.hub-v5 .hv5-bk .hbk) :where(p, h2, ol, ul) { margin: 0; }
+:where(.hub-v5 .hv5-bk .hbk) :where(ol, ul) { list-style: none; padding: 0; }
+:where(.hub-v5 .hv5-bk .hbk) :where(img) { display: block; }
+:where(.hub-v5 .hv5-bk .hbk) :where(button) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.hub-v5 .hv5-bk .hbk.hbk-enter,
+.hub-v5 .hv5-bk .hbk.hbk-leave {
+  opacity: 0;
+  transform: translate(0, var(--hbk-dy));
+}
+.hub-v5 .hv5-bk .hbk.hbk-leave { pointer-events: none; }
+.hub-v5 .hv5-bk .hbk .hv5-ico { width: 16px; height: 16px; }
+
+/* the lock mark: a tiny copy of the chart's selected bar (a light bar in the amber band) */
+.hub-v5 .hv5-bk .hbk-mk {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 13px;
+  border-radius: 2px;
+  background: #b9b8c0;
+  box-shadow: 0 0 0 1.5px #c4861a;
+}
+
+/* ---------- header: mark, time, day and bar size, ‹ ›, then Zoom to bar and Clear ---------- */
+.hub-v5 .hv5-bk .hbk-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  min-height: 30px;
+  margin-bottom: 2px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hub-v5 .hv5-bk .hbk-ti { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hub-v5 .hv5-bk .hbk-t { font: 600 14px/20px var(--sp-font); color: var(--sp-text-1); white-space: nowrap; }
+.hub-v5 .hv5-bk .hbk-day { white-space: nowrap; }
+.hub-v5 .hv5-bk .hbk-step { display: inline-flex; align-items: center; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib { position: relative; width: 28px; height: 28px; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib::after { content: ""; position: absolute; left: -1px; right: -1px; top: -6px; bottom: -6px; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib .hv5-ico { width: 18px; height: 18px; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib[aria-disabled="true"] { opacity: 0.35; cursor: default; }
+.hub-v5 .hv5-bk .hbk-step .hv5-ib[aria-disabled="true"]:hover { background: none; color: var(--sp-text-2); }
+.hub-v5 .hv5-bk .hbk-act { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.hub-v5 .hv5-bk .hbk-btn,
+.hub-v5 .hv5-bk .hbk-lk {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 4px;
+  color: var(--sp-text-2);
+  font: 500 12px/16px var(--sp-font);
+  white-space: nowrap;
+}
+.hub-v5 .hv5-bk .hbk-lk { margin-left: 4px; color: var(--hv5-accent); }
+.hub-v5 .hv5-bk :is(.hbk-btn, .hbk-lk):hover { color: var(--sp-text-1); background: var(--sp-raised); }
+.hub-v5 .hv5-bk :is(.hbk-btn, .hbk-lk) .hv5-ico { width: 14px; height: 14px; }
+
+/* ---------- busiest chats (two columns of three) and top emotes (right) ---------- */
+.hub-v5 .hv5-bk .hbk-g { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); column-gap: 24px; }
+.hub-v5 .hv5-bk .hbk-g--emotes { grid-template-columns: minmax(0, 420px); }
+.hub-v5 .hv5-bk .hbk-sub { margin: 6px 0 2px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-sub:focus { outline: none; }
+.hub-v5 .hv5-bk .hbk-sub:focus-visible { outline: 2px solid var(--hv5-accent); outline-offset: 2px; border-radius: 2px; }
+.hub-v5 .hv5-bk .hbk-sub b { font-weight: 600; color: var(--sp-text-1); }
+.hub-v5 .hv5-bk .hbk-none { padding: 10px 0; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-rows {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, auto);
+  column-gap: 24px;
+}
+/* each row is its own container, so a narrow row (not a narrow lock) drops its top emote */
+.hub-v5 .hv5-bk .hbk-rows > li { min-width: 0; container: hbkr / inline-size; animation: hbk-rise 0.35s both; }
+/* the name keeps 72 px: a long text emote shrinks before it does */
+.hub-v5 .hv5-bk .hbk-r {
+  display: grid;
+  grid-template-columns: 14px 24px minmax(72px, 1fr) minmax(0, auto) auto auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--sp-line);
+  color: var(--sp-text-1);
+  font: 500 13px/18px var(--sp-font);
+  text-decoration: none;
+}
+.hub-v5 .hv5-bk .hbk-r:hover { color: var(--sp-text-1); text-decoration: none; }
+.hub-v5 .hv5-bk .hbk-r:hover .hbk-n > span { text-decoration: underline; text-underline-offset: 3px; }
+.hub-v5 .hv5-bk .hbk-r:focus-visible { outline: 2px solid var(--hv5-accent); outline-offset: -2px; border-radius: 4px; }
+.hub-v5 .hv5-bk .hbk-i { font-size: 12px; color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-n { display: grid; min-width: 0; }
+.hub-v5 .hv5-bk .hbk-n > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-v5 .hv5-bk .hbk-n small { font: 400 12px/16px var(--sp-font); color: var(--sp-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* top-aligned, so the dot never makes its line (and its row) a pixel taller */
+.hub-v5 .hv5-bk .hbk-mo { display: inline-flex; align-items: center; gap: 4px; vertical-align: top; color: var(--sp-text-2); }
+.hub-v5 .hv5-bk .hbk-mo::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #ef4444; }
+.hub-v5 .hv5-bk .hbk-te { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; font-size: 12px; color: var(--sp-text-2); white-space: nowrap; }
+.hub-v5 .hv5-bk .hbk-te img { flex: none; width: 20px; height: 20px; object-fit: contain; }
+.hub-v5 .hv5-bk .hbk-tn { min-width: 0; max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
+.hub-v5 .hv5-bk .hbk-tc { flex: none; }
+.hub-v5 .hv5-bk .hbk-v { font-size: 12px; color: var(--sp-text-2); text-align: right; white-space: nowrap; }
+.hub-v5 .hv5-bk .hbk-at { font-size: 12px; color: var(--hv5-accent); white-space: nowrap; }
+/* loading: six rows hold the list's height, each built like a row (its two lines, 34 px, its padding and its rule) */
+.hub-v5 .hv5-bk .hbk-ph { display: flex; align-items: center; box-sizing: content-box; height: 34px; padding: 4px 0; border-bottom: 1px solid var(--sp-line); }
+.hub-v5 .hv5-bk .hbk-ph::before { content: ""; width: 60%; height: 10px; border-radius: 4px; background: var(--sp-line-strong); animation: hbk-wait 1.2s ease-in-out infinite alternate; }
+.hub-v5 .hv5-bk .hbk-e {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--sp-line);
+  font: 500 13px/18px var(--sp-font);
+}
+.hub-v5 .hv5-bk .hbk-e :is(img, .hbk-noimg) { width: 24px; height: 24px; object-fit: contain; }
+.hub-v5 .hv5-bk .hbk-noimg {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: 4px;
+  font: 500 12px/16px var(--sp-font);
+  color: var(--sp-text-3);
+}
+.hub-v5 .hv5-bk .hbk-en { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-v5 .hv5-bk .hbk-prov { margin-top: 8px; font: 400 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-prov b { font-weight: 600; color: var(--sp-text-2); }
+.hub-v5 .hv5-bk .hbk-notes { margin-top: 8px; font: 400 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-bk .hbk-notes li + li { margin-top: 2px; }
+
+/* ---------- gap: the chart's hatch, never zeros ---------- */
+.hub-v5 .hv5-bk .hbk-hatch {
+  height: 34px;
+  margin: 8px 0 4px;
+  border-radius: 4px;
+  background: repeating-linear-gradient(135deg, var(--sp-line-strong) 0 5px, transparent 5px 10px);
+}
+.hub-v5 .hv5-bk .hbk-gap .hbk-none { padding-top: 4px; }
+
+@keyframes hbk-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes hbk-wait { from { opacity: 0.5; } to { opacity: 1; } }
+
+/* tablet: the emotes go under the chats as three chips */
+@container hbk (max-width: 999px) {
+  .hub-v5 .hv5-bk .hbk-g { grid-template-columns: minmax(0, 1fr); }
+  .hub-v5 .hv5-bk .hbk-erows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .hub-v5 .hv5-bk .hbk-e { grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 6px; row-gap: 0; min-height: 0; border: 0; font-size: 12px; line-height: 16px; }
+  .hub-v5 .hv5-bk .hbk-e :is(img, .hbk-noimg) { grid-row: span 2; width: 22px; height: 22px; }
+  .hub-v5 .hv5-bk .hbk-e .hbk-v { text-align: left; }
+}
+/* phone: one column of chats, a two-line header, no provider split */
+@container hbk (max-width: 699px) {
+  .hub-v5 .hv5-bk .hbk-rows { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
+  .hub-v5 .hv5-bk .hbk-prov { display: none; }
+  .hub-v5 .hv5-bk .hbk-h {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "mk time step . clear" "day day day day zoom";
+    column-gap: 6px;
+    row-gap: 0;
+  }
+  .hub-v5 .hv5-bk :is(.hbk-ti, .hbk-act) { display: contents; }
+  .hub-v5 .hv5-bk .hbk-mk { grid-area: mk; }
+  .hub-v5 .hv5-bk .hbk-t { grid-area: time; }
+  .hub-v5 .hv5-bk .hbk-step { grid-area: step; }
+  .hub-v5 .hv5-bk .hbk-day { grid-area: day; white-space: normal; }
+  .hub-v5 .hv5-bk .hbk-zoom { grid-area: zoom; justify-self: end; }
+  .hub-v5 .hv5-bk .hbk-clear { grid-area: clear; justify-self: end; }
+}
+/* a row with no room for its top emote (under 340 px, at any lock width) drops it */
+@container hbkr (max-width: 339px) {
+  .hub-v5 .hv5-bk .hbk-r { grid-template-columns: 14px 24px minmax(0, 1fr) auto auto; }
+  .hub-v5 .hv5-bk .hbk-te { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-bk .hbk { transition: none; }
+  .hub-v5 .hv5-bk .hbk.hbk-enter,
+  .hub-v5 .hv5-bk .hbk.hbk-leave { transform: none; }
+  .hub-v5 .hv5-bk .hbk-rows > li,
+  .hub-v5 .hv5-bk .hbk-ph::before { animation: none; }
+}

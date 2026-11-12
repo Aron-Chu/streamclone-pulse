@@ -17,6 +17,8 @@ export interface VodPictures {
   /** Tiles in all, one every `interval` seconds. */
   count: number
   interval: number
+  /** Twitch is still recording the VOD: it has no scrub sheets until the stream ends. */
+  recording?: true
 }
 
 /** Twitch's image and storyboard hosts. */
@@ -46,12 +48,14 @@ interface Sheets {
 /**
  * The worker's check of what the page read: GQL's `video` and the storyboard
  * index its `seekPreviewsURL` names. The larger sheets win; a VOD Twitch has
- * no cover for yet (its "404_processing" stand-in) has none. Anything off is
- * left out, and null means there is nothing to draw.
+ * no cover for yet (its "404_processing" stand-in) has none, and one it is
+ * still recording has no sheets either (Twitch refuses its index until the
+ * stream ends) but says so. Anything off is left out, and null means there is
+ * nothing to draw or say.
  */
 export function parseVodPictures(video: unknown, index: unknown): VodPictures | null {
   if (!video || typeof video !== 'object') return null
-  const { title, previewThumbnailURL, seekPreviewsURL } = video as Record<string, unknown>
+  const { title, previewThumbnailURL, seekPreviewsURL, status } = video as Record<string, unknown>
   const base = twitchUrl(seekPreviewsURL)
   const all = Array.isArray(index) ? (index as Sheets[]).filter(item => item && typeof item === 'object') : []
   const set = all.find(item => item.quality === 'high') ?? all[0]
@@ -67,7 +71,8 @@ export function parseVodPictures(video: unknown, index: unknown): VodPictures | 
   }
   if (cover && !cover.includes('/_404/')) pictures.cover = cover
   if (typeof title === 'string' && title.trim()) pictures.title = title.trim().slice(0, 200)
-  return pictures.cover || pictures.sheets.length > 0 ? pictures : null
+  if (status === 'RECORDING') pictures.recording = true
+  return pictures.cover || pictures.sheets.length > 0 || pictures.recording ? pictures : null
 }
 
 /** The tile nearest VOD second `seconds`: its sheet and its column and row there; null outside the VOD. */

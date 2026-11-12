@@ -1,60 +1,6 @@
-const STORAGE_KEY = 'sp.betaKey'
 const BACKEND_OVERRIDE_KEY = 'sp.backendUrlOverride'
-
-let cachedPrincipal: { id: string; kind: 'beta' } | null = null
-
-export async function hash16(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input)
-  const hash = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hash))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 16)
-}
-
-export function getBetaKey(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEY)?.trim() ?? ''
-  } catch {
-    return ''
-  }
-}
-
-export async function setBetaKey(key: string): Promise<void> {
-  localStorage.setItem(STORAGE_KEY, key.trim())
-  await refreshPrincipal()
-}
-
-export function clearBetaKey(): void {
-  localStorage.removeItem(STORAGE_KEY)
-  cachedPrincipal = null
-}
-
-export async function refreshPrincipal(): Promise<{ id: string; kind: 'beta' } | null> {
-  const key = getBetaKey()
-  if (!key) {
-    cachedPrincipal = null
-    return null
-  }
-  const id = await hash16(key)
-  cachedPrincipal = { id, kind: 'beta' }
-  return cachedPrincipal
-}
-
-export function currentPrincipal(): { id: string; kind: 'beta' } | null {
-  return cachedPrincipal
-}
-
-export function hasBetaKey(): boolean {
-  return getBetaKey().length > 0
-}
-
-export function maskBetaKey(key: string): string {
-  const trimmed = key.trim()
-  if (!trimmed) return 'PULSE-••••-••••'
-  const suffix = trimmed.length >= 4 ? trimmed.slice(-4) : '••••'
-  return `PULSE-••••-••••-${suffix}`
-}
+/** Saved by the removed beta-key login; no build reads it any more. */
+const REMOVED_BETA_KEY = 'sp.betaKey'
 
 export const DEFAULT_PRODUCTION_BACKEND_URL = 'https://api.streampulse.stream'
 const TAILNET_DEV_HOST_PARTS = ['laptop', 'worker'] as const
@@ -76,10 +22,10 @@ export function isLocalDevBackendUrl(url: string): boolean {
 }
 
 /**
- * The shareable `?spBackend=` convenience is intentionally narrower than the
- * explicit Setup/custom-endpoint field. It is only for a local fixture or
- * local BFF and must be an origin, so a link cannot repoint a dev page at an
- * arbitrary remote server before the app starts making credentialed calls.
+ * The shareable `?spBackend=` convenience is intentionally narrow. It is only
+ * for a local fixture or local BFF and must be an origin, so a link cannot
+ * repoint a dev page at an arbitrary remote server before the app starts
+ * making credentialed calls.
  */
 export function isAllowedDevBackendQueryOverride(url: string): boolean {
   const trimmed = url.trim()
@@ -131,6 +77,20 @@ export function clearStaleLocalBackendOverride(): void {
     }
   } catch {
     /* ignore */
+  }
+}
+
+/**
+ * Delete the key the removed beta-key login left in site storage, so returning
+ * visitors do not keep a dead secret. Unlike the override cleanup above this
+ * runs in production too. The extension's own beta key lives in
+ * chrome.storage and is not touched here.
+ */
+export function clearRemovedBetaKey(): void {
+  try {
+    localStorage.removeItem(REMOVED_BETA_KEY)
+  } catch {
+    /* storage blocked */
   }
 }
 

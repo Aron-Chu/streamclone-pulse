@@ -18,8 +18,8 @@ const TOUR_TONES: readonly TourTone[] = [
 const STEPS: readonly TourStep[] = [
   {
     kicker: 'Live now',
-    title: 'Live KPIs & 60-minute Stream Activity chart',
-    body: 'Viewers, chat/min, and 7TV/min refresh every minute with the same multi-lane chart, emote plot picker, and top-emote leaderboard the extension docks into your Twitch sidebar.',
+    title: 'Live KPIs & full-stream Pulse chart',
+    body: 'Viewers, chat/min, and Emotes/min refresh every minute with the same multi-lane chart, emote plot picker, and top-emote leaderboard the extension docks into your Twitch sidebar.',
   },
   {
     kicker: 'Coverage',
@@ -29,12 +29,12 @@ const STEPS: readonly TourStep[] = [
   {
     kicker: 'Most reacted',
     title: 'The loudest moments, ranked',
-    body: 'Backend-detected chat and emote spikes are scored and ranked, so you can jump straight to the biggest moment of the stream.',
+    body: 'Backend-detected chat and emote spikes are scored and ranked, with a picture for each moment when Twitch has a VOD.',
   },
   {
     kicker: 'Past streams',
-    title: 'Past VODs & full analytics',
-    body: 'Every tracked broadcast is one tap away — replay a VOD on Twitch or open the full analytics dashboard off Twitch.',
+    title: 'Stream Recap for past VODs',
+    body: 'Every tracked broadcast is one tap away — replay a VOD on Twitch or open Stream Recap with its summary, chart, and Top Moments.',
   },
 ] as const
 

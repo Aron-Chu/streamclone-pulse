@@ -35,9 +35,9 @@ describe('coverageTierStatusLabel', () => {
   it.each([
     ['active_live_coverage', true, 'Chat tracked'],
     ['warming', true, 'Warming'],
-    ['top500_metadata_only', false, 'Metadata only — no chat coverage'],
+    ['top500_metadata_only', false, 'Viewer counts only'],
     [undefined, true, 'Warming'],
-    [undefined, false, 'Metadata only — no chat coverage'],
+    [undefined, false, 'Viewer counts only'],
   ] as const)('maps backend tier %s to canonical status copy', (tier, tracking, label) => {
     expect(coverageTierStatusLabel(tier, tracking)).toBe(label)
   })
@@ -189,6 +189,12 @@ describe('resolvePulseLiveAccess', () => {
       hosted: true,
     })
     expect(result.state).toBe('offline')
+  })
+
+  it('uses offline state for an open stream the backend no longer collects while Twitch reads offline', () => {
+    const payload = basePayload({ isLive: true, tracking: false })
+    expect(resolvePulseLiveAccess({ payload, pageIsLive: false, hosted: true }).state).toBe('offline')
+    expect(resolvePulseLiveAccess({ payload, pageIsLive: true, hosted: true }).state).toBe('not_tracked')
   })
 
   it('respects stream start tolerance constant', () => {

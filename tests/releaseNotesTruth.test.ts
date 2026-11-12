@@ -3,95 +3,98 @@ import releaseNotes from '../src/shared/release-notes.json'
 import { evaluateReleaseNotesGate } from '../scripts/lib/release-notes-gate.mjs'
 import { selectExtensionReleasePreview } from '../scripts/release-preview.ts'
 import { releaseLifecycleLabel } from '../src/ui/ChangelogCard.tsx'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { JSDOM } from 'jsdom'
+import { ChangelogCard, WhatsNewCard } from '../src/ui/ChangelogCard.tsx'
 
 /**
- * Release review 2026-10-09 (A-4): the 0.2.2 notes describe what ships, the
- * store packager accepts them, and the changelog labels say which versions the
- * Chrome Web Store published.
+ * Release review 2026-10-09 (A-4): the 0.2.6 notes describe what ships, the store packager accepts them, and the changelog labels say
+ * which versions the Chrome Web Store published.
  */
 type Entry = { version: string; status: string; releasedAt: string | null; title: string; summary: string; preview?: string[]; new?: string[]; changed?: string[]; improved?: string[]; fixed?: string[]; knownIssues?: string[] }
 const releases = releaseNotes.releases as Entry[]
 const entry = (version: string) => releases.find(release => release.version === version)!
 const text = (release: Entry) => [release.title, release.summary, ...(release.preview ?? []), ...(release.new ?? []), ...(release.changed ?? []), ...(release.improved ?? []), ...(release.fixed ?? []), ...(release.knownIssues ?? [])].join('\n')
 
-describe('0.2.2 release notes', () => {
-  it('stay unreleased, with no date, until the packaging commit sets the real submission date', () => {
-    // Owner decision 2026-10-09: 0.2.2 waits for the private feedback form, so
-    // its date is not known yet. The date is built into the package and the
-    // website shows a released version's notes, so neither may claim a date early.
-    expect(entry('0.2.2')).toMatchObject({ status: 'unreleased', releasedAt: null })
-    const gate = evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.2', storeTarget: true })
-    expect(gate.publishable).toBe(false)
-    expect(gate.failures.join(' ')).toMatch(/still status="unreleased"/)
-  })
-
-  it('pass the store packaging gate once the packaging commit marks them released with a date', () => {
-    const packaged = {
-      ...releaseNotes,
-      releases: releaseNotes.releases.map(release => release.version === '0.2.2' ? { ...release, status: 'released', releasedAt: '2026-10-26' } : release),
-    }
-    const gate = evaluateReleaseNotesGate({ notes: packaged, version: '0.2.2', storeTarget: true })
+describe('0.2.6 release notes', () => {
+  it('are released on the submission date and pass the store packaging gate', () => {
+    expect(entry('0.2.6')).toMatchObject({ status: 'released', releasedAt: '2026-10-27' })
+    const historicalNotes = { ...releaseNotes, currentVersion: '0.2.6' }
+    const gate = evaluateReleaseNotesGate({ notes: historicalNotes, version: '0.2.6', storeTarget: true })
     expect(gate.failures).toEqual([])
     expect(gate.publishable).toBe(true)
   })
 
+  it('describe what 0.2.6 shows: pictures of missed moments, Stream Recap, and no Catch me up block', () => {
+    const notes = entry('0.2.6')
+    expect(notes.new).toContain("Stream Recap: a past stream's summary, its chart, and its Top moments like on live.")
+    expect(notes.new![0]).toContain("even for moments you missed, using the stream's Twitch VOD. Pictures are never uploaded.")
+    expect(notes.new).toContain('Moment cards have a Bookmark button, and a saved moment keeps its picture in this browser.')
+    expect(text(notes)).not.toMatch(/Catch me up|stay in the tab|needs a tab reload|sign-ups/i)
+  })
+
   it('say where saves live the way My Moments does, with no account-linking aside', () => {
-    expect(entry('0.2.2').knownIssues).toContain('Bookmarks, notes and watched history stay in the browser where you saved them.')
+    expect(entry('0.2.6').knownIssues).toContain('Bookmarks, notes and watched history stay in the browser where you saved them.')
     // My Moments says accounts are coming; the notes must not offer linking one now.
-    expect(text(entry('0.2.2'))).not.toMatch(/link an account/i)
-    expect(entry('0.2.2').new).toContain('Bookmarks work without an account. Without one, they stay in this browser and are never uploaded.')
+    expect(text(entry('0.2.6'))).not.toMatch(/link an account/i)
+    expect(entry('0.2.6').new).toContain('Bookmarks work without an account and stay in this browser.')
+  })
+
+  it('word the VOD limitation as "moments you missed", the way the rest of the notes do', () => {
+    expect(entry('0.2.6').knownIssues).toContain('Moments you missed get a picture only if the stream has a Twitch VOD.')
+    expect(text(entry('0.2.6'))).not.toMatch(/a tab didn't play/i)
   })
 
   it('describe no sign-in, device code or account flow this build does not have', () => {
-    const notes = text(entry('0.2.2'))
+    const notes = text(entry('0.2.6'))
     for (const gone of [/device code/i, /website sign-in/i, /installation account/i, /credential/i, /recovery/i, /approve this extension/i, /fixed (place|card)/i, /thirty minutes/i, /Become a Supporter opens/i]) {
       expect(notes, String(gone)).not.toMatch(gone)
     }
-    expect(entry('0.2.2').knownIssues).toContain('Accounts and Supporter sign-ups are not open yet. Accounts are coming with Continue with Twitch.')
+    expect(entry('0.2.6').knownIssues).toContain("Accounts aren't open yet and Supporter isn't on sale yet. Accounts are coming with Continue with Twitch.")
   })
 
   it('describe the Supporter preview without claiming a free perk changed for store users', () => {
-    const notes = entry('0.2.2')
-    expect(notes.changed ?? []).toEqual([])
+    const notes = entry('0.2.6')
+    // Changed is for what moved under store users; no perk moved, so no Supporter line goes there.
+    expect((notes.changed ?? []).join('\n')).not.toMatch(/Supporter|perk|emote rain|backdrop|paint|crest/i)
     expect(notes.summary).toContain('The 7TV header backdrop is a Supporter perk')
-    expect(notes.preview).toContain('The 7TV header backdrop is a Supporter perk; sign-ups are not open yet.')
+    expect(notes.preview).toContain('The 7TV header backdrop is a Supporter perk; Supporter is not on sale yet.')
     expect(text(notes)).not.toMatch(/moved from free|moved to Supporter|backdrop is now|backdrop you chose/i)
   })
 
-  it('lead with the short 0.2.2 draft: title, summary and three highlights (2026-10-11 polish)', () => {
+  it('lead with the short 0.2.6 notes: title, summary and three highlights (2026-10-20 release copy, updated for 0.2.6 2026-10-27)', () => {
     // UP-1, owner decision 2026-10-13: emote rain stays a Supporter perk; store users never had it free.
-    const notes = entry('0.2.2')
-    expect(notes.title).toBe('Whole-stream charts, calmer Top Moments')
-    expect(notes.summary).toBe("Charts cover the whole stream, Top Moments opens a card only when you pick one, bookmarks work without an account, and the popup is redesigned. Also built for Edge and Firefox. The 7TV header backdrop is a Supporter perk, and accounts and Supporter sign-ups aren't open yet.")
-    expect(notes.preview).toEqual(['Charts cover the whole stream.', 'Top Moments opens a card only when you pick one.', 'The 7TV header backdrop is a Supporter perk; sign-ups are not open yet.'])
+    const notes = entry('0.2.6')
+    expect(notes.title).toBe('Whole-stream charts and moment pictures')
+    expect(notes.summary).toBe("Charts cover the whole stream, Top Moments shows pictures, even of moments you missed, and Stream Recap sums up a past stream. The 7TV header backdrop is a Supporter perk; accounts aren't open and Supporter isn't on sale yet.")
+    expect(notes.preview).toEqual(['Charts cover the whole stream.', 'Top Moments shows a picture of what happened, even on past streams.', 'The 7TV header backdrop is a Supporter perk; Supporter is not on sale yet.'])
     expect(notes.fixed).toEqual(expect.arrayContaining([
-      'Watched moments on VODs are remembered again.',
-      "Replays show their own stream's chart.",
-      'A restarted stream moves the panel to the new stream.',
-      'The popup says when a page has no chat for the panel.',
+      'Offline channels show as offline, not as live or "Not tracked".',
+      'Watched moments on replays are remembered again.',
     ]))
   })
 
-  it('say Edge and Firefox are built for, never that a store has them', () => {
-    const notes = text(entry('0.2.2'))
-    expect(entry('0.2.2').new).toContain('Built for Microsoft Edge and Firefox as well as Chrome and Brave.')
-    expect(notes).not.toMatch(/(Edge|Firefox)[^.]*(store|add-ons|Add-ons|available|listed|published)/i)
+  it('name no Edge or Firefox store before its listing exists', () => {
+    // M7, 2026-10-20: neither listing exists when the notes are frozen, and the
+    // same notes ship inside the Edge and Firefox packages.
+    expect(text(entry('0.2.6'))).not.toMatch(/Edge|Firefox/)
   })
 
   it('name no Help & Feedback section and promise no open private form', () => {
-    const notes = text(entry('0.2.2'))
+    const notes = text(entry('0.2.6'))
     expect(notes).not.toMatch(/Help & Feedback/)
     expect(notes).not.toMatch(/private feedback|only the (StreamPulse )?team reads/i)
-    expect(entry('0.2.2').new).toContain('Send feedback and Discord links are in settings.')
+    expect(entry('0.2.6').new).toContain('Join the Discord and Send feedback from quick settings and settings.')
   })
 
   it('name the Supporter perks from the one perk list', async () => {
     const perks = (await import('../src/shared/supporter-perks.json')).default
-    const supporterLine = entry('0.2.2').new!.find(line => line.startsWith('A Supporter preview'))!
+    const supporterLine = entry('0.2.6').new!.find(line => line.startsWith('A Supporter preview'))!
     for (const name of perks.names) expect(supporterLine.toLowerCase()).toContain(name.toLowerCase())
   })
 
-  it('keep the quick-settings preview no larger than 0.2.2 shipped before, for the content-script budget', () => {
+  it('keep the quick-settings preview no larger than it was when numbered 0.2.2, for the content-script budget', () => {
     const preview = selectExtensionReleasePreview(releaseNotes)
     expect([preview.title, ...preview.bullets].join('').length).toBeLessThanOrEqual(271)
   })
@@ -106,6 +109,29 @@ describe('changelog labels', () => {
     expect(releaseLifecycleLabel({ status: 'released' }, true)).toBe('Installed')
     expect(releaseLifecycleLabel({ status: 'released' }, false)).toBe('Released')
     expect(releaseLifecycleLabel({ status: 'unreleased' }, false)).toBe('Not published')
-    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.2.2', '0.1.0'])
+    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.2.7', '0.1.0'])
+  })
+})
+
+describe('0.2.7 release candidate', () => {
+  it('remains unavailable for store upload until the real submission date is recorded', () => {
+    expect(entry('0.2.7')).toMatchObject({ status: 'unreleased', releasedAt: null })
+    const gate = evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.7', storeTarget: true })
+    expect(gate.uploadable).toBe(false)
+    expect(gate.failures).toEqual(expect.arrayContaining([expect.stringContaining('unreleased')]))
+  })
+
+  it('does not say Supporter sales are open', () => {
+    expect(text(entry('0.2.7'))).toContain('Supporter sales remain closed until launch.')
+  })
+
+  it('renders the installed candidate and preserves the published history', () => {
+    const rendered = renderToStaticMarkup(createElement(ChangelogCard, { variant: 'history', startCollapsed: true }))
+    const document = new JSDOM(rendered).window.document
+    expect([...document.querySelectorAll('.pulse-changelog-release .pulse-changelog-version')].map(node => node.textContent))
+      .toEqual(['v0.2.7', 'v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+    expect(document.querySelector('.pulse-changelog-lifecycle')?.textContent).toBe('Installed')
+    const whatsNew = renderToStaticMarkup(createElement(WhatsNewCard, { onSeeAll: () => {} }))
+    expect(new JSDOM(whatsNew).window.document.querySelector('[data-whatsnew] .pulse-changelog-version')?.textContent).toBe('v0.2.7')
   })
 })

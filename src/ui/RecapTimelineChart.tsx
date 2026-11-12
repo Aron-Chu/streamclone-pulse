@@ -31,12 +31,12 @@ import { extensionRollupViewerCount, safeGameTimeline } from './extensionChartAd
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { PulseOverviewChart } from './PulseOverviewChart.tsx'
 import { ChartReadoutBand } from './ChartReadoutBand.tsx'
+import { useVodPlayhead, vodPlayheadOffset } from '../hooks/useVodPlayhead.ts'
 import { pickRecapRollups } from './recapMomentMetrics.ts'
 import { zeroFillRollupsForRecap } from './recapChartPrep.ts'
 import { mergeRecapMoments, recapStreamDurationSeconds, rollupToRecapHeatPoint } from './recapChartPeaks.ts'
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
-import { theme } from './theme.ts'
 import { trackedFromLabel } from './coverageStartHint.ts'
 import { useChartExpansion } from './motion/useChartExpansion.ts'
 import { shouldShowChartRail } from './ChartPositionRail.tsx'
@@ -77,6 +77,8 @@ export interface RecapTimelineChartProps {
   pins?: readonly number[]
   /** On a replay, Plot on chart draws here (null: not yet) instead of under the chart. */
   plotHost?: HTMLElement | null
+  /** This tab plays the payload's VOD: the chart marks and reads out the minute playing. */
+  followVod?: boolean
 }
 
 /** The viewer's Spikes choice once read (undefined: not yet), so later recaps start with it. */
@@ -97,6 +99,7 @@ export function RecapTimelineChart({
   onRequestFullRollups,
   pins,
   plotHost,
+  followVod = false,
 }: RecapTimelineChartProps) {
   const activation = useMemo(
     () => makeFullHistoryActivation(payload),
@@ -160,8 +163,8 @@ export function RecapTimelineChart({
   )
 
   const mergedMoments = useMemo(
-    () => mergeRecapMoments(payload.recap, payload.peaks, 20, pickRecapRollups(payload)),
-    [payload.peaks, payload.recap],
+    () => mergeRecapMoments(payload.recap, payload.peaks, 20, pickRecapRollups(payload), !payload.isLive),
+    [payload.peaks, payload.recap, payload.isLive],
   )
 
   const chartPeakMarkers = useMemo<ExtensionPeak[]>(() => {
@@ -186,6 +189,7 @@ export function RecapTimelineChart({
         refinementStatus: moment.refinementStatus,
         refinementConfidence: moment.refinementConfidence,
         reactionScoringVersion: moment.reactionScoringVersion,
+        streamEdge: moment.streamEdge,
       }))
   }, [mergedMoments, peakOffsets])
 
@@ -312,15 +316,16 @@ export function RecapTimelineChart({
   const pinRollup = pinChartIndex != null ? minuteRollups[pinChartIndex] : undefined
   const previewRollup = previewChartIndex != null ? minuteRollups[previewChartIndex] : undefined
 
-  const readoutRollup = useMemo(() => {
-    if (chartHoverOffsetSeconds != null) {
-      const hovered = minuteRollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds)
-      if (hovered) return hovered
-    }
-    if (pinRollup) return pinRollup
-    if (previewRollup) return previewRollup
-    return undefined
-  }, [chartHoverOffsetSeconds, minuteRollups, pinRollup, previewRollup])
+  const playhead = useVodPlayhead(followVod)
+  const playheadOffset = playhead ? vodPlayheadOffset(playhead.seconds, payload.vodOriginDeltaSeconds) : null
+  const playheadChartIndex = playheadOffset == null ? null : findChartIndexByOffset(chartOffsets, playheadOffset, { bucketed: true })
+  const playheadRollup = playheadChartIndex != null ? minuteRollups[playheadChartIndex] : undefined
+
+  const hoveredRollup = useMemo(
+    () => chartHoverOffsetSeconds == null ? undefined : minuteRollups.find(rollup => rollup.offsetSeconds === chartHoverOffsetSeconds),
+    [chartHoverOffsetSeconds, minuteRollups],
+  )
+  const readoutRollup = hoveredRollup ?? pinRollup ?? previewRollup ?? playheadRollup
 
   const minuteReadoutEmotes = readoutRollup?.topEmotes?.filter(emote => (emote.count ?? 0) > 0) ?? []
   const canShowStreamEmoteFallback = Boolean(
@@ -538,17 +543,20 @@ export function RecapTimelineChart({
     : chartAtAvailableRange
       ? `Available coverage · from ${formatHeatOffset(chartCoverageStartSeconds)}`
       : `Viewing ${formatHeatOffset(chartViewportForRender.startSeconds)} – ${formatHeatOffset(chartViewportForRender.endSeconds)}`
-  const chartReadoutMode = readoutRollup && chartHoverOffsetSeconds != null
-    && readoutRollup.offsetSeconds !== pinOffsetSeconds
+  // Preview only for a hover that found its minute, so the video's minute never reads as one.
+  const chartReadoutMode = hoveredRollup && hoveredRollup.offsetSeconds !== pinOffsetSeconds
     ? 'preview'
     : pinOffsetSeconds != null
       ? 'selected'
-      : readoutRollup
+      : previewRollup
         ? 'preview'
-        : 'idle'
+        // Nothing hovered or picked: on a playing VOD the band follows the video.
+        : readoutRollup
+          ? playhead?.paused ? 'paused' : 'playing'
+          : 'idle'
 
   return (
-    <div ref={chartInteractionRef} style={styles.block}>
+    <div ref={chartInteractionRef} className="pulse-rc">
       <StreamActivityChartHeader
         showViewerLegend={showViewerStrip}
         focusedSeriesKey={focusedSeriesKey}
@@ -557,10 +565,6 @@ export function RecapTimelineChart({
           <button
             type="button"
             className={`pulse-chart-toggle-btn${showPeakMarkers ? ' pulse-chart-toggle-btn-active' : ''}`}
-            style={{
-              ...styles.expandButton,
-              ...(showPeakMarkers ? styles.expandButtonActive : null),
-            }}
             data-chart-action="true"
             data-chart-moment-toggle="true"
             disabled={chartPeakMarkers.length === 0}
@@ -578,10 +582,6 @@ export function RecapTimelineChart({
           <button
             type="button"
             className={`pulse-chart-expand-btn${tracesExpanded ? ' pulse-chart-expand-btn-active' : ''}`}
-            style={{
-              ...styles.expandButton,
-              ...(tracesExpanded ? styles.expandButtonActive : null),
-            }}
             onClick={() => {
               if (tracesExpanded) {
                 setFocusedSeriesKey(null)
@@ -613,7 +613,6 @@ export function RecapTimelineChart({
                     className="pulse-chart-overlay-legend-chip"
                     data-chart-action="true"
                     style={{
-                      ...styles.overlayLegendChip,
                       borderColor: plotColor,
                       boxShadow: `inset 2px 0 0 ${plotColor}`,
                       opacity: isDimmed ? 0.4 : 1,
@@ -638,7 +637,7 @@ export function RecapTimelineChart({
         }
       />
 
-      <div style={styles.chartSurface} data-chart-surface="true">
+      <div className="pulse-rc-surface" data-chart-surface="true">
         <ChartReadoutBand
           mode={chartReadoutMode}
           offsetSeconds={readoutRollup?.offsetSeconds ?? pinOffsetSeconds}
@@ -651,7 +650,7 @@ export function RecapTimelineChart({
           emoteScope={readoutEmoteScope}
           onClearSelection={handleClearChartSelection}
         />
-        <div style={styles.chartStack}>
+        <div className="pulse-rc-stack">
           <PulseOverviewChart
             rollups={minuteRollups}
             games={recapGames}
@@ -683,7 +682,8 @@ export function RecapTimelineChart({
             peakMarkers={chartPeakMarkers}
             showPeakMarkers={showPeakMarkers}
             pinOffsets={pins}
-            emptyMessage={chartEmpty || 'Loading full stream rollups…'}
+            playheadOffsetSeconds={playheadRollup?.offsetSeconds ?? null}
+            emptyMessage={chartEmpty || 'Loading the full stream…'}
             // Full history is enrichment for recap too: keep any recent/partial
             // rollups drawable while the one-shot request is pending or fails.
             loading={(timelineLoading && minuteRollups.length === 0) || (minuteRollups.length === 0 && Boolean(onRequestFullRollups))}
@@ -731,7 +731,7 @@ export function RecapTimelineChart({
         plotHost,
       ) : null}
 
-      {rollupGapNotice ? <p style={styles.gapNotice}>{rollupGapNotice}</p> : null}
+      {rollupGapNotice ? <p className="pulse-rc-gap">{rollupGapNotice}</p> : null}
     </div>
   )
 }
@@ -742,34 +742,5 @@ function portal(node: ReactElement, host: HTMLElement | undefined): ReactElement
 }
 
 const styles: Record<string, CSSProperties> = {
-  block: { display: 'grid', gap: 6 },
-  chartSurface: { minWidth: 0, width: '100%' },
-  chartStack: { display: 'grid', gap: 0 },
-  expandButton: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: 8,
-    color: theme.textSecondary,
-    cursor: 'pointer',
-    fontSize: 10,
-    fontWeight: 800,
-    padding: '4px 8px',
-    whiteSpace: 'nowrap',
-  },
-  expandButtonActive: {
-    background: 'rgba(139, 92, 246, 0.12)',
-    border: '1px solid rgba(167, 139, 250, 0.35)',
-    color: '#ddd6fe',
-  },
-  overlayLegendChip: {
-    alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: 6,
-    display: 'inline-flex',
-    flexShrink: 0,
-    padding: '2px 5px',
-  },
   overlayLegendEmoteImg: { display: 'block', objectFit: 'contain' },
-  gapNotice: { color: theme.textMuted, fontSize: 10, fontWeight: 600, lineHeight: 1.4, margin: 0 },
 }

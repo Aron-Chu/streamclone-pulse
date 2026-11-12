@@ -216,15 +216,15 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
     grid-template-rows: auto auto auto auto;
   }
   .bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "id id" "body body" "act act"; }
-  .bkc--below .bkc-in:has(.bkc-pvw) .bkc-art { display: none; } /* beside the thumbnail the title needs the room */
+  /* (candidate, 10-30, PIC-2) the 36x48 cover stays at every width: the box beside it is plain dark, no game art */
   .bkc--below .bkc-id { margin-top: 8px; align-self: center; }
   .bkc--below .bkc-body { margin-top: 12px; }
 }
 
 /* ======================================================================================
-   The moment player's box (session-original.css .mpl): a storyboard frame, or a dark box with
-   the reason (no blurred game art since 2026-10-21: the art sits by the title beside it), Play
-   over it; Twitch's player replaces it on Play.
+   The moment player's box (session-original.css .mpl): a storyboard frame, or a plain dark box
+   with the reason (candidate, 10-30, PIC-2: no blurred game art in it; the sharp cover sits by
+   the title), Play over it; Twitch's player replaces it on Play.
    ====================================================================================== */
 .mpl { min-width: 0; }
 .mpl-box {
@@ -234,8 +234,10 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 .mpl-pic, .mpl-fr { position: absolute; inset: 0; }
 .mpl-fr { background-repeat: no-repeat; }
 .mpl-box.nofr {
-  aspect-ratio: auto; min-height: 132px; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 10px; padding: 16px; text-align: center;
+  /* no frame, no box: one compact line (Play first when it can play), never an empty 16:9 box */
+  aspect-ratio: auto; min-height: 0; display: flex; flex-direction: row; flex-wrap: wrap; align-items: center;
+  justify-content: flex-start; gap: 6px 10px; padding: 8px 10px; text-align: left;
+  background: rgb(255 255 255 / .03);
 }
 .mpl-box.nofr > :not(.mpl-pic) { position: relative; }
 .mpl-box.on { aspect-ratio: 16 / 9; display: block; min-height: 0; padding: 0; }
@@ -261,8 +263,8 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 }
 .mpl-note .t3 { color: var(--sp-text-2, #b4b4bb); }
 .mpl-box.nofr .mpl-note {
-  position: relative; flex-direction: column; align-items: center; row-gap: 2px;
-  padding: 6px 10px; border-radius: 6px; background: rgb(9 9 11 / .62);
+  position: relative; flex-direction: row; align-items: center; row-gap: 2px;
+  padding: 0; border-radius: 0; background: none; color: var(--sp-text-2, #b4b4bb);
 }
 .mpl-if { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .mpl-msg { margin: 0; color: var(--sp-text-2, #b4b4bb); }
@@ -277,25 +279,23 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 
 /* the picture in the strip: the same box with or without a frame; the note never takes the click */
 .bkc--below .mpl-cap { min-height: 0; }
-.bkc--below .mpl-box.nofr { aspect-ratio: 16 / 9; min-height: 0; }
 .bkc--below .mpl-note { pointer-events: none; }
 /* in a picture under 360 px the note keeps only the frame's timing, so Play stays clear */
 @container bkc-pv (max-width: 359px) {
   .bkc--below .mpl-box.fr .mpl-note > span:first-child { display: none; }
   .bkc--below .mpl-box.fr .mpl-note { padding-top: 18px; }
   .bkc--below .mpl-box.nofr { gap: 6px; padding: 8px; }
-  .bkc--below .mpl-box.nofr .mpl-note { padding: 4px 8px; }
 }
-/* under 600 px: a thumbnail; Play keeps only its icon and the note and the clock caption are
-   read out, not shown; pressing Play gives the player (and the caption) the strip's full width */
+/* under 600 px: a thumbnail; Play keeps only its icon and the note is read out, not shown;
+   pressing Play gives the player the strip's full width */
 @container bkc-below (max-width: 599px) {
-  .bkc--below .mpl-box, .bkc--below .mpl-box.nofr { aspect-ratio: 16 / 9; min-height: 0; padding: 0; gap: 0; }
+  .bkc--below .mpl-box.fr, .bkc--below .mpl-box.on { aspect-ratio: 16 / 9; min-height: 0; padding: 0; gap: 0; }
   .bkc--below .mpl .mpl-go { padding: 8px; }
-  .bkc--below .mpl .mpl-go span, .bkc--below .mpl-box .mpl-note, .bkc--below .mpl-box.nofr .mpl-note,
-  .bkc--below .mpl-box:not(.on) ~ .mpl-cap {
+  /* a compact no-frame row in the 128 px column: icon-only Play, the note read out, not shown */
+  .bkc--below .mpl-box.nofr { padding: 6px; gap: 6px; }
+  .bkc--below .mpl .mpl-go span, .bkc--below .mpl-box .mpl-note {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; padding: 0;
   }
   .bkc--below .mpl-msg { padding: 0 6px; font-size: 11px; line-height: 14px; }
   .bkc--below .bkc-in:has(.mpl-box.on) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "pv" "id" "body" "act"; }
-  .bkc--below .bkc-in:has(.mpl-box.on) .bkc-art { display: block; }
 }

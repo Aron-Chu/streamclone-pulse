@@ -1,12 +1,8 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { installHubUxMock } from './helpers/hubUxMock'
+import { installHubUxMock, type HubUxMockOptions } from './helpers/hubUxMock'
 import { scrollSceneToProgress } from './helpers/scrollTour'
-
-// The d3-v5 hub (PR 1 of 5). Runs only against a build made with VITE_PUBLIC_HUB_V5=on;
-// a default build serves the Command Center, which the spec without .hub-v5 covers.
-test.skip(!/^(on|1)$/.test(process.env.VITE_PUBLIC_HUB_V5 ?? ''), 'needs a build with VITE_PUBLIC_HUB_V5=on')
 
 const proofDirectory = process.env.PORTAL_UX_PROOF_DIR
 
@@ -164,6 +160,11 @@ test('on a phone the hub merges its chat bars so each stays readable', async ({ 
   await assertNoPageOverflow(page)
 })
 
+// Top moments today lists, from the hub, a moment from 20 minutes into its stream that rose
+// 1.5x or more over that stream's own average. The mock's moments are 2 and 4 minutes in with
+// no comparison, so the Top moments checks serve the first one an hour in, compared.
+const TOP_MOMENT: HubUxMockOptions = { withComparisons: true, momentOffsets: [3600, 3600] }
+
 const responsiveCases = [
   { width: 390, height: 800, zoom: 1 },
   { width: 768, height: 676, zoom: 1 },
@@ -175,45 +176,35 @@ const responsiveCases = [
 
 for (const { width, height, zoom } of responsiveCases) {
   const size = `${width}x${height}-zoom${zoom}`
-  test(`Moment Inspector actions and minute emote values fit at ${size}`, async ({ page }) => {
+  test(`Top moments today, Picking up now and the Channels table fit at ${size}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
-    await installHubUxMock(page)
-    const firstResponse = page.waitForResponse(response => /\/v1\/public\/hub\?/.test(response.url()))
+    await installHubUxMock(page, TOP_MOMENT)
     await page.goto('/analytics')
-    const payload = await (await firstResponse).json()
-    for (const emote of payload.livePulseMoments[0].topEmotes) delete emote.sharePct
-    await page.route(/\/v1\/public\/hub(\?.*)?$/, route => route.fulfill({ json: payload }))
-    await page.reload()
     await page.evaluate(value => { document.documentElement.style.zoom = String(value) }, zoom)
-    await page.locator('.pulse-moments__peak-row, .pulse-moments__leaderboard-row').first().click()
-    const inspector = page.locator('.pulse-moments-live__side .pulse-moments__inspector')
-    const actions = inspector.getByRole('group', { name: 'Moment actions' })
-    await expect(actions.getByRole('link', { name: 'Review moment' })).toBeVisible()
-    await expect(actions.getByRole('link', { name: 'Open analytics' })).toBeVisible()
-    await expect(actions.getByRole('button', { name: 'Copy moment link' })).toBeVisible()
-    const actionFailures = await actions.evaluate(element => {
-      const bounds = element.getBoundingClientRect()
-      const buttons = Array.from(element.querySelectorAll('a, button')).map(button => ({ name: button.textContent?.trim(), rect: button.getBoundingClientRect() }))
-      return buttons.flatMap((button, index) => {
-        const failure = button.rect.left < bounds.left - 1 || button.rect.right > bounds.right + 1 || button.rect.height < 44 || button.rect.width < 44
-        const overlaps = buttons.slice(index + 1).some(other => button.rect.left < other.rect.right - 1 && button.rect.right > other.rect.left + 1 && button.rect.top < other.rect.bottom - 1 && button.rect.bottom > other.rect.top + 1)
-        return failure || overlaps ? [button.name] : []
-      })
-    })
-    expect(actionFailures).toEqual([])
-    const emotes = page.getByRole('region', { name: 'Selected minute emotes' })
-    await expect(emotes.locator('.emote-rank-row__count').first()).toBeVisible()
-    await expect(emotes.getByText('Estimated shares use available counts')).toBeVisible()
-    await expect(emotes.getByText('est.', { exact: true })).toHaveCount(2)
-    expect(await emotes.locator('li.emote-rank-row').evaluateAll(rows => rows.flatMap(row => {
+    const big = page.locator('#big-moments')
+    const card = big.locator('.hv5-bm-card[data-pos="0"]')
+    await expect(card).toBeVisible()
+    expect(await card.evaluate(el => {
+      const bounds = el.getBoundingClientRect()
+      const stage = el.closest('#big-moments')!.getBoundingClientRect()
+      const foot = el.querySelector('.hv5-bm-foot')!.getBoundingClientRect()
+      return bounds.right <= stage.right + 1 && foot.right <= bounds.right + 1 && foot.left >= bounds.left - 1
+    })).toBe(true)
+    const latest = page.locator('#latest')
+    await expect(latest.getByRole('heading', { name: 'Picking up now' })).toBeVisible()
+    expect(await latest.locator('.hv5-fd').evaluateAll(rows => rows.flatMap(row => {
       const bounds = row.getBoundingClientRect()
-      const count = row.querySelector('.emote-rank-row__count')!.getBoundingClientRect()
-      const share = row.querySelector('.emote-rank-row__share-cell')!.getBoundingClientRect()
-      return count.right <= share.left + 1 && share.right <= bounds.right + 1 && count.left >= bounds.left - 1 ? [] : [row.textContent?.trim()]
+      const value = row.querySelector('.hv5-fd-tx')!.getBoundingClientRect()
+      return value.right <= bounds.right + 1 && value.left >= bounds.left - 1 ? [] : [row.textContent?.trim()]
     }))).toEqual([])
+    const channels = page.locator('#channels')
+    const table = channels.locator('table')
+    await expect(table.locator('tbody tr').first()).toBeVisible()
+    expect(await table.evaluate(el => el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().right + 1)).toBe(true)
     await assertNoPageOverflow(page)
-    await saveProof(actions, `moment-actions-${size}`)
-    await saveProof(emotes, `minute-emotes-${size}`)
+    await saveProof(big, `hub-v5-top-moments-${size}`)
+    await saveProof(latest, `hub-v5-picking-up-${size}`)
+    await saveProof(channels, `hub-v5-channels-${size}`)
   })
 
   test(`Homepage static demo uses normal flow and fits at ${size}`, async ({ page }) => {
@@ -244,7 +235,7 @@ for (const { width, height, zoom } of responsiveCases) {
     await saveProof(panel.locator('[data-tour-step="1"]'), `homepage-sample-chart-${size}`)
     if (proofDirectory) {
       await mkdir(proofDirectory, { recursive: true })
-      await page.getByRole('heading', { name: /Pulse tab, feature by feature/i }).scrollIntoViewIfNeeded()
+      await page.getByRole('heading', { name: /See it beside Twitch chat/i }).scrollIntoViewIfNeeded()
       await page.screenshot({ path: join(proofDirectory, `homepage-demo-viewport-${size}.png`), animations: 'disabled' })
     }
   })
@@ -271,10 +262,28 @@ test('Homepage animated wipe advances and resizing to short static mode reveals 
   await saveProof(panel.locator('[data-tour-step="1"]'), 'homepage-chart-after-animated-resize-986')
 })
 
-test('Live moments and roster render while a legacy successful history reply awaits minute repair', async ({ page }) => {
+for (const width of [360, 390, 768, 1024, 1440]) {
+  test(`the hub header keeps 44px tap targets and no sideways scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await installHubUxMock(page)
+    await page.goto('/analytics')
+    await expect(page.locator('.analytics-topnav')).toBeVisible()
+    // Add to Chrome is hidden at 720px and below, so only a shown one is measured.
+    const targets = await page.locator('.analytics-topnav__links a, .analytics-topnav__install:visible').all()
+    expect(targets.length).toBeGreaterThan(0)
+    for (const target of targets) {
+      const box = await target.boundingBox()
+      expect(box?.height).toBeGreaterThanOrEqual(44)
+      expect(box?.width).toBeGreaterThanOrEqual(44)
+    }
+    await assertNoPageOverflow(page)
+  })
+}
+
+test('Top moments and Channels render while a legacy successful history reply awaits minute repair', async ({ page }) => {
   let releaseRepair!: () => void
   const gate = new Promise<void>(resolve => { releaseRepair = resolve })
-  await installHubUxMock(page, { legacySuccessfulCoarseFallback: true, recentHubGate: gate })
+  await installHubUxMock(page, { ...TOP_MOMENT, legacySuccessfulCoarseFallback: true, recentHubGate: gate })
   const repairRequested = page.waitForRequest(request => /\/v1\/public\/hub\?/.test(request.url()) && new URL(request.url()).searchParams.get('activityWindow') === '30m')
   await page.goto('/analytics')
   await repairRequested
@@ -282,18 +291,17 @@ test('Live moments and roster render while a legacy successful history reply awa
     const chart = page.locator('.figma-global-activity__hub-chart')
     await expect(chart.getByText('Loading measured activity…', { exact: true })).toBeVisible()
     await expect(chart.locator('.spc-bar')).toHaveCount(0)
-    const moments = page.locator('.pulse-moments-live')
-    const rows = moments.locator('.pulse-moments__peak-row, .pulse-moments__leaderboard-row')
+    const rows = page.locator('#big-moments .hv5-bm-card')
     await expect(rows.first()).toBeVisible()
     const momentsBefore = await rows.allTextContents()
-    const roster = page.locator('.live-channels-matrix')
-    await expect(roster.locator('.live-channels-matrix__result-count')).toHaveText('14 channels tracked')
-    await expect(roster.getByText(/14 roster live/)).toBeVisible()
+    const count = page.locator('#channels [data-hv5-channel-count]')
+    await expect(count).toHaveText('Showing 14 of 96 live')
+    await expect(page.locator('#channels tbody tr')).toHaveCount(10)
     releaseRepair()
     await expect(chart.getByText('Loading measured activity…', { exact: true })).toHaveCount(0)
     await expect(chart.locator('.spc-bar')).toHaveCount(30)
     expect(await rows.allTextContents()).toEqual(momentsBefore)
-    await expect(roster.locator('.live-channels-matrix__result-count')).toHaveText('14 channels tracked')
+    await expect(count).toHaveText('Showing 14 of 96 live')
   } finally {
     releaseRepair()
   }

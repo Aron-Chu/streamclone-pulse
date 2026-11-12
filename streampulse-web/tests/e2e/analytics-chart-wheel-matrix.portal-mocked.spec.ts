@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './helpers/portalMockedTest'
 import { openAnalyticsSession } from './helpers/portalAcceptanceHarness'
 import {
   CHART_SURFACES as SURFACES,

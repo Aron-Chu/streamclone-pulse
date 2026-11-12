@@ -22,6 +22,7 @@ import { resolveGameArtUrl } from '../components/analytics/GamesPlayedStrip.tsx'
 import { getEmoteImageUrl, rollupOffsetSeconds } from './consoleFormat.ts'
 import { resolveMomentRowRollup } from './momentRowDisplay.ts'
 import { stripMomentEmotes } from './sessionStripMoments.ts'
+import { sessionVodLine } from './sessionState.ts'
 import { alignedVodOffset, buildTwitchVodUrl, type VodLinkState } from './twitchVodUrl.ts'
 
 /** Seconds of lead-in before a moment, so it plays in (moment-rows.js LEAD). */
@@ -208,10 +209,7 @@ export interface StripVod {
   playVerb: 'Play VOD from' | 'Play from'
   /** Why there is no Play, in place of the button. */
   message: string | null
-  /**
-   * The VOD-clock caption under the picture: a locked moment's lead-in, or (leadSeconds 0) a bar whose VOD
-   * clock differs from the stream clock in the title, so "Play from" and the title don't look like a mismatch.
-   */
+  /** The lead-in caption under the picture (a locked moment). */
   leadCaption: { leadSeconds: number; alignSeconds: number } | null
   open: { href: string; label: string } | null
   /** The VOD's start on the VOD clock of what the picture previews (for the frame's timing line). */
@@ -232,6 +230,8 @@ export interface SessionBarStripModel {
   figures: StripFigure[]
   topEmotes: StripEmote[]
   topEmotesExact: boolean
+  /** Why the top emotes list is empty, else null. */
+  topEmotesNote: string | null
   namedNote: string | null
   providers: { sevenTv: number; other: number } | null
   category: { name: string; artUrl: string | null } | null
@@ -334,6 +334,10 @@ export function buildSessionBarStrip(args: {
     imageUrl: getEmoteImageUrl(hit) || null,
   }))
   const emoteTotal = sum(rows, (row) => minuteEmoteTotal(row))
+  // A bar that counted emote uses but whose minutes name none did not name none: the count decides, as on the
+  // hub's bar card (pick 12S, 10-30).
+  const topEmotesNote = topEmotes.length ? null
+    : emoteTotal > 0 ? 'names not in this update' : `none named in this ${span.levelMinutes === 1 ? 'minute' : 'bar'}`
   const namedPct = emoteTotal > 0 ? Math.round((sum(Object.values(merged), (v) => v) / emoteTotal) * 1000) / 10 : null
   const namedNote = namedPct != null && namedPct < NAMED_MIN_PCT
     ? `Names for ${namedPct < 1 ? '<1' : Math.round(namedPct)}% of emote uses`
@@ -342,7 +346,9 @@ export function buildSessionBarStrip(args: {
   // 7TV is complete; "other" = the emotes total minus 7TV, so the two add up to emotes/min
   const svRows = rows.filter((row) => row.seventvEmoteCount != null && Number.isFinite(row.seventvEmoteCount))
   const sevenTv = n && svRows.length ? Math.round(sum(svRows, (row) => row.seventvEmoteCount ?? 0) / n) : null
-  const providers = sevenTv != null && emotes != null
+  // A stream with no 7TV count anywhere (7TV not tracked for it) hides the split: "7TV 0" would read as a fact.
+  const streamHasSevenTv = args.rollups.some((row) => (row.seventvEmoteCount ?? 0) > 0)
+  const providers = sevenTv != null && emotes != null && streamHasSevenTv
     ? { sevenTv, other: Math.max(0, Math.round(emotes) - sevenTv) }
     : null
 
@@ -406,10 +412,9 @@ export function buildSessionBarStrip(args: {
     return v == null ? null : v
   }
   if (!vodId) {
-    const pending = args.vodLinkState.status === 'live' || args.vodLinkState.status === 'syncing'
     vod = {
       vodId: null, playAt: null, playVerb: 'Play from', leadCaption: null, open: null,
-      message: pending || !args.vodLinkState.label ? 'No VOD for this stream yet.' : args.vodLinkState.label,
+      message: sessionVodLine(args.vodLinkState).text,
       subjectVodStart: null, frameVodOffset: null, subject: lockedMoment ? 'moment' : unitMinute ? 'minute' : 'bar',
     }
   } else if (align == null) {
@@ -436,8 +441,7 @@ export function buildSessionBarStrip(args: {
   } else {
     const jump = vodAt(span.startSec)
     vod = {
-      vodId, playAt: jump ?? null, playVerb: 'Play from',
-      leadCaption: jump != null && Math.round(align) !== 0 ? { leadSeconds: 0, alignSeconds: align } : null,
+      vodId, playAt: jump ?? null, playVerb: 'Play from', leadCaption: null,
       open: jump == null ? { href: buildTwitchVodUrl(vodId), label: 'Open full VOD' }
         : { href: buildTwitchVodUrl(vodId, jump), label: `Open VOD at ${formatStripClock(jump)}` },
       message: jump == null ? "This minute isn't in the VOD yet." : null,
@@ -468,6 +472,7 @@ export function buildSessionBarStrip(args: {
     figures,
     topEmotes,
     topEmotesExact: n === 1,
+    topEmotesNote,
     namedNote,
     providers,
     category,
