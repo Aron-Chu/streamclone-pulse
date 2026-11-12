@@ -601,6 +601,8 @@
   align-items: center;
   gap: 8px;
   max-width: 100%;
+  /* Keeps one chip row's height before the live channels load, so the buttons below don't jump. */
+  min-height: 32px;
   margin: 1rem 0 0;
 }
 
@@ -664,6 +666,9 @@
 .sl-tickwrap {
   width: min(680px, 100%);
   margin-top: 1.8rem;
+  /* Two 38px ticker rows and their gap, held before the first answer so the buttons below stay put. */
+  min-height: calc(76px + 0.55rem);
+  align-content: start;
   display: grid;
   gap: 0.55rem;
 }
@@ -1183,6 +1188,8 @@
 
 @media (max-width: 960px) {
   .sl-mobile-nav { display: block; }
+  /* Without the Discord mark, Menu takes the right edge, not the middle of the header. */
+  .sl-nav:not(.sl-nav--discord) .sl-mobile-nav { margin-left: auto; }
   .sl-menu { display: none; }
   .sl-nav__right .sl-discord-nav { display: none; }
   .sl-discord-icon { display: grid; margin-left: -0.75rem; }

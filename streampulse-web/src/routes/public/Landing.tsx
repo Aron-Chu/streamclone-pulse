@@ -126,10 +126,10 @@ function TopNav({ discord, heroButtons }: { discord: string | null; heroButtons:
 /** Five live channels to try, busiest first, as on the hub. */
 function TryChannels({ live }: { live: readonly HubLiveChannel[] }) {
   const channels = useMemo(() => channelsByViewers(live).slice(0, 5), [live])
-  if (!channels.length) return null
+  // Stays in the page while empty (see .sl-try min-height), so the buttons below don't jump when the channels load.
   return (
     <p className="sl-try">
-      <span className="sl-try__label">Try</span>
+      {channels.length ? <span className="sl-try__label">Try</span> : null}
       {channels.map((c) => (
         <Link
           key={c.login}

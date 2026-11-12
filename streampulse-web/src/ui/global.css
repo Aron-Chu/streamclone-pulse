@@ -298,7 +298,7 @@ h1.public-title {
   color: #fff;
 }
 
-.public-document h2 {
+.public-document :where(h2) {
   margin: 2.25rem 0 0.75rem;
   font-size: 1.25rem;
   font-weight: 700;

@@ -922,12 +922,19 @@
 
 .ssc-md th {
   font-weight: 700;
-  padding: 1px;
+  padding: 7px 8px 7px 0;
+  white-space: nowrap;
 }
 
 .ssc-md td {
-  padding: 1px;
+  padding: 7px 8px 7px 0;
   color: #e4e4e7;
+}
+
+/* Numbers line up on their right edge: the first column is the stream time, the rest are counts. */
+.ssc-md th:not(:first-child),
+.ssc-md td {
+  text-align: right;
 }
 
 .ssc-md tbody th {
