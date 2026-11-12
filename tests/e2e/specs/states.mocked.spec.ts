@@ -554,7 +554,6 @@ test.describe('extension mocked states', () => {
       const assertSmallPill = async () => {
         await expect(pillShell).toBeVisible()
         await expect(extension.page.getByRole('button', { name: 'Open Pulse panel' })).toBeVisible()
-        const layoutWidth = await extension.page.evaluate(() => document.documentElement.clientWidth)
         await expect(async () => {
           const pill = (await pillShell.boundingBox())!
           expect(pill.width).toBeLessThan(320)
@@ -564,7 +563,12 @@ test.describe('extension mocked states', () => {
           expect(pill.y).toBeGreaterThan(viewport.height / 2)
           expect(pill.y + pill.height).toBeLessThanOrEqual(viewport.height)
           if (placement === 'bottom') {
-            expect(Math.abs(pill.x + pill.width / 2 - layoutWidth / 2)).toBeLessThanOrEqual(4)
+            // Centred over the video, which stops where Twitch chat starts.
+            const player = await extension.page.evaluate(() => {
+              const rect = document.querySelector('#player')!.getBoundingClientRect()
+              return { left: rect.left, right: rect.right }
+            })
+            expect(Math.abs(pill.x + pill.width / 2 - (player.left + player.right) / 2)).toBeLessThanOrEqual(4)
           }
         }).toPass({ timeout: 5_000 })
         // The middle of the page (player and chat) must stay Twitch's to click.
