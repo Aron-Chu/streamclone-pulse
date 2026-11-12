@@ -175,6 +175,13 @@ const click = (element: Element) => act(() => (element as HTMLElement).click())
 const key = (element: Element, value: string) => act(() => {
   element.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true }))
 })
+/** Turns the chart's spike markers on and picks the ranked moment at `offsetSeconds`. */
+const pickChartMarker = (host: ParentNode, offsetSeconds: number) => {
+  const toggle = host.querySelector('[data-chart-moment-toggle="true"]')!
+  if (toggle.getAttribute('aria-pressed') !== 'true') click(toggle)
+  const marker = host.querySelector(`[data-chart-moment-marker="true"][data-chart-moment-marker-offset="${offsetSeconds}"]`)!
+  act(() => { marker.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+}
 
 describe('Top Moments card (live panel)', () => {
   it('shows nothing above the list until a moment is picked', () => {
@@ -246,8 +253,8 @@ describe('Top Moments card (live panel)', () => {
   it('shows a ranked moment picked on the chart in the card, and keeps a minute under the chart', () => {
     const host = mount(<Panel />)
 
-    // The strongest-moment shortcut sits with the chart and picks its top marker.
-    click(host.querySelector('[data-featured-moment="true"]')!)
+    // The top moment's spike marker on the chart picks it.
+    pickChartMarker(host, 300)
     expect(openCard(host)).not.toBeNull()
     expect(topCardLabel(host)).toMatch(/^Selected moment at 00:05/)
     expect(chartCard(host)).toBeNull()
@@ -333,7 +340,7 @@ describe('Top Moments card (live panel)', () => {
 
     click(rows(host)[1])
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
-    click(host.querySelector('[data-featured-moment="true"]')!)
+    pickChartMarker(host, 300)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
 
     const plot = host.querySelector('[data-chart-scrubber="true"]')!

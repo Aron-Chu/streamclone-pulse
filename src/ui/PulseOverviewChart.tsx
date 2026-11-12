@@ -132,6 +132,8 @@ const PAD_LEFT = 4
 const PAD_RIGHT = 12
 const PAD_TOP = 14
 const PAD_BOTTOM = 12
+/** The Viewers lane tag, sized for its 11 px label. */
+const VIEWER_TAG_WIDTH = 54
 const VIEWER_STRIP_SHARE_COLLAPSED = 0.28
 const VIEWER_STRIP_SHARE_EXPANDED = 0.22
 const ACTIVITY_CHAT_FRACTION = 0.54
@@ -736,6 +738,8 @@ function PulseOverviewChartImpl({
   const plotHeight = Math.max(48, plotBottom - plotTop)
   const viewerBandTop = plotTop
   const viewerBandBottom = plotTop + plotHeight * viewerStripShare
+  // A lane too short to stack the Viewers tag over a marker label puts the label beside the tag.
+  const viewerLabelMinX = viewerBandBottom - viewerBandTop < 36 ? PAD_LEFT + 4 + VIEWER_TAG_WIDTH + 6 : PAD_LEFT + 4
   const activityTop = viewerBandBottom + (showViewerStrip ? 4 : 0)
   const activityBottom = plotBottom
   const chartOffsets = useMemo(
@@ -1639,20 +1643,19 @@ function PulseOverviewChartImpl({
             <rect
               x={PAD_LEFT + 4}
               y={viewerBandTop + 4}
-              width={42}
-              height={13}
+              width={VIEWER_TAG_WIDTH}
+              height={17}
               rx={4}
               fill="rgba(8, 15, 24, 0.72)"
               stroke={hexToRgba(CHART_THEME.viewer.color, 0.32)}
               strokeWidth="0.75"
             />
             <text
-              x={PAD_LEFT + 25}
-              y={viewerBandTop + 13}
+              x={PAD_LEFT + 4 + VIEWER_TAG_WIDTH / 2}
+              y={viewerBandTop + 16.5}
               fill={CHART_THEME.viewer.color}
-              fontSize="7.5"
+              fontSize="11"
               fontWeight="800"
-              letterSpacing="0.04em"
               textAnchor="middle"
             >
               Viewers
@@ -1703,10 +1706,10 @@ function PulseOverviewChartImpl({
                 opacity={0.72}
               />
               <text
-                x={Math.min(width - PAD_RIGHT - 4, viewerStartMarkerX + 4)}
+                x={Math.min(width - PAD_RIGHT - 4, Math.max(viewerStartMarkerX + 4, viewerLabelMinX))}
                 y={viewerBandBottom - 4}
                 fill={CHART_THEME.viewer.color}
-                fontSize="7.5"
+                fontSize="11"
                 fontWeight="750"
               >
                 Viewer tracking began
@@ -1726,10 +1729,10 @@ function PulseOverviewChartImpl({
                 opacity={0.58}
               />
               <text
-                x={Math.max(PAD_LEFT + 4, viewerEndMarkerX - 4)}
+                x={Math.max(viewerLabelMinX, viewerEndMarkerX - 4)}
                 y={viewerBandBottom - 4}
                 fill={CHART_THEME.viewer.color}
-                fontSize="7.5"
+                fontSize="11"
                 fontWeight="700"
                 textAnchor="end"
               >
@@ -1753,7 +1756,7 @@ function PulseOverviewChartImpl({
                 x={width / 2}
                 y={viewerBandBottom - 4}
                 fill={CHART_THEME.viewer.color}
-                fontSize="8"
+                fontSize="11"
                 fontWeight="600"
                 textAnchor="middle"
                 opacity={0.5}
@@ -2058,9 +2061,10 @@ function PulseOverviewChartImpl({
             <text
               key={tickIndex}
               x={insetX}
-              y={height - 4}
+              // Tick labels have no descenders, so the 11 px row sits 2 px off the bottom and clears the plot.
+              y={height - 2}
               fill="rgba(161, 161, 170, 0.95)"
-              fontSize="9"
+              fontSize="11"
               fontWeight="700"
               textAnchor={tickIndex === 0 ? 'start' : isLast ? 'end' : 'middle'}
             >

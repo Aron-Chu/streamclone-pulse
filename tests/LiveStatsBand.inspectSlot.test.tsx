@@ -222,6 +222,21 @@ describe('LiveStatsBand chart layout', () => {
     expect(markup).not.toContain('>0 · 5m')
   })
 
+  it('names the missing 5m change, not the count, when the count has no known age', () => {
+    const markup = renderToStaticMarkup(
+      <LiveStatsBand
+        payload={makePayload([])}
+        backendUrl="https://api.streampulse.stream"
+        currentOffsetSeconds={600}
+        isLive
+        liveMetadata={{ available: true, isLive: true, viewerCount: 1_200 }}
+      />,
+    )
+    expect(markup).toContain('1,200')
+    expect(markup).toContain('5m change unknown')
+    expect(markup).not.toContain('5m · unavailable')
+  })
+
   it('renders an idle readout band above the chart without a bottom inspector card', () => {
     const idle = renderToStaticMarkup(
       <LiveStatsBand

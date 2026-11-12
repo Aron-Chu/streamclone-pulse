@@ -459,7 +459,7 @@ export function GamesPlayedStrip({
                   onKeyDown={event => onItemKeyDown(event, index)}
                 >
                   <GameArt gameName={slot.segment.gameName} boxArtUrl={slot.segment.boxArtUrl} categoryId={slot.segment.categoryId} />
-                  <span aria-hidden="true" className="pulse-games-card-name">{slot.segment.gameName}</span>
+                  <span aria-hidden="true" lang="en" className="pulse-games-card-name"><span className="pulse-games-card-name-text">{slot.segment.gameName}</span></span>
                 </button>
               </div>
             )

@@ -271,7 +271,7 @@ export const shadowStyles = `
     min-width: 0;
   }
   .pulse-workspace [data-pulse-section-heading] h2,
-  .pulse-workspace [data-pulse-section-heading] h3 { letter-spacing: 0 !important; }
+  .pulse-workspace [data-pulse-section-heading] h3 { font-size: 11px !important; letter-spacing: 0.05em !important; }
   .pulse-clips-section { min-width: 0; padding: 14px 4px; border-top: 1px solid rgba(255,255,255,.09); }
   .pulse-clips-count { color: ${theme.textMuted}; font-variant-numeric: tabular-nums; margin-left: 6px; }
   .pulse-clip-control {
@@ -333,31 +333,6 @@ export const shadowStyles = `
     outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
     outline-offset: 2px;
   }
-  .pulse-strength-two { display: grid; gap: 2px; line-height: 12px; min-width: 0; }
-  /* One line only: a wrapped first line would stack the pill under two 12px
-     lines and grow the row past 40px in narrow or compact panels. */
-  .pulse-strength-two > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pulse-strength-line2 { align-items: center; display: flex; gap: 5px; height: 14px; min-width: 0; }
-  .pulse-strength-pill {
-    align-items: center;
-    border: 1px solid;
-    border-radius: 999px;
-    display: inline-flex;
-    font-size: 9px;
-    font-variant-numeric: tabular-nums;
-    font-weight: 800;
-    height: 14px;
-    line-height: 1;
-    padding: 0 6px;
-    white-space: nowrap;
-  }
-  .pulse-strength-pill[data-lvl="1"] { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.12); color: ${theme.textSecondary}; }
-  .pulse-strength-pill[data-lvl="2"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.12); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.28); color: rgb(var(--pulse-accent-light-rgb, 167, 139, 250)); }
-  .pulse-strength-pill[data-lvl="3"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.24); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45); color: ${theme.textPrimary}; }
-  .pulse-strength-pill[data-lvl="4"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.48); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.65); color: #fff; }
-  /* Solid fills carry text on accentStrong (design guide): onAccent on the
-     plain Aurora accent is only 4.2:1, under AA for 9px text. */
-  .pulse-strength-pill[data-lvl="5"] { background: rgb(var(--pulse-accent-strong-rgb, 124, 58, 237)); border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.9); color: ${theme.onAccent}; }
   .pulse-library-peek-cta {
     align-items: center;
     appearance: none;
@@ -420,7 +395,7 @@ export const shadowStyles = `
     min-height: 28px;
     padding: 0 10px;
     font-family: inherit;
-    font-size: 10.5px;
+    font-size: 12px;
     font-weight: 800;
     white-space: nowrap;
   }
@@ -457,7 +432,7 @@ export const shadowStyles = `
     display: inline-flex;
     flex-shrink: 0;
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     gap: 4px;
     padding: 0;
@@ -506,11 +481,15 @@ export const shadowStyles = `
     outline: 2px solid rgba(103, 232, 249, 0.95);
     outline-offset: 1px;
   }
+  /* Sticks to the bottom while there is more below; at the end of the panel it
+     takes its own room after the last item, so it never covers that item. */
   .pulse-bookmark-toast-anchor {
     bottom: 0;
-    height: 0;
     position: sticky;
     z-index: 30;
+  }
+  .pulse-bookmark-toast-anchor:has(> .pulse-bookmark-toast) {
+    padding-bottom: 8px;
   }
   .pulse-bookmark-toast {
     align-items: center;
@@ -518,16 +497,12 @@ export const shadowStyles = `
     background: #1d1d27;
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 10px;
-    bottom: 8px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     color: #e4e4e7;
     display: flex;
     font-size: 11.5px;
     gap: 10px;
-    left: 0;
     padding: 8px 10px;
-    position: absolute;
-    right: 0;
   }
   .pulse-bookmark-toast[data-bookmark-toast="error"] {
     border-color: rgba(248, 113, 113, 0.45);
@@ -965,10 +940,8 @@ export const shadowStyles = `
     min-width: 0;
   }
   .pulse-past-vod-meta-row .pulse-past-vod-status {
-    font-size: 9px;
-    letter-spacing: 0.04em;
+    font-size: 12px;
     padding: 2px 6px;
-    text-transform: uppercase;
   }
   .pulse-past-vod-actions {
     align-items: stretch;
@@ -981,7 +954,7 @@ export const shadowStyles = `
   }
   .pulse-past-vod-row-compact .pulse-past-vod-action {
     box-sizing: border-box;
-    font-size: 9px;
+    font-size: 12px;
     padding: 3px 6px;
     text-align: center;
     width: 100%;
@@ -1004,12 +977,10 @@ export const shadowStyles = `
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.08);
     color: var(--pulse-accent-ink, #ddd6fe);
     cursor: pointer;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 800;
-    letter-spacing: 0.04em;
     min-height: 30px;
     padding: 4px 8px;
-    text-transform: uppercase;
     transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
   }
   .pulse-past-vod-action:hover:not(:disabled) {
@@ -1048,11 +1019,9 @@ export const shadowStyles = `
     border: 1px solid transparent;
     border-radius: 999px;
     display: inline-flex;
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 800;
-    letter-spacing: 0.04em;
     padding: 2px 7px;
-    text-transform: uppercase;
   }
   .pulse-past-vod-status-live { background: rgba(239, 68, 68, 0.12); border-color: rgba(248, 113, 113, 0.25); color: #fecaca; }
   .pulse-past-vod-status-synced { background: rgba(16, 185, 129, 0.12); border-color: rgba(52, 211, 153, 0.25); color: #6ee7b7; }
@@ -1064,12 +1033,10 @@ export const shadowStyles = `
     color: var(--pulse-accent-soft, #c4b5fd);
     cursor: pointer;
     display: block;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 900;
-    letter-spacing: 0.05em;
     padding: 10px 12px;
     text-align: center;
-    text-transform: uppercase;
     transition: background 0.15s ease, color 0.15s ease;
     width: 100%;
     background: transparent;
@@ -1521,11 +1488,9 @@ export const shadowStyles = `
     border: 0;
     border-radius: 7px;
     padding: 8px 12px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 800;
-    letter-spacing: 0.04em;
     min-height: 32px;
-    text-transform: uppercase;
     cursor: pointer;
     color: ${theme.textSecondary};
     background: transparent;
@@ -1560,9 +1525,8 @@ export const shadowStyles = `
     width: 100%;
   }
   .pulse-sidebar-tabs-compact .pulse-sidebar-tab {
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 800;
-    letter-spacing: 0.06em;
     min-height: 28px;
     padding: 4px 0;
   }

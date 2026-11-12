@@ -228,7 +228,7 @@ export function MostReactedSection({
 }
 
 const styles: Record<string, CSSProperties> = {
-  momentCount: { color: theme.textMuted, fontSize: 9, fontVariantNumeric: 'tabular-nums', marginRight: 6 },
+  momentCount: { color: theme.textMuted, fontSize: 11, fontVariantNumeric: 'tabular-nums', marginRight: 6 },
   momentList: { display: 'grid', gap: 4 },
   status: {
     background: 'rgba(255, 255, 255, 0.035)',
@@ -239,7 +239,7 @@ const styles: Record<string, CSSProperties> = {
     padding: '10px 12px',
   },
   statusTitle: { color: theme.textSecondary, fontSize: 11, fontWeight: 800 },
-  statusText: { color: theme.textMuted, fontSize: 10, lineHeight: 1.4 },
+  statusText: { color: theme.textMuted, fontSize: 11, lineHeight: 1.4 },
   expandButton: {
     alignItems: 'center',
     background: 'transparent',
@@ -247,7 +247,7 @@ const styles: Record<string, CSSProperties> = {
     color: theme.accentSoft,
     cursor: 'pointer',
     display: 'flex',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 700,
     gap: 4,
     // The section's 12 px grid gap, plus its own 2 px.
@@ -255,5 +255,5 @@ const styles: Record<string, CSSProperties> = {
     padding: '4px 0',
     width: '100%',
   },
-  expandChevron: { fontSize: 9, lineHeight: 1 },
+  expandChevron: { fontSize: 11, lineHeight: 1 },
 }

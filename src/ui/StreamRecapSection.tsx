@@ -783,7 +783,7 @@ export function StreamRecapSection({
 
   if (uiState === 'loading') {
     return (
-      <PulseSectionCard title={title} meta={cardMeta}>
+      <PulseSectionCard title={title} meta={cardMeta} stackMeta>
         <RecapSkeleton />
       </PulseSectionCard>
     )
@@ -818,7 +818,9 @@ export function StreamRecapSection({
   }
 
   return (
-    <PulseSectionCard title={title} meta={cardMeta} titleAction={<MyMomentsLink />}>
+    // Meta on its own line, like Top moments: in a 340 px column the title,
+    // My Moments and the meta do not fit on one row.
+    <PulseSectionCard title={title} meta={cardMeta} titleAction={<MyMomentsLink />} stackMeta>
       {recap ? (
         <RecapReadyContent
           externalPoint={externalPoint}
