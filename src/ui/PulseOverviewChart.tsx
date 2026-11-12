@@ -454,6 +454,10 @@ function PulseOverviewChartImpl({
     [visibleRollups, fullIndexByOffset],
   )
   const [width, setWidth] = useState(DEFAULT_WIDTH)
+  const viewerStartLabelRef = useRef<SVGTextElement | null>(null)
+  const viewerEndLabelRef = useRef<SVGTextElement | null>(null)
+  const viewerLabelPlacementRef = useRef<(() => void) | null>(null)
+  const [viewerLabelStackHeight, setViewerLabelStackHeight] = useState(0)
   const [activeMomentMarkerKey, setActiveMomentMarkerKey] = useState<string | null>(null)
   // Pointer previews are committed to lightweight SVG chrome imperatively
   // (Aug-16 hover shell): keeping them out of React prevents every hovered
@@ -534,6 +538,7 @@ function PulseOverviewChartImpl({
     let lastRounded = -1
     const applyWidth = (raw: number) => {
       const next = Math.round(raw)
+      viewerLabelPlacementRef.current?.()
       if (next === lastRounded) return
       lastRounded = next
       captureBoundsRef.current = null
@@ -737,9 +742,10 @@ function PulseOverviewChartImpl({
   const plotBottom = height - PAD_BOTTOM
   const plotHeight = Math.max(48, plotBottom - plotTop)
   const viewerBandTop = plotTop
-  const viewerBandBottom = plotTop + plotHeight * viewerStripShare
+  const viewerBaseBandHeight = plotHeight * viewerStripShare
+  const viewerBandBottom = plotTop + (showViewerStrip ? Math.max(viewerBaseBandHeight, viewerLabelStackHeight) : 0)
   // A lane too short to stack the Viewers tag over a marker label puts the label beside the tag.
-  const viewerLabelMinX = viewerBandBottom - viewerBandTop < 36 ? PAD_LEFT + 4 + VIEWER_TAG_WIDTH + 6 : PAD_LEFT + 4
+  const viewerLabelMinX = viewerBaseBandHeight < 38 ? PAD_LEFT + 4 + VIEWER_TAG_WIDTH + 6 : PAD_LEFT + 4
   const activityTop = viewerBandBottom + (showViewerStrip ? 4 : 0)
   const activityBottom = plotBottom
   const chartOffsets = useMemo(
@@ -1180,6 +1186,43 @@ function PulseOverviewChartImpl({
   const viewerEndMarkerX = viewerSampleWindowComplete
     ? visibleViewerMarkerX(viewerSampleEndOffsetSeconds)
     : null
+
+  useIsomorphicLayoutEffect(() => {
+    let disposed = false
+    const placeLabels = () => {
+      if (disposed) return
+      const measure = (node: SVGTextElement | null, marker: number | null) => {
+        if (!node || marker == null || typeof node.getBBox !== 'function') return null
+        let box: DOMRect
+        try { box = node.getBBox() } catch { return null }
+        if (!box.width || !box.height) return null
+        return { node, marker, width: box.width, height: box.height, bearing: box.x - Number(node.getAttribute('x')), left: 0 }
+      }
+      const start = measure(viewerStartLabelRef.current, viewerStartMarkerX)
+      const end = measure(viewerEndLabelRef.current, viewerEndMarkerX)
+      const left = viewerLabelMinX + 1
+      const right = width - PAD_RIGHT - 1
+      const stacked = Boolean(start && end && start.width + end.width + 2 > right - left)
+      setViewerLabelStackHeight(stacked && start && end ? 2 * Math.max(start.height, end.height) + (viewerBaseBandHeight < 38 ? 10 : 31) : 0)
+      if (start) start.left = clampNumber(start.marker + 4, left, right - start.width)
+      if (end) end.left = clampNumber(end.marker - 4 - end.width, left, right - end.width)
+      if (start && end && !stacked && start.left + start.width + 2 > end.left) {
+        end.left = Math.min(right - end.width, start.left + start.width + 2)
+        start.left = Math.max(left, Math.min(start.left, end.left - start.width - 2))
+      }
+      // Clamp measured glyph bounds, not just an SVG anchor. Keep both full
+      // 11 px labels; narrower lanes use two rows instead of overlapping them.
+      for (const label of [start, end]) {
+        if (!label) continue
+        label.node.setAttribute('x', String(label.left - label.bearing))
+        label.node.setAttribute('y', String(viewerBandBottom - 4 - (label === start && stacked ? Math.max(start!.height, end!.height) + 2 : 0)))
+      }
+    }
+    viewerLabelPlacementRef.current = placeLabels
+    placeLabels()
+    void document.fonts?.ready.then(placeLabels)
+    return () => { disposed = true; viewerLabelPlacementRef.current = null }
+  }, [loading, n, showViewerStrip, viewerStartMarkerX, viewerEndMarkerX, viewerLabelMinX, viewerBaseBandHeight, viewerBandBottom, width])
 
   const emoteBars = useMemo(() => {
     if (n === 0) return []
@@ -1706,6 +1749,7 @@ function PulseOverviewChartImpl({
                 opacity={0.72}
               />
               <text
+                ref={viewerStartLabelRef}
                 x={Math.min(width - PAD_RIGHT - 4, Math.max(viewerStartMarkerX + 4, viewerLabelMinX))}
                 y={viewerBandBottom - 4}
                 fill={CHART_THEME.viewer.color}
@@ -1729,6 +1773,7 @@ function PulseOverviewChartImpl({
                 opacity={0.58}
               />
               <text
+                ref={viewerEndLabelRef}
                 x={Math.max(viewerLabelMinX, viewerEndMarkerX - 4)}
                 y={viewerBandBottom - 4}
                 fill={CHART_THEME.viewer.color}
