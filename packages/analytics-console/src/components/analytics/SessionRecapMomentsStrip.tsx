@@ -419,7 +419,7 @@ export function SessionRecapMomentsStrip({
       {/* Inside the Moments tab the tab is the heading; kept for screen readers.
           The explainer moved into the tab's (i) (F17). */}
       <div className={isRightRail ? 'ssr-vh' : 'ssr-h'}>
-        <h3>Pulse Moments</h3>
+        <h2>Pulse Moments</h2>
       </div>
       <p className="ssr-vh">Ranked by how strongly chat reacted, not by clip quality. Select one to watch it.</p>
 

@@ -71,7 +71,7 @@ export function StreamRecapPanel({
       data-stream-recap-panel
     >
       <div className="mb-3">
-        <h3 className="m-0 text-sm font-bold text-zinc-200">Stream Recap</h3>
+        <h2 className="m-0 text-sm font-bold text-zinc-200">Stream Recap</h2>
       </div>
       {hasHeadlineMetric ? (
         <div className="grid grid-cols-2 gap-3 border-b border-white/[0.07] pb-3 text-xs">

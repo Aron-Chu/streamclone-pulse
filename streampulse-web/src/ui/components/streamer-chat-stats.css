@@ -11,15 +11,6 @@
   gap: 1rem 2rem;
 }
 
-.streamer-chat-stats .streamer-chat-stats__eyebrow {
-  margin: 0 0 .65rem;
-  color: #b8a3ed;
-  font-size: .75rem;
-  font-weight: 700;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-}
-
 .streamer-chat-stats h2 {
   margin: 0;
   font-size: clamp(1.4rem, 2.5vw, 2rem);

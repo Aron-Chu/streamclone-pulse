@@ -236,7 +236,7 @@ describe('Conveyor pictures', () => {
     const ctx = { setTransform() {}, clearRect() {}, save() {}, restore() {}, translate() {}, rotate() {}, drawImage() {} }
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D)
     const mast = document.body.appendChild(document.createElement('header'))
-    const refs: HubV5ConveyorRefs = { mast: { current: mast }, kicker: { current: null }, field: { current: null }, tryRow: { current: null }, foot: { current: null } }
+    const refs: HubV5ConveyorRefs = { mast: { current: mast }, title: { current: null }, field: { current: null }, tryRow: { current: null }, foot: { current: null } }
     render(<HubV5Conveyor points={points(urls)} refs={refs} />)
     mast.remove()
     return set.mock.calls.map((c) => c[0])

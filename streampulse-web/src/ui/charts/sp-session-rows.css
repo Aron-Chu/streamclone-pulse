@@ -39,7 +39,7 @@
 /* ?moments=below: prod's "Pulse Moments" frame, full width under the chart card */
 .ssr--below { border: 1px solid rgb(255 255 255 / .1); border-radius: 4px; background: rgb(255 255 255 / .025); }
 .ssr-h { padding: 12px 12px 8px; }
-.ssr-h h3 { margin: 0; font-size: 14px; font-weight: 700; line-height: 20px; color: #e4e4e7; }
+.ssr-h h2 { margin: 0; font-size: 14px; font-weight: 700; line-height: 20px; color: #e4e4e7; }
 .ssr-vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ssr-pinned { flex: none; padding: 8px; border-bottom: 1px solid rgb(255 255 255 / .07); }
 

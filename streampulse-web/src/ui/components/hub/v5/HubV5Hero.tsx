@@ -34,13 +34,13 @@ function barBottom(): number {
 export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emotes, waiting = false }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; foot?: ReactNode; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[]; waiting?: boolean }) {
   const store = useHubV5SearchStore()
   const mastRef = useRef<HTMLElement>(null)
-  const kickerRef = useRef<HTMLParagraphElement>(null)
+  const titleRef = useRef<HTMLHeadingElement>(null)
   const fieldRef = useRef<HTMLDivElement>(null)
   const tryRef = useRef<HTMLParagraphElement>(null)
   const getRef = useRef<HTMLDivElement>(null)
   const footRef = useRef<HTMLDivElement>(null)
   const conveyorRefs = useMemo<HubV5ConveyorRefs>(
-    () => ({ mast: mastRef, kicker: kickerRef, field: fieldRef, tryRow: tryRef, getRow: getRef, foot: footRef }),
+    () => ({ mast: mastRef, title: titleRef, field: fieldRef, tryRow: tryRef, getRow: getRef, foot: footRef }),
     [],
   )
 
@@ -102,8 +102,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emo
   return (
     <header className="hv5-mast" ref={mastRef}>
       <HubV5Conveyor points={points} refs={conveyorRefs} />
-      <p className="hv5-hero-k" ref={kickerRef}>Analytics</p>
-      <h1 className="hv5-hero-h">Find your streamer</h1>
+      <h1 className="hv5-hero-h" ref={titleRef}>Find your streamer</h1>
       <p className="hv5-hero-sub">Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
       <div className="hv5-hero-field" ref={fieldRef}>
         <HubV5SearchBox live={live} variant="hero" games={games} emotes={emotes} />
