@@ -885,6 +885,30 @@ test.describe('extension mocked states', () => {
     expect(evidence.pageErrors).toEqual([])
   })
 
+  test('a hosted outage in the sidebar offers Back to chat, unsaved, instead of Open settings', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'api-500', twitchKind: 'live', storage: { sidebarTab: 'pulse' } })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await assertOutageCardWithRetry(extension.page)
+
+    // Settings can't fix a hosted outage; the way out is back to chat, as on
+    // the Not charted card, and it doesn't rewrite the reader's saved tab.
+    const panel = extension.page.locator('#streamclone-pulse-root')
+    const card = panel.locator('.pulse-error-block')
+    const chatTab = extension.page.getByRole('tab', { name: 'Chat', exact: true })
+    const savedTab = async () => (await readExtensionStorage(extension.serviceWorker, ['sidebarTab'])).sidebarTab
+    await expect(card.getByRole('button', { name: 'Open settings', exact: true })).toHaveCount(0)
+    await card.getByRole('button', { name: 'Back to chat', exact: true }).click()
+    await expect(chatTab).toHaveAttribute('aria-selected', 'true')
+    await expect(panel).toBeHidden()
+    expect(await savedTab()).toBe('pulse')
+    expect(evidence.pageErrors).toEqual([])
+  })
+
   test('API timeout does not leave uncaught page exceptions', async ({
     extension,
     prepare,

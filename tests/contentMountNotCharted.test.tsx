@@ -221,4 +221,32 @@ describe('content mount on a channel with nothing to chart', () => {
     expect(panel.textContent).not.toContain('Not charted')
     expect(shownTab()).toBe('pulse')
   })
+
+  // The outage card's way out: a hosted viewer can't fix an outage in Settings,
+  // so it offers Back to chat (same exit as Not charted, unsaved). An own stack
+  // keeps Open settings, since its fix may be the backend URL.
+  function outageButtons(): HTMLButtonElement[] {
+    const card = document.getElementById(PULSE_ROOT_HOST_ID)?.shadowRoot?.querySelector('.pulse-error-block')
+    expect(card?.textContent).toContain("Can't reach StreamPulse")
+    return [...(card?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+  }
+
+  it('a hosted outage offers Retry and Back to chat, and going back saves nothing', async () => {
+    await settle(() => mountOverlay('readlive', null, channel('readlive'), { sessionOpenedAtMs: 1, error: 'pulse 500' }))
+    expect(shownTab()).toBe('pulse')
+    const buttons = outageButtons()
+    expect(buttons.map(node => node.textContent?.trim())).toEqual(['Retry', 'Back to chat'])
+
+    await settle(() => buttons[1]!.click())
+    expect(shownTab()).toBe('chat')
+    expect(panelHidden()).toBe(true)
+    expect(savedTabWrites()).toEqual([])
+  })
+
+  it('an own-stack outage keeps Retry and Open settings', async () => {
+    synced.backendUrl = 'http://localhost:8081'
+    synced.localBackendOptIn = true
+    await settle(() => mountOverlay('readlive', null, channel('readlive'), { sessionOpenedAtMs: 1, error: 'pulse 500' }))
+    expect(outageButtons().map(node => node.textContent?.trim())).toEqual(['Retry', 'Open settings'])
+  })
 })
