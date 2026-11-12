@@ -30,6 +30,8 @@ import {
   SIDEBAR_MINI_PANEL_HEIGHT,
   SIDEBAR_COLLAPSED_PILL_HEIGHT,
   resolveChatDockBottomY,
+  dockSpan,
+  measureChatRect,
   type ChatRectSnapshot,
   type NativeChatFocusHandoff,
   type SidebarSnapLayout,
@@ -42,7 +44,7 @@ import {
 } from './resolveOverlayHostVisibility.ts'
 import { applyTwitchSidebarChromeHides } from './twitchSidebarChrome.ts'
 import type { TwitchPageContext } from './twitch.ts'
-import { detectTwitchChannelLive } from './twitch.ts'
+import { detectTwitchChannelLive, getPrimaryVideo } from './twitch.ts'
 import { installContentDiagnosticsEmitters } from '../shared/extensionDiagnostics.ts'
 import { EXTENSION_DIAGNOSTICS_INGEST_ENABLED } from '../shared/diagnosticsConsent.ts'
 import type { LivePollController } from './livePoll.ts'
@@ -119,6 +121,7 @@ let storedPlacement: OverlayPlacement = DEFAULT_OVERLAY_PLACEMENT
 let placementResolved = false
 let sidebarFallbackToFloat = false
 let sidebarFallbackTimer: number | null = null
+let dockTimer: number | undefined
 let chatClosedPulseDockEnabled = false
 let mountStorageListenerInstalled = false
 let overlayDiagnosticsInstalled = false
@@ -344,8 +347,21 @@ function applyFixedRect(host: HTMLElement | null, rect: ChatRectSnapshot | null,
   host.style.overflow = 'hidden'
 }
 
+function syncDockSpan(): void {
+  if (!panelHostEl) {
+    window.clearInterval(dockTimer)
+    dockTimer = undefined
+    return
+  }
+  const { x, w } = dockSpan(getPrimaryVideo()?.getBoundingClientRect(), measureChatRect(), window.innerWidth)
+  panelHostEl.style.setProperty('--pulse-dock-x', `${x}px`)
+  panelHostEl.style.setProperty('--pulse-dock-w', `${w}px`)
+}
+
 function applyFloatingHost(host: HTMLElement | null): void {
   if (!host) return
+  syncDockSpan()
+  dockTimer ??= window.setInterval(syncDockSpan, 400)
   host.style.display = 'block'
   host.style.top = ''
   host.style.left = ''

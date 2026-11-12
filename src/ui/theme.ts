@@ -45,6 +45,41 @@ export const theme = {
 // The Supporter sign lights up on hover or focus; reduced motion shows it lit
 // without movement. Keep explanatory comments out of the shipped CSS.
 export const shadowStyles = `
+  .placement-bottom {
+    position: fixed;
+    left: var(--pulse-dock-x, 50%);
+    bottom: 16px;
+    transform: translateX(-50%);
+    width: min(860px, var(--pulse-dock-w, calc(100vw - 32px)));
+    max-height: min(52vh, 560px);
+    height: auto;
+    flex: 0 0 auto;
+  }
+  .mode-mini.placement-bottom {
+    max-height: 72px;
+    overflow: hidden;
+  }
+  .mode-mini.placement-right {
+    top: auto;
+    bottom: 88px;
+    right: 12px;
+    transform: none;
+    width: min(420px, calc(100vw - 24px));
+    max-height: 72px;
+    overflow: hidden;
+  }
+  .mode-collapsed.placement-right {
+    top: auto;
+    bottom: 24px;
+    right: 12px;
+    transform: none;
+    width: auto;
+    max-height: none;
+    border-radius: 999px;
+    overflow: visible;
+  }
+  .mode-collapsed.placement-bottom { bottom: 16px; width: auto; border-radius: 999px; overflow: visible; }
+  .placement-bottom:not(.mode-mini) { animation-name: pulse-in-bottom; }
   @keyframes pulse-in {
     from { opacity: 0; transform: translateY(8px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
