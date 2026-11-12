@@ -909,6 +909,27 @@ test.describe('extension mocked states', () => {
     expect(evidence.pageErrors).toEqual([])
   })
 
+  test('a hosted outage in the floating panel shows Retry alone, across the whole row', async ({
+    extension,
+    prepare,
+    evidence,
+  }) => {
+    await prepare({ scenario: 'api-500', twitchKind: 'live', storage: { overlayPlacement: 'right' } })
+    await openTwitchChannel(extension.page)
+    await waitForPulseRoot(extension.page)
+    await expect(extension.page.locator('#streamclone-pulse-root')).toHaveAttribute('data-streampulse-styles', 'loaded')
+    await assertOutageCardWithRetry(extension.page)
+
+    // No Chat tab to go back to, and Settings can't fix a hosted outage, so
+    // Retry stands alone and spans the footer row instead of half of it.
+    const footer = extension.page.locator('#streamclone-pulse-root .pulse-error-block .pulse-footer-actions')
+    await expect(footer.getByRole('button')).toHaveCount(1)
+    const retry = (await footer.getByRole('button', { name: 'Retry', exact: true }).boundingBox())!
+    const row = (await footer.boundingBox())!
+    expect(Math.abs(retry.width - row.width)).toBeLessThanOrEqual(1)
+    expect(evidence.pageErrors).toEqual([])
+  })
+
   test('API timeout does not leave uncaught page exceptions', async ({
     extension,
     prepare,
