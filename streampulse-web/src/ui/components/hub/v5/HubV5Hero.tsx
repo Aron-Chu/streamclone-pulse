@@ -130,9 +130,10 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emo
         <p className="hv5-hero-try" ref={tryRef} data-wait="" aria-hidden="true" />
       ) : null}
       <div className="hv5-hero-foot" ref={footRef}>
-        {poolSize > 0 ? <p className="hv5-scope">The hub below covers {formatHubInt(poolSize)} channels we track · not all of Twitch</p>
+        {/* The hub's one channel count (B1, 11-11): every list below says what it shows of it. */}
+        {poolSize > 0 ? <p className="hv5-scope">{formatHubInt(poolSize)} live channels tracked · not all of Twitch</p>
           // The same line without its number, unseen, so it wraps as the real one will.
-          : waiting ? <p className="hv5-scope" data-wait="" aria-hidden="true">The hub below covers the channels we track · not all of Twitch</p>
+          : waiting ? <p className="hv5-scope" data-wait="" aria-hidden="true">The live channels tracked · not all of Twitch</p>
             : null}
         {foot}
       </div>

@@ -30,12 +30,99 @@
   .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 32px; }
 }
 @media (max-width: 639px) {
-  /* min-height: room for two title lines (2 x 1.08) for every heading here, so the figures under it do not
-     drop when a title lands on two lines or the page switches to the not-recorded or error heading. */
-  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 21.6px; min-height: 2.16em; }
+  /* min-height: room for two lines (2 x 1.08) for a status heading (not recorded, not found, an error), so
+     the figures under it do not drop when one lands on two lines. The channel's name is one line beside its
+     picture (C1), about as tall as these two lines, so a switch between them barely moves the page. */
+  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 21.6px; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1:not([data-channel-name]) { min-height: 2.16em; }
 }
 
-/* One meta line: name · game · Started · Updated [refresh] · First 54s not tracked · Watch VOD · Data: Good.
+/* C1 (11-11): the channel's name is the headline. Picture | name over the badge row (Live or Ended, game,
+   started, updated, Watch VOD); the stream title is one grey line under the header (.ssp-title).
+   Below 1024 px the badge row runs under the picture and the name at full width, as the meta line did,
+   so its measured pending heights below still hold. */
+.analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+}
+.analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id > .ssp-meta-w { grid-column: 1 / -1; }
+.analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1[data-channel-name] {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  -webkit-line-clamp: none;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.analytics-console .ssp-av {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border: 2px solid rgb(255 255 255 / 0.12);
+  border-radius: 50%;
+  background: #27272a;
+}
+.analytics-console .ssp-av[data-live] { border-color: #e11d48; }
+.analytics-console .ssp-av img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.analytics-console .ssp-av-mono { font-size: 18px; font-weight: 800; line-height: 1; color: #e4e4e7; }
+@media (min-width: 640px) {
+  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1[data-channel-name] { font-size: 32px; }
+  .analytics-console .ssp-av { width: 52px; height: 52px; }
+  .analytics-console .ssp-av-mono { font-size: 22px; }
+}
+@media (min-width: 1024px) {
+  .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id { column-gap: 18px; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id > .ssp-av { grid-row: 1 / span 2; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id > h1.ssp-h1 { align-self: end; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id > .ssp-meta-w { grid-column: 2; align-self: start; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1[data-channel-name] { font-size: 46px; line-height: 1.1; letter-spacing: -0.03em; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id .ssp-meta { font-size: 16px; line-height: 22px; }
+  .analytics-console .ssp-av { width: 62px; height: 62px; }
+  .analytics-console .ssp-av-mono { font-size: 26px; }
+}
+/* The Live / Ended badge leads the badge row. */
+.analytics-console .ssp-meta .ssp-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 14px;
+  letter-spacing: 0.02em;
+}
+.analytics-console .ssp-meta [data-session-state='live'] .ssp-pill { background: #e11d48; color: #fff; text-transform: uppercase; }
+.analytics-console .ssp-meta [data-session-state='ended'] .ssp-pill { background: #2a2a33; color: #d4d4de; font-weight: 700; }
+@media (min-width: 1024px) {
+  .analytics-console .ssp-meta .ssp-pill { padding: 4px 8px; font-size: 13px; line-height: 15px; }
+}
+/* The stream's own title: one grey line, cut with an ellipsis (the whole title is its hover title and
+   stays in the page for screen readers). Its slot is held while the title is out. */
+.analytics-console[data-analytics-console-shell] header[data-session-header] > .ssp-title {
+  min-width: 0;
+  min-height: 22px;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  color: #a1a1aa;
+}
+@media (min-width: 1024px) {
+  .analytics-console[data-analytics-console-shell] header[data-session-header] > .ssp-title { min-height: 26px; font-size: 18px; line-height: 26px; }
+}
+
+/* One meta line (the badge row under the name, C1): Live · game · Started · Updated [refresh] · First 54s not tracked · Watch VOD · Data: Good.
    Each item draws its own leading dot in a 20 px slot and the line starts 20 px left, so a wrapped line
    (390 px) never starts with a stray dot; the wrapper clips that slot (6 px clip margin keeps focus rings). */
 .analytics-console .ssp-meta-w {
@@ -46,14 +133,15 @@
 /* While the first session read is out the line keeps its slot but stays hidden: its items arrive with
    the read and would slide "Data" and "Updated" across the line (CLS). The slot also keeps the rows the
    full line above wraps to (24 px rows, 2 px gaps), so the stat row under it does not drop when they
-   land: three rows below 456 px, two up to 797 px, one from 798 px (measured; the count follows the text). */
+   land: three rows below 394 px, two up to 777 px, one from 778 px (measured on an ended stream's full line
+   after C1 put the short Live/Ended badge where the name was, 11-11; the count follows the text). */
 .analytics-console .ssp-meta-w[data-session-meta-pending] {
   visibility: hidden;
 }
-@media (max-width: 797px) {
+@media (max-width: 777px) {
   .analytics-console .ssp-meta-w[data-session-meta-pending] { min-height: 50px; }
 }
-@media (max-width: 455px) {
+@media (max-width: 393px) {
   .analytics-console .ssp-meta-w[data-session-meta-pending] { min-height: 76px; }
 }
 .analytics-console .ssp-meta {

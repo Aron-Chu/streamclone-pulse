@@ -24,7 +24,7 @@ describe('hub cards while the hub request has failed (INT-02)', () => {
     cards(false)
     expect(screen.getByText('No synced channel has a full 5-minute window right now.')).toBeTruthy()
     expect(screen.getByText('No channels match.')).toBeTruthy()
-    expect(screen.getByText('0 of 500 live')).toBeTruthy()
+    expect(screen.getByText('Showing 0 of 500 live')).toBeTruthy()
   })
 })
 
@@ -47,15 +47,15 @@ describe('Channels on a saved copy (S1, 10-28)', () => {
     const { container } = render(<MemoryRouter>
       <HubV5Channels live={[]} poolSize={500} savedAt={at} nowMs={at + 5 * 60_000} game={null} onClearGame={() => {}} />
     </MemoryRouter>)
-    expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toBe(`0 of 500 live at ${hubClock(at)}`)
-    expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toMatch(/^0 of 500 live at 10:50\sAM$/)
+    expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toBe(`Showing 0 of 500 live at ${hubClock(at)}`)
+    expect(container.querySelector('[data-hv5-channel-count]')!.textContent).toMatch(/^Showing 0 of 500 live at 10:50\sAM$/)
   })
 
   it('names the day, with no "at", when it was saved on another day', () => {
     const count = (savedAt: number, nowMs: number) => render(<MemoryRouter>
       <HubV5Channels live={[]} poolSize={500} savedAt={savedAt} nowMs={nowMs} game={null} onClearGame={() => {}} />
     </MemoryRouter>).container.querySelector('[data-hv5-channel-count]')!.textContent
-    expect(count(new Date(2026, 9, 27, 23, 30).getTime(), new Date(2026, 9, 28, 2, 0).getTime())).toMatch(/^0 of 500 live yesterday, 11:30\sPM$/)
-    expect(count(new Date(2026, 9, 26, 21, 5).getTime(), new Date(2026, 9, 28, 9, 0).getTime())).toMatch(/^0 of 500 live Oct 26, 9:05\sPM$/)
+    expect(count(new Date(2026, 9, 27, 23, 30).getTime(), new Date(2026, 9, 28, 2, 0).getTime())).toMatch(/^Showing 0 of 500 live yesterday, 11:30\sPM$/)
+    expect(count(new Date(2026, 9, 26, 21, 5).getTime(), new Date(2026, 9, 28, 9, 0).getTime())).toMatch(/^Showing 0 of 500 live Oct 26, 9:05\sPM$/)
   })
 })

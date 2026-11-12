@@ -41,6 +41,7 @@ import {
 } from '../utils/statCards.ts'
 import {
   isActiveLiveCollectorStream,
+  isPlaceholderStreamTitle,
   isSyncPrefetchPlaceholder,
   newerChannelStream,
   resolveChannelActuallyLive,
@@ -75,13 +76,14 @@ import {
   resolveChartEmoteKeys,
   toggleEmotePlotSelection,
 } from '../utils/emotePlotSelection.ts'
-import { count, displayStreamTitle, duration, durationFromDetail, getLocalDateString } from '../utils/consoleFormat.ts'
+import { count, duration, durationFromDetail } from '../utils/consoleFormat.ts'
 import { deriveChartGameSegments, gameNameAtOffset } from '../utils/gameSegmentChart.ts'
 import { CoverageStartMetaItem, DataQualityButton, StatCard } from './analytics/ConsoleBits.tsx'
 import { StreamSidebar } from './analytics/StreamSidebar.tsx'
 import { TopEmoteTable } from './analytics/TopEmoteTable.tsx'
 import { MomentReviewPanel } from './analytics/MomentReviewPanel.tsx'
 import { SessionLifecycleMeta } from './analytics/PastBroadcastBanner.tsx'
+import { SessionChannelAvatar } from './analytics/SessionChannelAvatar.tsx'
 import { RelativeTimeText } from './analytics/RelativeTimeText.tsx'
 import { SessionRecapMomentsStrip } from './analytics/SessionRecapMomentsStrip.tsx'
 import { SelectedMomentCompactCard } from './analytics/SelectedMomentCompactCard.tsx'
@@ -1069,6 +1071,16 @@ export function AnalyticsConsole({
     && (streamsData?.items ?? []).length === 0
     && !channelIsLive
     && !isActiveLiveCollector
+  // C1 (11-11): the header leads with the channel's name and Twitch picture. Same read
+  // and key as the not-recorded panel, so the two share one answer.
+  const twitchChannelQuery = useQuery({
+    queryKey: ['analytics', 'twitch-channel', channelLogin],
+    queryFn: () => lookupTwitchChannel(channelLogin),
+    enabled: Boolean(channelLogin),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const twitchChannel = twitchChannelQuery.data?.state === 'found' ? twitchChannelQuery.data : null
   const streamVodId =resolveAnalyticsVodId(detail, recapForStream?.vodId) ?? fallbackVodId
   // (fix, 10-30) PIC-3: "still recording" only for the channel's current live
   // stream: live, and no newer stream in the channel's list (which has
@@ -1485,7 +1497,9 @@ export function AnalyticsConsole({
     ? recapQuery.isLoading || (recapQuery.isPending && !detail)
     : detailQuery.isLoading || (sidebarListLoading && !liveRouteSessionTarget) || shouldRedirectLiveRouteToSession)
 
-  const headerTitle = channelNotRecorded
+  // A status heading (never recorded, an unknown date, not found, a failed read) says so in
+  // the h1; every other heading is the channel's name (C1, 11-11).
+  const statusHeading = channelNotRecorded
     ? channelLogin
     : unresolvedSessionAlias
     ? `Session date ${streamId} outside loaded results`
@@ -1493,16 +1507,25 @@ export function AnalyticsConsole({
     ? `Session ${streamId} not found`
     : sessionLoadFailed
       ? `Unable to load ${channelLogin} session`
-    : displayStreamTitle(stream, channelLogin, [
-    // When the detail title is a "Syncing..." placeholder, fall back to the real
-    // broadcast title from the live frame / matched sidebar record before the
-    // date slug, so a resolved date route shows the actual stream title. A session
-    // route takes the live frame's title only from the frame it shows or stands in with.
-    isLiveRoute || currentLiveTarget ? liveQuery.data?.stream?.title : liveStandIn?.stream?.title,
-    matchedStream?.title,
-    streamsData?.items?.[0]?.title,
-    `${channelLogin} / ${getLocalDateString(stream?.startedAt) || 'session'}`,
-      ])
+    : null
+  const channelName = stream?.displayName?.trim()
+    || twitchChannel?.displayName?.trim()
+    || liveQuery.data?.stream?.displayName?.trim()
+    || channelLogin
+  const headerTitle = statusHeading ?? channelName
+  // The stream's own title: one grey line under the header, in full on hover and to screen
+  // readers. When the detail title is a "Syncing..." placeholder it falls back to the real
+  // broadcast title from the live frame / matched sidebar record. A session route takes the
+  // live frame's title only from the frame it shows or stands in with.
+  const streamTitle = statusHeading == null
+    ? [
+        stream?.title,
+        isLiveRoute || currentLiveTarget ? liveQuery.data?.stream?.title : liveStandIn?.stream?.title,
+        matchedStream?.title,
+        streamsData?.items?.[0]?.title,
+      ].map(title => title?.trim() ?? '').find(title => !isPlaceholderStreamTitle(title)) ?? null
+    : null
+  const streamStatePill = sessionIsLive ? 'live' : sessionEnded ? 'ended' : null
   const consoleGridClassName = chartFocused
     ? 'grid grid-cols-1 gap-4'
     : streamsVisible
@@ -1530,17 +1553,29 @@ export function AnalyticsConsole({
       data-shell-nested={shellNested ? 'true' : 'false'}
     >
       <div className="flex w-full flex-col gap-4">
-        <header data-session-header className="ssp-head flex flex-col gap-3 border-b border-white/[0.07] pb-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1">
-            {/* d3-v2 session-original: no badge row; the hub and channel links are
-                the page's breadcrumb, the live state and data quality are meta items. */}
-            <h1 className="ssp-h1 line-clamp-2 text-2xl font-black leading-[1.08] text-white [overflow-wrap:anywhere] lg:text-[32px]" title={headerTitle}>
+        <header data-session-header className="ssp-head flex flex-col gap-3 border-b border-white/[0.07] pb-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
+          {/* C1 (11-11): the channel's name is the headline, its picture beside it, and the
+              badge row under it (Live or Ended, game, started, updated, Watch VOD). The hub and
+              channel links stay the page's breadcrumb; the stream title is one grey line below. */}
+          <div className={statusHeading == null ? 'ssp-id min-w-0 flex-1' : 'min-w-0 flex-1'}>
+            {statusHeading == null ? (
+              <SessionChannelAvatar name={channelName} src={twitchChannel?.avatar} live={sessionIsLive} />
+            ) : null}
+            <h1
+              className="ssp-h1 line-clamp-2 text-2xl font-black leading-[1.08] text-white [overflow-wrap:anywhere] lg:text-[32px]"
+              title={headerTitle}
+              data-channel-name={statusHeading == null || undefined}
+            >
               {headerTitle}
             </h1>
             {channelNotRecorded ? null : (
               <div className="ssp-meta-w" data-session-meta data-session-meta-pending={sessionReadPending || undefined}>
                 <div className="ssp-meta">
-                  {stream?.displayName ? <span className="mi">{stream.displayName}</span> : null}
+                  {streamStatePill ? (
+                    <span className="mi" data-session-state={streamStatePill}>
+                      <span className="ssp-pill">{streamStatePill === 'live' ? 'Live' : 'Ended'}</span>
+                    </span>
+                  ) : null}
                   {stream?.category ? <span className="mi">{stream.category}</span> : null}
                   <SessionLifecycleMeta
                     isLiveRoute={isLiveRoute}
@@ -1637,6 +1672,12 @@ export function AnalyticsConsole({
               </button>
             </div>
           )}
+          {statusHeading == null ? (
+            // Its slot is held while the title is out, so nothing under it moves when it lands.
+            <p className="ssp-title lg:basis-full" data-session-title title={streamTitle ?? undefined}>
+              {streamTitle}
+            </p>
+          ) : null}
         </header>
         {channelNotRecorded ? <ChannelNotRecordedPanel login={channelLogin} suggest={suggestChannel} /> : <>
 

@@ -31,7 +31,8 @@ export interface HubReadoutView {
   emotes: string
   emotesPeak: HubReadoutPeak | null
   viewers: string
-  /** "N live" (≈ when it is a mean over several buckets), or ''. */
+  /** "N live in sample" (≈ when it is a mean over several buckets), or ''. The viewer sample's live channels, not the
+   *  live channels the hub tracks, which the hero counts once (B1 counts, 11-11). */
   live: string
   viewers2: string
   top: HubBucketEmote[]
@@ -44,7 +45,7 @@ const atLeast = (lowerBound: boolean, text: string) => (lowerBound && text !== '
 const dateShort = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
 
 function liveText(live: number, approximate: boolean): string {
-  return `${approximate ? '≈' : ''}${formatHubCardInt(live)} live`
+  return `${approximate ? '≈' : ''}${formatHubCardInt(live)} live in sample`
 }
 
 /** The locked bar [startMs, endMs) and the chart's bar for it (null over a gap, which the chart draws no bar for). */
@@ -113,7 +114,7 @@ export function hubReadoutView(model: HubActivitySpModel, bar: SpBar | null, sav
     emotesPeak: peak(model.peakEmotes, true),
     viewers: formatHubCardInt(latest.viewers),
     live: latest.live != null ? liveText(latest.live, false) : '',
-    viewers2: pv ? `peak ${formatHubCardInt(pv.value)} · ${hubCardClock(pv.t)}${pv.live != null ? ` · ${formatHubCardInt(pv.live)} live` : ''}` : '',
+    viewers2: pv ? `peak ${formatHubCardInt(pv.value)} · ${hubCardClock(pv.t)}${pv.live != null ? ` · ${formatHubCardInt(pv.live)} live in sample` : ''}` : '',
     top: topEmote && topEmote.count > 0 ? [topEmote] : [],
     top2: 'top emote',
   }

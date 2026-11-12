@@ -122,7 +122,7 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
   const countLabel = (unavailable || loading) && !live.length ? ''
     : game || q
     ? `${formatHubInt(rows.length)} ${rows.length === 1 ? 'channel' : 'channels'}`
-    : `${formatHubInt(live.length)} of ${formatHubInt(poolSize)} live${savedAt != null ? ` ${hubSavedAt(savedAt, nowMs ?? Date.now())}` : ''}`
+    : `Showing ${formatHubInt(live.length)} of ${formatHubInt(poolSize)} live${savedAt != null ? ` ${hubSavedAt(savedAt, nowMs ?? Date.now())}` : ''}`
 
   return (
     <section

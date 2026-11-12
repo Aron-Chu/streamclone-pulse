@@ -167,10 +167,6 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     screenerV1: screener({ multiplier: x, currentPerMin: now, baselinePerMin: usual, absoluteDeltaPerMin: now - usual }),
   }) as unknown as HubLiveChannel
   const hubWith = (channels: HubLiveChannel[]) => ({ ...capture, liveChannels: channels })
-  const wide = (on: boolean) => vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
-    matches: on && query.includes('1100px'), media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  }) as MediaQueryList)
 
   it('lists only what is heating up now, strongest × first, with how many more a minute beside it', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
@@ -188,28 +184,17 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     expect(within(rail()).queryByText('Top moments today')).toBeNull()
   })
 
-  it('shows every row from 1100 px; narrower, the first 6 and Show all in place', () => {
+  it('shows the first 6 and Show all in place at every width (desktop took the phone order, B1 11-11)', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
     const many = hubWith(Array.from({ length: 8 }, (_, i) => hot(`c${i}`, 2 + i / 10, 120, 60)))
-    const mq = wide(true)
-    const { unmount } = render(view({ attempt: 1, hub: many, nowMs: at }))
+    render(view({ attempt: 1, hub: many, nowMs: at }))
+    expect(upRows()).toHaveLength(UP_FIRST)
+    const all = within(rail()).getByRole('button', { name: 'Show all 8' })
+    expect(all.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(all)
     expect(upRows()).toHaveLength(8)
-    expect(within(rail()).queryByRole('button', { name: /^Show / })).toBeNull()
-    unmount()
-    mq.mockRestore()
-    const narrow = wide(false)
-    try {
-      render(view({ attempt: 1, hub: many, nowMs: at }))
-      expect(upRows()).toHaveLength(UP_FIRST)
-      const all = within(rail()).getByRole('button', { name: 'Show all 8' })
-      expect(all.getAttribute('aria-expanded')).toBe('false')
-      fireEvent.click(all)
-      expect(upRows()).toHaveLength(8)
-      fireEvent.click(within(rail()).getByRole('button', { name: 'Show fewer' }))
-      expect(upRows()).toHaveLength(UP_FIRST)
-    } finally {
-      narrow.mockRestore()
-    }
+    fireEvent.click(within(rail()).getByRole('button', { name: 'Show fewer' }))
+    expect(upRows()).toHaveLength(UP_FIRST)
   })
 
   it('says when nothing is picking up, and waits for the hub’s first answer', () => {
@@ -255,32 +240,12 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     expect(within(rail()).queryByText('Loading channels picking up')).toBeNull()
   })
 
-  it('fades the list’s bottom only while more of it is below', () => {
+  it('no longer scrolls inside a sticky column, so its bottom never fades', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
-    let scrolled = 0
-    const own = (el: Element, n: number) => (el.classList.contains('hv5-tm-body') ? n : 0)
-    const sh = vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockImplementation(function (this: Element) { return own(this, 900) })
-    const ch = vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (this: Element) { return own(this, 600) })
-    const st = vi.spyOn(Element.prototype, 'scrollTop', 'get').mockImplementation(() => scrolled)
-    try {
-      render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60)]), nowMs: at }))
-      const body = rail().querySelector<HTMLElement>('.hv5-tm-body')!
-      expect(body.hasAttribute('data-more')).toBe(true)
-      scrolled = 300
-      fireEvent.scroll(body)
-      expect(body.hasAttribute('data-more')).toBe(false)
-      scrolled = 120
-      fireEvent.scroll(body)
-      expect(body.hasAttribute('data-more')).toBe(true)
-    } finally {
-      sh.mockRestore()
-      ch.mockRestore()
-      st.mockRestore()
-    }
-    // the CSS masks only a body with more below, so the last line never sits in the fade
+    render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60)]), nowMs: at }))
+    expect(rail().querySelector('.hv5-tm-body')!.hasAttribute('data-more')).toBe(false)
     const css = readFileSync(resolve(__dirname, '../src/ui/components/hub/v5/hub-v5.css'), 'utf8')
-    expect(css.match(/\.hv5-top \.hv5-tm-body \{([^}]*)\}/)![1]).not.toContain('mask-image')
-    expect(css).toMatch(/\.hv5-top \.hv5-tm-body\[data-more\] \{ mask-image: linear-gradient\(180deg/)
+    expect(css).not.toMatch(/\.hv5-tm-body\[data-more\]/)
   })
 })
 

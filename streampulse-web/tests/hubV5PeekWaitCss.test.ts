@@ -23,11 +23,14 @@ describe('the phone peek while it waits (U6, 10-28)', () => {
     expect(1 + 4 + 22 + 16 + 3 * (52 + 1)).toBe(202)
   })
 
-  it('reserves it only while waiting, and only on phones', () => {
+  it('reserves it only while waiting: on phones, and from 720 px, where the peek shows too since B1 (11-11)', () => {
     const reservations = [...css.matchAll(/([^{}\n]*\.hv5-f3-peek[^{}\n]*)\{[^}]*min-height/g)].map(m => m[1].trim())
-    expect(reservations).toEqual(['.hv5-f3-peek[data-wait]'])
-    expect(css.split('.hv5-f3-peek[data-wait]')).toHaveLength(2)
+    expect(reservations).toEqual(['.hv5-f3-peek[data-wait]', '.hv5-f3-peek[data-wait]'])
+    expect(css.split('.hv5-f3-peek[data-wait]')).toHaveLength(3)
     expect(phone).toContain('.hv5-f3-peek[data-wait]')
+    // from 720 px each row is 44 px and its 1 px rule
+    expect(css).toContain('@media (min-width: 720px) { .hv5-f3-peek[data-wait] { min-height: 178px; } }')
+    expect(1 + 4 + 22 + 16 + 3 * (44 + 1)).toBe(178)
   })
 })
 
@@ -40,9 +43,10 @@ describe('the hero while the first answer loads', () => {
 })
 
 describe('the rail’s head, chips and links (10-30)', () => {
-  it('keeps the head and the chips whole in the sticky column when the rows overflow', () => {
-    // both sit in the >= 1536 px flex column above the scrolling rows; the chips are a scroll box (min-height 0)
-    expect(css).toMatch(/\.hv5-feed\.hv5-top \{ display: flex; flex-direction: column;/)
+  it('keeps the head and the chips whole, with no sticky scroll column since desktop took the phone order (B1, 11-11)', () => {
+    // the rail is a row of its own at every width: its first 6 rows, then Show all N
+    expect(css).not.toMatch(/\.hv5-feed\.hv5-top \{ display: flex;/)
+    expect(css).not.toContain('max-height: calc(100vh - 88px)')
     expect(css).toMatch(/\n\.hv5-top \.hv5-rh \{ flex: none;/)
     expect(css).toMatch(/\n\.hv5-tm-games \{ flex: none;/)
   })

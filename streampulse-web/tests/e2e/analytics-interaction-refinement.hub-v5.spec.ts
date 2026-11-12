@@ -65,7 +65,7 @@ for (const width of [390, 768, 1080, 1150, 1262, 1440, 1920]) {
 }
 
 for (const width of [1440, 1535, 1536, 1920]) {
-  test(`Moments sits beside the chart from 1536 px and under it below, keeping the canvas width at ${width}px`, async ({ page }) => {
+  test(`Picking up now sits under the chart at every desktop width (B1, 11-11), keeping the canvas width at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 })
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await installHubUxMock(page)
@@ -78,14 +78,9 @@ for (const width of [1440, 1535, 1536, 1920]) {
     const activity = (await page.locator('#activity').boundingBox())!
     const latest = page.locator('#latest')
     const rail = (await latest.boundingBox())!
-    if (width < 1536) {
-      await expect(latest).toHaveCSS('position', 'static')
-      expect(rail.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
-    } else {
-      await expect(latest).toHaveCSS('position', 'sticky')
-      expect(rail.x).toBeGreaterThanOrEqual(activity.x + activity.width - 1)
-      expect(rail.width).toBeCloseTo(380, 0)
-    }
+    await expect(latest).toHaveCSS('position', 'static')
+    expect(rail.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
+    expect(Math.abs(rail.x - activity.x)).toBeLessThanOrEqual(1)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 }

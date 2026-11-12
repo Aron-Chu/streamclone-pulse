@@ -39,7 +39,7 @@ describe('the hub’s coverage words (W1, 11-02)', () => {
   it('the hero: the Twitch channels we track, and the scope line with the real count', () => {
     const { container } = hero(500)
     expect(container.querySelector('.hv5-hero-sub')!.textContent).toBe('Chat, emotes and top moments for the Twitch channels we track, minute by minute.')
-    expect(container.querySelector('.hv5-scope')!.textContent).toBe('The hub below covers 500 channels we track · not all of Twitch')
+    expect(container.querySelector('.hv5-scope')!.textContent).toBe('500 live channels tracked · not all of Twitch')
     expect(container.textContent).not.toMatch(/we follow/i)
   })
 
@@ -57,7 +57,7 @@ describe('the hub’s coverage words (W1, 11-02)', () => {
       expect(el.getAttribute('aria-hidden')).toBe('true')
     }
     expect(tryRow.children).toHaveLength(0)
-    expect(scope.textContent).toBe('The hub below covers the channels we track · not all of Twitch')
+    expect(scope.textContent).toBe('The live channels tracked · not all of Twitch')
   })
 
   it('drops the waiting marks once the answer is in', () => {
@@ -65,7 +65,7 @@ describe('the hub’s coverage words (W1, 11-02)', () => {
     const { container } = hero(500, { waiting: false, live })
     expect(container.querySelector('[data-wait]')).toBeNull()
     expect(container.querySelector('.hv5-hero-try')!.textContent).toContain('Caedrel')
-    expect(container.querySelector('.hv5-scope')!.textContent).toBe('The hub below covers 500 channels we track · not all of Twitch')
+    expect(container.querySelector('.hv5-scope')!.textContent).toBe('500 live channels tracked · not all of Twitch')
   })
 
   it('How this is measured: we track the pool', () => {
