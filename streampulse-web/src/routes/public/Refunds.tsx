@@ -31,7 +31,7 @@ export default function Refunds() {
               Pulse Supporter billing
             </span>
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Cancellation &amp; Refunds</h1>
+          <h1>Cancellation &amp; Refunds</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Last updated: October 13, 2026 · Applies to the Pulse Supporter subscription.
           </p>

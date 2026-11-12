@@ -15,7 +15,7 @@ export default function Docs() {
     <PublicLayout>
       <article className="panel public-document" data-testid="docs-page">
         <header className="mb-6 border-b border-white/[0.08] pb-6">
-          <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Get started with Pulse</h1>
+          <h1>Get started with Pulse</h1>
           <p className="mt-2 text-base text-zinc-400">
             Install the extension, read the data clearly, and find help when you need it.
           </p>

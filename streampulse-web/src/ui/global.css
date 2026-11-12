@@ -287,10 +287,13 @@ select {
   margin-block: min(-0.6em, calc(0.5em - 22px));
 }
 
-.public-document h1 {
+.public-document h1,
+.support-page__head h1,
+h1.public-title {
   margin-top: 0;
-  font-size: 2rem;
+  font-size: clamp(1.875rem, 1.45rem + 1.2vw, 2.25rem);
   font-weight: 800;
+  line-height: 1.15;
   letter-spacing: -0.03em;
   color: #fff;
 }
@@ -299,12 +302,21 @@ select {
   margin: 2.25rem 0 0.75rem;
   font-size: 1.25rem;
   font-weight: 700;
+  line-height: 1.25;
   letter-spacing: -0.02em;
   color: #f4f4f7;
 }
 
-/* Privacy and Terms (FoldedSections): each section folds under its heading, in the
-   look of the Docs "Developer reference" fold: its border, radius and padding. */
+:is(.public-document, .support-page__head, .public-title) :is(h1, h2, h3),
+h1.public-title {
+  text-wrap: balance;
+}
+
+.public-document p {
+  text-wrap: pretty;
+}
+
+/* Privacy and Terms (FoldedSections): each section folds under its heading, with a hairline above. */
 .public-document .public-fold {
   margin-top: 0;
   padding: 0;
@@ -316,12 +328,36 @@ select {
 }
 
 .public-document .public-fold > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
   padding: 0.75rem 0;
+  list-style: none;
   cursor: pointer;
 }
 
+.public-document .public-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.public-document .public-fold > summary::before {
+  content: '';
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-inline: 0.2rem 0.1rem;
+  border-right: 2px solid #a1a1aa;
+  border-bottom: 2px solid #a1a1aa;
+  transform: translateY(-0.15em) rotate(-45deg);
+}
+
+.public-document .public-fold[open] > summary::before {
+  transform: translateY(-0.2em) rotate(45deg);
+}
+
 .public-document .public-fold > summary > h2 {
-  display: inline;
+  display: block;
+  min-width: 0;
   margin: 0;
 }
 
@@ -337,6 +373,7 @@ select {
   margin: 1.5rem 0 0.5rem;
   font-size: 1.05rem;
   font-weight: 600;
+  line-height: 1.25;
   color: #e4e4e9;
 }
 
@@ -900,6 +937,19 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+@media (max-width: 560px) {
+  .app-footer__sep {
+    display: none;
+  }
+
+  .app-footer__links a,
+  .public-document__actions a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }
 
 /* Public header Discord button, styled like the landing header's (Blurple).

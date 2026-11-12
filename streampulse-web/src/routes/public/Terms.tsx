@@ -29,7 +29,7 @@ export default function Terms() {
               Website, extension and Supporter
             </span>
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Terms of Use</h1>
+          <h1>Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Last updated: October 26, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse

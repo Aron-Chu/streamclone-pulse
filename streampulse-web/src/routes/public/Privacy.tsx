@@ -29,7 +29,7 @@ export default function Privacy() {
               Extension and website privacy
             </span>
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Privacy Policy</h1>
+          <h1>Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Last updated: November 2, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>

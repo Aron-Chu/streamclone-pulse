@@ -12,7 +12,7 @@
 /* Amber for a temporary "not yet" state (the private form opens soon). */
 .support-page__badge--soon { background: rgba(251, 191, 36, 0.1); color: #fcd34d; }
 .support-page__badge--soon > span { background: #fbbf24; }
-.support-page__head h1 { margin: 0.7rem 0 0; font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.4rem); line-height: 1.1; font-weight: 900; letter-spacing: -0.03em; color: #fff; text-wrap: balance; }
+.support-page__head h1 { margin: 0.7rem 0 0; }
 .support-page__head p { margin: 0.55rem auto 0; max-width: 52ch; color: #a1a1aa; font-size: 1rem; line-height: 1.5; text-wrap: pretty; }
 
 .feedback-card {
