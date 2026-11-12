@@ -741,119 +741,6 @@ export const shadowStyles = `
   .pulse-sparkline-wrap {
     position: relative;
   }
-  .pulse-sparkline-tooltip {
-    background: rgba(17, 17, 23, 0.96);
-    border: 1px solid rgba(167, 139, 250, 0.3);
-    border-radius: 8px;
-    color: ${theme.textPrimary};
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    padding: 4px 8px;
-    pointer-events: none;
-    position: absolute;
-    text-transform: uppercase;
-    transform: translate(-50%, -100%);
-    white-space: nowrap;
-    z-index: 5;
-  }
-  .pulse-signal-wrap {
-    position: relative;
-    width: 100%;
-  }
-  .pulse-signal-wrap--interactive {
-    cursor: crosshair;
-  }
-  .pulse-signal-wrap:focus-visible {
-    outline: 1px solid rgba(167, 139, 250, 0.45);
-    outline-offset: 2px;
-  }
-  .pulse-signal-line {
-    vector-effect: non-scaling-stroke;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-  .pulse-signal-cross {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: rgba(255, 255, 255, 0.22);
-    pointer-events: none;
-    transform: translateX(-50%);
-    z-index: 2;
-  }
-  .pulse-signal-selection-line {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: repeating-linear-gradient(
-      to bottom,
-      rgba(251, 191, 36, 0.95) 0,
-      rgba(251, 191, 36, 0.95) 4px,
-      transparent 4px,
-      transparent 8px
-    );
-    pointer-events: none;
-    transform: translateX(-50%);
-    z-index: 3;
-  }
-  .pulse-signal-selection-dot {
-    position: absolute;
-    bottom: 16px;
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: #fbbf24;
-    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.35);
-    pointer-events: none;
-    transform: translateX(-50%);
-    z-index: 4;
-  }
-  .pulse-signal-selection-animated {
-    transition: left 180ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .pulse-signal-tip {
-    text-transform: none;
-    white-space: normal;
-    min-width: 110px;
-  }
-  .pulse-segment-moments-btn {
-    -webkit-tap-highlight-color: transparent;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    color: ${theme.textMuted};
-    cursor: pointer;
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    min-height: 30px;
-    padding: 4px 8px;
-    text-transform: uppercase;
-    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-  }
-  .pulse-segment-moments-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.06);
-    color: ${theme.textSecondary};
-  }
-  .pulse-segment-moments-btn:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
-    outline-offset: 2px;
-  }
-  .pulse-segment-moments-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-  .pulse-segment-moments-btn.is-active {
-    background: rgba(251, 191, 36, 0.12);
-    border-color: rgba(251, 191, 36, 0.35);
-    color: #fde68a;
-  }
-  .pulse-segment-chart-surface {
-    background: rgba(255, 255, 255, 0.02);
-  }
   .pulse-moment-inspector-card{animation:row-rise 120ms cubic-bezier(.22,1,.36,1) both}
   .pulse-moment-selection-card{animation:tab-fade 200ms ease-out both}
   .pulse-moment-card-swap{animation:pulse-swap-fade 180ms ease-out both}
@@ -895,9 +782,6 @@ export const shadowStyles = `
     .pulse-chart-rail-track,
     .pulse-chart-rail-thumb {
       transition: none !important;
-    }
-    .pulse-signal-selection-animated {
-      transition: none;
     }
     .pulse-emote-hover-preview {
       transition: none;

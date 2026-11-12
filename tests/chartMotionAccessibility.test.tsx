@@ -26,7 +26,6 @@ describe('chart motion and accessibility chrome', () => {
       '.pulse-analytics-hub-cta:hover:not(:disabled)',
       '.pulse-chart-zoom-button:hover:not(:disabled)',
       '.pulse-past-vod-action:hover:not(:disabled)',
-      '.pulse-segment-moments-btn:hover:not(:disabled)',
       '.pulse-sidebar-tab:not(.active):hover:not(:disabled)',
     ]) {
       expect(shadowStyles).toContain(selector)
