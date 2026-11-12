@@ -92,7 +92,7 @@ export function MiniDock({
         {topMoment && onJumpTopMoment ? (
           <button
             type="button"
-            style={styles.chipButton}
+            style={JUMP_BUTTON_STYLE}
             data-mini-top-moment-jump="true"
             onClick={event => {
               event.stopPropagation()
@@ -100,7 +100,8 @@ export function MiniDock({
             }}
             title="Jump to the top moment"
           >
-            <span aria-hidden="true">▶ </span>Jump
+            <PlayIcon />
+            Jump
           </button>
         ) : null}
         {!tracking && onTrack ? (
@@ -217,6 +218,14 @@ function ExpandIcon() {
   )
 }
 
+function PlayIcon() {
+  return (
+    <svg width="9" height="10" viewBox="0 0 9 10" fill="none" aria-hidden>
+      <path d="M1.5 1.6v6.8a.6.6 0 0 0 .9.5l5.5-3.4a.6.6 0 0 0 0-1L2.4 1.1a.6.6 0 0 0-.9.5Z" fill="currentColor" />
+    </svg>
+  )
+}
+
 function HideIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
@@ -253,3 +262,6 @@ const styles: Record<string, CSSProperties> = {
     width: 28,
   },
 }
+
+// The chip look, with room for the play icon beside the label.
+const JUMP_BUTTON_STYLE: CSSProperties = { ...styles.chipButton, alignItems: 'center', display: 'inline-flex', gap: 5 }
