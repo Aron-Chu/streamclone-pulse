@@ -106,7 +106,7 @@ export default function Status() {
 
   return <PublicLayout><section className="panel" data-testid="status-page">
     <header className="mb-6 border-b border-white/[0.08] pb-6"><div className="flex flex-wrap items-center justify-between gap-4">
-      <div><h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">System Status</h1><p className="mt-1 text-sm text-zinc-400">Public service health. Open the <Link to="/analytics" className="text-violet-400 hover:underline">Hub</Link> for coverage detail.</p></div>
+      <div><h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">System Status</h1><p className="mt-1 text-sm text-zinc-400">Public service health. Open the <Link to="/analytics" className="public-inline-link">Hub</Link> for coverage detail.</p></div>
       <div data-testid="status-overall" className={`inline-flex items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-bold ${overall === 'operational' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : overall === 'unknown' || quietOnly ? 'border-white/15 bg-white/5 text-zinc-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
         <span>{loading ? 'Checking systems…' : quietOnly ? QUIET_ONLY_LINE : stateLabel(overall)}</span>
       </div>

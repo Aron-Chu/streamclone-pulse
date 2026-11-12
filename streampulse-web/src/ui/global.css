@@ -70,6 +70,21 @@ a:hover {
   text-decoration: none;
 }
 
+/* Links in running text: colour alone is not enough (WCAG 1.4.1). */
+.public-document :is(p:not(.public-document__back), li) a:not(.btn, .sc-btn),
+a.public-inline-link {
+  color: #a78bfa;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(167, 139, 250, 0.55);
+  text-underline-offset: 0.2em;
+}
+
+.public-document :is(p:not(.public-document__back), li) a:not(.btn, .sc-btn):hover,
+a.public-inline-link:hover {
+  text-decoration-color: currentColor;
+}
+
 button,
 input,
 textarea,
@@ -324,7 +339,7 @@ select {
 
 .public-document p,
 .public-document li {
-  max-width: 76ch;
+  max-width: 34em;
   color: #d1d1db;
   font-size: 0.95rem;
 }
