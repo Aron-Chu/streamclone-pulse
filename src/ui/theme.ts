@@ -296,8 +296,8 @@ export const shadowStyles = `
     transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
   }
   .pulse-recap-analytics-cta:hover:not(:disabled) {
-    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.92) !important;
-    box-shadow: 0 6px 18px rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.35);
+    background: rgba(var(--pulse-accent-strong-rgb, 124, 58, 237), 0.92) !important;
+    box-shadow: 0 6px 18px rgba(var(--pulse-accent-strong-rgb, 124, 58, 237), 0.35);
     transform: translateY(-1px);
   }
   .pulse-action-chip {

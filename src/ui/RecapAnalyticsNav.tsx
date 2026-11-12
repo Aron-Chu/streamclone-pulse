@@ -94,7 +94,7 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   streamCta: {
-    background: theme.accent,
+    background: theme.accentStrong,
     border: 0,
     borderRadius: 10,
     color: theme.onAccent,

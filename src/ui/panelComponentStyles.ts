@@ -233,7 +233,7 @@ export function panelComponentCss(): string {
   .pulse-sr-empty { color: ${theme.textMuted}; font-size: 12px; line-height: 1.5; margin: 0; }
   .pulse-sr-offline-meta { color: ${theme.textMuted}; font-size: 11px; font-weight: 600; }
   .pulse-sr-cta-row { display: flex; gap: 8px; }
-  .pulse-sr-cta { background: ${theme.accent}; border: 0; border-radius: 10px; color: ${theme.onAccent}; cursor: pointer; font-size: 12px; font-weight: 800; padding: 8px 12px; }
+  .pulse-sr-cta { background: ${theme.accentStrong}; border: 0; border-radius: 10px; color: ${theme.onAccent}; cursor: pointer; font-size: 12px; font-weight: 800; padding: 8px 12px; }
   .pulse-sr-only { border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
   /* Recap chart (RecapTimelineChart): were inline styles, same values. Hover rules in theme.ts stay !important. */
   .pulse-rc { display: grid; gap: 6px; }
