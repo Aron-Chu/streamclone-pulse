@@ -95,7 +95,6 @@ button { font: inherit; color: inherit; }
   font-size: 17px; font-weight: 800;
 }
 .pp-avatar[data-live] { box-shadow: 0 0 0 2px var(--pp-card), 0 0 0 4px var(--pp-live); }
-.pp-eyebrow { margin: 0; font-size: 11px; font-weight: 600; color: var(--pp-text-3); }
 .pp-name { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -0.015em; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-meta { margin: 1px 0 0; font-size: 12px; color: var(--pp-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-badge {

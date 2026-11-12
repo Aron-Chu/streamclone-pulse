@@ -1224,7 +1224,6 @@ export const shadowStyles = `
   .pulse-settings-channel[data-live] .pulse-settings-channel-avatar { box-shadow: 0 0 0 2px #17171d, 0 0 0 4px #eb0400; }
   .pulse-settings-channel-avatar img { height: 100%; object-fit: cover; width: 100%; }
   .pulse-settings-channel-copy { display: grid; gap: 1px; min-width: 0; }
-  .pulse-settings-channel-copy small { color: ${theme.textMuted}; font-size: 10px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
   .pulse-settings-channel-copy strong { color: ${theme.textPrimary}; font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
   .pulse-settings-channel-copy :is(strong, span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-settings-channel-copy span { color: ${theme.textSecondary}; font-size: 11.5px; }

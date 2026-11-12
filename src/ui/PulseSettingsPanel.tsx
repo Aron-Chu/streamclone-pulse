@@ -280,7 +280,6 @@ export function PulseSettingsPanel({ onBack, channel }: { onBack?: () => void; c
 
 function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name: string }) {
   const [avatar, setAvatar] = useState(() => readTwitchChannelAvatarUrl(channel.login, channel.displayName))
-  const replay = channel.surface === 'offline_recap'
   const uptime = channel.isLive ? uptimeLabel(channel.startedAt) : null
   const facts = [channel.category, uptime ? `live ${uptime}` : null].filter(Boolean).join(' · ')
   return (
@@ -291,7 +290,6 @@ function ChannelHeader({ channel, name }: { channel: QuickSettingsChannel; name:
           : name.charAt(0).toUpperCase()}
       </span>
       <span className="pulse-settings-channel-copy">
-        <small>{channel.isLive ? 'Watching' : replay ? 'Replay' : 'Visiting'}</small>
         <strong>{name}</strong>
         {facts ? <span>{facts}</span> : null}
       </span>

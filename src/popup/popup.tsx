@@ -316,7 +316,6 @@ function ChannelCard({ login, load, avatar, onOpen, onRetry, analyticsHref = nul
           <span className="pp-avatar" aria-hidden="true" data-live={isLive ? '' : undefined}>{name.charAt(0).toUpperCase()}</span>
         )}
         <div style={{ minWidth: 0 }}>
-          <p className="pp-eyebrow">{isLive ? 'Watching' : 'Channel'}</p>
           <h1 className="pp-name" id="pp-channel-name">{name}</h1>
           {meta ? <p className="pp-meta">{meta}</p> : null}
         </div>

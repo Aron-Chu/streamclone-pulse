@@ -13,7 +13,6 @@
 .pl-library [tabindex="-1"]:focus:not(:focus-visible) { outline:none; }
 .pl-page-heading,.pl-between { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .pl-page-heading { margin-bottom:16px; }
-.pl-eyebrow { color:#a1a1b2; letter-spacing:.08em; font-size:10px; font-weight:800; }
 .pl-muted { color:#a1a1b2; font-size:12px; }
 .pl-stack { display:grid; gap:12px; min-width:0; }
 .pl-row { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }

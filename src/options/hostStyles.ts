@@ -641,13 +641,6 @@ const hostStyles = `
     min-width: 0;
   }
   .pulse-settings-page-intro { display: grid; gap: 4px; margin-bottom: 2px; }
-  .pulse-settings-page-intro > span {
-    color: var(--pulse-accent-soft, #c4b5fd);
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-  }
   .pulse-settings-page-intro h2 {
     color: ${theme.textPrimary};
     font-size: 22px;
