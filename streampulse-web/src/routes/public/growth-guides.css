@@ -1,5 +1,4 @@
 .growth-guide { max-width: 920px; }
-.growth-guide__eyebrow { color: #c4b5fd !important; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
 .growth-guide__related { display: flex; flex-direction: column; gap: .8rem; margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid #3f3f46; }
 .growth-guide__related a { display: flex; align-items: center; min-height: 44px; color: #c4b5fd; text-decoration: underline; text-underline-offset: 3px; }
 .growth-guide__source { font-size: .875rem; }

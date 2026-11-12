@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { CheckCircle2, Mail, Puzzle, ShieldCheck } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountFooter } from './AccountFooter'
 import { AccountSteps, LINK_JOURNEY_STEPS, SUPPORTER_JOURNEY_STEPS, accountReference } from './AccountJourney'
@@ -42,7 +41,7 @@ function SignIn() {
   useEffect(() => onAccountSessionSignal(signal => {
     if (signal === 'signed-in' && returnTo) navigate(returnTo)
   }), [navigate, returnTo])
-  return <><p className="pulse-account-kicker"><Mail size={16} aria-hidden="true" /> StreamPulse account</p>
+  return <>
     {twitchSignInEnabled()
       ? <SignInForm returnTo={returnTo} heading={sent => sent ? 'Check your email' : 'Sign in to StreamPulse'} sentDetail={returnTo ? 'This tab continues by itself once you confirm.' : undefined}
         withTwitch />
@@ -151,7 +150,7 @@ function Confirm() {
     catch (error) { setError(accountErrorText(error)) }
     finally { setBusy(false) }
   }
-  return <><p className="pulse-account-kicker">{complete ? <CheckCircle2 size={16} aria-hidden="true" /> : <ShieldCheck size={16} aria-hidden="true" />} Secure sign-in</p><h1>{complete ? 'You’re signed in' : 'Confirm your sign-in'}</h1>
+  return <><h1>{complete ? 'You’re signed in' : 'Confirm your sign-in'}</h1>
     {complete ? returnTo === ACCOUNT_LINK_DEVICE_PATH
       ? <><p className="pulse-account-intro">Go back to the StreamPulse tab where you started. It continues by itself, and you can close this tab.</p><p>That tab closed? Reopen the link from your extension’s settings, or <Link to={ACCOUNT_LINK_DEVICE_PATH}>enter the extension code here</Link>.</p></>
       : returnTo && clipPageReturnPath(returnTo)
@@ -354,8 +353,7 @@ function LinkDevice() {
   const showProgress = waitingForCode && phase !== 'invalid'
   const signInWaiting = 'Keep this tab open. When you confirm in the email’s tab, this page continues by itself.'
 
-  return <><p className="pulse-account-kicker"><Puzzle size={16} aria-hidden="true" /> {purchase ? 'Become a Supporter' : 'Account connection'}</p>
-    {showProgress ? <AccountSteps labels={steps} steps={progress} /> : null}
+  return <>{showProgress ? <AccountSteps labels={steps} steps={progress} /> : null}
     {session === 'loading' ? <><h1>Link your extension</h1><p role="status" className="pulse-account-waiting"><span className="pulse-account-spinner" aria-hidden="true" />Checking your account…</p></>
       : session === 'signed_out' || phase === 'needs_sign_in' ? phase === 'needs_sign_in' && session === 'ready'
         ? <SignInForm returnTo={ACCOUNT_LINK_DEVICE_PATH} heading={sent => sent ? 'Check your email' : 'Confirm it’s you'} intro="Connecting an extension needs a sign-in from the last 10 minutes. Your extension’s request stays ready in this tab." sentDetail={signInWaiting} />

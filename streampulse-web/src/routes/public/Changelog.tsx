@@ -54,7 +54,6 @@ export default function Changelog() {
       <article className="panel public-document" data-testid="changelog-page">
         {/* No rule of its own: each version's section draws the one rule above it. */}
         <header className="pb-2">
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-300">StreamPulse extension</p>
           <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">Release notes</h1>
           <p className="mt-2 text-base text-zinc-400">What changed in each version of the StreamPulse extension.</p>
         </header>
