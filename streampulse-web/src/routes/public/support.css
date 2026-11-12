@@ -12,7 +12,7 @@
 /* Amber for a temporary "not yet" state (the private form opens soon). */
 .support-page__badge--soon { background: rgba(251, 191, 36, 0.1); color: #fcd34d; }
 .support-page__badge--soon > span { background: #fbbf24; }
-.support-page__head h1 { margin: 0.7rem 0 0; font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.4rem); line-height: 1.1; font-weight: 900; letter-spacing: -0.03em; color: #fff; text-wrap: balance; }
+.support-page__head h1 { margin: 0.7rem 0 0; }
 .support-page__head p { margin: 0.55rem auto 0; max-width: 52ch; color: #a1a1aa; font-size: 1rem; line-height: 1.5; text-wrap: pretty; }
 
 .feedback-card {
@@ -184,15 +184,9 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 .feedback-public.feedback-public--plain { padding: 0; border: 0; }
 .feedback-public__discord { color: #8b93f8; }
 
-/* The public reset (`.app-shell :where(*)` in public-utilities.css) loads after
-   this file and zeroes the border width of every single-class rule, so the
-   dashed public box and the outline buttons in it (and in the unavailable
-   panel) rendered without borders and read as loose text. Restate them with
-   .app-shell so they win. The live form's own fields are left as they are. */
-.app-shell .feedback-public:not(.feedback-public--plain) { border: 1px dashed #3f3f46; }
-.app-shell :is(.feedback-public, .feedback-off) .sc-btn--outline { border: 1px solid #3f3f46; }
-
-/* /support: the card that sends readers to /feedback. */
+/* /support: the card that sends readers to /feedback reads as part of the page, not a second box. */
+.app-shell .feedback-link-card { width: 100%; margin: 0; padding: 0 0 1.75rem; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; background: none; box-shadow: none; }
+.feedback-link-card::before { content: none; }
 .feedback-link-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 1.5rem; }
 .feedback-link-card__text { flex: 1 1 18rem; min-width: 0; }
 .feedback-link-card .feedback-card__title { font-size: 1.45rem; }

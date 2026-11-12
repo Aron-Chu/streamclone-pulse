@@ -33,6 +33,7 @@ export function panelComponentCss(): string {
   .pulse-soft-stale-banner { background: rgba(212, 160, 23, 0.12); border: 1px solid rgba(212, 160, 23, 0.35); border-radius: 8px; color: #e8d48a; font-size: 12px; line-height: 1.35; margin: 0 0 10px; padding: 8px 10px; }
   .pulse-error-block { background: #1f1f27; border-radius: 12px; padding: 16px; }
   .pulse-error-title { color: #f87171; font-size: 18px; margin: 0 0 10px; }
+  .pulse-error-block .pulse-footer-actions > :only-child { grid-column: 1 / -1; }
   .pulse-refresh-error { align-items: center; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.28); border-radius: 8px; color: #fcd34d; display: flex; flex-wrap: wrap; font-size: 11px; font-weight: 700; gap: 8px; justify-content: space-between; margin-bottom: 10px; padding: 7px 9px; }
   .pulse-notice { background: #2a2440; border: 1px solid #3f3f50; border-radius: 10px; color: var(--pulse-accent-soft, #c4b5fd); font-size: 12px; font-weight: 700; margin: 14px 0 0; padding: 10px 12px; }
   .pulse-notice-warn { background: rgba(249,115,22,0.12); border-color: rgba(249,115,22,0.35); color: #fdba74; }

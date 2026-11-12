@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { LogOut, Monitor, Trash2 } from 'lucide-react'
+import { LogOut, Trash2 } from 'lucide-react'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountFooter } from './AccountFooter'
 import { accountRequest, accountErrorText, AccountError } from '../../lib/accountApi'
@@ -152,7 +152,6 @@ export default function AccountSettings() {
     finally { setBusy(false) }
   }
   return <PublicLayout><section className="pulse-account pulse-account-settings" aria-label="Account settings">
-    <p className="pulse-account-kicker"><Monitor size={16} aria-hidden="true" /> StreamPulse account</p>
     <h1>Account &amp; devices</h1>
     {identity ? <div className="pulse-account-session"><p>You’re signed in to StreamPulse.</p><div className="pulse-account-session-actions">
       <button disabled={busy} onClick={() => void logout()}><LogOut size={16} aria-hidden="true" /> Sign out</button>

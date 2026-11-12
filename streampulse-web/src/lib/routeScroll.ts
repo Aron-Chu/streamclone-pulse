@@ -78,6 +78,12 @@ function closedDetails(target: HTMLElement): HTMLDetailsElement[] {
   return closed
 }
 
+/** Opens the closed <details> hiding a #target, leaving the scroll to the browser. */
+export function openFoldsAround(id: string): void {
+  const target = document.getElementById(id)
+  if (target) for (const details of closedDetails(target)) details.open = true
+}
+
 /** Whether the target has moved off its place: `top`, or else its scroll margin. */
 function drifted(target: HTMLElement, top?: number): boolean {
   const place = top ?? (Number.parseFloat(getComputedStyle(target).scrollMarginTop) || 0)

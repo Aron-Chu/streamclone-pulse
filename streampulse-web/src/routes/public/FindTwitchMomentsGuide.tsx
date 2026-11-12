@@ -6,7 +6,6 @@ import './growth-guides.css'
 
 export default function FindTwitchMomentsGuide() {
   return <PublicLayout><article className="panel public-document growth-guide">
-    <p className="growth-guide__eyebrow">StreamPulse workflow guide</p>
     <h1>Find and bookmark Twitch moments chat reacted to</h1>
     <p>Chat reactions are useful clues when you are catching up or reviewing a long stream. Start with measured peaks, watch the surrounding context, and keep the moments worth returning to.</p>
     <nav className="public-toc" aria-label="On this page"><a href="#coverage-first">Check coverage</a><a href="#data-details">What the numbers mean</a><a href="#review-moment">Review a moment</a><a href="#save-context">Save context</a><a href="#editor-workflow">Editor workflow</a><a href="#chat-stats-questions">Common questions</a><a href="#streamer-chat-stats">Streamer chat stats</a></nav>
