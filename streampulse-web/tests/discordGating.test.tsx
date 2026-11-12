@@ -198,7 +198,7 @@ describe('feedback and Discord beyond the landing page', () => {
     expect(bar.previousElementSibling?.classList.contains('analytics-topnav__install')).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Support and account' }))
     const panel = screen.getByRole('link', { name: 'Extension guide' }).parentElement!
-    const links = [...panel.querySelectorAll('a')]
+    const links = [...panel.querySelectorAll('a:not(.analytics-topnav__more-nav a)')]
     expect(links[0].textContent).toBe('Send feedback')
     expect(links[0].getAttribute('href')).toBe('/feedback')
     expect(discordLinks()).toEqual([bar])
