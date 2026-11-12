@@ -349,10 +349,8 @@ const styles: Record<string, CSSProperties> = {
   },
   label: {
     color: theme.textMuted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: 800,
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
   },
   trigger: {
     fontFamily: theme.font,
@@ -398,7 +396,7 @@ const styles: Record<string, CSSProperties> = {
   chevron: {
     color: theme.textMuted,
     flexShrink: 0,
-    fontSize: 10,
+    fontSize: 11,
     lineHeight: 1,
   },
   menu: {

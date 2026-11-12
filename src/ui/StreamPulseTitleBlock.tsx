@@ -76,11 +76,9 @@ export function StreamPulseTitleBlock({
 
 const pillBase: CSSProperties = {
   borderRadius: 999,
-  fontSize: 9,
+  fontSize: 12,
   fontWeight: 800,
-  letterSpacing: '0.04em',
   padding: '2px 8px',
-  textTransform: 'uppercase',
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -99,7 +97,7 @@ const styles: Record<string, CSSProperties> = {
     background: 'rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.22)',
     border: '1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45)',
     color: 'var(--pulse-accent-soft, #c4b5fd)',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 900,
     padding: '4px 10px',
   },

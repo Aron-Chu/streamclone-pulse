@@ -163,10 +163,10 @@ const CSS = `
 .pmf-stage:not(:empty){margin:0 0 9px}
 .pmf-pic{position:relative;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:#000;cursor:ew-resize;outline:none;touch-action:pan-y;user-select:none}
 .pmf-pic:focus-visible{box-shadow:0 0 0 2px rgba(var(--pulse-accent-light-rgb,167,139,250),.85)}
-.pmf-chip{position:absolute;left:6px;top:6px;display:flex;align-items:center;gap:5px;padding:3px 7px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;font-size:9.5px;font-weight:700;line-height:1}
+.pmf-chip{position:absolute;left:6px;top:6px;display:flex;align-items:center;gap:5px;padding:3px 7px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;font-size:12px;font-weight:700;line-height:1}
 .pmf-chip::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--pmf-dot,#34d399)}
 .pmf-time{position:absolute;left:7px;bottom:6px;color:#fff;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px #000}
-.pmf-peak{position:absolute;right:6px;bottom:6px;padding:2px 6px;border-radius:4px;background:#f43f5e;color:#fff;font-size:9px;font-weight:900;letter-spacing:.04em}
+.pmf-peak{position:absolute;right:6px;bottom:6px;padding:2px 6px;border-radius:4px;background:#f43f5e;color:#fff;font-size:11px;font-weight:900;letter-spacing:.04em}
 .pmf-peak[hidden]{display:none}
 .pmf-rail{display:flex;gap:2px;margin:4px 0 0}
 .pmf-rail i{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.14)}

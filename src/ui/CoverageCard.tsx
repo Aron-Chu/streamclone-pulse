@@ -163,12 +163,10 @@ const styles: Record<string, CSSProperties> = {
     border: 0,
     color: 'var(--pulse-accent-soft, #c4b5fd)',
     cursor: 'pointer',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 800,
-    letterSpacing: '0.04em',
     marginTop: 6,
     padding: 0,
-    textTransform: 'uppercase',
   },
   error: {
     color: '#fca5a5',
@@ -178,7 +176,7 @@ const styles: Record<string, CSSProperties> = {
   },
   hint: {
     color: theme.textMuted,
-    fontSize: 10,
+    fontSize: 11,
     lineHeight: 1.45,
     margin: '0 0 6px',
   },
