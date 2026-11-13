@@ -35,12 +35,25 @@ export function laneSeries(d: SpChartData, L: SpLane): ArrayLike<number> | null 
   return L.key === 'overlay' ? d.overlay ?? null : null
 }
 
-/** A lane's plotted maximum over the measured samples (its own series, or every line). */
-export function laneRawMax(d: SpChartData, L: SpLane): number {
+/**
+ * A lane's plotted maximum over the measured samples (its own series, or every line), within samples [a, b] when
+ * given (a fractional range takes every sample it touches).
+ */
+export function laneRawMax(d: SpChartData, L: SpLane, a = 0, b = Infinity): number {
   const all = L.lines ? L.lines.map(l => l.values) : [laneSeries(d, L)]
   let m = 0
-  for (const v of all) if (v) for (let i = 0; i < v.length; i += 1) if (d.coverage[i] !== 2 && v[i]! > m) m = v[i]!
+  for (const v of all) if (v) for (let i = Math.max(0, Math.floor(a)), e = Math.min(v.length - 1, Math.ceil(b)); i <= e; i += 1) if (d.coverage[i] !== 2 && v[i]! > m) m = v[i]!
   return m
+}
+
+/** laneFit headroom: the tallest value in view stands at 1 / 1.1 of the lane's data height or lower. */
+export const SP_LANE_FIT_HEADROOM = 1.1
+
+/** A laneFit scale max: the max in view plus the headroom, rounded up to two significant figures, at least 1. */
+export function laneFitMax(raw: number): number {
+  if (!(raw > 0)) return 1
+  const v = raw * SP_LANE_FIT_HEADROOM, mag = 10 ** (Math.floor(Math.log10(v)) - 1)
+  return Math.max(1, +(Math.ceil(v / mag - 1e-9) * mag).toPrecision(2))
 }
 
 export interface SpLaneLayoutInput {
@@ -53,6 +66,8 @@ export interface SpLaneLayoutInput {
   lanes: readonly SpLane[]
   /** laneRawMax per lane. */
   raw: readonly number[]
+  /** laneFit: a lane's max is laneFitMax(raw), not the nice tick at or above raw. */
+  fit?: boolean
 }
 
 /**
@@ -73,7 +88,7 @@ export function laneLayout(i: SpLaneLayoutInput): SpLayout {
     y += gapOf(L, k)
     const h = k === i.lanes.length - 1 ? Math.max(0, H - y) : Math.round((avail * wt(L)) / sum)
     const raw = i.raw[k] ?? 0
-    const ticks = niceTicks(raw, 4)
+    const ticks = i.fit ? [0, laneFitMax(raw)] : niceTicks(raw, 4)
     const box = { key: L.key, raw, x: 0, y, width: plotWidth, height: h, dataTop: y + Math.min(SP_LANE_HEAD, Math.round(h * 0.4)), max: ticks[ticks.length - 1]! || 1, ticks }
     y += h
     return box
@@ -173,6 +188,7 @@ export function laneBars(o: SpLaneBarArgs): SpLaneBar[] {
   slotWalk(o.values, o.coverage, o.step, o.phase, o.a, o.b, (i0, i1, v, partial) => {
     if (v == null) return
     const yv = floor - (v / box.max) * (floor - box.dataTop)
+    // with laneFit a bar outside the settled view can pass the lane top: the chart clips each lane
     const h = Math.max(minBar, floor - yv)
     const dim = o.sel != null && (i1 <= o.sel[0] || i0 >= o.sel[1])
     const op = Math.round((spike && v > thr ? L.spikeOpacity! : bop) * (partial ? 0.5 : 1) * (dim ? 0.4 : 1) * 1000) / 1000
