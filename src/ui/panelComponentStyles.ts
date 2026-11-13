@@ -162,6 +162,10 @@ export function panelComponentCss(): string {
   .pulse-sel-game-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-sel-activity { color: #a1a1b2; font-size: 11px; font-weight: 600; margin: 2px 0 8px; }
   .pulse-sel-list { display: grid; gap: 6px; list-style: none; margin: 0 0 10px; padding: 0; }
+  [data-selected-moment-card] .pulse-sel-list { grid-template-rows: repeat(3, 18px); }
+  /* No fabricated emote nodes: reserve the same 66 px rows + 10 px list margin
+     after the 8 px activity margin when no emote list exists. */
+  [data-selected-moment-card] .pulse-sel-activity:has(+ .pulse-sel-actions) { margin-bottom: 84px; }
   .pulse-sel-item { align-items: center; display: flex; gap: 8px; min-width: 0; }
   .pulse-sel-name { color: #fafafc; flex: 1; font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-sel-uses { color: #9090a5; flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; }

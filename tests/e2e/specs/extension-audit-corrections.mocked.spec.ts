@@ -157,8 +157,8 @@ test('floating outage Retry spans its footer during and after the entrance anima
   expect(Math.abs(row!.width - button!.width)).toBeLessThanOrEqual(1)
 })
 
-for (const width of [260, 218]) {
-  test(`action wrapping reserves the initial card height for 0/1/3 emotes at ${width}px`, async ({ extension, prepare }) => {
+for (const width of [260, 218]) for (const images of ['loaded', 'refused'] as const) {
+  test(`action wrapping reserves the initial card height for 0/1/3 emotes at ${width}px (${images} images)`, async ({ extension, prepare }, info) => {
     await prepare({ scenario: 'live-ready', storage: { overlayPlacement: 'sidebar', overlayMode: 'expanded', sidebarTab: 'pulse', defaultChartWindowMigratedToRecentV2: true } })
     const live = JSON.parse(readFileSync(new URL('../fixtures/api/pulse-live-ready.json', import.meta.url), 'utf8'))
     const [three] = live.peaks
@@ -168,7 +168,7 @@ for (const width of [260, 218]) {
       three,
     ]
     const rollups = Array.from({ length: 12 }, (_, index) => ({ ...live.rollups[0], offsetSeconds: 2940 + index * 60 }))
-    await extension.context.route('https://static-cdn.jtvnw.net/ttv-boxart/**', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="56"/>' }))
+    await extension.context.route('https://static-cdn.jtvnw.net/**', route => images === 'refused' ? route.abort() : route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="56"/>' }))
     await extension.context.route('https://api.streampulse.stream/v1/extension/pulse/channels/fixturechan*', route => new URL(route.request().url()).pathname.endsWith('/fixturechan')
       ? route.fulfill({ json: { ...live, peaks, rollups, games: live.games.map((game: { gameName: string }) => game.gameName === 'League of Legends' ? { ...game, categoryId: '21779' } : game) } })
       : route.fallback())
@@ -183,14 +183,34 @@ for (const width of [260, 218]) {
     await rows.first().click()
     await expect(card.locator('[data-moment-inspector-emote-row]')).toHaveCount(0)
     await expect.poll(() => card.evaluate(el => el.getAnimations({ subtree: true }).every(animation => animation.playState !== 'running'))).toBe(true)
+    const layouts: unknown[] = []
+    const recordLayout = async (count: number) => {
+      for (const label of ['Jump in player', 'Save', 'Open Analytics']) {
+        const action = card.getByRole('button', { name: label, exact: label !== 'Save' })
+        await expect(action).toBeVisible()
+        expect(await action.evaluate(button => {
+          const text = document.createRange(); text.selectNodeContents(button)
+          const glyphs = text.getBoundingClientRect(), bounds = button.getBoundingClientRect()
+          return glyphs.left >= bounds.left - 1 && glyphs.right <= bounds.right + 1 && glyphs.top >= bounds.top - 1 && glyphs.bottom <= bounds.bottom + 1
+        })).toBe(true)
+      }
+      layouts.push(await card.evaluate((el, count) => ({ count, nodes: [el, ...el.querySelectorAll('[data-moment-reserve], .pulse-sel, .pulse-sel-header, .pulse-sel-detail, .pulse-sel-game, .pulse-sel-activity, .pulse-sel-list, .pulse-sel-actions, .pulse-sel-actions > *')].map(node => {
+        const r = node.getBoundingClientRect(), s = getComputedStyle(node)
+        return { cls: node.className, width:r.width, height:r.height, y:r.y, font:s.font, lineHeight:s.lineHeight, gap:s.gap, padding:s.padding, margin:s.margin, text:node.classList.contains('pulse-sel-actions') ? node.textContent : undefined }
+      }) }), count))
+      writeFileSync(info.outputPath('card-layouts.json'), JSON.stringify(layouts, null, 2))
+    }
+    await recordLayout(0)
     const before = await card.boundingBox(), firstRow = await rows.first().boundingBox()
     for (const [index, count] of [[1, 3], [2, 1], [0, 0]] as const) {
       await rows.nth(index).click()
       await expect(card.locator('[data-moment-inspector-emote-row]')).toHaveCount(count)
+      await recordLayout(count)
       const after = await card.boundingBox(), nextRow = await rows.first().boundingBox()
       expect(Math.abs(after!.height - before!.height)).toBeLessThanOrEqual(1)
       expect(Math.abs(nextRow!.y - firstRow!.y)).toBeLessThanOrEqual(1)
     }
+    await card.screenshot({ path: info.outputPath('reserved-card.png'), animations: 'disabled' })
   })
 }
 
