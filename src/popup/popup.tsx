@@ -316,7 +316,6 @@ function ChannelCard({ login, load, avatar, onOpen, onRetry, analyticsHref = nul
           <span className="pp-avatar" aria-hidden="true" data-live={isLive ? '' : undefined}>{name.charAt(0).toUpperCase()}</span>
         )}
         <div style={{ minWidth: 0 }}>
-          <p className="pp-eyebrow">{isLive ? 'Watching' : 'Channel'}</p>
           <h1 className="pp-name" id="pp-channel-name">{name}</h1>
           {meta ? <p className="pp-meta">{meta}</p> : null}
         </div>
@@ -407,7 +406,7 @@ function ChannelPulse({ summary }: { summary: PopupChannelSummary }) {
             </div>
           ) : null}
           {summary.topEmote ? (
-            <div className="pp-stat">
+            <div className="pp-stat pp-stat-wide">
               <dt>Top emote · this stream</dt>
               <dd>
                 {summary.topEmote.imageUrl ? <img className="pp-emote" src={summary.topEmote.imageUrl} alt="" /> : null}

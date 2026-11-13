@@ -342,10 +342,9 @@ type PulsePreferences = ReturnType<typeof usePulsePreferences>
 type PulseHealth = ReturnType<typeof usePulseHealth>
 type AdministrativeSettings = ReturnType<typeof useAdministrativeSettings>
 
-function SectionIntro({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
+function SectionIntro({ title, copy }: { title: string; copy: string }) {
   return (
     <header className="pulse-settings-page-intro">
-      <span>{eyebrow}</span>
       <h2>{title}</h2>
       <p>{copy}</p>
     </header>
@@ -358,7 +357,7 @@ function PulseExperienceSection({ preferences, health, supporterPerks }: { prefe
   const sampler = summarizeViewerSampling(reachable ? health.health?.viewerSampling : undefined)
   return (
     <section data-settings-section="pulse" className="pulse-settings-page-section">
-      <SectionIntro eyebrow="Extension experience" title="Pulse on Twitch" copy="Control how Pulse looks, refreshes, and docks alongside Twitch chat." />
+      <SectionIntro title="Pulse on Twitch" copy="Control how Pulse looks, refreshes, and docks alongside Twitch chat." />
 
       <PulseSectionCard title="Connection" headingLevel={3}>
         <div className="pulse-settings-host-connection">
@@ -574,7 +573,7 @@ function KeptPicturesOffer() {
 function PrivacySection({ settings }: { settings: AdministrativeSettings }) {
   return (
     <section data-settings-section="privacy" className="pulse-settings-page-section">
-      <SectionIntro eyebrow="Your browser" title="Privacy & Data" copy="Choose what stays in this browser and clear temporary Pulse data at any time." />
+      <SectionIntro title="Privacy & Data" copy="Choose what stays in this browser and clear temporary Pulse data at any time." />
       {settings.saveError ? (
         <div
           className="pulse-settings-error-banner"
@@ -656,7 +655,7 @@ function UpdatesSection({ settings }: { settings: AdministrativeSettings }) {
   }, [seeAll])
   return (
     <section data-settings-section="updates" className="pulse-settings-page-section">
-      <SectionIntro eyebrow="Release history" title="Updates & Changelog" copy="Review the installed build, check update handling, and inspect every published release note." />
+      <SectionIntro title="Updates & Changelog" copy="Review the installed build, check update handling, and inspect every published release note." />
       <div className="pulse-settings-version-card">
         <span><small>Installed version</small><strong>v{installedExtensionVersion()}</strong></span>
         <span className="pulse-settings-update-copy">

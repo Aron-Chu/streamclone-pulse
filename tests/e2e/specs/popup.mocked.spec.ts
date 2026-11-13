@@ -253,6 +253,9 @@ test.describe('toolbar popup', () => {
     await expect(card.locator('.pp-stat').first()).toContainText('42.1K')
     await expect(card.locator('.pp-stat').nth(1)).toContainText('Top emote · this stream')
     await expect(card.locator('.pp-stat').nth(1)).toContainText('KEKW312 uses')
+    const widths = await card.locator('.pp-stat').evaluateAll(stats => stats.map(stat => stat.getBoundingClientRect().width))
+    expect(Math.abs(widths[0] - widths[1])).toBeLessThanOrEqual(1)
+
     await expect(card.locator('img.pp-emote')).toHaveAttribute('src', EMOTE_URL)
     await expect(card.locator('.pp-moment')).toContainText('Biggest moment · Chat spike')
     await expect(card.locator('.pp-moment time')).toHaveText('10m ago')

@@ -400,6 +400,24 @@ export function isChatRectInViewport(
 }
 
 /**
+ * Where the bottom dock sits: centred over the video, and no wider than the
+ * space left of an open chat column (theatre mode lays chat over the video).
+ */
+export function dockSpan(
+  video: Pick<DOMRect, 'left' | 'right'> | null | undefined,
+  chat: Pick<DOMRect, 'left' | 'right'> | null | undefined,
+  viewportWidth: number,
+  navRight = 0,
+): { x: number; w: number } {
+  if (video && !(video.right > video.left)) video = null
+  const clip = (edge: number) => Math.max(0, Math.min(viewportWidth, edge)) || 0
+  const left = clip(video?.left ?? navRight)
+  let right = clip(video?.right ?? viewportWidth)
+  if (chat && chat.left < right && chat.right > left) right = Math.max(left, chat.left)
+  return { x: (left + right) / 2, w: Math.max(0, right - left - 32) }
+}
+
+/**
  * Pure selection helper: given candidates in priority order, return the first
  * one whose rect is large enough to host the panel, or null when none qualify
  * (e.g. all zero-width because chat is popped out or in theater mode).

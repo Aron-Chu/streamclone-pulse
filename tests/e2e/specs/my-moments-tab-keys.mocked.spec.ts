@@ -10,7 +10,7 @@ test('the My Moments tab keys change the tab without scrolling the page', async 
   await prepare()
   const page = extension.page
   // Short enough that the page scrolls, with room above and below the tabs.
-  await page.setViewportSize({ width: 1280, height: 360 })
+  await page.setViewportSize({ width: 1280, height: 320 })
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#moments`)
   await expect(page.getByRole('heading', { name: 'My Moments', exact: true })).toBeVisible()
   const tabs = page.getByRole('tablist', { name: 'My Moments views' })
