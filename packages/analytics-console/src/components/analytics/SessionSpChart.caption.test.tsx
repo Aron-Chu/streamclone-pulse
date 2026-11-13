@@ -103,7 +103,8 @@ describe('SessionSpChart lane captions (session-original, D5)', () => {
     const { container } = renderCaption()
     expect(container.querySelector<HTMLElement>('.spc-plot')?.style.height).toBe('340px')
     const ticks = [...container.querySelectorAll('text.spc-tk[data-lane]')]
-    expect(ticks.map(t => t.textContent)).toEqual(['150', '30', '10'])
+    // laneFit: each lane's max tick is the max in view plus 10 %, rounded up to two figures
+    expect(ticks.map(t => t.textContent)).toEqual(['160', '24', '11'])
     expect(ticks.every(t => t.getAttribute('class') === 'spc-tk spc-tk-in')).toBe(true)
   })
 })
