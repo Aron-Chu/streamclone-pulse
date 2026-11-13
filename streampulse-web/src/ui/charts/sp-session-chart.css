@@ -874,6 +874,7 @@
 
 .ssc-md-pg {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -884,9 +885,20 @@
   font-variant-numeric: tabular-nums;
 }
 
+.ssc-md-pg [data-chart-data-page-label] {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sc-analytics-console .ssc-md-pg button,
 .ssc-md-pg button {
+  flex: none;
   min-height: 32px;
+  white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
   color: #d4d4d8;
