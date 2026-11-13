@@ -12,7 +12,9 @@ describe('settings host navigation', () => {
 
   it('gives keyboard focus a visible ring on links and brings the skip link into view', () => {
     const hostStyles = readFileSync(new URL('../src/options/hostStyles.ts', import.meta.url), 'utf8')
-    expect(hostStyles).toContain('a:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }')
+    const shared = readFileSync(new URL('../src/ui/theme.ts', import.meta.url), 'utf8')
+    expect(shared).toContain(':is(:host, .pulse-host, .pl-library)')
+    expect(shared).toContain('outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);')
     expect(hostStyles).toContain('.pulse-settings-skip-link:focus, .pulse-settings-skip-link:focus-visible { top: 10px; }')
   })
 

@@ -7,6 +7,7 @@ import {
 } from './gamesPlayedLayout.ts'
 import { theme } from './theme.ts'
 import { CHART_THEME } from './chartTheme.ts'
+import { MOMENT_CARD_ACTIONS_HEIGHT } from './momentCardLayout.ts'
 
 /**
  * Static styles of the overlay panel's components.
@@ -22,7 +23,7 @@ export function panelComponentCss(): string {
   .pulse-state-block { background: #1f1f27; border-radius: 12px; margin-top: 16px; padding: 16px; }
   .pulse-state-title { font-size: 18px; margin: 0 0 10px; }
   .pulse-state-text { color: #b7b7c6; font-size: 13px; line-height: 1.35; margin: 0 0 14px; }
-  .pulse-warming-count { color: #8b8ba0; }
+  .pulse-warming-count { color: #9090a5; }
   .pulse-progress-track { background: #33333d; border-radius: 999px; height: 8px; margin-bottom: 10px; overflow: hidden; }
   .pulse-progress-fill { background: var(--pulse-accent-soft, #a78bfa); border-radius: 999px; display: block; height: 100%; }
   .pulse-track-prompt { background: #1f1f27; border: 1px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35); border-radius: 12px; margin-bottom: 14px; padding: 14px; }
@@ -42,7 +43,6 @@ export function panelComponentCss(): string {
   .pulse-review-request p { margin: 0; }
   .pulse-review-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
   .pulse-review-actions a, .pulse-review-actions button { background: none; border: 0; color: var(--pulse-accent-soft, #c4b5fd); cursor: pointer; font: inherit; min-height: 28px; padding: 4px 0; }
-  .pulse-review-actions :is(a, button):focus-visible { outline: 2px solid var(--pulse-accent-soft, #c4b5fd); outline-offset: 3px; }
   .pulse-vod-state { background: #1f1f27; border: 1px solid #3f3f50; border-radius: 12px; padding: 14px; }
   .pulse-vod-state-warn { background: rgba(245, 158, 11, 0.08); border-color: rgba(251, 191, 36, 0.38); }
   .pulse-vod-state-title { font-size: 15px; font-weight: 700; line-height: 1.3; margin: 0 0 6px; }
@@ -96,7 +96,7 @@ export function panelComponentCss(): string {
   .pulse-games-track { align-items: center; display: flex; gap: ${CHIP_GAP}px; min-height: ${CHIP_H + 4}px; min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; padding: 2px 3px; scrollbar-width: none; width: 100%; }
   .pulse-games-item { flex: 0 0 ${CHIP_W}px; position: relative; }
   .pulse-games-card { align-items: center; background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 8px; box-sizing: border-box; cursor: pointer; display: flex; height: ${CHIP_H}px; justify-content: center; overflow: hidden; padding: 2px; position: relative; text-align: center; transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; width: ${CHIP_W}px; }
-  .pulse-games-card-active { background: rgba(139, 92, 246, 0.14); border: 1px solid ${theme.borderAccent}; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.18), 0 5px 16px rgba(0,0,0,0.24); transform: translateY(-2px) scale(1.02); }
+  .pulse-games-card-active { background: rgba(139, 92, 246, 0.14); border: 1px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.18), 0 5px 16px rgba(0,0,0,0.24); transform: translateY(-2px) scale(1.02); }
   /* After the active rule: a clipped game keeps its dashed edge while highlighted. */
   .pulse-games-card-clipped { border-style: dashed; }
   .pulse-games-art { border-radius: 7px; display: block; height: ${ART_H}px; overflow: hidden; position: relative; width: ${ART_W}px; }
@@ -153,35 +153,39 @@ export function panelComponentCss(): string {
 
   .pulse-sel { background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; box-sizing: border-box; min-width: 0; padding: 10px 12px; width: 100%; }
   .pulse-sel-header { align-items: baseline; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; min-width: 0; }
-  .pulse-sel-kicker { color: #8b8ba0; flex: 1 1 auto; font-size: 11px; font-weight: 800; min-width: 0; }
+  .pulse-sel-kicker { color: #9090a5; flex: 1 1 auto; font-size: 11px; font-weight: 800; min-width: 0; }
   .pulse-sel-offset { color: #fafafc; flex-shrink: 0; font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 800; }
-  .pulse-sel-close { background: transparent; border: 0; color: #8b8ba0; cursor: pointer; flex-shrink: 0; font-size: 16px; line-height: 1; margin: -2px -2px -2px 0; padding: 2px; }
+  .pulse-sel-close { background: transparent; border: 0; color: #9090a5; cursor: pointer; flex-shrink: 0; font-size: 16px; line-height: 1; margin: -2px -2px -2px 0; padding: 2px; }
   .pulse-sel-detail { font-weight: 700; margin: 4px 0 0; }
   .pulse-sel-game { align-items: center; color: #a1a1b2; display: flex; font-size: 11px; font-weight: 700; gap: 6px; margin: 4px 0 0; min-width: 0; }
   .pulse-sel-game-art { border-radius: 2px; display: block; flex-shrink: 0; object-fit: cover; }
   .pulse-sel-game-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-sel-activity { color: #a1a1b2; font-size: 11px; font-weight: 600; margin: 2px 0 8px; }
   .pulse-sel-list { display: grid; gap: 6px; list-style: none; margin: 0 0 10px; padding: 0; }
+  [data-selected-moment-card] .pulse-sel-list { grid-template-rows: repeat(3, 18px); }
+  /* No fabricated emote nodes: reserve the same 66 px rows + 10 px list margin
+     after the 8 px activity margin when no emote list exists. */
+  [data-selected-moment-card] .pulse-sel-activity:has(+ .pulse-sel-actions) { margin-bottom: 84px; }
   .pulse-sel-item { align-items: center; display: flex; gap: 8px; min-width: 0; }
   .pulse-sel-name { color: #fafafc; flex: 1; font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pulse-sel-uses { color: #8b8ba0; flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; }
-  .pulse-sel-actions { align-items: center; display: flex; flex-wrap: nowrap; gap: 12px; justify-content: space-between; min-width: 0; width: 100%; }
+  .pulse-sel-uses { color: #9090a5; flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .pulse-sel-actions { align-items: center; align-content: start; display: flex; flex-wrap: wrap; gap: 4px 8px; min-height: ${MOMENT_CARD_ACTIONS_HEIGHT}px; justify-content: space-between; min-width: 0; width: 100%; }
   .pulse-sel-primary { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9px; color: var(--pulse-accent-ink, #ddd6fe); cursor: pointer; font-size: 12px; font-weight: 800; padding: 5px 10px; white-space: nowrap; align-items: center; border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.46); display: inline-flex; flex-shrink: 0; gap: 5px; min-height: 28px; }
   .pulse-sel-play { font-size: 11px; line-height: 1; }
-  .pulse-sel-link { background: transparent; border: 0; color: var(--pulse-accent-soft, #c4b5fd); cursor: pointer; font: inherit; font-weight: 700; padding: 4px 0; text-decoration: underline; text-decoration-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35); text-underline-offset: 2px; align-items: center; display: inline-flex; flex-shrink: 1; font-size: 12px; gap: 3px; margin-left: auto; min-width: 0; white-space: nowrap; }
-  .pulse-sel-link-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .pulse-sel-link { background: transparent; border: 0; color: var(--pulse-accent-soft, #c4b5fd); cursor: pointer; font: inherit; font-weight: 700; padding: 4px 0; text-decoration: underline; text-decoration-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35); text-underline-offset: 2px; align-items: center; display: inline-flex; flex-shrink: 1; font-size: 12px; gap: 3px; margin-left: auto; min-width: 0; max-width: 100%; white-space: normal; }
+  .pulse-sel-link-text { min-width: 0; overflow-wrap: anywhere; }
   .pulse-sel-link-icon { flex-shrink: 0; font-size: 11px; line-height: 1; }
 
   .pulse-insp { background: rgba(13, 13, 18, 0.96); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; box-sizing: border-box; display: grid; gap: 4px; min-width: 0; padding: 8px 10px; width: 100%; }
   .pulse-insp-header { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; }
-  .pulse-insp-kicker { color: #8b8ba0; font-size: 11px; font-weight: 800; }
+  .pulse-insp-kicker { color: #9090a5; font-size: 11px; font-weight: 800; }
   .pulse-insp-time { color: #fafafc; font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 800; }
   .pulse-insp-detail { color: var(--pulse-accent-soft, #c4b5fd); font-size: 11px; font-weight: 750; margin: 0; }
   .pulse-insp-activity { color: #a1a1b2; font-size: 11px; font-weight: 600; margin: 0; }
   .pulse-insp-emotes { align-items: center; display: flex; gap: 8px; min-width: 0; overflow: hidden; padding-top: 3px; }
   .pulse-insp-emote { align-items: center; display: flex; gap: 4px; min-width: 0; overflow: hidden; }
   .pulse-insp-emote-name { color: #fafafc; font-size: 11px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pulse-insp-emote-count { color: #8b8ba0; flex-shrink: 0; font-size: 11px; font-weight: 700; }
+  .pulse-insp-emote-count { color: #9090a5; flex-shrink: 0; font-size: 11px; font-weight: 700; }
 
   /* Wraps when Retry full history or Load full history needs the room, so Spikes and Expand drop to a second row instead of off the edge. */
   .pulse-vp-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: 5px; min-height: 30px; min-width: 0; row-gap: 6px; width: 100%; }
@@ -193,23 +197,23 @@ export function panelComponentCss(): string {
   .pulse-vp-range-row { align-items: center; display: flex; gap: 6px; min-width: 0; }
   .pulse-vp-range-label { color: #a1a1b2; font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 700; line-height: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-vp-return { background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 5px; color: #fde68a; cursor: pointer; flex: 0 0 auto; font-size: 12px; font-weight: 900; line-height: 1; padding: 3px 5px; white-space: nowrap; }
-  .pulse-vp-hint { color: #8b8ba0; display: block; font-size: 11px; font-weight: 600; line-height: 12px; min-height: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-vp-hint { color: #9090a5; display: block; font-size: 11px; font-weight: 600; line-height: 12px; min-height: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-vp-row { align-items: stretch; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .pulse-vp-rail { flex: 1 1 auto; min-width: 0; width: 100%; }
   .pulse-vp-zoom-controls { align-items: center; display: inline-flex; flex: 0 0 auto; gap: 4px; justify-content: flex-end; }
   .pulse-vp-zoom { align-items: center; background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(167, 139, 250, 0.32); border-radius: 6px; color: #ddd6fe; cursor: pointer; display: inline-flex; font-size: 14px; font-weight: 900; height: 24px; justify-content: center; line-height: 1; padding: 0; width: 24px; }
-  .pulse-vp-reset { background: transparent; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #8b8ba0; cursor: pointer; font-size: 12px; font-weight: 800; height: 24px; min-width: 44px; padding: 0 7px; white-space: nowrap; }
+  .pulse-vp-reset { background: transparent; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #9090a5; cursor: pointer; font-size: 12px; font-weight: 800; height: 24px; min-width: 44px; padding: 0 7px; white-space: nowrap; }
   .pulse-vp-zoom:disabled, .pulse-vp-reset:disabled { cursor: pointer; }
 
   .pulse-ch { display: grid; gap: 6px; min-width: 0; overflow: visible; }
   .pulse-ch-top { align-items: flex-start; display: flex; gap: 8px; justify-content: space-between; min-height: 16px; min-width: 0; }
   .pulse-ch-title-row { align-items: center; display: flex; flex: 1 1 auto; gap: 8px; min-width: 0; overflow: hidden; }
-  .pulse-ch-title { color: #8b8ba0; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; line-height: 12px; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+  .pulse-ch-title { color: #9090a5; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; line-height: 12px; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
   .pulse-ch-slot { align-items: center; display: inline-flex; flex-shrink: 0; }
   .pulse-ch-controls { align-items: center; display: inline-flex; flex-shrink: 0; gap: 6px; }
   .pulse-ch-legend { align-items: center; display: flex; flex-wrap: wrap; gap: 4px; min-height: 14px; min-width: 0; }
-  .pulse-ch-chip { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 4px; color: #8b8ba0; cursor: pointer; display: inline-flex; font-family: inherit; font-size: 12px; font-weight: 700; gap: 4px; padding: 2px 6px; }
-  .pulse-ch-static { align-items: center; color: #8b8ba0; display: inline-flex; font-size: 12px; font-weight: 700; gap: 4px; padding: 2px 6px; }
+  .pulse-ch-chip { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 4px; color: #9090a5; cursor: pointer; display: inline-flex; font-family: inherit; font-size: 12px; font-weight: 700; gap: 4px; padding: 2px 6px; }
+  .pulse-ch-static { align-items: center; color: #9090a5; display: inline-flex; font-size: 12px; font-weight: 700; gap: 4px; padding: 2px 6px; }
   .pulse-ch-chip-focused { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.28); color: #fafafc; }
   .pulse-ch-chip-dimmed { opacity: 0.4; }
   .pulse-ch-dot { border-radius: 999px; flex-shrink: 0; height: 6px; width: 6px; }
@@ -233,7 +237,7 @@ export function panelComponentCss(): string {
   .pulse-sr-empty { color: ${theme.textMuted}; font-size: 12px; line-height: 1.5; margin: 0; }
   .pulse-sr-offline-meta { color: ${theme.textMuted}; font-size: 11px; font-weight: 600; }
   .pulse-sr-cta-row { display: flex; gap: 8px; }
-  .pulse-sr-cta { background: ${theme.accent}; border: 0; border-radius: 10px; color: ${theme.onAccent}; cursor: pointer; font-size: 12px; font-weight: 800; padding: 8px 12px; }
+  .pulse-sr-cta { background: ${theme.accentStrong}; border: 0; border-radius: 10px; color: ${theme.onAccent}; cursor: pointer; font-size: 12px; font-weight: 800; padding: 8px 12px; }
   .pulse-sr-only { border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
   /* Recap chart (RecapTimelineChart): were inline styles, same values. Hover rules in theme.ts stay !important. */
   .pulse-rc { display: grid; gap: 6px; }
@@ -256,10 +260,10 @@ export function panelComponentCss(): string {
   .pulse-rb-emotes { align-items: center; display: inline-flex; gap: 4px; margin-left: auto; min-width: 0; overflow: hidden; }
   .pulse-rb-emote { align-items: center; display: inline-flex; flex-shrink: 0; height: 18px; justify-content: center; width: 18px; }
   .pulse-rb-idle { align-items: center; justify-items: center; }
-  .pulse-rb-hint { color: #8b8ba0; font-size: 11px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-rb-hint { color: #9090a5; font-size: 11px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-rb-metrics { align-items: center; display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; }
   .pulse-rb-metric { display: grid; gap: 1px; line-height: 1.1; min-width: 0; }
-  .pulse-rb-label { color: #8b8ba0; flex-shrink: 0; font-size: 11px; font-weight: 700; }
+  .pulse-rb-label { color: #9090a5; flex-shrink: 0; font-size: 11px; font-weight: 700; }
   .pulse-rb-value { color: #a1a1b2; font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 800; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-rb-picked { cursor: pointer; }
 
@@ -272,7 +276,7 @@ export function panelComponentCss(): string {
   .pulse-mr-main { display: grid; flex: 1; gap: 2px; min-width: 0; }
   .pulse-mr-title-row { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; }
   .pulse-mr-offset { color: #fafafc; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .pulse-mr-counts { color: #8b8ba0; font-size: 11px; font-weight: 600; }
+  .pulse-mr-counts { color: #9090a5; font-size: 11px; font-weight: 600; }
   .pulse-mr-collecting-badge { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 999px; color: #fde68a; font-size: 12px; font-weight: 900; padding: 2px 8px; }
   .pulse-mr-emotes { align-items: center; display: flex; flex-shrink: 0; gap: 4px; }
   .pulse-mr-emote { align-items: center; display: inline-flex; line-height: 0; }
@@ -288,10 +292,10 @@ export function panelComponentCss(): string {
   .pulse-pv-main { align-items: center; background: transparent; border: 0; color: #fafafc; cursor: pointer; display: flex; gap: 10px; min-width: 0; padding: 0; text-align: left; width: 100%; }
   .pulse-pv-thumb-wrap { align-items: center; aspect-ratio: 16 / 9; background: #101014; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; display: flex; flex-shrink: 0; justify-content: center; overflow: hidden; width: 72px; }
   .pulse-pv-thumb { display: block; height: 100%; object-fit: cover; width: 100%; }
-  .pulse-pv-thumb-fallback { color: #8b8ba0; font-size: 11px; font-weight: 900; }
+  .pulse-pv-thumb-fallback { color: #9090a5; font-size: 11px; font-weight: 900; }
   .pulse-pv-copy { display: grid; gap: 4px; min-width: 0; flex: 1; }
   .pulse-pv-title { display: -webkit-box; font-size: 12px; font-weight: 800; line-height: 1.35; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-  .pulse-pv-meta { align-items: center; color: #8b8ba0; display: flex; flex-wrap: wrap; font-size: 11px; font-weight: 600; gap: 6px; line-height: 1.3; }
+  .pulse-pv-meta { align-items: center; color: #9090a5; display: flex; flex-wrap: wrap; font-size: 11px; font-weight: 600; gap: 6px; line-height: 1.3; }
   .pulse-past-vod-meta-row .pulse-pv-status { display: inline-block; flex-shrink: 0; font-size: 12px; max-width: 100%; overflow: hidden; padding: 2px 6px; text-overflow: ellipsis; white-space: nowrap; }
 `
 }

@@ -1681,30 +1681,7 @@ function PulseOverviewChartImpl({
           opacity={showViewerStrip ? 1 : 0}
         />
 
-        {showViewerStrip ? (
-          <g data-chart-viewer-lane-label="true" pointerEvents="none">
-            <rect
-              x={PAD_LEFT + 4}
-              y={viewerBandTop + 4}
-              width={VIEWER_TAG_WIDTH}
-              height={17}
-              rx={4}
-              fill="rgba(8, 15, 24, 0.72)"
-              stroke={hexToRgba(CHART_THEME.viewer.color, 0.32)}
-              strokeWidth="0.75"
-            />
-            <text
-              x={PAD_LEFT + 4 + VIEWER_TAG_WIDTH / 2}
-              y={viewerBandTop + 16.5}
-              fill={CHART_THEME.viewer.color}
-              fontSize="11"
-              fontWeight="800"
-              textAnchor="middle"
-            >
-              Viewers
-            </text>
-          </g>
-        ) : null}
+
 
         <g clipPath={`url(#${svgIds.plotClip})`}>
           <g
@@ -1736,6 +1713,30 @@ function PulseOverviewChartImpl({
               </g>
             </g>
           ) : null}
+        {showViewerStrip ? (
+          <g data-chart-viewer-lane-label="true" pointerEvents="none">
+            <rect
+              x={PAD_LEFT + 4}
+              y={viewerBandTop + 4}
+              width={VIEWER_TAG_WIDTH}
+              height={17}
+              rx={4}
+              fill="rgb(8, 15, 24)"
+              stroke={hexToRgba(CHART_THEME.viewer.color, 0.32)}
+              strokeWidth="0.75"
+            />
+            <text
+              x={PAD_LEFT + 4 + VIEWER_TAG_WIDTH / 2}
+              y={viewerBandTop + 16.5}
+              fill={CHART_THEME.viewer.color}
+              fontSize="11"
+              fontWeight="800"
+              textAnchor="middle"
+            >
+              Viewers
+            </text>
+          </g>
+        ) : null}
           {showViewerStrip && viewerStartMarkerX != null ? (
             <g data-viewer-sample-marker="start" pointerEvents="none" aria-hidden="true">
               <line
@@ -2036,6 +2037,7 @@ function PulseOverviewChartImpl({
           </g>
           </g>
         </g>
+
 
         <g
           ref={interactionLayerRef}

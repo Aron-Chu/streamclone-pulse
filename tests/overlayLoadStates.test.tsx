@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Overlay } from '../src/ui/Overlay.tsx'
 import { overlayBaseStyles } from '../src/ui/overlayStyles.ts'
+import { shadowStyles } from '../src/ui/theme.ts'
 import { PanelErrorBoundary } from '../src/ui/PanelErrorBoundary.tsx'
 import { StreamRecapSection } from '../src/ui/StreamRecapSection.tsx'
 import { CoverageCard } from '../src/ui/CoverageCard.tsx'
@@ -121,7 +122,7 @@ describe('Overlay load, error and dock states', () => {
 
     it('lets the placement CSS shrink the hidden pill to its content in right and bottom docks', async () => {
       const style = document.createElement('style')
-      style.textContent = overlayBaseStyles
+      style.textContent = overlayBaseStyles + shadowStyles
       document.head.append(style)
       try {
         for (const placement of ['right', 'bottom'] as const) {

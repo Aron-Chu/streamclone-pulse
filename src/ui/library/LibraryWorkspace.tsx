@@ -283,7 +283,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const linked = !!snapshot && bookmarksState !== 'not_linked'
   const undoable = (removed && !preview) || removedVisit
   return <main className="pl-library" id="settings-content" tabIndex={-1} aria-label="My Moments settings">
-    <div className="pl-page-heading"><div><span className="pl-eyebrow">YOUR MOMENTS · FREE</span><h2 ref={heading} tabIndex={-1}>My Moments</h2>
+    <div className="pl-page-heading"><div><h2 ref={heading} tabIndex={-1}>My Moments</h2>
       <p className="pl-muted">{accountsOpen ? 'Find your way back to the stream. Bookmarks are free. Without an account they stay on this device; with a free Pulse account they follow you to any device. Notes stay on this device. Watched history does too, unless you sync it to your account.' : linked ? ACCOUNT_INTRO : DEVICE_ONLY_INTRO}</p></div></div>
 
     <div className="pl-tabs" role="tablist" aria-label="My Moments views">{views.map((item, index) => <button type="button" key={item.id}

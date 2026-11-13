@@ -422,9 +422,9 @@ describe('chart shells and controls', () => {
   })
 
   it('provides a visible two-pixel focus treatment for Expand and Reset', () => {
-    expect(shadowStyles).toContain('.pulse-chart-expand-btn:focus-visible')
-    expect(shadowStyles).toContain('outline: 2px solid rgba(103, 232, 249, 0.95) !important;')
-    expect(shadowStyles).toContain('outline-offset: 2px !important;')
+    expect(shadowStyles).toContain(':is(:host, .pulse-host, .pl-library)')
+    expect(shadowStyles).toContain('outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);')
+    expect(shadowStyles).toContain('outline-offset: 2px;')
   })
 })
 

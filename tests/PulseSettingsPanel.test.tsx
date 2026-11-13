@@ -88,7 +88,7 @@ describe('PulseSettingsPanel quick workspace', () => {
 
   it('opens on the channel being watched, in plain language', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel channel={LIVE} />)
-    expect(html).toContain('Watching')
+    expect(html).not.toContain('<small>')
     expect(html).toContain('<strong>xQc</strong>')
     expect(html).toContain('Grand Theft Auto V · live 8h 35m')
     expect(html).toContain('<b>LIVE</b>')
@@ -104,12 +104,12 @@ describe('PulseSettingsPanel quick workspace', () => {
 
   it('describes an offline channel without a live badge or a viewer count', () => {
     const html = renderToStaticMarkup(<PulseSettingsPanel channel={{ ...LIVE, isLive: false, viewerCount: null, surface: 'offline_recap' }} />)
-    expect(html).toContain('Replay')
+    expect(html).not.toContain('Replay')
     expect(html).not.toContain('<b>LIVE</b>')
     expect(html).not.toContain('data-live')
     expect(html).not.toContain('live 8h')
     const visiting = renderToStaticMarkup(<PulseSettingsPanel channel={{ ...LIVE, isLive: false, surface: 'offline_empty' }} />)
-    expect(visiting).toContain('Visiting')
+    expect(visiting).not.toContain('Visiting')
   })
 
   it('leaves out an uptime that a stale start time would make impossible', () => {

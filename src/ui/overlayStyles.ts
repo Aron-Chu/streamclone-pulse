@@ -56,46 +56,11 @@ export const overlayBaseStyles = `
     height: auto;
     flex: 0 0 auto;
   }
-  .placement-bottom {
-    position: fixed;
-    left: 50%;
-    bottom: 16px;
-    transform: translateX(-50%);
-    width: min(860px, calc(100vw - 32px));
-    max-height: min(52vh, 560px);
-    height: auto;
-    flex: 0 0 auto;
-  }
   .placement-sidebar.pulse-shell {
     height: 100%;
     min-height: 100%;
   }
-  .mode-mini.placement-right {
-    top: auto;
-    bottom: 88px;
-    right: 12px;
-    transform: none;
-    width: min(420px, calc(100vw - 24px));
-    max-height: 72px;
-    overflow: hidden;
-  }
-  .mode-mini.placement-bottom {
-    max-height: 72px;
-    overflow: hidden;
-  }
-  .mode-collapsed.placement-right {
-    top: auto;
-    bottom: 24px;
-    right: 12px;
-    transform: none;
-    width: auto;
-    max-height: none;
-    border-radius: 999px;
-    overflow: visible;
-  }
-  .mode-collapsed.placement-bottom { bottom: 16px; width: auto; border-radius: 999px; overflow: visible; }
   .placement-right:not(.mode-mini):not(.mode-collapsed) { animation-name: pulse-in-right; }
-  .placement-bottom:not(.mode-mini) { animation-name: pulse-in-bottom; }
   .pulse-hidden { display: none !important; }
   .pulse-sidebar-panel.pulse-shell {
     animation: none;

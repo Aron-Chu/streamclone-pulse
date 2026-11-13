@@ -76,6 +76,6 @@ describe('light Twitch tab row', () => {
       expect(contrast(hex(palette.onAccent), pill)).toBeGreaterThanOrEqual(4.5)
       expect(contrast(over(...ring, pill), track)).toBeGreaterThanOrEqual(3)
     }
-    expect(shadowStyles).toContain(':host([data-twitch-theme="light"]) .pulse-sidebar-header-tabs .pulse-sidebar-tab:focus-visible')
+    expect(shadowStyles).toContain(':is(:host, .pulse-host, .pl-library)')
   })
 })

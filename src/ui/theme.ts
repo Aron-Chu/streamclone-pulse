@@ -20,7 +20,7 @@ export const theme = {
   panelGlass: 'rgba(17, 17, 23, 0.92)',
   textPrimary: '#fafafc',
   textSecondary: '#a1a1b2',
-  textMuted: '#8b8ba0',
+  textMuted: '#9090a5',
   accent: accentTokens.accent,
   accentStrong: accentTokens.accentStrong,
   accentSoft: accentTokens.accentSoft,
@@ -45,6 +45,52 @@ export const theme = {
 // The Supporter sign lights up on hover or focus; reduced motion shows it lit
 // without movement. Keep explanatory comments out of the shipped CSS.
 export const shadowStyles = `
+  :is(:host, .pulse-host, .pl-library) :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
+    outline-offset: 2px;
+  }
+
+  .placement-bottom {
+    position: fixed;
+    left: var(--pulse-dock-x, 50%);
+    bottom: 16px;
+    transform: translateX(-50%);
+    width: min(860px, var(--pulse-dock-w, calc(100vw - 32px)));
+    max-width: var(--pulse-dock-w, calc(100vw - 32px));
+    max-height: min(82vh, 760px);
+    height: auto;
+    flex: 0 0 auto;
+  }
+  .placement-bottom.mode-expanded .pulse-personal-banner { padding-block: 4px !important; margin-bottom: 4px !important; }
+  .placement-bottom.mode-expanded .pulse-hub-row { margin-block: 0 !important; }
+  .placement-bottom.mode-expanded .pulse-workspace .pulse-section-card { padding-block: 8px !important; row-gap: 4px !important; }
+  .placement-bottom.mode-expanded .pulse-section-card > div:has(+ [data-chart-status-lane]) { margin-bottom: 0 !important; }
+  .placement-bottom.mode-expanded .pulse-section-card > div:has(> [data-chart-surface]) { margin-top: 0 !important; row-gap: 4px !important; }
+  .mode-mini.placement-bottom {
+    max-height: 72px;
+    overflow: hidden;
+  }
+  .mode-mini.placement-right {
+    top: auto;
+    bottom: 88px;
+    right: 12px;
+    transform: none;
+    width: min(420px, calc(100vw - 24px));
+    max-height: 72px;
+    overflow: hidden;
+  }
+  .mode-collapsed.placement-right {
+    top: auto;
+    bottom: 24px;
+    right: 12px;
+    transform: none;
+    width: auto;
+    max-height: none;
+    border-radius: 999px;
+    overflow: visible;
+  }
+  .mode-collapsed.placement-bottom { bottom: 16px; width: auto; border-radius: 999px; overflow: visible; }
+  .placement-bottom:not(.mode-mini) { animation-name: pulse-in-bottom; }
   @keyframes pulse-in {
     from { opacity: 0; transform: translateY(8px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
@@ -150,8 +196,7 @@ export const shadowStyles = `
   }
   .pulse-moment-row-button:focus-visible,
   .pulse-moment-more:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95) !important;
-    outline-offset: 2px;
+
     box-shadow: 0 0 0 1px rgba(17, 17, 23, 0.95) !important;
   }
   .pulse-moment-row-button .pulse-moment-row {
@@ -176,7 +221,6 @@ export const shadowStyles = `
   .pulse-seven-tv-toggle:hover {
     background: rgba(255, 255, 255, 0.03);
   }
-  .pulse-seven-tv-toggle:focus-visible,.pulse-seven-tv-more:focus-visible,.pulse-seven-tv-chip:focus-visible{outline:2px solid rgba(var(--pulse-accent-light-rgb,196,181,253),.95);outline-offset:2px}
   .pulse-seven-tv-chip {
     transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
   }
@@ -206,10 +250,6 @@ export const shadowStyles = `
   }
   .pulse-overview-chart [data-chart-moment-marker]:focus:not(:focus-visible) {
     outline: none;
-  }
-  .pulse-overview-chart [data-chart-moment-marker]:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
-    outline-offset: 2px;
   }
   .pulse-chart-legend-chip {
     transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
@@ -253,10 +293,6 @@ export const shadowStyles = `
     border-color: rgba(255, 255, 255, 0.22) !important;
     transform: translateY(-1px);
   }
-  .pulse-chart-expand-btn:focus-visible {
-    outline: 2px solid rgba(103, 232, 249, 0.95) !important;
-    outline-offset: 2px !important;
-  }
   .pulse-chart-expand-btn-active:hover {
     background: rgba(139, 92, 246, 0.2) !important;
     border-color: rgba(167, 139, 250, 0.5) !important;
@@ -283,21 +319,19 @@ export const shadowStyles = `
   .pulse-clip-control:hover:not(:disabled) { background: rgba(255,255,255,.1); color: ${theme.textPrimary}; }
   .pulse-clip-control:active:not(:disabled) { transform: translateY(1px); }
   .pulse-clip-control:disabled { opacity: .35; cursor: default; }
-  .pulse-clip-control:focus-visible, .pulse-clips-rail:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
   .pulse-clips-rail { overscroll-behavior-x: contain; scroll-padding: 2px; }
   .pulse-clips-rail::-webkit-scrollbar { display: none; }
   .pulse-clips-rail > div { padding: 2px; box-sizing: border-box; }
   .pulse-clip-spike-card{transition:color .16s ease,transform .16s ease}
   .pulse-clip-spike-card:hover,.pulse-clip-spike-card:focus-visible{color:var(--pulse-accent-ink,#ddd6fe)!important;transform:translateY(-2px)}
-  .pulse-clip-spike-card:focus-visible{outline:2px solid rgba(var(--pulse-accent-light-rgb,167,139,250),.95);outline-offset:0}
   .pulse-clip-thumb::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);pointer-events:none;transition:box-shadow .16s ease}
   .pulse-clip-spike-card:is(:hover,:focus-visible,:active) .pulse-clip-thumb::after{box-shadow:inset 0 0 0 1.5px rgba(var(--pulse-accent-light-rgb,167,139,250),.7),inset 0 0 16px rgba(var(--pulse-accent-rgb,139,92,246),.24)}
   .pulse-recap-analytics-cta {
     transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
   }
   .pulse-recap-analytics-cta:hover:not(:disabled) {
-    background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.92) !important;
-    box-shadow: 0 6px 18px rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.35);
+    background: rgba(var(--pulse-accent-strong-rgb, 124, 58, 237), 0.92) !important;
+    box-shadow: 0 6px 18px rgba(var(--pulse-accent-strong-rgb, 124, 58, 237), 0.35);
     transform: translateY(-1px);
   }
   .pulse-action-chip {
@@ -324,14 +358,6 @@ export const shadowStyles = `
   }
   .pulse-action-chip:active:not(:disabled) {
     transform: translateY(0) scale(0.985);
-  }
-  .pulse-action-chip-primary:focus-visible {
-    outline: 2px solid rgba(103, 232, 249, 0.95);
-    outline-offset: 2px;
-  }
-  .pulse-action-chip:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
-    outline-offset: 2px;
   }
   .pulse-library-peek-cta {
     align-items: center;
@@ -362,10 +388,6 @@ export const shadowStyles = `
   }
   .pulse-library-peek-cta:active {
     transform: translateY(0);
-  }
-  .pulse-library-peek-cta:focus-visible {
-    outline: 2px solid rgba(103, 232, 249, 0.95);
-    outline-offset: 2px;
   }
   .pulse-library-peek-cta-arrow {
     color: var(--pulse-accent-light, #c4b5fd);
@@ -404,12 +426,6 @@ export const shadowStyles = `
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.28) !important;
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.7) !important;
     color: #fff;
-  }
-  .pulse-card-bookmark:focus-visible,
-  .pulse-my-moments-link:focus-visible,
-  .pulse-bookmark-toast button:focus-visible {
-    outline: 2px solid rgba(103, 232, 249, 0.95);
-    outline-offset: 2px;
   }
   .pulse-row-bookmark {
     color: var(--pulse-accent-ink, #ddd6fe);
@@ -476,10 +492,6 @@ export const shadowStyles = `
   }
   .pulse-arrival button:hover {
     background: rgba(245, 196, 81, 0.16);
-  }
-  .pulse-arrival button:focus-visible {
-    outline: 2px solid rgba(103, 232, 249, 0.95);
-    outline-offset: 1px;
   }
   /* Sticks to the bottom while there is more below; at the end of the panel it
      takes its own room after the last item, so it never covers that item. */
@@ -576,10 +588,6 @@ export const shadowStyles = `
   .pulse-analytics-hub-cta:focus-visible::before {
     animation: pulse-hub-cta-sheen 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-  .pulse-analytics-hub-cta:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
-    outline-offset: 2px;
-  }
   .pulse-analytics-hub-cta:hover:not(:disabled) {
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2) !important;
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.7) !important;
@@ -600,7 +608,6 @@ export const shadowStyles = `
   .pulse-hub-row .pulse-analytics-hub-cta { flex: 1; min-width: 0; }
   .pulse-hub-discord { appearance: none; background: #5865f2; border: 0; border-radius: 9px; color: #fff; cursor: pointer; flex: none; font: inherit; font-size: 12px; font-weight: 900; padding: 0 13px; }
   .pulse-hub-discord:hover, .pulse-quick-community button:hover { filter: brightness(1.12); }
-  .pulse-hub-discord:focus-visible, .pulse-quick-community button:focus-visible { outline: 2px solid #c9cdfb; outline-offset: 2px; }
   .pulse-chart-zoom-button {
     -webkit-tap-highlight-color: transparent;
     min-height: 24px;
@@ -616,10 +623,6 @@ export const shadowStyles = `
   }
   .pulse-chart-zoom-button:active:not(:disabled) {
     transform: translateY(0) scale(0.96);
-  }
-  .pulse-chart-zoom-button:focus-visible {
-    outline: 2px solid rgba(103, 232, 249, 0.95);
-    outline-offset: 2px;
   }
   .pulse-chart-zoom-reset {
     display: inline-flex;
@@ -647,8 +650,7 @@ export const shadowStyles = `
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.5) !important;
   }
   .pulse-chart-rail-track:focus-visible {
-    outline: 2px solid rgba(103, 232, 249, 0.95);
-    outline-offset: 2px;
+
     box-shadow: 0 0 0 3px rgba(17, 17, 23, 0.92);
   }
   .pulse-chart-rail-track[data-chart-interacting="true"] {
@@ -689,8 +691,7 @@ export const shadowStyles = `
     vertical-align: middle;
   }
   .pulse-emote-hover-wrap:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.9);
-    outline-offset: 2px;
+
     border-radius: 4px;
   }
   .pulse-emote-hover-preview {
@@ -741,119 +742,6 @@ export const shadowStyles = `
   .pulse-sparkline-wrap {
     position: relative;
   }
-  .pulse-sparkline-tooltip {
-    background: rgba(17, 17, 23, 0.96);
-    border: 1px solid rgba(167, 139, 250, 0.3);
-    border-radius: 8px;
-    color: ${theme.textPrimary};
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    padding: 4px 8px;
-    pointer-events: none;
-    position: absolute;
-    text-transform: uppercase;
-    transform: translate(-50%, -100%);
-    white-space: nowrap;
-    z-index: 5;
-  }
-  .pulse-signal-wrap {
-    position: relative;
-    width: 100%;
-  }
-  .pulse-signal-wrap--interactive {
-    cursor: crosshair;
-  }
-  .pulse-signal-wrap:focus-visible {
-    outline: 1px solid rgba(167, 139, 250, 0.45);
-    outline-offset: 2px;
-  }
-  .pulse-signal-line {
-    vector-effect: non-scaling-stroke;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-  .pulse-signal-cross {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: rgba(255, 255, 255, 0.22);
-    pointer-events: none;
-    transform: translateX(-50%);
-    z-index: 2;
-  }
-  .pulse-signal-selection-line {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: repeating-linear-gradient(
-      to bottom,
-      rgba(251, 191, 36, 0.95) 0,
-      rgba(251, 191, 36, 0.95) 4px,
-      transparent 4px,
-      transparent 8px
-    );
-    pointer-events: none;
-    transform: translateX(-50%);
-    z-index: 3;
-  }
-  .pulse-signal-selection-dot {
-    position: absolute;
-    bottom: 16px;
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: #fbbf24;
-    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.35);
-    pointer-events: none;
-    transform: translateX(-50%);
-    z-index: 4;
-  }
-  .pulse-signal-selection-animated {
-    transition: left 180ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .pulse-signal-tip {
-    text-transform: none;
-    white-space: normal;
-    min-width: 110px;
-  }
-  .pulse-segment-moments-btn {
-    -webkit-tap-highlight-color: transparent;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    color: ${theme.textMuted};
-    cursor: pointer;
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    min-height: 30px;
-    padding: 4px 8px;
-    text-transform: uppercase;
-    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-  }
-  .pulse-segment-moments-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.06);
-    color: ${theme.textSecondary};
-  }
-  .pulse-segment-moments-btn:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
-    outline-offset: 2px;
-  }
-  .pulse-segment-moments-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-  .pulse-segment-moments-btn.is-active {
-    background: rgba(251, 191, 36, 0.12);
-    border-color: rgba(251, 191, 36, 0.35);
-    color: #fde68a;
-  }
-  .pulse-segment-chart-surface {
-    background: rgba(255, 255, 255, 0.02);
-  }
   .pulse-moment-inspector-card{animation:row-rise 120ms cubic-bezier(.22,1,.36,1) both}
   .pulse-moment-selection-card{animation:tab-fade 200ms ease-out both}
   .pulse-moment-card-swap{animation:pulse-swap-fade 180ms ease-out both}
@@ -896,9 +784,6 @@ export const shadowStyles = `
     .pulse-chart-rail-thumb {
       transition: none !important;
     }
-    .pulse-signal-selection-animated {
-      transition: none;
-    }
     .pulse-emote-hover-preview {
       transition: none;
     }
@@ -921,10 +806,6 @@ export const shadowStyles = `
     background: rgba(139, 92, 246, 0.14);
     border-color: rgba(167, 139, 250, 0.35);
     color: #ddd6fe;
-  }
-  .pulse-settings-gear-btn:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
-    outline-offset: 2px;
   }
   .pulse-past-vod-shell {
     background: rgba(255, 255, 255, 0.035);
@@ -987,10 +868,6 @@ export const shadowStyles = `
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.14);
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45);
     transform: translateY(-1px);
-  }
-  .pulse-past-vod-action:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
-    outline-offset: 2px;
   }
   .pulse-past-vod-action:disabled {
     cursor: not-allowed;
@@ -1131,7 +1008,7 @@ export const shadowStyles = `
   }
   .pulse-quick-group-title {
     color: ${theme.textSecondary};
-    font-size: 10.5px;
+    font-size: 12px;
     font-weight: 800;
     letter-spacing: 0.07em;
     margin: 0 0 6px 2px;
@@ -1175,7 +1052,7 @@ export const shadowStyles = `
   }
   .pulse-settings-section-heading h2 {
     color: ${theme.textPrimary};
-    font-size: 10px;
+    font-size: 11px;
     margin: 0;
     text-transform: uppercase;
   }
@@ -1246,7 +1123,7 @@ export const shadowStyles = `
   }
   /* Selected marker for compact pickers, matching PulseThemedSelect. Styled
      here rather than inline so it follows the stylesheet like every sibling. */
-  .pulse-choice-check { flex: none; font-size: 9px; line-height: 1; margin-left: 2px; }
+  .pulse-choice-check { flex: none; font-size: 11px; line-height: 1; margin-left: 2px; }
   .pulse-placement-icon {
     border: 1px solid currentColor;
     border-radius: 2px;
@@ -1275,7 +1152,7 @@ export const shadowStyles = `
     border-radius: 999px;
     color: var(--pulse-accent-ink, #ddd6fe);
     flex: none;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     padding: 3px 6px;
   }
@@ -1304,12 +1181,11 @@ export const shadowStyles = `
   .pulse-settings-channel[data-live] .pulse-settings-channel-avatar { box-shadow: 0 0 0 2px #17171d, 0 0 0 4px #eb0400; }
   .pulse-settings-channel-avatar img { height: 100%; object-fit: cover; width: 100%; }
   .pulse-settings-channel-copy { display: grid; gap: 1px; min-width: 0; }
-  .pulse-settings-channel-copy small { color: ${theme.textMuted}; font-size: 10px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
   .pulse-settings-channel-copy strong { color: ${theme.textPrimary}; font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
   .pulse-settings-channel-copy :is(strong, span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-settings-channel-copy span { color: ${theme.textSecondary}; font-size: 11.5px; }
   .pulse-settings-channel-live { align-self: start; display: grid; gap: 4px; justify-items: end; padding-top: 2px; }
-  .pulse-settings-channel-live b { background: #eb0400; border-radius: 4px; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; line-height: 1; padding: 3px 5px; }
+  .pulse-settings-channel-live b { background: #eb0400; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; line-height: 1; padding: 3px 5px; }
   .pulse-settings-channel-live span { color: ${theme.textSecondary}; font-size: 11px; font-variant-numeric: tabular-nums; }
   .pulse-settings-footer-error { margin: 0 2px 6px; }
   .pulse-settings-status-dot[data-tone="ok"] { background: ${theme.liveSoft}; }
@@ -1339,7 +1215,6 @@ export const shadowStyles = `
   .pulse-supporter-stage { display: block; height: 96px; margin: 6px -14px 0; position: relative; }
   ${/* @__PURE__ */ supporterPaintCss()}
   .pulse-settings-panel button:not(:disabled):hover{border-color:var(--pulse-accent-light,#a78bfa);filter:brightness(1.15)}
-  .pulse-settings-panel :is(button,input,select,summary):focus-visible{outline:2px solid var(--pulse-accent-light,#a78bfa);outline-offset:3px}
   .pulse-settings-toggle-row {
     align-items: center;
     display: flex;
@@ -1398,10 +1273,6 @@ export const shadowStyles = `
   .pulse-primary-btn:hover {
     filter: brightness(1.08);
   }
-  .pulse-primary-btn:focus-visible {
-    outline: 2px solid var(--pulse-accent-soft, #c4b5fd);
-    outline-offset: 2px;
-  }
   .pulse-primary-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -1433,8 +1304,7 @@ export const shadowStyles = `
     color: ${theme.textPrimary} !important;
   }
   .pulse-themed-select-trigger:focus-visible {
-    outline: 2px solid ${theme.accentSoft};
-    outline-offset: 2px;
+
     background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.1) !important;
     border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.55) !important;
     color: ${theme.accentInk} !important;
@@ -1496,10 +1366,6 @@ export const shadowStyles = `
     background: transparent;
     transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease,
       transform 0.15s ease;
-  }
-  .pulse-sidebar-tab:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
-    outline-offset: -2px;
   }
   .pulse-sidebar-tab.active {
     background: ${theme.accentStrong};
@@ -1573,10 +1439,6 @@ export const shadowStyles = `
   .pulse-sidebar-header-edge:hover {
     background: rgba(255, 255, 255, 0.1);
   }
-  .pulse-sidebar-header-edge:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);
-    outline-offset: 2px;
-  }
   .pulse-sidebar-header-tabs .pulse-sidebar-tabs {
     flex: 1;
     min-width: 0;
@@ -1627,10 +1489,6 @@ export const shadowStyles = `
   :host([data-twitch-theme="light"]) .pulse-sidebar-header-tabs .pulse-sidebar-tab:not(.active):hover:not(:disabled) {
     background: rgba(0, 0, 0, 0.06);
     color: #0e0e10;
-  }
-  :host([data-twitch-theme="light"]) .pulse-sidebar-header-edge:focus-visible,
-  :host([data-twitch-theme="light"]) .pulse-sidebar-header-tabs .pulse-sidebar-tab:focus-visible {
-    outline-color: #0e0e10;
   }
   .placement-sidebar.pulse-shell {
     background: ${theme.bgCanvas};
@@ -1700,10 +1558,6 @@ export const shadowStyles = `
     background: rgba(42, 36, 64, 0.92) !important;
     border-color: rgba(167, 139, 250, 0.35) !important;
   }
-  .pulse-mini-dock .pulse-mini-dock-main:focus-visible {
-    outline: 2px solid rgba(167, 139, 250, 0.55);
-    outline-offset: 2px;
-  }
   .pulse-mini-dock button[title]:not(.pulse-mini-dock-main):hover {
     background: rgba(255, 255, 255, 0.06);
     color: ${theme.textPrimary};
@@ -1746,8 +1600,7 @@ export const shadowStyles = `
     transform: translateY(1px);
   }
   .pulse-settings-bottom-bar:focus-visible {
-    outline: 2px solid rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.9);
-    outline-offset: 2px;
+
     box-shadow: 0 0 0 1px rgba(17, 17, 23, 0.95);
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1840,7 +1693,6 @@ export const shadowStyles = `
   .pulse-banner-customize button { min-height: 32px; padding: 6px 12px; border: 1px solid var(--pulse-banner-border); border-radius: var(--pulse-banner-radius); background: var(--pulse-banner-panel); color: var(--pulse-banner-text); font: inherit; cursor: pointer; transition: background 140ms ease, border-color 140ms ease; }
   .pulse-banner-customize button[aria-pressed="true"], .pulse-banner-customize button[type="submit"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.16); border-color: var(--pulse-banner-border-accent); color: var(--pulse-banner-accent-ink); }
   .pulse-banner-customize button:hover { background: var(--pulse-banner-panel-elevated); }
-  .pulse-banner-customize :focus-visible { outline: 2px solid var(--pulse-banner-accent-soft); outline-offset: 2px; }
   .pulse-banner-customize button:disabled { opacity: .5; cursor: default; }
   @keyframes pulse-banner-rain { from { translate: 0 -50px; rotate: -12deg; } to { translate: -12px calc(100cqh + 50px); rotate: 18deg; } }
   @media (prefers-reduced-motion: reduce) { .pulse-banner-art[data-mode="rain"] img { animation: none; top: calc(8% + var(--i) * 15%) !important; } .pulse-banner-customize button { transition: none; } }

@@ -11,6 +11,7 @@ import {
   createBoundedRemeasureScheduler,
   DEFAULT_CHAT_HEADER_HEIGHT,
   isChatRectInViewport,
+  dockSpan,
   isUsableChatRect,
   focusNativeChatComposer,
   scheduleNativeChatFocusHandoff,
@@ -1143,6 +1144,49 @@ describe('observeChatSnapLayout', () => {
     const { seen, stop } = observe(placed)
     expect(seen).toEqual([null])
     stop()
+  })
+})
+
+describe('bottom dock span', () => {
+  it('centres over the video and stays left of an open chat column', () => {
+    // 1024 wide: video 0-684, chat 684-1024
+    expect(dockSpan({ left: 0, right: 684 }, { left: 684, right: 1024 }, 1024)).toEqual({ x: 342, w: 652 })
+    // the side nav pushes the video right
+    expect(dockSpan({ left: 240, right: 1100 }, { left: 1100, right: 1440 }, 1440)).toEqual({ x: 670, w: 828 })
+  })
+
+  it('uses the whole video when chat is collapsed or missing', () => {
+    expect(dockSpan({ left: 0, right: 1920 }, null, 1920)).toEqual({ x: 960, w: 1888 })
+    expect(dockSpan(null, null, 1280)).toEqual({ x: 640, w: 1248 })
+  })
+
+  it('keeps clear of the chat laid over the video in theatre mode', () => {
+    expect(dockSpan({ left: 0, right: 1440 }, { left: 1100, right: 1440 }, 1440)).toEqual({ x: 550, w: 1068 })
+  })
+
+  it('uses the positive nav-to-chat fallback when a retained video has no horizontal area', () => {
+    for (const video of [{ left: 0, right: 0 }, { left: 500, right: 500 }, { left: 500, right: 400 }, { left: 500, right: NaN }]) {
+      expect(dockSpan(video, { left: 1100, right: 1440 }, 1440, 240)).toEqual({ x: 670, w: 828 })
+    }
+    expect(dockSpan({ left: 0, right: 0 }, null, 240, 240)).toEqual({ x: 240, w: 0 })
+  })
+
+  it('stays inside narrow, offscreen and degenerate available intervals', () => {
+    for (const [video, chat, viewport, nav, left, right] of [
+      [{ left: 50, right: 300 }, { left: 300, right: 640 }, 640, 50, 50, 300],
+      [{ left: 0, right: 200 }, null, 1024, 0, 0, 200],
+      [null, { left: 300, right: 640 }, 640, 50, 50, 300],
+      [null, null, 640, 240, 240, 640],
+      [{ left: 500, right: 500 }, null, 640, 240, 240, 640],
+      [{ left: 800, right: 900 }, null, 640, 0, 640, 640],
+      [{ left: -100, right: -10 }, null, 640, 0, 0, 0],
+    ] as const) {
+      const { x, w } = dockSpan(video, chat, viewport, nav)
+      expect(w).toBeGreaterThanOrEqual(0)
+      expect(x - w / 2).toBeGreaterThanOrEqual(left)
+      expect(x + w / 2).toBeLessThanOrEqual(right)
+    }
+    expect(dockSpan({ left: NaN, right: 100 }, null, NaN)).toEqual({ x: 0, w: 0 })
   })
 })
 
