@@ -28,7 +28,7 @@ vi.mock('../hooks/useAnalyticsLive.ts', () => ({
   }),
 }))
 vi.mock('./analytics/AnalyticsChart.tsx', () => ({
-  default: ({ selectedDetail, onSelectRollup }: { selectedDetail?: ReactNode | ((bar: null) => ReactNode); onSelectRollup: (row: AnalyticsMinuteRollup | null) => void }) => <div data-testid="analytics-chart">Chart<button onClick={() => onSelectRollup(detail().rollups[0])}>Choose measured minute</button>{typeof selectedDetail === 'function' ? selectedDetail(null) : selectedDetail}</div>,
+  default: ({ selectedDetail, onSelectRollup, onExpandedChange }: { selectedDetail?: ReactNode | ((bar: null) => ReactNode); onSelectRollup: (row: AnalyticsMinuteRollup | null) => void; onExpandedChange?: (expanded: boolean) => void }) => <div data-testid="analytics-chart">Chart<button onClick={() => onSelectRollup(detail().rollups[0])}>Choose measured minute</button><button onClick={() => onExpandedChange?.(true)}>Expand chart</button><button onClick={() => onExpandedChange?.(false)}>Collapse chart</button>{typeof selectedDetail === 'function' ? selectedDetail(null) : selectedDetail}</div>,
 }))
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
   DataQualityButton: () => <span>Data quality</span>,
@@ -198,6 +198,28 @@ describe('AnalyticsConsole opt-in layout controls', () => {
     expect(screen.getByTestId('stream-sidebar')).not.toBeNull()
   })
 
+  it('folds streams and session details under the chart while the chart is expanded (B2), apart from Focus chart', async () => {
+    renderConsole({ enableLayoutControls: true })
+    expect(await screen.findByRole('heading', { name: 'xQc' })).not.toBeNull()
+    expect(screen.getByText('Layout fixture', { selector: '[data-session-title]' })).not.toBeNull()
+    expect(await screen.findByTestId('analytics-chart')).not.toBeNull()
+    expect(document.querySelector('aside[data-analytics-stream-column]')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand chart' }))
+    const streamsDisclosure = document.querySelector('details#analytics-console-streams')
+    expect(streamsDisclosure).not.toBeNull()
+    expect(screen.getByText('Session details').closest('details')).not.toBeNull()
+    expect(
+      screen.getByTestId('analytics-chart').compareDocumentPosition(streamsDisclosure as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // the header's Focus chart is its own switch
+    expect(screen.getByRole('button', { name: 'Focus chart' }).getAttribute('aria-pressed')).toBe('false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse chart' }))
+    expect(document.querySelector('details#analytics-console-streams')).toBeNull()
+    expect(screen.getByTestId('stream-sidebar')).not.toBeNull()
+  })
+
   it('exposes one keyboard-operable tab set for session details', async () => {
     renderConsole()
     await screen.findByText('Layout fixture', { selector: '[data-session-title]' })
@@ -222,12 +244,13 @@ describe('AnalyticsConsole data skeleton', () => {
     })
     const status = screen.getByRole('status', { name: /loading analytics chart/i })
     expect(status.getAttribute('data-console-skeleton')).toBe('chart')
-    // One height per loaded chart card size: 770 px below 610 px, 738 px at 610-639 px, 730 px at 640-719 px,
-    // 830 px from 720 px.
-    expect(status.className).toMatch(/(?:^| )min-h-\[48\.125rem\]/)
-    expect(status.className).toMatch(/ min-\[610px\]:min-h-\[46\.125rem\]/)
-    expect(status.className).toMatch(/ sm:min-h-\[45\.625rem\]/)
-    expect(status.className).toMatch(/ min-\[720px\]:min-h-\[51\.875rem\]/)
+    // Representative initial chart: one short named emote and the accessible 44 px control row.
+    // Content-dependent additional rows may be taller; native tests check the actual loading transition.
+    expect(status.className).toMatch(/(?:^| )min-h-\[51\.125rem\]/)
+    expect(status.className).toMatch(/ min-\[610px\]:min-h-\[49\.125rem\]/)
+    expect(status.className).toMatch(/ sm:min-h-\[48\.625rem\]/)
+    expect(status.className).toMatch(/ min-\[720px\]:min-h-\[54\.875rem\]/)
+    expect(status.className).toMatch(/ xl:min-h-\[54\.625rem\]/)
     // The readout's place holds a loading line in the readout's style, kept out of the status's spoken text.
     const readout = status.querySelector('[data-console-skeleton-readout]')!
     expect(readout.className).toBe('ssc-ro')
