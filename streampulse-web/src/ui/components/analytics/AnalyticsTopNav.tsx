@@ -82,6 +82,21 @@ export function AnalyticsTopNav({
               {item.label}
             </NavLink>
           ))}
+        </nav>
+      ) : null}
+
+      {dock}
+
+      {/* Discord stays on the bar at every width (a 44 px mark below 1280 px); install hides on phones. */}
+      <div className="analytics-topnav__actions" aria-label="Analytics utilities">
+        {install ?? <InstallCta className="analytics-topnav__install" label="short" icon="mark" data-cta="chrome-install-analytics" />}
+        {discord ? (
+          <a href={discord} target="_blank" rel="noopener noreferrer" className="analytics-topnav__discord" aria-label="Discord (opens in a new tab)">
+            <DiscordMark size={18} /><span>Discord</span>
+          </a>
+        ) : null}
+      </div>
+      {items.length > 0 ? (
           <div className="analytics-topnav__more" ref={menuRef} onKeyDown={event => {
             if (event.key === 'Escape' && isOpen) {
               event.preventDefault()
@@ -91,10 +106,17 @@ export function AnalyticsTopNav({
           }} onBlur={event => {
             if (!event.currentTarget.contains(event.relatedTarget as Node | null)) closeMenu()
           }}>
-            <button ref={triggerRef} type="button" className="analytics-topnav__more-trigger" aria-label="Support and account" aria-expanded={isOpen} aria-controls={panelId} title="Support and account" onClick={() => setIsOpen(value => !value)}>
+            <button ref={triggerRef} type="button" className="analytics-topnav__more-trigger" aria-label="Navigation menu" aria-expanded={isOpen} aria-controls={panelId} title="Navigation menu" onClick={() => setIsOpen(value => !value)}>
               <Menu size={18} aria-hidden="true" />
             </button>
             <div ref={panelRef} id={panelId} className="analytics-topnav__more-links" data-state={isOpen ? 'open' : 'closed'} aria-hidden={!isOpen}>
+              <nav className="analytics-topnav__more-nav" aria-label="Page links">
+                {items.map((item) => (
+                  <NavLink key={item.to} to={item.to} end={item.end} onClick={() => closeMenu()}>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
               <Link to={FEEDBACK_PATH} onClick={() => closeMenu()}>Send feedback</Link>
               <Link to="/docs" onClick={() => closeMenu()}>Extension guide</Link>
               <Link to="/support" onClick={() => closeMenu()}>Support</Link>
@@ -110,20 +132,7 @@ export function AnalyticsTopNav({
               <Link to="/refunds" onClick={() => closeMenu()}>Cancellation and refunds</Link>
             </div>
           </div>
-        </nav>
       ) : null}
-
-      {dock}
-
-      {/* Discord stays on the bar at every width (a 44 px mark below 1280 px); install hides on phones. */}
-      <div className="analytics-topnav__actions" aria-label="Analytics utilities">
-        {install ?? <InstallCta className="analytics-topnav__install" label="short" icon="mark" data-cta="chrome-install-analytics" />}
-        {discord ? (
-          <a href={discord} target="_blank" rel="noopener noreferrer" className="analytics-topnav__discord" aria-label="Discord (opens in a new tab)">
-            <DiscordMark size={18} /><span>Discord</span>
-          </a>
-        ) : null}
-      </div>
       <AccountEntrySlot variant="analytics" />
     </header>
   )

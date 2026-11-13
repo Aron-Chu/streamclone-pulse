@@ -58,6 +58,12 @@
   height: 0;
 }
 
+/* One side gutter for the top bar, every analytics page and the footer. */
+.figma-analytics { --fa-gutter: 24px; }
+@media (max-width: 719px) {
+  .figma-analytics { --fa-gutter: 16px; }
+}
+
 /* Top navigation bar */
 .analytics-topnav {
   position: sticky;
@@ -69,7 +75,7 @@
   gap: 0.65rem 1.5rem;
   /* 44px links + 0.35rem: a 56px bar instead of 66px on every analytics
      page wider than 720px (the <=720px block below sets its own padding). */
-  padding: 0.35rem 1.25rem;
+  padding: 0.35rem var(--fa-gutter);
   background: color-mix(in srgb, var(--fma-bg) 86%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--fma-border);
@@ -153,7 +159,7 @@
   .analytics-topnav__more-links { transform: none; }
 }
 
-.analytics-topnav__links a {
+:is(.analytics-topnav__links, .analytics-topnav__more-links) a {
   display: inline-flex;
   align-items: center;
   min-width: 44px;
@@ -167,12 +173,12 @@
   transition: background 0.12s ease, color 0.12s ease;
 }
 
-.analytics-topnav__links a:hover {
+:is(.analytics-topnav__links, .analytics-topnav__more-links) a:hover {
   color: var(--fma-text);
   background: var(--fma-dim);
 }
 
-.analytics-topnav__links a.active {
+:is(.analytics-topnav__links, .analytics-topnav__more-links) a.active {
   color: var(--fma-text);
   background: var(--fma-accent-bg);
 }
@@ -244,28 +250,17 @@
   transition: opacity 0.15s ease;
 }
 
-/* Reserve the phone navigation row before the webfont arrives. Otherwise its
-   slightly wider metrics can push the links down and shift the entire page.
-   Below 600px the buttons (Discord, the hub's search) stay on the brand's row,
-   so the bar keeps one height with the hub's search docked or not. */
-@media (max-width: 599px) {
-  .analytics-topnav .analytics-topnav__links {
-    flex: 1 0 100%;
-    order: 5;
-  }
-}
-
 @media (max-width: 720px) {
   .analytics-topnav {
     gap: 0.5rem 0.75rem;
-    padding: 0.55rem 0.75rem;
+    padding: 0.55rem var(--fa-gutter);
   }
 
   .analytics-topnav__links {
     flex: 0 1 auto;
   }
 
-  .analytics-topnav__links a {
+  :is(.analytics-topnav__links, .analytics-topnav__more-links) a {
     padding-inline: 0.55rem;
   }
 
@@ -282,8 +277,37 @@
   .analytics-topnav--account > .account-entry { margin-left: auto; }
 }
 
-/* Phones give the links their own row, which leaves the brand row room for the
-   account entry. It stays last in tab order. */
+/* Phones: one row of brand and buttons, with the page links inside the menu, and the bar scrolls away
+   with the page. The hub's docked search still opens as its own row under it. */
+.analytics-topnav__more-nav { display: none; }
+@media (max-width: 719px) {
+  .analytics-topnav {
+    position: relative;
+    backdrop-filter: none;
+    padding-block: 0.25rem;
+  }
+
+  .analytics-topnav .analytics-topnav__brand { margin-right: auto; }
+  .analytics-topnav .analytics-topnav__links { display: none; }
+  .analytics-topnav .analytics-topnav__links > a { display: none; }
+  .analytics-topnav .analytics-topnav__actions { order: 0; margin-left: 0; flex: 0 0 auto; }
+  .analytics-topnav .hv5-dock-btn { order: 0; margin-left: 0; }
+  .analytics-topnav__more-nav {
+    display: block;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--fma-border);
+  }
+}
+
+/* At 320px the brand, search, Discord and Menu still share the 53px row.
+   Keep every icon's 44px target; reduce only the space between controls. */
+@media (max-width: 359px) {
+  .analytics-topnav { column-gap: 0.25rem; }
+}
+
+/* The account entry (VITE_ACCOUNT_HEADER=1) sits ahead of the brand's buttons on phones.
+   It stays last in tab order. */
 @media (max-width: 480px) {
   .analytics-topnav--account .analytics-topnav__brand { order: -2; }
   .analytics-topnav--account > .account-entry { order: -1; }
@@ -413,7 +437,7 @@
   width: 100%;
   max-width: min(1820px, 100%);
   margin: 0 auto;
-  padding: 0 1rem 2rem;
+  padding: 0 var(--fa-gutter) 2rem;
   box-sizing: border-box;
 }
 
@@ -424,7 +448,7 @@
   gap: 0.75rem 1.5rem;
   max-width: min(1820px, 100%);
   margin: 0 auto;
-  padding: 1rem 1.25rem 1.5rem;
+  padding: 1rem var(--fa-gutter) 1.5rem;
   border-top: 1px solid var(--fma-border);
   color: var(--sp-text-faint);
   font-size: 0.75rem;
@@ -437,7 +461,6 @@
   .figma-analytics__frame {
     grid-template-columns: 220px minmax(0, 1fr);
     gap: 1.25rem;
-    padding: 0 1.25rem 2rem;
   }
 
   .figma-analytics__frame--no-sidebar {
@@ -2732,7 +2755,7 @@
 
 @media (max-width: 1479px) {
   .figma-analytics__frame {
-    padding: 0 0.75rem;
+    padding-block: 0;
   }
 
   .figma-analytics__center {
@@ -8951,4 +8974,10 @@ button.hub-live-wire__chip {
   .emote-market__concentration {
     grid-template-columns: 1fr;
   }
+}
+
+/* Phone navigation is in flow, so section anchors need only the page gutter. */
+@media (max-width: 719px) {
+  .figma-analytics__main > [id^="section-"],
+  .figma-analytics__main > section { scroll-margin-top: 16px; }
 }

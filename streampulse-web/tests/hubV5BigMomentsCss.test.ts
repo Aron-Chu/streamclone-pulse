@@ -19,9 +19,11 @@ describe('Chat’s big moments in the hub’s grid (C1, 11-01)', () => {
   ] as const) {
     it(`adds only its row above Top emotes at every width, ${name}`, () => {
       const before = areas(hub, theirs)
-      const after = areas(css, mine)
-      expect(before).toHaveLength(2)
-      expect(after).toHaveLength(2)
+      const all = areas(css, mine)
+      // the third is the A1 pairing from 1440 px, checked below
+      const after = all.slice(0, 2)
+      expect(before).toHaveLength(3)
+      expect(all).toHaveLength(3)
       after.forEach((rows, i) => {
         expect(withoutBig(rows)).toEqual(before[i])
         const at = rows.findIndex((r) => r.split(' ').includes('big'))
@@ -32,6 +34,11 @@ describe('Chat’s big moments in the hub’s grid (C1, 11-01)', () => {
       })
       const wide = after[1]!
       expect(wide.slice(wide.indexOf('big big'), wide.indexOf('big big') + 2)).toEqual(['big big', 'emo games'])
+      // from 1440 px Picking up now and Chat's big moments share a row; every other row keeps its place
+      const paired = all[2]!
+      expect(paired).toContain('rail big')
+      expect(paired).toContain('peek busy')
+      expect(paired.filter((r) => r !== 'rail big' && r !== 'peek busy')).toEqual(wide.filter((r) => !['big big', 'rail rail', 'peek peek', 'busy busy'].includes(r)))
     })
   }
 

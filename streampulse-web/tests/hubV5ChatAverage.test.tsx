@@ -128,7 +128,7 @@ describe('the lists on the recent average (HUB-1 candidate, 10-30)', () => {
     expect(whereChatIs(live, 10, '7d').all).toEqual([])
   })
 
-  it('fills Chat/min with the average and dashes vs own avg', () => {
+  it('fills Chat/min with the average and dashes vs avg', () => {
     expect(channelChat(row('xqc'), 'avg_35')).toBe(243.91)
     expect(channelChat(row('hazlanz'), 'avg_35')).toBeNull()
     expect(channelChat(row('xqc'))).toBeNull()
@@ -138,7 +138,7 @@ describe('the lists on the recent average (HUB-1 candidate, 10-30)', () => {
     const oneGame = channelRows(live, { q: '', game: 'Just Chatting', sort: 'viewers', dir: -1, basis: 'avg_35' })
     expect(oneGame.map((c) => c.login)).toEqual(['yuyuta0702', 'summit1g'])
     expect(channelsTip(live.length, 1000, 'avg_35')).toBe(
-      `Every channel in the live pool (${live.length} of the ~1,000 we track). The 5-minute counts did not load, so Chat/min is each channel’s recent average: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less. vs own avg has nothing to compare. `
+      `Every channel in the live pool (${live.length} of the ~1,000 we track). The 5-minute counts did not load, so Chat/min is each channel’s recent average: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less. vs avg has nothing to compare. `
         + 'A dash means not measured: viewers-only channels have no chat count. Click a channel to open its stream page.',
     )
   })

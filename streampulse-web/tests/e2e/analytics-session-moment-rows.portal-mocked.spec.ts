@@ -215,7 +215,7 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     expect(bars).toBeLessThanOrEqual(17)
     await expect(fourth.locator('svg.ssr-msp rect.at')).toHaveCount(1)
 
-    // The mockup's row box: 8 px radius, #0c0c0e, 72-84 px tall by column width.
+    // Keep the compact base row and surface; selected B13 wrapping may add an emote line.
     const style = await fourth.evaluate(el => {
       const cs = getComputedStyle(el)
       return { radius: cs.borderTopLeftRadius, bg: cs.backgroundColor }
@@ -224,7 +224,14 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     expect(await fourth.locator('.ssr-gm-n, .ssr-sc').first().evaluate(el => getComputedStyle(el).fontWeight)).toBe('400')
     const size = await box(fourth)
     expect(size.h).toBeGreaterThanOrEqual(70)
-    expect(size.h).toBeLessThanOrEqual(86)
+    const wrap = await fourth.locator('.ssr-m2').evaluate(line => {
+      const tokens = [...line.querySelectorAll<HTMLElement>('.ssr-tok')].filter(token => token.getBoundingClientRect().height > 0)
+      const singleLine = Math.max(...tokens.map(token => token.getBoundingClientRect().height))
+      return { extraHeight: Math.max(0, line.getBoundingClientRect().height - singleLine), rows: new Set(tokens.map(token => Math.round(token.getBoundingClientRect().top))).size }
+    })
+    expect(wrap.rows).toBeGreaterThanOrEqual(1)
+    expect(wrap.rows).toBeLessThanOrEqual(2) // this fixture adds at most one wrapped emote line
+    expect(size.h).toBeLessThanOrEqual(86 + wrap.extraHeight)
     await expect(page.locator(`${LIST_ROW} .ssr-fr`)).toHaveCount(0)
     const srcs = await page.locator(`${LIST_ROW} .ssr-gm img`).evaluateAll(els => els.map(el => el.getAttribute('src') ?? ''))
     for (const src of srcs) expect(src.startsWith('https://static-cdn.jtvnw.net/ttv-boxart/')).toBe(true)
@@ -385,6 +392,42 @@ test.describe('session Moments rows: game art', () => {
 test.describe('session Moments rows at 390', () => {
   test.use({ viewport: { width: 390, height: 844 }, contextOptions: { reducedMotion: 'reduce' } })
 
+  test('the hero and normal rows wrap three full emote names without hiding tokens', async ({ page }, testInfo) => {
+    const names = ['CommunityCelebration', 'UnbelievableReaction', 'ThirdEmoteName']
+    const harness = await installPortalAcceptanceHarness(page)
+    const minutes = buildMinutes({ count: MINUTES, withEmotes: false })
+    minutes.minutes = minutes.minutes.map(minute => ({
+      ...minute,
+      totalEmoteCount: 297,
+      topEmotes: names.map((name, i) => ({ name, provider: '7tv', imageUrl: `https://cdn.7tv.app/emote/proof${i}/1x.webp`, count: 100 - i })),
+    }))
+    harness.setMinutesPayload(minutes)
+    harness.setRecapPayload(recap())
+    await openAnalyticsSession(page)
+    const hero = row(page, 1)
+    await expect(hero).toBeVisible()
+    await settle(page)
+    await expect(hero.locator('.ssr-tok-c')).toHaveText(names)
+    const geometry = await hero.evaluate(card => {
+      const box = card.getBoundingClientRect()
+      return [...card.querySelectorAll<HTMLElement>('.ssr-tok-c')].map(name => {
+        const bounds = name.getBoundingClientRect()
+        return { visible: bounds.width > 0 && bounds.height > 0, clipped: name.scrollWidth > name.clientWidth + 1 || name.scrollHeight > name.clientHeight + 1, inside: bounds.left >= box.left && bounds.right <= box.right && bounds.top >= box.top && bounds.bottom <= box.bottom }
+      })
+    })
+    expect(geometry).toEqual(names.map(() => ({ visible: true, clipped: false, inside: true })))
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+    await hero.screenshot({ path: testInfo.outputPath('three-full-emote-names.png') })
+    await showRest(page)
+    const normal = row(page, 4)
+    await expect(normal.locator('.ssr-tok-c')).toHaveText(names)
+    for (const name of await normal.locator('.ssr-tok-c').all()) {
+      await expect(name).toBeVisible()
+      expect(await name.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
+    }
+    await normal.screenshot({ path: testInfo.outputPath('normal-row-full-emote-names.png') })
+  })
+
   test('the reel and the rows fit the phone width: #2 and #3 side by side, no sideways scroll', async ({ page }) => {
     await open(page)
     const list = page.locator(LIST)
@@ -403,7 +446,7 @@ test.describe('session Moments rows at 390', () => {
     const ev = await box(fourth.locator('.ssr-ev'))
     expect(ev.w).toBeLessThanOrEqual(1)
     const visibleTokens = await fourth.locator('.ssr-tok').evaluateAll(els => els.filter(el => getComputedStyle(el).display !== 'none').length)
-    expect(visibleTokens).toBeLessThanOrEqual(1)
+    expect(visibleTokens).toBeGreaterThanOrEqual(2)
     expect(await list.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0)
     const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(pageOverflow).toBeLessThanOrEqual(0)

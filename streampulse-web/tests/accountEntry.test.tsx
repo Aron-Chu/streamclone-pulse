@@ -170,7 +170,7 @@ describe('header account entry flag (VITE_ACCOUNT_HEADER)', () => {
     const analyticsHeader = screen.getByRole('banner')
     expect(analyticsHeader.className).toBe('analytics-topnav')
     expect(analyticsHeader.querySelector('.account-entry')).toBeNull()
-    const menu = screen.getByRole('navigation', { name: 'Analytics navigation' })
+    const menu = document.getElementById(screen.getByRole('button', { name: 'Navigation menu' }).getAttribute('aria-controls')!)!
     expect(menu.querySelector('a[href="/account/sign-in"]')).toBeNull()
     expect(menu.querySelector('a[href="/account/settings"]')).toBeNull()
     expect(accountRequest).not.toHaveBeenCalled()
@@ -191,7 +191,7 @@ describe('header placement (VITE_ACCOUNT_HEADER=1)', () => {
   it('sends the analytics menu account link where the current state needs it', async () => {
     const items = [{ label: 'Home', to: '/analytics', end: true }]
     const view = render(<MemoryRouter><AnalyticsTopNav items={items} /></MemoryRouter>)
-    const menu = () => screen.getByRole('navigation', { name: 'Analytics navigation' })
+    const menu = () => document.getElementById(screen.getByRole('button', { name: 'Navigation menu' }).getAttribute('aria-controls')!)!
     await waitFor(() => expect(menu().querySelector('a[href="/account/sign-in"]')?.textContent).toBe('Sign in'))
     expect(menu().querySelector('a[href="/account/settings"]')).toBeNull()
     expect(screen.getByRole('banner').className).toBe('analytics-topnav analytics-topnav--account')

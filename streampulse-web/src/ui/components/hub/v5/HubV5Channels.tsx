@@ -190,7 +190,7 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
             <th className="c-gm" scope="col">Game</th>
             {HUB_CHANNEL_SORTS.map(([key, label]) => (
               <th key={key} className={`r c-${key}`} scope="col" aria-sort={sort === key ? (dir < 0 ? 'descending' : 'ascending') : 'none'}>
-                <button className="hv5-sortb" type="button" data-sort={key} data-on={sort === key ? '' : undefined} onClick={() => onSort(key)}>
+                <button className="hv5-sortb" type="button" data-sort={key} data-on={sort === key ? '' : undefined} onClick={() => onSort(key)} aria-label={key === 'vs' ? 'vs own avg' : label} title={key === 'vs' ? 'vs own avg' : label}>
                   {label}
                   {sort === key ? <HubV5Icon name={dir < 0 ? 'sortDown' : 'sortUp'} /> : null}
                 </button>
