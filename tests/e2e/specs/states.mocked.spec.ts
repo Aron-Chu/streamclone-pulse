@@ -928,9 +928,9 @@ test.describe('extension mocked states', () => {
     // Retry stands alone and spans the footer row instead of half of it.
     const footer = extension.page.locator('#streamclone-pulse-root .pulse-error-block .pulse-footer-actions')
     await expect(footer.getByRole('button')).toHaveCount(1)
-    const retry = (await footer.getByRole('button', { name: 'Retry', exact: true }).boundingBox())!
-    const row = (await footer.boundingBox())!
-    expect(Math.abs(retry.width - row.width)).toBeLessThanOrEqual(1)
+    // Both rectangles must come from the same entrance-animation frame.
+    const widths = await footer.evaluate(el => ({ row: el.getBoundingClientRect().width, retry: el.querySelector('button')!.getBoundingClientRect().width }))
+    expect(Math.abs(widths.retry - widths.row)).toBeLessThanOrEqual(1)
     expect(evidence.pageErrors).toEqual([])
   })
 

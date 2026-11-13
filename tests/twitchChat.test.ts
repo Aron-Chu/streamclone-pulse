@@ -1164,8 +1164,29 @@ describe('bottom dock span', () => {
     expect(dockSpan({ left: 0, right: 1440 }, { left: 1100, right: 1440 }, 1440)).toEqual({ x: 550, w: 1068 })
   })
 
-  it('never collapses below a usable width', () => {
-    expect(dockSpan({ left: 0, right: 200 }, null, 1024).w).toBe(280)
+  it('uses the positive nav-to-chat fallback when a retained video has no horizontal area', () => {
+    for (const video of [{ left: 0, right: 0 }, { left: 500, right: 500 }, { left: 500, right: 400 }, { left: 500, right: NaN }]) {
+      expect(dockSpan(video, { left: 1100, right: 1440 }, 1440, 240)).toEqual({ x: 670, w: 828 })
+    }
+    expect(dockSpan({ left: 0, right: 0 }, null, 240, 240)).toEqual({ x: 240, w: 0 })
+  })
+
+  it('stays inside narrow, offscreen and degenerate available intervals', () => {
+    for (const [video, chat, viewport, nav, left, right] of [
+      [{ left: 50, right: 300 }, { left: 300, right: 640 }, 640, 50, 50, 300],
+      [{ left: 0, right: 200 }, null, 1024, 0, 0, 200],
+      [null, { left: 300, right: 640 }, 640, 50, 50, 300],
+      [null, null, 640, 240, 240, 640],
+      [{ left: 500, right: 500 }, null, 640, 240, 240, 640],
+      [{ left: 800, right: 900 }, null, 640, 0, 640, 640],
+      [{ left: -100, right: -10 }, null, 640, 0, 0, 0],
+    ] as const) {
+      const { x, w } = dockSpan(video, chat, viewport, nav)
+      expect(w).toBeGreaterThanOrEqual(0)
+      expect(x - w / 2).toBeGreaterThanOrEqual(left)
+      expect(x + w / 2).toBeLessThanOrEqual(right)
+    }
+    expect(dockSpan({ left: NaN, right: 100 }, null, NaN)).toEqual({ x: 0, w: 0 })
   })
 })
 

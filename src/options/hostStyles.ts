@@ -40,7 +40,6 @@ const hostStyles = `
     width: 100%;
   }
   .pulse-settings-supporter-banner:hover, .pulse-settings-supporter-banner:focus-visible { border-color: rgba(var(--spk-fin-rgb), 0.5); }
-  .pulse-settings-supporter-banner:focus-visible { outline: 2px solid var(--spk-fin); outline-offset: 3px; }
   .pulse-settings-supporter-banner::before { background: linear-gradient(90deg, #15151c 0%, #15151c 47%, rgba(21, 21, 28, 0) 53%); content: ""; inset: 0; pointer-events: none; position: absolute; z-index: -1; }
   /* The pile runs to the banner's edge, so it clips itself: a body or the peak glow at the edge never widens the banner. */
   .pulse-supporter-pile { bottom: 0; left: 50%; overflow: clip; pointer-events: none; position: absolute; right: 0; top: 0; z-index: -2; }
@@ -49,7 +48,7 @@ const hostStyles = `
   .pulse-settings-supporter-banner-copy { display: grid; gap: 3px; max-width: min(372px, 50%); min-width: 0; position: relative; }
   .pulse-settings-supporter-banner-eyebrow { align-items: center; color: var(--spk-fin); column-gap: 6px; display: flex; flex-wrap: wrap; font-size: 12px; font-weight: 800; letter-spacing: 0.07em; line-height: 15px; row-gap: 1px; text-transform: uppercase; }
   .pulse-settings-supporter-banner-eyebrow > * { flex: none; }
-  .pulse-settings-supporter-banner-eyebrow em { color: #8b8ba0; font-style: normal; white-space: nowrap; }
+  .pulse-settings-supporter-banner-eyebrow em { color: #9090a5; font-style: normal; white-space: nowrap; }
   .pulse-settings-supporter-banner-copy strong { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; line-height: 22px; }
   .pulse-settings-supporter-banner-copy small { color: rgba(250, 250, 252, 0.72); font-size: 12px; line-height: 16px; text-wrap: pretty; }
   .pulse-settings-supporter-banner-perks { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0 1px; }
@@ -78,15 +77,12 @@ const hostStyles = `
   .pulse-account-link-actions button:active:not(:disabled), .pulse-account-link-actions a:active { transform: translateY(0); }
   .pulse-account-link-actions button:disabled { opacity: .6; cursor: not-allowed; }
   .pulse-account-link-actions button[aria-busy="true"] { cursor: wait; }
-  .pulse-account-link-actions :focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
   .pulse-supporter-remove-intent { display: inline-flex; align-items: center; min-height: 44px; margin-left: 4px; padding: 6px 12px; border: 1px solid ${theme.border}; border-radius: 9px; background: ${theme.panel}; color: ${theme.textPrimary}; font: inherit; font-weight: 700; cursor: pointer; }
   .pulse-supporter-remove-intent:hover:not(:disabled) { border-color: ${theme.accentSoft}; background: ${theme.panelElevated}; }
-  .pulse-supporter-remove-intent:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
   .pulse-supporter-remove-intent:disabled { opacity: .6; cursor: not-allowed; }
   /* Sign in with Twitch: Twitch brand purple with the white glitch mark. */
   .pulse-account-link-actions .pulse-twitch-signin { gap: 8px; border-color: #9146FF; background: #9146FF; color: #FFFFFF; }
   .pulse-account-link-actions .pulse-twitch-signin:hover:not(:disabled) { border-color: #772CE8; background: #772CE8; color: #FFFFFF; }
-  .pulse-account-link-actions .pulse-twitch-signin:focus-visible { outline-color: #BF94FF; }
   .pulse-twitch-glitch { flex: none; }
   .pulse-account-link-actions .pulse-account-quiet-button { border-color: transparent; background: transparent; color: ${theme.textSecondary}; font-weight: 600; }
   .pulse-account-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -96,7 +92,7 @@ const hostStyles = `
   .pulse-account-other-ways { display: grid; gap: 10px; border-top: 1px solid ${theme.border}; padding-top: 12px; }
   .pulse-account-other-ways > summary { width: fit-content; min-height: 32px; display: flex; align-items: center; gap: 6px; color: ${theme.textSecondary}; font-size: 13px; font-weight: 700; cursor: pointer; }
   .pulse-account-other-ways[open] > summary { color: ${theme.textPrimary}; }
-  .pulse-account-other-ways > summary:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; border-radius: 4px; }
+  .pulse-account-other-ways > summary:focus-visible {   border-radius: 4px; }
   .pulse-supporter-settings { max-width: 720px; }
   .pulse-supporter-settings .pulse-section-card { grid-template-columns: minmax(0, 1fr); }
   .pulse-supporter-settings p { margin: 0; line-height: 1.6; }
@@ -150,10 +146,9 @@ const hostStyles = `
   .pulse-restore-wait .pulse-account-link-code { font-size: 20px; letter-spacing: .16em; }
   .pulse-journey-restore label { font-size: 12px; color: ${theme.textSecondary}; }
   .pulse-journey-restore input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.panel}; color: ${theme.textPrimary}; padding: 10px 12px; font: inherit; }
-  .pulse-journey-restore input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
   .pulse-journey-devices { border-top: 1px solid ${theme.border}; padding-top: 8px; min-width: 0; }
   .pulse-journey-devices summary { box-sizing: border-box; min-height: 44px; padding: 10px 0; cursor: pointer; color: ${theme.textSecondary}; }
-  .pulse-journey-devices summary:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; border-radius: 4px; }
+  .pulse-journey-devices summary:focus-visible {   border-radius: 4px; }
   .pulse-journey-devices ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
   .pulse-journey-devices li { display: grid; gap: 6px; min-width: 0; padding: 10px; border: 1px solid ${theme.border}; border-radius: 8px; overflow-wrap: anywhere; }
   @media (max-width: 420px) {
@@ -176,7 +171,7 @@ const hostStyles = `
   .pulse-supporter-preview-disclosure, .pulse-supporter-help, .pulse-supporter-wave-disclosure { min-width: 0; }
   .pulse-supporter-preview-disclosure { border-top: 1px solid ${theme.border}; margin: 0 16px; }
   .pulse-supporter-preview-disclosure > summary, .pulse-supporter-help > summary, .pulse-supporter-wave-disclosure > summary { box-sizing: border-box; color: ${theme.textPrimary}; cursor: pointer; font-size: 13px; font-weight: 700; min-height: 44px; padding: 12px 0; }
-  .pulse-supporter-preview-disclosure > summary:focus-visible, .pulse-supporter-help > summary:focus-visible, .pulse-supporter-wave-disclosure > summary:focus-visible { border-radius: 4px; outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
+  .pulse-supporter-preview-disclosure > summary:focus-visible, .pulse-supporter-help > summary:focus-visible, .pulse-supporter-wave-disclosure > summary:focus-visible { border-radius: 4px;   }
   .pulse-supporter-preview-content { display: grid; gap: 14px; min-width: 0; padding-bottom: 16px; }
   .pulse-supporter-preview-content .pulse-supporter-card-ladder { padding: 8px 0; }
   .pulse-supporter-help > .pulse-supporter-rows { margin: 0 0 10px; }
@@ -191,13 +186,10 @@ const hostStyles = `
   }
   .pulse-supporter-policies a, .pulse-supporter-withdrawal-link { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
   .pulse-supporter-policies a:hover, .pulse-supporter-withdrawal-link:hover { color: var(--pulse-accent-soft, #c4b5fd); }
-  .pulse-supporter-policies a:focus-visible, .pulse-supporter-withdrawal-link:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
   .pulse-journey-inline-link { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px; padding: 0 4px; border: 0; background: transparent; color: ${theme.textPrimary}; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
   .pulse-journey-inline-link:hover:not(:disabled) { color: var(--pulse-accent-soft, #c4b5fd); }
-  .pulse-journey-inline-link:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
   .pulse-journey-inline-link:disabled { opacity: .6; cursor: not-allowed; }
   .pulse-supporter-save-status { min-height: 20px; }
-  .pulse-supporter-settings input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 3px; }
 
   /* ---------- Account & Supporter, direction B "Your card" (2026-10-07) ----------
      A Twitch-style viewer card: emote rain across its top (no gradient), the
@@ -302,7 +294,6 @@ const hostStyles = `
   .pulse-supporter-seg { background: ${theme.bgCanvas}; border: 1px solid ${theme.border}; border-radius: 10px; display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; }
   .pulse-supporter-seg button { background: transparent; border: 0; border-radius: 7px; color: ${theme.textSecondary}; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; min-height: 30px; padding: 5px 11px; }
   .pulse-supporter-seg button[aria-pressed="true"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2); box-shadow: inset 0 0 0 1px rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.45); color: ${theme.accentInk}; }
-  .pulse-supporter-seg button:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 1px; }
   .pulse-supporter-seg button:disabled { cursor: not-allowed; opacity: 0.6; }
   .pulse-supporter-look-row [data-supporter-perk] { margin-top: 6px; }
   @media (max-width: 620px) {
@@ -499,10 +490,6 @@ const hostStyles = `
     width: 5px;
   }
   .pulse-host-nav a[aria-current="page"] .pulse-host-nav-indicator { opacity: 1; }
-  .pulse-host-nav a:focus-visible {
-    outline: 2px solid var(--pulse-accent-light, #a78bfa);
-    outline-offset: 2px;
-  }
   /* ---------- Community card: Discord + feedback, under the section list ---------- */
   .pulse-host-community {
     background: #0f0f14;
@@ -532,9 +519,8 @@ const hostStyles = `
     white-space: nowrap;
   }
   .pulse-host-community-link > svg { flex: none; height: 15px; width: 15px; }
-  /* A short subline under each label says what the link is. At least 4.5:1:
-     #8b8ba0 on the dark link is 5.4:1 (5.1:1 hovered); on Discord Blurple only
-     full white passes (4.6:1, 6.4:1 hovered), so the subline is white there.
+  /* A short subline under each label says what the link is. The muted text
+     uses the dark link; the Discord Blurple link keeps its white subline.
      The label and subline wrap inside the link when they do not fit, instead of
      running into the new-tab arrow or pushing the card past the rail: Linux has
      no Inter or Segoe UI and falls back to the much wider DejaVu Sans, and at
@@ -549,10 +535,6 @@ const hostStyles = `
   /* Discord Blurple with white text: 4.6:1. */
   .pulse-host-community-link[data-community-link="discord"] { background: #5865f2; border-color: #5865f2; color: #fff; }
   .pulse-host-community-link[data-community-link="discord"]:hover { background: #4752c4; border-color: #4752c4; }
-  .pulse-host-community-link:focus-visible {
-    outline: 2px solid var(--pulse-accent-light, #a78bfa);
-    outline-offset: 2px;
-  }
   .pulse-host-community-sr {
     clip: rect(0 0 0 0);
     height: 1px;
@@ -626,10 +608,6 @@ const hostStyles = `
   .pulse-settings-section-stage {
     animation: pulse-settings-section-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
     min-width: 0;
-  }
-  .pulse-settings-sections:focus-visible {
-    outline: 2px solid rgba(255, 255, 255, 0.2);
-    outline-offset: 4px;
   }
   .pulse-settings-flat-section {
     min-width: 0;
@@ -859,9 +837,6 @@ const hostStyles = `
     z-index: 40;
   }
   .pulse-settings-skip-link:focus, .pulse-settings-skip-link:focus-visible { top: 10px; }
-  /* Links on this dark page get a ring that shows; the browser's default is close to invisible here. */
-  a:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
-  .pulse-settings-skip-link:focus-visible { outline-color: #fff; }
   .pulse-settings-field {
     display: grid;
     gap: 5px;
@@ -957,10 +932,6 @@ const hostStyles = `
     text-align: left;
   }
   .pulse-changelog-toggle:hover { background: rgba(255, 255, 255, 0.025); }
-  .pulse-changelog-toggle:focus-visible {
-    outline: 2px solid var(--pulse-accent-light, #a78bfa);
-    outline-offset: -3px;
-  }
   .pulse-changelog-badges {
     align-items: center;
     display: flex;
@@ -1076,7 +1047,6 @@ const hostStyles = `
   }
   .pulse-changelog-category > summary::-webkit-details-marker { display: none; }
   .pulse-changelog-category > summary:hover h3 { filter: brightness(1.2); }
-  .pulse-changelog-category > summary:focus-visible { outline: 2px solid var(--pulse-accent-light, #a78bfa); outline-offset: 2px; }
   .pulse-changelog-category[open] > .pulse-changelog-list { padding-bottom: 8px; }
   .pulse-changelog-count {
     background: rgba(255, 255, 255, 0.06);
@@ -1139,7 +1109,6 @@ const hostStyles = `
     padding: 2px 0;
   }
   .pulse-whatsnew-all:hover { text-decoration: underline; }
-  .pulse-whatsnew-all:focus-visible { outline: 2px solid var(--pulse-accent-light, #a78bfa); outline-offset: 2px; }
   .pulse-settings-history { scroll-margin-top: 16px; }
 
   @media (prefers-reduced-motion: reduce) {

@@ -121,7 +121,7 @@ let storedPlacement: OverlayPlacement = DEFAULT_OVERLAY_PLACEMENT
 let placementResolved = false
 let sidebarFallbackToFloat = false
 let sidebarFallbackTimer: number | null = null
-let dockTimer: number | undefined
+let dockTimer = 0
 let chatClosedPulseDockEnabled = false
 let mountStorageListenerInstalled = false
 let overlayDiagnosticsInstalled = false
@@ -347,21 +347,21 @@ function applyFixedRect(host: HTMLElement | null, rect: ChatRectSnapshot | null,
   host.style.overflow = 'hidden'
 }
 
+function stopDockTimer(): void {
+  window.clearInterval(dockTimer)
+  dockTimer = 0
+}
+
 function syncDockSpan(): void {
-  if (!panelHostEl) {
-    window.clearInterval(dockTimer)
-    dockTimer = undefined
-    return
-  }
-  const { x, w } = dockSpan(getPrimaryVideo()?.getBoundingClientRect(), measureChatRect(), window.innerWidth)
+  if (!panelHostEl) return stopDockTimer()
+  const { x, w } = dockSpan(getPrimaryVideo()?.getBoundingClientRect(), measureChatRect(), window.innerWidth,
+    document.querySelector('.side-nav')?.getBoundingClientRect().right)
   panelHostEl.style.setProperty('--pulse-dock-x', `${x}px`)
   panelHostEl.style.setProperty('--pulse-dock-w', `${w}px`)
 }
 
 function applyFloatingHost(host: HTMLElement | null): void {
   if (!host) return
-  syncDockSpan()
-  dockTimer ??= window.setInterval(syncDockSpan, 400)
   host.style.display = 'block'
   host.style.top = ''
   host.style.left = ''
@@ -463,6 +463,7 @@ function applySidebarSnapLayout(): void {
 
 function applyHostVisibility(visibility: OverlayHostVisibility): void {
   if (visibility.mode === 'sidebar') {
+    stopDockTimer()
     applySidebarSnapLayout()
     return
   }
@@ -471,21 +472,20 @@ function applyHostVisibility(visibility: OverlayHostVisibility): void {
   applyFixedRect(tabsHostEl, null, false)
 
   if (visibility.mode === 'floating') {
+    if (visibility.effectivePlacement === 'bottom') {
+      syncDockSpan()
+      dockTimer ||= window.setInterval(syncDockSpan, 400)
+    } else stopDockTimer()
     applyFloatingHost(panelHostEl)
-    panelHostEl?.removeAttribute('aria-hidden')
-    if (panelHostEl) {
-      (panelHostEl as HTMLElement & { inert?: boolean }).inert = false
-    }
-    return
+  } else {
+    stopDockTimer()
+    applyFixedRect(panelHostEl, null, false)
+    if (panelHostEl) panelHostEl.style.overflow = ''
   }
-
-  applyFixedRect(tabsHostEl, null, false)
-  applyFixedRect(panelHostEl, null, false)
-  panelHostEl?.removeAttribute('aria-hidden')
   if (panelHostEl) {
-    (panelHostEl as HTMLElement & { inert?: boolean }).inert = false
+    panelHostEl.removeAttribute('aria-hidden')
+    ;(panelHostEl as HTMLElement & { inert?: boolean }).inert = false
   }
-  if (panelHostEl) panelHostEl.style.overflow = ''
 }
 
 function currentHostVisibility(): OverlayHostVisibility {
@@ -822,6 +822,7 @@ export function updateOverlayVodState(input: {
 }
 
 export function unmountOverlay(): void {
+  stopDockTimer()
   cancelChatFocusSchedule()
   displayPreferenceRequestId += 1
   overlayHostObserver?.disconnect()

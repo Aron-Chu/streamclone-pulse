@@ -125,7 +125,7 @@ button { font: inherit; color: inherit; }
 .pp-spark-halo { fill: var(--pp-chart); transform-box: fill-box; transform-origin: center; animation: pp-halo 2.4s ease-out 700ms infinite; opacity: 0; }
 .pp-axis { display: flex; justify-content: space-between; margin-top: 3px; font-size: 11px; color: var(--pp-text-3); }
 
-.pp-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 0; }
+.pp-stats { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 8px 0 0; }
 .pp-stat { min-width: 0; padding: 6px 10px; border-radius: 8px; background: var(--pp-well); }
 .pp-stat-wide { grid-column: 1 / -1; }
 .pp-stat dt { font-size: 11px; font-weight: 600; color: var(--pp-text-3); }

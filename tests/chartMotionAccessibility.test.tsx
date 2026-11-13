@@ -6,17 +6,14 @@ import { shadowStyles } from '../src/ui/theme.ts'
 
 describe('chart motion and accessibility chrome', () => {
   it('defines restrained picker enter/exit motion and reduced-motion overrides', () => {
-    expect(shadowStyles).toContain('.pulse-seven-tv-toggle:focus-visible')
-    expect(shadowStyles).toContain('.pulse-seven-tv-chip:focus-visible')
     expect(shadowStyles).toContain('@media (prefers-reduced-motion: reduce)')
     expect(shadowStyles).toContain('.pulse-clip-spike-card')
   })
 
-  it('keeps keyboard focus visible without restoring the old global focus suppression', () => {
-    expect(shadowStyles).toContain('.pulse-moment-row-button:focus-visible')
-    expect(shadowStyles).toContain('outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95) !important;')
-    expect(shadowStyles).toContain('.pulse-seven-tv-toggle:focus-visible')
-    expect(shadowStyles).toContain('.pulse-clip-spike-card:focus-visible')
+  it('uses one shared scoped keyboard outline without global focus suppression', () => {
+    expect(shadowStyles).toContain(':is(:host, .pulse-host, .pl-library)')
+    expect(shadowStyles).toContain('outline: 2px solid rgba(var(--pulse-accent-light-rgb, 196, 181, 253), 0.95);')
+    expect(shadowStyles).not.toContain('outline: 2px solid rgba(103, 232, 249')
     expect(shadowStyles).not.toContain('button:focus, button:focus-visible')
   })
 

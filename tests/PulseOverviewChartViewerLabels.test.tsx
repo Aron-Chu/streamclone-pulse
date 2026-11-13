@@ -176,3 +176,13 @@ describe('viewer sampling label glyph bounds', () => {
     expectReadableLabels(2)
   })
 })
+
+// Paint-order regression for the curve/tag issue, separate from marker labels.
+it('paints the opaque Viewers tag after the viewer curve', async () => {
+  await render(null, 120)
+  const tag = container.querySelector('[data-chart-viewer-lane-label]')!
+  const line = container.querySelector('[data-chart-viewer-line]')!
+  expect(tag.querySelector('rect')!.getAttribute('fill')).toMatch(/^#080f18$|^rgb\(8, 15, 24\)$/i)
+  expect(line.compareDocumentPosition(tag) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+  expectReadableLabels(1)
+})
