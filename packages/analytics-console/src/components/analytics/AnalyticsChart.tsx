@@ -76,6 +76,7 @@ import { sessionBandSegments } from './SessionChartLayers.tsx'
 import { buildSessionPins, selectedPinIndex, type SessionPin, type SessionStripPinsSource } from './SessionChartPins.tsx'
 import { SessionShowOnChart, SESSION_MARKERS_OFF, type SessionMarkers } from './SessionShowOnChart.tsx'
 import { PlotOnChartStrip } from './PlotOnChartStrip.tsx'
+import { openedFromPlot } from './SelectedMomentCompactCard.tsx'
 import {
   SessionExpandButton,
   SessionRangeSeg,
@@ -284,6 +285,27 @@ function useEasedPlotHeight(target: number, motion: boolean): number {
     return () => cancelAnimationFrame(raf)
   }, [target, motion])
   return motion ? height : target
+}
+
+/**
+ * Hold a newly opened detail following a recent plot gesture until an animation-frame callback. This keeps its
+ * mount out of the synchronous selection render; rAF runs before paint and React determines when the release
+ * commits, so a separate paint or an INP improvement is not guaranteed. Swaps stay mounted, and an initial detail
+ * or one without a recent plot gesture opens immediately.
+ */
+function useDetailOpen(open: boolean): boolean {
+  const [held, setHeld] = useState(false)
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    setHeld(open && openedFromPlot() && typeof requestAnimationFrame === 'function')
+  }
+  useEffect(() => {
+    if (!held) return
+    const frame = requestAnimationFrame(() => setHeld(false))
+    return () => cancelAnimationFrame(frame)
+  }, [held])
+  return open && !held
 }
 
 function AnalyticsChart({
@@ -957,6 +979,7 @@ function AnalyticsChart({
     [lockedBar, zoomToLockedBar],
   )
   const selectedDetailNode = typeof selectedDetail === 'function' ? selectedDetail(barLock) : selectedDetail
+  const detailOpen = useDetailOpen(Boolean(selectedDetailNode))
 
   // The plot's + / - / 0 keys step exactly like Zoom in / Zoom out / Reset zoom
   // (the chart core's own step differs, so the stack takes these keys first).
@@ -1403,8 +1426,8 @@ function AnalyticsChart({
       {/* No reserved height: it never stopped the content below from moving (a
           pinned card is taller than any fixed reserve) and left a blank band at
           rest. */}
-      <div className={selectedDetailNode ? 'mt-3' : undefined} data-chart-selected-detail-slot>
-        {selectedDetailNode ? <div data-chart-selected-detail data-chart-action="true">{selectedDetailNode}</div> : null}
+      <div className={detailOpen ? 'mt-3' : undefined} data-chart-selected-detail-slot>
+        {detailOpen ? <div data-chart-selected-detail data-chart-action="true">{selectedDetailNode}</div> : null}
       </div>
 
       {/* d3-v2 session-original .po-md: no box, and no counts in the summary

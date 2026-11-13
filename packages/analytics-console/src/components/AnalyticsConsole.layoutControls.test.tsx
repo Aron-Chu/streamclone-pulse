@@ -244,12 +244,18 @@ describe('AnalyticsConsole data skeleton', () => {
     })
     const status = screen.getByRole('status', { name: /loading analytics chart/i })
     expect(status.getAttribute('data-console-skeleton')).toBe('chart')
-    // One height per loaded chart card size: 770 px below 610 px, 738 px at 610-639 px, 730 px at 640-719 px,
-    // 830 px from 720 px.
-    expect(status.className).toMatch(/(?:^| )min-h-\[48\.125rem\]/)
-    expect(status.className).toMatch(/ min-\[610px\]:min-h-\[46\.125rem\]/)
-    expect(status.className).toMatch(/ sm:min-h-\[45\.625rem\]/)
-    expect(status.className).toMatch(/ min-\[720px\]:min-h-\[51\.875rem\]/)
+    // Representative initial chart: one short named emote and the accessible 44 px control row.
+    // Content-dependent additional rows may be taller; native tests check the actual loading transition.
+    expect(status.className).toMatch(/(?:^| )min-h-\[51\.125rem\]/)
+    expect(status.className).toMatch(/ min-\[610px\]:min-h-\[49\.125rem\]/)
+    expect(status.className).toMatch(/ sm:min-h-\[48\.625rem\]/)
+    expect(status.className).toMatch(/ min-\[720px\]:min-h-\[54\.875rem\]/)
+    expect(status.className).toMatch(/ xl:min-h-\[54\.625rem\]/)
+    // The readout's place holds a loading line in the readout's style, kept out of the status's spoken text.
+    const readout = status.querySelector('[data-console-skeleton-readout]')!
+    expect(readout.className).toBe('ssc-ro')
+    expect(readout.textContent?.trim()).toBe('Latest · loading viewers, chat and emotes for every minute of this stream')
+    expect(readout.closest('[aria-hidden="true"]')).not.toBeNull()
     expect(screen.getByRole('heading', { level: 1 })).not.toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })

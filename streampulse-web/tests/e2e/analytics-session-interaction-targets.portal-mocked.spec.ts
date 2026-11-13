@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 import { expect, test } from './helpers/portalMockedTest'
-import { installPortalAcceptanceHarness, openAnalyticsSession, SIX_SESSION_EMOTE_KEYS } from './helpers/portalAcceptanceHarness'
+import { installPortalAcceptanceHarness, openAnalyticsSession, SIX_SESSION_EMOTE_KEYS, buildDetail, buildMinutes, buildSummary, PORTAL_STREAM_ID, assertNoUnexpected } from './helpers/portalAcceptanceHarness'
 
 for (const width of [390, 768]) {
   test(`named emote controls retain current touch targets at ${width}px`, async ({ page }, testInfo) => {
@@ -60,5 +60,63 @@ for (const width of [390, 768]) {
     await expect(add).toBeFocused()
     await expect(add).toHaveAttribute('aria-expanded','false')
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+  })
+}
+
+// Compare the actual loading and loaded DOM, rather than duplicating Tailwind height values.
+for (const { width, longName } of [
+  ...[390, 610, 640, 720, 1440].map(width => ({ width, longName: false })),
+  { width: 390, longName: true },
+]) {
+  test(`initial chart loading reserve at ${width}px${longName ? ' with a long emote name' : ''}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 })
+    const harness = await installPortalAcceptanceHarness(page, { clock: false })
+    const name = longName ? 'ThisIsAVeryLongButValidNamedEmoteWithFortyLetters' : 'KEKW'
+    const topEmotes = [{ key: `twitch:${name}:${name}`, name, provider: 'twitch', id: 'tw1', count: 900,
+      imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/tw1/default/dark/1.0' }]
+    harness.setSummaryPayload(buildSummary({ topEmotes }))
+    harness.setMinutesPayload(JSON.parse(JSON.stringify(buildMinutes({ count: 24, withEmotes: true })).replace(/KEKW/g, name)))
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    await page.route(url => url.pathname.endsWith('/streams/' + PORTAL_STREAM_ID), async route => {
+      await held
+      await route.fulfill({ json: buildDetail({ topEmotes }) })
+    })
+    let loadingHeight = 0
+    try {
+      await page.goto('/analytics/xqc/' + PORTAL_STREAM_ID, { waitUntil: 'domcontentloaded' })
+      const status = page.getByRole('status', { name: 'Loading analytics chart' })
+      await expect(status).toBeVisible()
+      const loading = await status.evaluate(el => {
+        const card = el.getBoundingClientRect()
+        const readout = el.querySelector('[data-console-skeleton-readout]')!
+        const line = readout.getBoundingClientRect()
+        return { height: card.height, readoutFits: line.x >= card.x && line.right <= card.right && line.bottom < card.bottom,
+          ariaHidden: Boolean(readout.closest('[aria-hidden="true"]')) }
+      })
+      loadingHeight = loading.height
+      expect(loading.readoutFits).toBe(true)
+      expect(loading.ariaHidden).toBe(true)
+      // Content has not arrived: the loading readout must not fabricate measured minutes.
+      await expect(page.locator('[data-session-chart-stack]')).toHaveCount(0)
+    } finally { release() }
+    const chart = page.getByRole('region', { name: 'Session activity chart' })
+    await expect(chart.locator('svg[aria-label="Analytics timeline chart"]')).toBeVisible()
+    await expect(page.getByRole('status', { name: 'Loading analytics chart' })).toHaveCount(0)
+    if (!longName) await expect.poll(async () => Math.abs((await chart.boundingBox())!.height - loadingHeight)).toBeLessThanOrEqual(1)
+    const token = page.locator('[data-session-emote-token]')
+    await expect(token).toHaveCount(1)
+    await expect(token).toHaveAttribute('title', name)
+    const loaded = await chart.boundingBox()
+    await writeFile(testInfo.outputPath('loading-transition.json'), JSON.stringify({ width, longName, loadingHeight, loadedHeight: loaded!.height, delta: loaded!.height - loadingHeight }, null, 2))
+    if (longName) {
+      expect(loaded!.height - loadingHeight, 'one extra 44px touch row plus its 8px gap').toBeLessThanOrEqual(52)
+      // A long initial token may wrap beyond the representative reserve; it must remain named and usable.
+      await page.getByRole('button', { name: `Remove ${name} from the chart` }).click()
+      await expect(token).toHaveCount(0)
+      await expect(page.locator('[data-session-emote-add]')).toBeFocused()
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+    await assertNoUnexpected(harness)
   })
 }
