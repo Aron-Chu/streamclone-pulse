@@ -126,7 +126,8 @@ function TopNav({ discord, heroButtons }: { discord: string | null; heroButtons:
 /** Five live channels to try, busiest first, as on the hub. */
 function TryChannels({ live }: { live: readonly HubLiveChannel[] }) {
   const channels = useMemo(() => channelsByViewers(live).slice(0, 5), [live])
-  // Stays in the page while empty (see .sl-try min-height), so the buttons below don't jump when the channels load.
+  // Keep one chip row reserved while empty (see .sl-try min-height).
+  // Longer desktop names may still wrap; phones keep a scrollable row.
   return (
     <p className="sl-try">
       {channels.length ? <span className="sl-try__label">Try</span> : null}

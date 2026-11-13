@@ -11,7 +11,8 @@
   gap: 1rem 2rem;
 }
 
-.streamer-chat-stats h2 {
+.streamer-chat-stats h2,
+.public-document .streamer-chat-stats h2 {
   margin: 0;
   font-size: clamp(1.4rem, 2.5vw, 2rem);
   line-height: 1.25;

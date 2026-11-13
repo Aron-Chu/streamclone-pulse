@@ -228,10 +228,8 @@ test.describe('Back to the Moments list', () => {
   // page opening at the top must not overwrite that place before it is saved.
   const ways = [
     { name: 'the top-nav Home link', leave: async (page: Page) => {
-      // On a phone the bar is static and its links live in its menu, so a reader scrolled
-      // down can't reach it; click the link in place to keep their scroll position.
-      await page.getByRole('button', { name: 'Support and account' }).evaluate((el) => (el as HTMLElement).click())
-      await page.locator('.analytics-topnav__more-nav').getByRole('link', { name: 'Home', exact: true }).evaluate((el) => (el as HTMLElement).click())
+      await page.getByRole('button', { name: 'Navigation menu' }).click()
+      await page.locator('.analytics-topnav__more-nav').getByRole('link', { name: 'Home', exact: true }).click()
     } },
     { name: 'a footer link', leave: (page: Page) => page.getByRole('navigation', { name: 'Site links' }).getByRole('link', { name: 'Support', exact: true }).click() },
   ] as const
@@ -243,6 +241,9 @@ test.describe('Back to the Moments list', () => {
       await page.goto('/analytics/moments')
       await expect(page.locator('.moments-result').first()).toBeVisible()
       await scrollToBottom(page)
+      // The nonsticky phone menu is reached by wheeling back to the bar. Back
+      // restores that actual departure point; the footer case still leaves at the bottom.
+      if (name === 'the top-nav Home link') await wheelToTop(page)
       const left = await scrollY(page)
 
       await leave(page)

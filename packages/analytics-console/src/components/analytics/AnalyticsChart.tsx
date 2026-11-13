@@ -1450,10 +1450,12 @@ function AnalyticsChart({
             </button>
             {/* Pages count from the stream start, so the newest page is "N of N". */}
             <span data-chart-data-page-label>
+              <span data-chart-data-page-range>
               {pagedDataRows.length > 0
                 ? `${vodClock(pagedDataRows[0]!.minuteTs, streamStartedAt)}–${vodClock(pagedDataRows[pagedDataRows.length - 1]!.minuteTs, streamStartedAt)} · `
                 : ''}
-              {dataPageCount - boundedDataPage} of {dataPageCount}
+              </span>
+              <span data-chart-data-page-count>{dataPageCount - boundedDataPage} of {dataPageCount}</span>
             </span>
             <button
               type="button"

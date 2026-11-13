@@ -72,7 +72,7 @@ describe('/account/billing, signed out', () => {
 describe('/analytics support menu', () => {
   it('links no tester sign-in, closed billing action or connection-code bridge', () => {
     render(<MemoryRouter initialEntries={['/analytics']}><AnalyticsTopNav items={[{ label: 'Overview', to: '/analytics', end: true }]} /></MemoryRouter>)
-    const menu = screen.getByRole('navigation', { name: 'Analytics navigation' }).querySelector('.analytics-topnav__more-links')!
+    const menu = document.getElementById(screen.getByRole('button', { name: 'Navigation menu' }).getAttribute('aria-controls')!)!
     const hrefs = Array.from(menu.querySelectorAll('a:not(.analytics-topnav__more-nav a)')).map(link => link.getAttribute('href'))
     expect(hrefs).toEqual(['/feedback', '/docs', '/support', '/status', '/supporter', '/privacy', '/terms', '/refunds'])
     // the bar's own links also sit at the top of the menu, which phones show in place of the bar's row

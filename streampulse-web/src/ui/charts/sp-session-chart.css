@@ -771,9 +771,14 @@
   min-width: 0;
   overflow: hidden;
   text-align: center;
-  text-overflow: ellipsis;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
   white-space: nowrap;
 }
+
+.ssc-md-pg [data-chart-data-page-range] { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ssc-md-pg [data-chart-data-page-count] { flex: none; }
 
 .sc-analytics-console .ssc-md-pg button,
 .ssc-md-pg button {
@@ -823,6 +828,8 @@
   padding: 7px 8px 7px 0;
   color: #e4e4e7;
 }
+
+.ssc-md th:last-child, .ssc-md td:last-child { padding-right: 0; }
 
 /* Numbers line up on their right edge: the first column is the stream time, the rest are counts. */
 .ssc-md th:not(:first-child),

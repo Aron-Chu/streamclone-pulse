@@ -15,7 +15,7 @@ test('analytics support navigation at desktop and mobile sizes', async ({ page }
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/analytics')
     const menu = page.locator('.analytics-topnav__more')
-    const trigger = menu.getByRole('button', { name: 'Support and account', exact: true })
+    const trigger = menu.getByRole('button', { name: 'Navigation menu', exact: true })
     await trigger.click()
     await expect(menu.getByRole('link', { name: 'Pulse Supporter' })).toBeVisible()
     // Until Continue with Twitch is public, the menu links no tester sign-in,

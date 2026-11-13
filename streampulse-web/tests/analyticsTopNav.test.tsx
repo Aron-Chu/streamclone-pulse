@@ -29,7 +29,7 @@ describe('AnalyticsTopNav', () => {
       </MemoryRouter>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Support and account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Navigation menu' }))
     expect(screen.getByRole('link', { name: 'Service status' }).getAttribute('href')).toBe('/status')
   })
 
@@ -51,7 +51,7 @@ describe('AnalyticsTopNav', () => {
       </MemoryRouter>,
     )
 
-    const trigger = screen.getByRole('button', { name: 'Support and account' })
+    const trigger = screen.getByRole('button', { name: 'Navigation menu' })
     fireEvent.click(trigger)
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
     const panel = screen.getByRole('link', { name: 'Extension guide' }).parentElement

@@ -143,6 +143,18 @@
 .hv5-channels { grid-area: chan; margin-top: 32px; scroll-margin-top: 72px; }
 .hv5-dis { grid-area: meas; margin-top: 32px; }
 .hv5-sec { min-width: 0; }
+
+@media (max-width: 719px) {
+  /* Keep only the existing 44px search action reachable once the nonsticky
+     phone bar and hero have scrolled away. The full bar stays in page flow. */
+  .analytics-topnav .hv5-dock-btn[data-docked] {
+    position: fixed;
+    top: 8px;
+    right: var(--fa-gutter);
+    z-index: 1;
+    background: var(--fma-bg);
+  }
+}
 /* B1 (11-11): desktop takes the phone's order, in the two columns 720 px already used; only Top emotes and Where chat is share a row */
 @media (min-width: 720px) {
   .hub-v5.hub-d3 {
@@ -2325,4 +2337,15 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .hub-v5 .hv5-top .hv5-tm-list { transition: none; }
+}
+
+/* A1: pair the two adjacent existing sections without changing B1's DOM order. */
+@media (min-width: 1440px) {
+  .hub-v5.hub-d3 { grid-template-areas: "mast mast" "fol fol" "peek busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas"; }
+  .hub-v5.hub-d3:has(> .hv5-most) { grid-template-areas: "mast mast" "fol fol" "peek busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas"; }
+  .hv5-f3-peek, .hv5-busiest { margin-top: 12px; width: 100%; max-width: 720px; }
+}
+@media (max-width: 719px) {
+  .hv5-channels, .hv5-fol, .hv5-fol h2, .hv5-fol-go,
+  .hub-v5 :is(#latest, .hv5-tm-it) { scroll-margin-top: 16px; }
 }

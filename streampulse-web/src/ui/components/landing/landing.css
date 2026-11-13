@@ -601,7 +601,8 @@
   align-items: center;
   gap: 8px;
   max-width: 100%;
-  /* Keeps one chip row's height before the live channels load, so the buttons below don't jump. */
+  /* Reserves one chip row before live data loads. Wider screens may still
+     wrap long channel names into another row; phones keep a scrollable row. */
   min-height: 32px;
   margin: 1rem 0 0;
 }

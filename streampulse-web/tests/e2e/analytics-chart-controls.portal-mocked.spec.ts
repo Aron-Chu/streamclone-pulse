@@ -513,22 +513,29 @@ test.describe('minute-data pager on a phone', () => {
 
   // d3-v2 session-original .po-md-pg: one row, Earlier and Later at either end
   // and the page's time span between them.
-  test('keeps Earlier, the page label and Later on one row, apart and on screen', async ({ page }) => {
+  for (const width of [320, 390]) test(`keeps Earlier, the page label and Later on one row at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 })
     const harness = await openLongSession(page)
     await page.locator('[data-chart-data-alternative] summary').click()
     const pager = page.locator('[data-chart-data-pager]')
     await expect(pager).toBeVisible()
+    const count = pager.locator('[data-chart-data-page-count]')
+    await expect(count).toHaveText(/\d+ of \d+/)
+    expect(await count.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
     const label = await pager.locator('[data-chart-data-page-label]').boundingBox()
+    const countBounds = await count.boundingBox()
     const earlier = await pager.getByRole('button', { name: 'Earlier minutes' }).boundingBox()
     const later = await pager.getByRole('button', { name: 'Later minutes' }).boundingBox()
-    if (!label || !earlier || !later) throw new Error('pager has no layout box')
+    if (!label || !countBounds || !earlier || !later) throw new Error('pager has no layout box')
+    expect(countBounds.x).toBeGreaterThanOrEqual(label.x)
+    expect(countBounds.x + countBounds.width).toBeLessThanOrEqual(label.x + label.width + 0.5)
     const mid = (b: { y: number; height: number }) => b.y + b.height / 2
     expect(Math.abs(mid(earlier) - mid(label))).toBeLessThanOrEqual(1)
     expect(Math.abs(mid(later) - mid(label))).toBeLessThanOrEqual(1)
     expect(earlier.x + earlier.width).toBeLessThanOrEqual(label.x)
     expect(label.x + label.width).toBeLessThanOrEqual(later.x)
     expect(earlier.x).toBeGreaterThanOrEqual(0)
-    expect(later.x + later.width).toBeLessThanOrEqual(390)
+    expect(later.x + later.width).toBeLessThanOrEqual(width)
     await assertNoUnexpected(harness)
   })
 })

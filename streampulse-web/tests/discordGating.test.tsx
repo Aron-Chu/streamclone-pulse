@@ -196,7 +196,7 @@ describe('feedback and Discord beyond the landing page', () => {
     expect(bar.getAttribute('href')).toBe(SHORT_INVITE)
     expect(bar.getAttribute('aria-label')).toBe('Discord (opens in a new tab)')
     expect(bar.previousElementSibling?.classList.contains('analytics-topnav__install')).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Support and account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Navigation menu' }))
     const panel = screen.getByRole('link', { name: 'Extension guide' }).parentElement!
     const links = [...panel.querySelectorAll('a:not(.analytics-topnav__more-nav a)')]
     expect(links[0].textContent).toBe('Send feedback')
@@ -207,7 +207,7 @@ describe('feedback and Discord beyond the landing page', () => {
   it('keeps Send feedback in the analytics menu and drops Discord without an invite', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', '')
     render(<MemoryRouter><AnalyticsTopNav items={[{ label: 'Analytics', to: '/analytics' }]} /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Support and account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Navigation menu' }))
     expect(screen.getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
     expect(discordLinks()).toEqual([])
   })

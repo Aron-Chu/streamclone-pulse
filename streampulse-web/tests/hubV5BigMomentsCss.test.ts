@@ -22,7 +22,7 @@ describe('Chat’s big moments in the hub’s grid (C1, 11-01)', () => {
       const all = areas(css, mine)
       // the third is the A1 pairing from 1440 px, checked below
       const after = all.slice(0, 2)
-      expect(before).toHaveLength(2)
+      expect(before).toHaveLength(3)
       expect(all).toHaveLength(3)
       after.forEach((rows, i) => {
         expect(withoutBig(rows)).toEqual(before[i])
@@ -37,7 +37,8 @@ describe('Chat’s big moments in the hub’s grid (C1, 11-01)', () => {
       // from 1440 px Picking up now and Chat's big moments share a row; every other row keeps its place
       const paired = all[2]!
       expect(paired).toContain('rail big')
-      expect(paired.filter((r) => r !== 'rail big')).toEqual(wide.filter((r) => r !== 'big big' && r !== 'rail rail'))
+      expect(paired).toContain('peek busy')
+      expect(paired.filter((r) => r !== 'rail big' && r !== 'peek busy')).toEqual(wide.filter((r) => !['big big', 'rail rail', 'peek peek', 'busy busy'].includes(r)))
     })
   }
 

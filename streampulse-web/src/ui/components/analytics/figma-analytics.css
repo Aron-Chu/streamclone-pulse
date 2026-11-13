@@ -159,7 +159,7 @@
   .analytics-topnav__more-links { transform: none; }
 }
 
-.analytics-topnav__links a {
+:is(.analytics-topnav__links, .analytics-topnav__more-links) a {
   display: inline-flex;
   align-items: center;
   min-width: 44px;
@@ -173,12 +173,12 @@
   transition: background 0.12s ease, color 0.12s ease;
 }
 
-.analytics-topnav__links a:hover {
+:is(.analytics-topnav__links, .analytics-topnav__more-links) a:hover {
   color: var(--fma-text);
   background: var(--fma-dim);
 }
 
-.analytics-topnav__links a.active {
+:is(.analytics-topnav__links, .analytics-topnav__more-links) a.active {
   color: var(--fma-text);
   background: var(--fma-accent-bg);
 }
@@ -260,7 +260,7 @@
     flex: 0 1 auto;
   }
 
-  .analytics-topnav__links a {
+  :is(.analytics-topnav__links, .analytics-topnav__more-links) a {
     padding-inline: 0.55rem;
   }
 
@@ -282,21 +282,28 @@
 .analytics-topnav__more-nav { display: none; }
 @media (max-width: 719px) {
   .analytics-topnav {
-    position: static;
+    position: relative;
+    backdrop-filter: none;
     padding-block: 0.25rem;
   }
 
   .analytics-topnav .analytics-topnav__brand { margin-right: auto; }
-  .analytics-topnav .analytics-topnav__links { order: 3; flex: 0 0 auto; }
+  .analytics-topnav .analytics-topnav__links { display: none; }
   .analytics-topnav .analytics-topnav__links > a { display: none; }
-  .analytics-topnav .analytics-topnav__actions { order: 2; margin-left: 0; flex: 0 0 auto; }
-  .analytics-topnav .hv5-dock-btn { order: 1; margin-left: 0; }
+  .analytics-topnav .analytics-topnav__actions { order: 0; margin-left: 0; flex: 0 0 auto; }
+  .analytics-topnav .hv5-dock-btn { order: 0; margin-left: 0; }
   .analytics-topnav__more-nav {
     display: block;
     margin-bottom: 6px;
     padding-bottom: 6px;
     border-bottom: 1px solid var(--fma-border);
   }
+}
+
+/* At 320px the brand, search, Discord and Menu still share the 53px row.
+   Keep every icon's 44px target; reduce only the space between controls. */
+@media (max-width: 359px) {
+  .analytics-topnav { column-gap: 0.25rem; }
 }
 
 /* The account entry (VITE_ACCOUNT_HEADER=1) sits ahead of the brand's buttons on phones.
@@ -8967,4 +8974,10 @@ button.hub-live-wire__chip {
   .emote-market__concentration {
     grid-template-columns: 1fr;
   }
+}
+
+/* Phone navigation is in flow, so section anchors need only the page gutter. */
+@media (max-width: 719px) {
+  .figma-analytics__main > [id^="section-"],
+  .figma-analytics__main > section { scroll-margin-top: 16px; }
 }

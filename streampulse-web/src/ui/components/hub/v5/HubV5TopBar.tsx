@@ -5,7 +5,7 @@
  * under the bar). It stays while you type in it. The install button: hidden while the hero's
  * install card is on screen, so the page shows one at a time.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HubLiveChannel } from '../../../../lib/publicHub'
 import { InstallCta } from '../../InstallCta'
 import { HubV5Icon } from './HubV5Icon'
@@ -20,17 +20,37 @@ export function HubV5DockSearch({ live, games, emotes }: { live: readonly HubLiv
   const docked = useHubV5Search((s) => s.docked)
   const [open, setOpen] = useState(false)
   const [focused, setFocused] = useState(false)
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 719px)').matches)
   const fieldRef = useRef<HTMLDivElement>(null)
   const blurTimer = useRef<number | undefined>(undefined)
   const shown = docked || focused
 
   useEffect(() => {
-    store.inputs.openDock = () => setOpen(true)
+    if (typeof window.matchMedia !== 'function') return undefined
+    const media = window.matchMedia('(max-width: 719px)')
+    const update = () => setPhone(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  const openSearch = useCallback(() => {
+    if (phone && store.inputs.hero) {
+      // The phone bar scrolls away. Its reachable search action returns to
+      // the existing field instead of opening a row outside the viewport.
+      store.inputs.hero.focus({ preventScroll: true })
+      store.inputs.hero.scrollIntoView({ block: 'center', behavior: 'instant' })
+    } else if (!open) setOpen(true)
+    else store.inputs.dock?.focus()
+  }, [phone, store, open])
+
+  useEffect(() => {
+    store.inputs.openDock = openSearch
     return () => {
       store.inputs.openDock = null
       window.clearTimeout(blurTimer.current)
     }
-  }, [store])
+  }, [store, openSearch])
 
   // Scrolled back up: the narrow row closes, unless you're typing in it.
   useEffect(() => {
@@ -52,12 +72,10 @@ export function HubV5DockSearch({ live, games, emotes }: { live: readonly HubLiv
         type="button"
         className="hv5-dock-btn"
         aria-label="Search streamers or games"
-        aria-expanded={open}
-        hidden={!docked}
-        onClick={() => {
-          if (!open) setOpen(true)
-          else store.inputs.dock?.focus()
-        }}
+        aria-expanded={phone ? undefined : open}
+        hidden={!docked && !phone}
+        data-docked={docked ? '' : undefined}
+        onClick={openSearch}
       >
         <HubV5Icon name="search" />
       </button>

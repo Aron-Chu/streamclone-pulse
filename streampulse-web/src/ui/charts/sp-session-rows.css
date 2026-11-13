@@ -261,10 +261,12 @@
 .ssr-rc .ssr-clk, .ssr-rc .ssr-sc, .ssr-rc-gm, .ssr-rc .ssr-nn { color: var(--ssr-text-2); text-shadow: 0 1px 4px rgb(0 0 0 / .8); }
 .ssr-rc-gm { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--ssr-fs-label); }
 .ssr-rc .ssr-why { background: rgb(9 9 11 / .62); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .14); }
-.ssr-rc .ssr-toks { gap: 4px 10px; flex-wrap: wrap; overflow: visible; }
-.ssr-rc .ssr-tok, .ssr-rc .ssr-tok:nth-child(n+2) { display: inline-flex; flex: none; }
-.ssr-rc .ssr-tok:nth-child(n+3) { display: none; }
-.ssr-rc .ssr-tok-c { position: static !important; width: auto; height: auto; overflow: hidden; clip: auto; text-overflow: ellipsis; max-width: 112px; }
+:is(.ssr-rc, .ssr-row) .ssr-toks { gap: 4px 10px; flex-wrap: wrap; overflow: visible; }
+:is(.ssr-rc, .ssr-row) .ssr-tok, :is(.ssr-rc, .ssr-row) .ssr-tok:nth-child(n+2) { display: inline-flex; flex: 0 1 auto; max-width: 100%; white-space: normal; }
+/* Cards and rows already render up to three names. Wrap them instead of
+   hiding tokens or cropping names, including in a narrow Moments column. */
+:is(.ssr-rc, .ssr-row) .ssr-tok-c { position: static !important; width: auto; height: auto; overflow: visible; clip: auto; text-overflow: clip; max-width: none; white-space: normal; overflow-wrap: anywhere; }
+.ssr-row .ssr-m2 { flex-wrap: wrap; }
 .ssr-rc .ssr-go { position: absolute; right: 10px; bottom: 10px; }
 /* the tile's start on the stream's clock, and the scrub track (hover, or while scrubbing) */
 .ssr-rc-at, .ssr-rc-bar { opacity: 0; transition: opacity var(--ssr-dur-quick) var(--ssr-ease); pointer-events: none; }
