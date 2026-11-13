@@ -227,7 +227,12 @@ test.describe('Back to the Moments list', () => {
   // The Moments page remembers the reader's place per history entry; a pushed
   // page opening at the top must not overwrite that place before it is saved.
   const ways = [
-    { name: 'the top-nav Home link', leave: (page: Page) => page.locator('nav.analytics-topnav__links').getByRole('link', { name: 'Home', exact: true }).click() },
+    { name: 'the top-nav Home link', leave: async (page: Page) => {
+      // On a phone the bar is static and its links live in its menu, so a reader scrolled
+      // down can't reach it; click the link in place to keep their scroll position.
+      await page.getByRole('button', { name: 'Support and account' }).evaluate((el) => (el as HTMLElement).click())
+      await page.locator('.analytics-topnav__more-nav').getByRole('link', { name: 'Home', exact: true }).evaluate((el) => (el as HTMLElement).click())
+    } },
     { name: 'a footer link', leave: (page: Page) => page.getByRole('navigation', { name: 'Site links' }).getByRole('link', { name: 'Support', exact: true }).click() },
   ] as const
   for (const { name, leave } of ways) {
