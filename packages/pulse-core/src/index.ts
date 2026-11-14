@@ -15,6 +15,7 @@ export * from './recapMoments.ts'
 export * from './streamEdges.ts'
 export * from './reactionMoments.ts'
 export * from './reactionIdentity.ts'
+export * from './momentWords.ts'
 export type * from './types/heatmap.ts'
 
 /** Measurement timestamps are modern UTC instants, not Go zero times or scheduled events. */
