@@ -269,4 +269,3 @@ function HideIcon() {
     </svg>
   )
 }
-
