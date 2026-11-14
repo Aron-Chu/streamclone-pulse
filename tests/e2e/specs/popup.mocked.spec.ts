@@ -40,7 +40,7 @@ function richLivePayload(): Record<string, unknown> {
     rollups,
     fullRollups: rollups,
     topEmotes: [{ name: 'KEKW', count: 312, imageUrl: EMOTE_URL, provider: '7tv' }],
-    peaks: [{ offsetSeconds: current - 10 * 60, seekOffsetSeconds: current - 10 * 60 - 20, score: 92, reasons: ['chat'], reasonLabel: 'Chat spike', dominantSignal: 'chat' }],
+    peaks: [{ offsetSeconds: current - 10 * 60, seekOffsetSeconds: current - 10 * 60 - 20, score: 92, reasons: ['chat_spike'], reasonLabel: 'Chat spike', dominantSignal: 'chat' }],
   }
 }
 
@@ -231,7 +231,7 @@ test.describe('toolbar popup', () => {
     expect(sent.filter(type => type.startsWith('MY_MOMENTS'))).toEqual([])
   })
 
-  test('on a live channel it shows that stream: avatar, live chat, viewers, top emote and the biggest moment', async ({ extension, prepare }, info) => {
+  test('on a live channel it shows that stream: avatar, live chat, viewers, top emote and the panel’s top moment', async ({ extension, prepare }, info) => {
     await prepare()
     const page = extension.page
     await page.setViewportSize({ width: 320, height: 600 })
@@ -257,8 +257,9 @@ test.describe('toolbar popup', () => {
     expect(Math.abs(widths[0] - widths[1])).toBeLessThanOrEqual(1)
 
     await expect(card.locator('img.pp-emote')).toHaveAttribute('src', EMOTE_URL)
-    await expect(card.locator('.pp-moment')).toContainText('Biggest moment · Chat spike')
-    await expect(card.locator('.pp-moment time')).toHaveText('10m ago')
+    // The panel's #1, in its words: time into the stream, minute-only so 'about' (M, K1).
+    await expect(card.locator('.pp-moment')).toContainText('Top moment · Chat spike')
+    await expect(card.locator('.pp-moment time')).toHaveText('at about 2:50:00')
     await expect(card.getByRole('button', { name: 'Open Pulse panel' })).toBeVisible()
     await expect.poll(() => page.evaluate(() => [...document.images].every(image => image.complete && image.naturalWidth > 0))).toBe(true)
 
@@ -269,6 +270,42 @@ test.describe('toolbar popup', () => {
       // Colour transitions finish before the capture.
       await settle(page)
       await page.screenshot({ path: info.outputPath(`popup-live-${scheme}.png`) })
+    }
+  })
+
+  test('a Stream start tag never cuts the top moment’s reason: it drops out where it can’t fit, still read out (E1)', async ({ extension, prepare }, info) => {
+    await prepare()
+    const page = extension.page
+    await routeMedia(page)
+    const rich = richLivePayload()
+    const setPulse = await routePulse(page, { ...readFixture('coverage-active.json'), displayName: 'FixtureChan' })
+    // The only ranked moment is a hello spike, so the popup tags it Stream start.
+    setPulse({ ...rich, peaks: [{ offsetSeconds: 60, score: 99, reasons: ['emote_spike'], reasonLabel: 'Emote spike', dominantSignal: 'seventv', emoteCount: 300 }] })
+    await pretendActiveTab(page, { id: 4242, url: 'https://www.twitch.tv/FixtureChan' })
+    const measure = () => page.locator('.pp-moment').evaluate(moment => {
+      const what = moment.querySelector('.pp-moment-what')!.getBoundingClientRect()
+      const reason = moment.querySelector<HTMLElement>('.pp-moment-what > span:first-child')!
+      const edge = moment.querySelector('.pp-edge')!.getBoundingClientRect()
+      return {
+        reasonWhole: reason.scrollWidth <= reason.clientWidth,
+        edgeShown: edge.top >= what.top - 1 && edge.bottom <= what.bottom + 1 && edge.width > 0,
+        oneLine: Math.round(what.height) <= Math.round(reason.getBoundingClientRect().height) + 1,
+      }
+    })
+    await page.setViewportSize({ width: 320, height: 600 })
+    await page.goto(`chrome-extension://${extension.extensionId}/popup/index.html`)
+    const moment = page.locator('section.pp-card .pp-moment')
+    await expect(moment).toContainText('Top moment · Emote spike')
+    await expect(moment.locator('time')).toHaveText('at about 0:01:00')
+    // The popup is 320 px wide; a wider body shows the tag comes back where it fits.
+    for (const [width, edgeShown] of [[320, false], [420, true]] as const) {
+      await page.addStyleTag({ content: `body { width: ${width}px; }` })
+      await page.setViewportSize({ width, height: 600 })
+      await settle(page)
+      expect(await measure()).toEqual({ reasonWhole: true, edgeShown, oneLine: true })
+      // Dropped from view or not, the tag stays in what a screen reader reads.
+      expect(await moment.ariaSnapshot()).toContain('Stream start')
+      await moment.screenshot({ path: info.outputPath(`popup-edge-${width}.png`) })
     }
   })
 
@@ -330,10 +367,15 @@ test.describe('toolbar popup', () => {
     await pretendActiveTab(page, { id: 4242, url: 'https://www.twitch.tv/fixturechan' })
 
     const setPulse = await routePulse(page)
-    setPulse({ ...readFixture('pulse-offline.json'), endedAt: new Date(Date.now() - 26 * 3_600_000).toISOString() })
+    const yesterdayNoon = new Date()
+    yesterdayNoon.setDate(yesterdayNoon.getDate() - 1)
+    yesterdayNoon.setHours(12, 0, 0, 0)
+    setPulse({ ...readFixture('pulse-offline.json'), endedAt: yesterdayNoon.toISOString() })
     await page.goto(`chrome-extension://${extension.extensionId}/popup/index.html`)
     await expect(page.locator('.pp-badge')).toHaveText('Offline')
-    await expect(page.locator('.pp-meta')).toContainText('Last live yesterday')
+    // A 'Last live' label, then the Hub's words (Z08): 'Yesterday' and the clock time.
+    await expect(page.locator('.pp-meta .pp-k')).toHaveText('Last live')
+    await expect(page.locator('.pp-meta')).toContainText(/Last live Yesterday 12:00\sPM/)
     await settle(page)
     await page.screenshot({ path: info.outputPath('popup-offline.png') })
 

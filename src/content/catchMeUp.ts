@@ -7,7 +7,9 @@ import {
 } from '../shared/catchMeUpContract.ts'
 import type { MomentFramesApi } from '../shared/momentFramesContract.ts'
 import { formatCount } from '../ui/mostReacted.ts'
-import { peakMinute, summaryClock } from './catchMeUpStory.ts'
+import { formatMomentOffset } from '@streampulse/pulse-core'
+import { peakMinute } from './catchMeUpStory.ts'
+import { formatSpan } from '../ui/missedMoments.ts'
 
 /**
  * Entry of `content/catch-me-up.js`, injected by the worker into a Twitch tab
@@ -86,7 +88,7 @@ function summary(model: CatchMeUpModel, actions: CatchMeUpActions, frames: Momen
     const line = element('div', 'pcu-sum-peak', 'Peak ')
     const words = `${formatCount(peakCount)} chat/min`
     if (peak) {
-      const link = element('button', 'pcu-sum-link', `${words} at ${summaryClock(peak.offsetSeconds)}`)
+      const link = element('button', 'pcu-sum-link', `${words} at ${formatMomentOffset(peak.offsetSeconds)}`)
       link.type = 'button'
       link.title = 'Select this minute on the chart'
       link.dataset.chartAction = 'true'
@@ -98,7 +100,7 @@ function summary(model: CatchMeUpModel, actions: CatchMeUpActions, frames: Momen
     text.append(line)
   }
   const cover = asks ? element('span', 'pcu-sum-cover') : null
-  if (cover && model.durationSeconds > 0) cover.append(element('span', undefined, summaryClock(model.durationSeconds, true)))
+  if (cover && model.durationSeconds > 0) cover.append(element('span', undefined, formatSpan(model.durationSeconds)))
   box.append(...(cover ? [cover] : []), text)
   if (asks) {
     void frames!.vod({ vodId }).then(pictures => {

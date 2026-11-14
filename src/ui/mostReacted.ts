@@ -3,7 +3,6 @@ import {
   deriveLiveHeat,
   displayMomentReasonLabel,
   extensionPayloadStreamEdges,
-  extensionRollupsForDerivation,
   extensionSupportsPeaks,
   isEmoteSpikeReason,
   isViewerSpikeReason,
@@ -281,7 +280,9 @@ export function resolveMostReactedHeat(payload: PulsePayload): LiveHeatResult {
 }
 
 function computeMostReactedHeat(payload: PulsePayload): LiveHeatResult {
-  const rollups = extensionRollupsForDerivation(payload) as ExtensionRollup[]
+  // Recent minutes first, then the full history, so a moment past the last
+  // hour still finds its minute's viewers (EXT-MOMENTS-8).
+  const rollups = [...payload.rollups, ...(payload.fullRollups ?? [])] as ExtensionRollup[]
 
   if (extensionSupportsPeaks(payload)) {
     if ((payload.peaks?.length ?? 0) === 0) {

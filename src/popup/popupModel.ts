@@ -1,6 +1,9 @@
-import { extensionPayloadStreamEdges, momentStreamEdge, OPENING_STREAM_EDGE } from '@streampulse/pulse-core'
+import { displayMomentReasonLabel, momentClockDisplay } from '@streampulse/pulse-core'
 import type { ExtensionCoverageTierResponse, ExtensionRollup, PulsePayload } from '../shared/messages.ts'
 import { NOT_CHARTED_REASON, NOT_CHARTED_TITLE } from '../shared/notCharted.ts'
+import { momentEdgeLabel } from '../ui/MomentTime.tsx'
+import { resolveMostReactedHeat, sortLiveHeatPoints } from '../ui/mostReacted.ts'
+import { recapTopPoint } from '../ui/recapChartPeaks.ts'
 
 /** What the active tab is, as far as the toolbar popup cares. */
 export type PopupTabView =
@@ -104,11 +107,16 @@ export function emoteImage(value: string | null | undefined): EmoteImage | null 
   return { src: safe, still: null }
 }
 
+/** The panel's #1 moment, in the words its row uses (M). */
 export interface PopupMoment {
+  /** The reason: 'Chat spike'. */
   label: string
-  offsetSeconds: number
-  /** Seconds before "now" on a live stream; null for a finished stream. */
-  agoSeconds: number | null
+  /** Time into the stream, h:mm:ss: '0:45:00'. */
+  clock: string
+  /** Only the minute is known, so the popup says 'about' (K1). */
+  approximate: boolean
+  /** 'Stream start' / 'Stream end' for hello or goodbye spam, else '' (E1). */
+  edge: string
 }
 
 export interface PopupChannelSummary {
@@ -125,7 +133,7 @@ export interface PopupChannelSummary {
   spark: Array<number | null>
   sparkMinutes: number
   topEmote: { name: string; count: number; imageUrl: string | null } | null
-  biggest: PopupMoment | null
+  topMoment: PopupMoment | null
   /** When the last broadcast ended, for an offline channel. */
   endedAt: number | null
 }
@@ -164,7 +172,7 @@ export function summarizeChannel(
     spark,
     sparkMinutes: isLive ? SPARK_LIVE_MINUTES : Math.round((payload?.durationSeconds ?? spark.length * BUCKET_SECONDS) / 60),
     topEmote: topEmote ? { name: topEmote.name, count: topEmote.count, imageUrl: safeImageUrl(topEmote.imageUrl) } : null,
-    biggest: biggestMoment(payload, isLive),
+    topMoment: panelTopMoment(payload),
     endedAt: Number.isFinite(ended) ? ended : null,
   }
 }
@@ -229,27 +237,21 @@ function latestChatPerMinute(rollups: ExtensionRollup[], currentOffsetSeconds: n
   return null
 }
 
-function biggestMoment(payload: PulsePayload | null, isLive: boolean): PopupMoment | null {
-  let best: { score: number; edge: boolean; at: number; offsetSeconds: number; label: string } | null = null
-  const edges = payload ? extensionPayloadStreamEdges(payload) : OPENING_STREAM_EDGE
-  for (const peak of payload?.peaks ?? []) {
-    const score = peak.compositeScore ?? peak.score
-    if (!Number.isFinite(score)) continue
-    // Hello / goodbye spam at the stream's edges only wins when there is nothing else.
-    const edge = momentStreamEdge(peak, edges) !== undefined
-    if (best && edge !== best.edge) {
-      if (edge) continue
-    } else if (best && (score < best.score || (score === best.score && peak.offsetSeconds >= best.at))) {
-      // A tie goes to the earlier peak, like the panel, whatever order the peaks arrive in.
-      continue
-    }
-    best = { score, edge, at: peak.offsetSeconds, offsetSeconds: peak.seekOffsetSeconds ?? peak.offsetSeconds, label: peak.reasonLabel || 'Chat spike' }
-  }
-  if (!best || !payload) return null
+/**
+ * The first row the panel lists, ranked as the panel ranks it: the live Top
+ * moments (chat and emote spikes, never a viewer-only spike), or the recap's
+ * once the stream ends. The mini dock picks the same one (M).
+ */
+function panelTopMoment(payload: PulsePayload | null): PopupMoment | null {
+  if (!payload) return null
+  const point = payload.isLive ? sortLiveHeatPoints(resolveMostReactedHeat(payload).points, 'reaction')[0] : recapTopPoint(payload)
+  if (!point) return null
+  const clock = momentClockDisplay(point)
   return {
-    label: best.label,
-    offsetSeconds: best.offsetSeconds,
-    agoSeconds: isLive ? Math.max(0, payload.currentOffsetSeconds - best.offsetSeconds) : null,
+    label: displayMomentReasonLabel(point.reason, point.reasonLabel),
+    clock: clock.text,
+    approximate: clock.approximate,
+    edge: momentEdgeLabel(point),
   }
 }
 
@@ -260,30 +262,6 @@ export function formatUptime(startedAt: string | null | undefined, now = Date.no
   const minutes = Math.floor((now - started) / 60_000)
   const hours = Math.floor(minutes / 60)
   return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`
-}
-
-export function formatAgo(seconds: number): string {
-  if (seconds < 60) return 'just now'
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`
-}
-
-export function formatSince(timestamp: number, now = Date.now()): string {
-  const minutes = Math.max(0, Math.floor((now - timestamp) / 60_000))
-  if (minutes < 60) return minutes <= 1 ? 'just now' : `${minutes} min ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} h ago`
-  const days = Math.floor(hours / 24)
-  return days === 1 ? 'yesterday' : `${days} days ago`
-}
-
-export function formatClock(seconds: number): string {
-  const value = Math.max(0, Math.floor(seconds))
-  const hours = Math.floor(value / 3600)
-  const minutes = String(Math.floor(value / 60) % 60).padStart(2, '0')
-  const secs = String(value % 60).padStart(2, '0')
-  return hours > 0 ? `${hours}:${minutes}:${secs}` : `${Math.floor(value / 60)}:${secs}`
 }
 
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })

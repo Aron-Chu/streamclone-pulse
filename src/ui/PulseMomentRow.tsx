@@ -2,16 +2,18 @@ import { useLayoutEffect, useRef, type CSSProperties } from 'react'
 import {
   LIVE_HEAT_COLLECTING_LABEL,
   displayMomentReasonLabel,
+  formatMomentClock,
   momentClockDisplay,
   reactionAnalyticalOffset,
   type LiveHeatPoint,
 } from '@streampulse/pulse-core'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { BookmarkGlyph, useMomentBookmarks } from './momentBookmarks.tsx'
-import { formatMomentMetricsLine } from './momentActivity.ts'
+import { formatMomentMetricsLine, momentMetricsParts } from './momentActivity.ts'
 import { momentPictureView, useMomentPicture } from './momentPicture.ts'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'
 import { liveHeatPointKey } from './mostReacted.ts'
+import { MomentTime, momentEdgeLabel } from './MomentTime.tsx'
 
 /**
  * A list row's React key. Alone in its minute bucket, a moment is keyed by the
@@ -47,9 +49,13 @@ export function PulseMomentRow({
   exact,
 }: PulseMomentRowProps) {
   const clock = momentClockDisplay(point)
-  const offsetLabel = clock.text
+  const reason = displayMomentReasonLabel(point.reason, point.reasonLabel)
+  const edge = momentEdgeLabel(point)
   const analyticalOffset = reactionAnalyticalOffset(point)
   const collecting = point.collecting
+  // Viewers first when known, then the rates (chat/min, emotes/min).
+  const counts = momentMetricsParts(point)
+  const viewers = !counts[0]!.includes('/') && counts.shift()
   const bookmarks = useMomentBookmarks()
   const saved = !collecting && bookmarks?.canSave === true && bookmarks.savedFor({ kind: 'moment', offsetSeconds: analyticalOffset }) != null
   const ref = useRef<HTMLButtonElement>(null)
@@ -91,17 +97,18 @@ export function PulseMomentRow({
       <div className="pulse-mr-inner">
         <div className="pulse-mr-main">
           <span className="pulse-mr-title-row">
-            <span className="pulse-mr-offset">{offsetLabel}</span>
+            <span className="pulse-mr-offset"><MomentTime text={clock.text} about={clock.approximate} /></span>
             {collecting ? (
               <span className="pulse-mr-collecting-badge">{LIVE_HEAT_COLLECTING_LABEL}</span>
             ) : (
-              <span style={momentReasonLabelStyle(point.reason, point.reasonLabel)}>
-                {displayMomentReasonLabel(point.reason, point.reasonLabel)}
-              </span>
+              <span style={momentReasonLabelStyle(point.reason, point.reasonLabel)}>{reason}</span>
             )}
+            {edge && !collecting ? <span className="pulse-edge-tag">{edge}</span> : null}
           </span>
-          <span className="pulse-mr-counts">
-            {collecting ? 'Counting this minute…' : formatMomentMetricsLine(point)}
+          {/* One line: when the figures don't fit, the viewer figure drops first (item 4), then the rate the reason doesn't name. */}
+          <span className="pulse-mr-counts" data-reason={point.reason}>
+            <span>{!collecting && viewers}</span>
+            <span className="pulse-mr-rates">{collecting ? 'Counting this minute…' : counts.map(part => <span key={part}>{part}</span>)}</span>
           </span>
         </div>
         {point.topEmotes.length > 0 || saved ? (
@@ -144,15 +151,21 @@ export function PulseMomentRow({
       // first; removing that card shifts this row before pointer-up and the
       // browser never dispatches the click, losing the selection entirely.
       data-chart-action="true"
-      // Focus stays on the row, so keyboard users keep their place.
-      onClick={() => onSelect(point)}
+      // A pick by keyboard moves focus to the card's Jump; Escape there
+      // brings it back to the row (J1). A pointer pick leaves focus alone.
+      onClick={event => {
+        onSelect(point)
+        if (!event.detail && !selected) {
+          requestAnimationFrame(() => ref.current?.parentElement?.parentElement?.querySelector<HTMLElement>('[data-moment-inspector-action="jump"]')?.focus())
+        }
+      }}
       onMouseEnter={() => onHighlight(analyticalOffset)}
       onMouseLeave={() => onHighlight(null)}
       onFocus={() => onHighlight(analyticalOffset)}
       onBlur={() => onHighlight(null)}
       aria-pressed={selected}
       aria-controls={controls}
-      aria-label={`Select minute bucket ${offsetLabel}, ${formatMomentMetricsLine(point)}, ${point.reasonLabel}${saved ? ', bookmarked' : ''}`}
+      aria-label={`${formatMomentClock(point)}, ${reason}${edge ? `, ${edge}` : ''}, ${formatMomentMetricsLine(point)}${saved ? ', bookmarked' : ''}`}
     >
       {body}
     </button>

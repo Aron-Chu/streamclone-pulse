@@ -1,4 +1,4 @@
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import type { PulseBackfillJob } from '../shared/messages.ts'
 import { isPulseBackfillTerminal, backendResolvedVod, resolvePulseCoverage, type PulseCoverageSource } from './missedMoments.ts'
 
@@ -71,7 +71,7 @@ export function coverageDiagnostics(
       label: 'Early stream chat',
       ok: hasVod || backendVod,
       detail: hasVod || backendVod
-        ? `Ready to load before ${formatHeatOffset(coverage.coverageStartOffsetSeconds)}`
+        ? `Ready to load before ${formatMomentOffset(coverage.coverageStartOffsetSeconds)}`
         : 'Needs VOD link before backfill can run',
     })
   }

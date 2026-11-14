@@ -26,7 +26,7 @@ async function isFocused(element: Locator): Promise<boolean> {
   return element.evaluate(el => (el.getRootNode() as ShadowRoot | Document).activeElement === el)
 }
 
-/** The kicker and time the Top Moments card shows, e.g. "Selected moment at 00:04". */
+/** The kicker and time the Top Moments card shows, e.g. "Selected moment at about 0:04:00". */
 async function cardLabel(card: Locator): Promise<string | null> {
   return card.locator('[data-selected-moment-card="true"]').getAttribute('aria-label')
 }
@@ -181,7 +181,7 @@ test('nothing shows above Top Moments until a pick; later picks swap the card in
   for (const index of [2, 0, 1]) {
     await rows.nth(index).click()
     await expect(rows.nth(index)).toHaveAttribute('aria-pressed', 'true')
-    const time = (await rows.nth(index).getAttribute('aria-label'))!.match(/bucket (\S+),/)![1]
+    const time = (await rows.nth(index).getAttribute('aria-label'))!.match(/^([^,]+),/)![1]
     expect(await cardLabel(card)).toMatch(new RegExp(`^Selected moment at ${time}`))
     // The card, every row and the gaps between them stay exactly where they were.
     const after = await layout()
@@ -422,7 +422,14 @@ test('live: ranked picks show in the Top Moments card, chart minutes keep the ch
   expect(await isFocused(row)).toBe(true)
   await extension.page.keyboard.press('Enter')
   await expect(card).toHaveCount(1)
+  // A keyboard pick puts focus on the card's Jump (EXT-MOMENTS-7); Escape
+  // closes the card and brings focus back to the row.
+  await expect.poll(() => isFocused(card.locator('[data-moment-inspector-action="jump"]'))).toBe(true)
+  await extension.page.keyboard.press('Escape')
+  await expect(card).toHaveCount(0)
   expect(await isFocused(row)).toBe(true)
+  await extension.page.keyboard.press('Enter')
+  await expect(card).toHaveCount(1)
 
   // A chart click on another minute takes the selection back to the chart.
   await chart.scrollIntoViewIfNeeded()
@@ -590,9 +597,9 @@ test('live: Jump and Open Analytics keep keyboard focus through a real worker po
   await expect(rows).toHaveCount(3)
   // Nothing shows above the list until a pick (#80): pick the strongest moment.
   await expect(card).toHaveCount(0)
-  await rows.filter({ hasText: '01:00' }).first().click()
+  await rows.filter({ hasText: '1:00:00' }).first().click()
   await expect(card).toHaveCount(1)
-  expect(await cardLabel(card)).toMatch(/^Selected moment at 01:00/)
+  expect(await cardLabel(card)).toMatch(/^Selected moment at (about )?1:00:00/)
   const action = (name: string) => card.locator(`[data-moment-inspector-action="${name}"]`)
   const shadowActive = (name: string) => action(name).evaluate(el => (el.getRootNode() as ShadowRoot).activeElement === el)
   const nextPoll = async () => {
@@ -601,7 +608,7 @@ test('live: Jump and Open Analytics keep keyboard focus through a real worker po
   }
 
   // Jump, reached from the keyboard, on the picked moment. The next poll
-  // ranks a new strongest moment at 00:40 first; the card keeps the pick on
+  // ranks a new strongest moment at 0:40:00 first; the card keeps the pick on
   // the same nodes.
   const jump = action('jump')
   await jump.focus()
@@ -609,16 +616,16 @@ test('live: Jump and Open Analytics keep keyboard focus through a real worker po
   const jumpHandle = await jump.elementHandle()
   current = liveWithPeaks([{ ...second, score: 99, chatCount: 400 }, strongest, third], { 2400: 400 })
   await nextPoll()
-  await expect.poll(() => rows.first().getAttribute('aria-label'), { timeout: 10_000 }).toContain('00:40')
-  expect(await cardLabel(card)).toMatch(/^Selected moment at 01:00/)
+  await expect.poll(() => rows.first().getAttribute('aria-label'), { timeout: 10_000 }).toContain('0:40:00')
+  expect(await cardLabel(card)).toMatch(/^Selected moment at (about )?1:00:00/)
   expect(await jumpHandle!.evaluate(el => el.isConnected)).toBe(true)
   expect(await jumpHandle!.evaluate(el => (el.getRootNode() as ShadowRoot).activeElement === el)).toBe(true)
   await info.attach('focus-jump-after-poll.png', { body: await card.screenshot(), contentType: 'image/png' })
 
   // Open Analytics on a picked moment, through a poll that refines it.
-  await rows.filter({ hasText: '00:20' }).first().click()
+  await rows.filter({ hasText: '0:20:' }).first().click()
   await expect(card).toHaveAttribute('data-top-moment-card', 'selected')
-  expect(await cardLabel(card)).toMatch(/^Selected moment at 00:20/)
+  expect(await cardLabel(card)).toMatch(/^Selected moment at (about )?0:20:/)
   const analytics = action('analytics')
   const activity = card.locator('[data-moment-inspector-activity="true"]')
   const activityBefore = await activity.textContent()
@@ -635,7 +642,7 @@ test('live: Jump and Open Analytics keep keyboard focus through a real worker po
   )
   await nextPoll()
   await expect(activity).toContainText('77 chat', { timeout: 10_000 })
-  expect(await cardLabel(card)).toMatch(/^Selected moment at 00:20/)
+  expect(await cardLabel(card)).toMatch(/^Selected moment at (about )?0:20:/)
   expect(await analyticsHandle!.evaluate(el => el.isConnected)).toBe(true)
   expect(await analyticsHandle!.evaluate(el => (el.getRootNode() as ShadowRoot).activeElement === el)).toBe(true)
   await info.attach('focus-analytics-after-poll.png', { body: await card.screenshot(), contentType: 'image/png' })

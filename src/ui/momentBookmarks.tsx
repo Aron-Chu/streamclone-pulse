@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import type { CreatePulseBookmarkInput, PulseBookmark } from '../shared/messages.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
+import { useFocusReturn } from './useFocusReturn.ts'
 import { keptVodOriginDelta } from '../shared/vodOriginAlignment.ts'
 import { ReviewRequest } from './ReviewRequest.tsx'
 
@@ -254,7 +255,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, vodOriginDelta
   const unsave = (item: PulseBookmark, undoing = false) => run(async current => {
     if (!await remove(item, current)) return
     if (undoing) setToast(null)
-    else show({ text: `Removed at ${formatHeatOffset(item.offsetSeconds)}`, undo: () => void restore(item) })
+    else show({ text: `Removed at ${formatMomentOffset(item.offsetSeconds)}`, undo: () => void restore(item) })
   })
 
   const save = (target: BookmarkTarget) => run(async current => {
@@ -272,7 +273,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, vodOriginDelta
       const existing = matchBookmark(result.items.filter(inContext), target, offsetsRef.current)
       if (existing) {
         setItems(previous => [...previous.filter(item => item.id !== existing.id), existing])
-        show({ text: `Already saved at ${formatHeatOffset(existing.offsetSeconds)}` })
+        show({ text: `Already saved at ${formatMomentOffset(existing.offsetSeconds)}` })
         return
       }
       cursor = result.nextCursor
@@ -287,7 +288,7 @@ export function MomentBookmarksProvider({ login, streamId, vodId, vodOriginDelta
     const saved = await create({ login, streamId, ...(saveVodId ? { vodId: saveVodId } : {}), offsetSeconds: offset,
       label: target.label, source: 'extension' }, current)
     if (!saved) return
-    const text = saved.device && await firstDeviceSave() ? 'Saved on this device · Sign in to sync' : `Saved at ${formatHeatOffset(offset)}`
+    const text = saved.device && await firstDeviceSave() ? 'Saved on this device · Sign in to sync' : `Saved at ${formatMomentOffset(offset)}`
     if (current !== generation.current) return
     show({ text, undo: () => void unsave(saved.item, true) })
   })
@@ -354,6 +355,8 @@ export function MomentBookmarkToast() {
   const toast = bookmarks?.toast ?? null
   const [held, setHeld] = useState(false)
   const dismiss = bookmarks?.dismissToast
+  // Undo and Escape hand focus back to the control the toast answered (Save stays put), not to the page.
+  const [anchor, back] = useFocusReturn<HTMLDivElement>(toast?.key)
   useEffect(() => {
     if (!toast || held || !dismiss) return
     const timer = setTimeout(dismiss, toast.tone === 'error' ? 8000 : 6000)
@@ -362,7 +365,7 @@ export function MomentBookmarkToast() {
   useEffect(() => setHeld(false), [toast?.key])
   if (!bookmarks) return null
   return (
-    <div className="pulse-bookmark-toast-anchor" data-chart-action="true" aria-live="polite">
+    <div ref={anchor} className="pulse-bookmark-toast-anchor" data-chart-action="true" aria-live="polite">
       {toast ? (
         <div
           key={toast.key}
@@ -373,10 +376,11 @@ export function MomentBookmarkToast() {
           onMouseLeave={() => setHeld(false)}
           onFocus={() => setHeld(true)}
           onBlur={() => setHeld(false)}
+          onKeyDown={event => { if (event.key === 'Escape') { dismiss?.(); back() } }}
         >
           <span className="pulse-bookmark-toast-text">{toast.text}</span>
           {toast.undo ? (
-            <button type="button" data-bookmark-toast-action="undo" onClick={toast.undo}>Undo</button>
+            <button type="button" data-bookmark-toast-action="undo" onClick={() => { toast.undo!(); back() }}>Undo</button>
           ) : null}
           {toast.connect ? (
             <button type="button" data-moment-action="connect-account" onClick={() => bookmarks.openSettings('supporter')}>

@@ -1,4 +1,4 @@
-import { SPARKLINE_MAX_POINTS, formatHeatOffset } from '@streampulse/pulse-core'
+import { SPARKLINE_MAX_POINTS, formatMomentOffset } from '@streampulse/pulse-core'
 import { CHART_THEME, emoteChartColor, emoteChartDash } from './chartTheme.ts'
 import type { ExtensionEmote, ExtensionRollup, PulseCoverage, PulsePayload } from '../shared/messages.ts'
 import {
@@ -825,7 +825,7 @@ export function describeRollupGap(rollups: ExtensionRollup[], bucketed = false):
     holeStart = null
   }
   if (to - from <= 60) return null
-  return `Missing chat data from ${formatHeatOffset(from)} to ${formatHeatOffset(to)}`
+  return `Missing chat data from ${formatMomentOffset(from)} to ${formatMomentOffset(to)}`
 }
 
 export function plottedCoverageLabel(rollups: ExtensionRollup[]): string {
@@ -833,7 +833,7 @@ export function plottedCoverageLabel(rollups: ExtensionRollup[]): string {
   if (proven.length === 0) return 'Waiting for tracked rollups'
   const first = proven[0]!.offsetSeconds
   const last = proven[proven.length - 1]!.offsetSeconds + 60
-  return `Plotted ${formatHeatOffset(first)}–${formatHeatOffset(last)}`
+  return `Plotted ${formatMomentOffset(first)}–${formatMomentOffset(last)}`
 }
 
 export function hasFullTimelineRollups(

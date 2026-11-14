@@ -1,9 +1,9 @@
 import type { CSSProperties } from 'react'
-import { formatHeatOffset, type LiveHeatReason } from '@streampulse/pulse-core'
+import { formatMomentOffset, type LiveHeatReason } from '@streampulse/pulse-core'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
-import { formatSelectedMomentActivity } from './momentActivity.ts'
+import { formatMomentMetricsLine } from './momentActivity.ts'
 import { overlayGhostChipButton, overlayTextLinkButton } from './momentReasonStyles.ts'
 import { theme } from './theme.ts'
 
@@ -14,12 +14,10 @@ function formatInspectorActivity(args: {
   viewerDelta?: number
   reason?: LiveHeatReason | string
 }): string {
-  return formatSelectedMomentActivity({
-    reason: (args.reason ?? 'manual') as LiveHeatReason,
+  return formatMomentMetricsLine({
     chatCount: args.chatCount ?? 0,
     emoteCount: args.emoteCount ?? 0,
     viewerCount: args.viewerCount,
-    viewerDelta: args.viewerDelta,
   })
 }
 
@@ -58,7 +56,7 @@ export function ChatActivityInspector({
 }: ChatActivityInspectorProps) {
   if (!open || offsetSeconds == null) return null
 
-  const title = `Minute at ${formatHeatOffset(offsetSeconds)}`
+  const title = `Minute at ${formatMomentOffset(offsetSeconds)}`
   const topEmotes = emotes.slice(0, 3)
   const activityLine = formatInspectorActivity({ chatCount, emoteCount, viewerCount, viewerDelta, reason })
 
@@ -68,7 +66,7 @@ export function ChatActivityInspector({
         <div style={styles.compactAccent} aria-hidden="true" />
         <div style={styles.compactRow}>
           <div style={styles.compactCopy}>
-            <span style={styles.compactTime}>{formatHeatOffset(offsetSeconds)}</span>
+            <span style={styles.compactTime}>{formatMomentOffset(offsetSeconds)}</span>
             <span style={styles.compactCounts}>{activityLine}</span>
           </div>
           {topEmotes.length > 0 ? (

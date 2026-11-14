@@ -109,7 +109,7 @@ describe('PulseOverviewChart signal disclosure', () => {
     expect(html).toContain('data-chart-selection-band="preview"')
     expect(html).not.toContain('data-chart-hover-band="muted"')
     expect(html).not.toContain('stroke="rgba(var(--pulse-accent-soft-rgb, 196, 181, 253), 0.88)"')
-    expect(html).toContain('>00:00:00<')
+    expect(html).toContain('>0:00:00<')
   })
 
   it('attenuates resting chat/emote/trace lines when rendering the full overview range', () => {

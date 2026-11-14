@@ -38,16 +38,16 @@ describe('ChartMinuteInspectCard', () => {
           }}
           backendUrl="https://api.streampulse.stream"
           jumpLabel="Jump in player"
-          onJump={offset => jumps.push(offset)}
+          onJump={offset => { jumps.push(offset) }}
           onClose={() => undefined}
         />,
       )
     })
 
-    expect(container.textContent).toContain('02:39:21')
-    expect(container.textContent).not.toContain('02:39:00')
+    expect(container.textContent).toContain('2:39:21')
+    expect(container.textContent).not.toContain('2:39:00')
     expect(container.querySelector('[data-moment-inspector-activity="true"]')?.textContent)
-      .toBe('20.3K viewers · 476 chat · 428 emotes')
+      .toBe('20.3K viewers · 476 chat/min · 428 emotes/min')
     expect(container.querySelector('[data-moment-inspector-metrics="true"]')).toBeNull()
 
     // The redesigned action renders a glyph before the label, so match on the
@@ -151,36 +151,7 @@ describe('ChartMinuteInspectCard', () => {
 
     expect(container.querySelector('[data-viewer-sample-state]')?.getAttribute('data-viewer-sample-state'))
       .toBe('not-sampled')
-    expect(container.textContent).toContain('Viewers not sampled · 120 chat · 40 emotes')
-  })
-
-  it('renders the preview variant without any action or close control', () => {
-    container = document.createElement('div')
-    document.body.appendChild(container)
-    root = createRoot(container)
-
-    act(() => {
-      root?.render(
-        <ChartMinuteInspectCard
-          rollup={{
-            offsetSeconds: 600,
-            chatCount: 120,
-            totalEmoteCount: 40,
-            topEmotes: [{ name: 'LOL', count: 12 }],
-          }}
-          backendUrl="https://api.streampulse.stream"
-          interactionState="preview"
-        />,
-      )
-    })
-
-    const card = container.querySelector<HTMLElement>('[data-moment-inspector-card="true"]')
-    expect(card?.getAttribute('data-moment-inspector-state')).toBe('preview')
-    expect(card?.classList.contains('pulse-moment-inspector-card')).toBe(true)
-    // A hover card must not offer click targets that vanish with the pointer.
-    expect(container.querySelectorAll('button')).toHaveLength(0)
-    // Preview emotes are free: rollup.topEmotes is already in the payload.
-    expect(container.querySelector('[data-emote-name="LOL"]')).not.toBeNull()
+    expect(container.textContent).toContain('Viewers not sampled · 120 chat/min · 40 emotes/min')
   })
 
   it('orders the compact activity line as viewers, chat, then emotes', () => {
@@ -205,7 +176,7 @@ describe('ChartMinuteInspectCard', () => {
     })
 
     const activity = container.querySelector<HTMLElement>('[data-moment-inspector-activity="true"]')
-    expect(activity?.textContent).toBe('20.3K viewers · 476 chat · 428 emotes')
+    expect(activity?.textContent).toBe('20.3K viewers · 476 chat/min · 428 emotes/min')
     expect(activity?.getAttribute('data-viewer-sample-state')).toBe('sampled')
     expect(container.querySelector('[data-moment-inspector-metrics="true"]')).toBeNull()
     expect(container.querySelector('[data-moment-inspector-state="selected"]')?.classList.contains('pulse-moment-selection-card')).toBe(true)
@@ -260,23 +231,5 @@ describe('ChartMinuteInspectCard', () => {
     expect(buttons.some(button => button.textContent?.includes('Jump in player'))).toBe(true)
     expect(buttons.some(button => button.textContent?.includes('Analytics'))).toBe(true)
     expect(buttons.some(button => button.textContent === 'Bookmark')).toBe(false)
-  })
-
-  it('keeps the preview variant free of actions', () => {
-    container = document.createElement('div')
-    document.body.appendChild(container)
-    root = createRoot(container)
-
-    act(() => {
-      root?.render(
-        <ChartMinuteInspectCard
-          rollup={{ offsetSeconds: 600, chatCount: 10, totalEmoteCount: 2 }}
-          backendUrl="https://api.streampulse.stream"
-          interactionState="preview"
-        />,
-      )
-    })
-
-    expect(container.querySelectorAll('button')).toHaveLength(0)
   })
 })

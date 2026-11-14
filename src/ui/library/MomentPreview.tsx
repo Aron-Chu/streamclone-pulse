@@ -32,7 +32,7 @@ const W = 480, H = 94, TOP = 8, BOTTOM = 78
 const BAR = W / BARS
 
 const validSeconds = (value: number | null | undefined): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0
-const clock = (seconds: number) => timestamp(Math.max(0, seconds)).slice(0, 5)
+const clock = (seconds: number) => timestamp(Math.max(0, Math.floor(seconds / 60) * 60))
 
 /**
  * Chat per minute for the 21 minutes around the moment, from the context's
@@ -139,12 +139,20 @@ export function MomentPreview({ moment, context, presentation, busy, error, remo
   const [failedFrame, setFailedFrame] = useState<string | null>(null)
   const clipButton = useRef<HTMLButtonElement>(null)
   const clipLink = useRef<HTMLAnchorElement>(null)
+  const title = useRef<HTMLHeadingElement>(null)
+  const mark = useRef<HTMLButtonElement>(null)
+  const undo = useRef<HTMLButtonElement>(null)
   // Entering or leaving Clip swaps the buttons; keep keyboard focus on the new row.
-  const focusNext = useRef<'clip' | 'link' | null>(null)
+  // Remove hands focus to its Undo, and Undo back to the bookmark button, once the change lands (J1).
+  const focusNext = useRef<'clip' | 'link' | 'undo' | 'mark' | null>(null)
   useEffect(() => {
-    const target = focusNext.current; focusNext.current = null
-    if (target) (target === 'link' ? clipLink.current : clipButton.current)?.focus()
+    const target = focusNext.current
+    if (!target || busy) return
+    focusNext.current = null
+    ;(target === 'link' ? clipLink.current : target === 'clip' ? clipButton.current : target === 'undo' ? undo.current ?? mark.current : mark.current)?.focus()
   })
+  // Opens on what it shows, not on Remove bookmark (J1).
+  useEffect(() => { title.current?.focus() }, [])
   const id = useId()
   const data = context?.kind === 'ready' ? context.value : undefined
   const seconds = validSeconds(moment.offsetSeconds) ? moment.offsetSeconds : null
@@ -169,16 +177,18 @@ export function MomentPreview({ moment, context, presentation, busy, error, remo
   }
   return <LibraryDialog title="Moment preview" bare className="pl-around" onClose={onClose} canClose={!busy}>
     <header className="pl-around-head">
-      <div><small>{[moment.channel, streamDate(data, seconds), timestamp(moment.offsetSeconds)].filter(Boolean).join(' · ')}</small><h2>{moment.title}</h2>
+      <div><small>{[moment.channel, streamDate(data, seconds), timestamp(moment.offsetSeconds)].filter(Boolean).join(' · ')}</small><h2 ref={title} tabIndex={-1}>{moment.title}</h2>
         {data?.provenance === 'fixture' ? <p className="pl-muted">Illustrative analysis · fixture data</p> : null}</div>
       <div className="pl-around-icons">
-        <button type="button" className={`pl-around-icon${saved ? ' pl-on' : ''}`} disabled={busy || (saved && !onRemove)} onClick={() => saved ? onRemove?.(moment) : onSave(moment)}
+        {/* Busy is aria-disabled, not disabled: Undo's note restore is a second change, and a disabled button would drop focus to the page (J1). */}
+        <button ref={mark} type="button" className={`pl-around-icon${saved ? ' pl-on' : ''}`} disabled={saved && !onRemove} aria-disabled={busy || undefined}
+          onClick={() => { if (busy) return; focusNext.current = saved ? 'undo' : 'mark'; if (saved) onRemove?.(moment); else onSave(moment) }}
           aria-label={saved ? `Remove bookmark: ${moment.title}` : `Bookmark: ${moment.title}`} title={saved ? 'Remove bookmark' : 'Bookmark'}><BookmarkIcon filled={saved} /></button>
         <button type="button" className="pl-around-icon" disabled={busy} onClick={onClose} aria-label="Close Moment preview" title="Close">×</button>
       </div>
     </header>
     {removed && !saved ? <div className="pl-around-undo"><span role="status">Bookmark removed.</span>
-      <button type="button" className="pl-button" disabled={busy || !onUndo} onClick={onUndo}>Undo</button></div> : null}
+      <button ref={undo} type="button" className="pl-button" disabled={busy || !onUndo} onClick={() => { focusNext.current = 'mark'; onUndo?.() }}>Undo</button></div> : null}
     {framed ? <SavedFrame moment={moment} src={frame} sampled={sampled} context={data} onError={() => setFailedFrame(frame)} /> : null}
     <div className="pl-around-body">
       {data && seconds !== null ? <AroundChart context={data} seconds={seconds} clip={clip}

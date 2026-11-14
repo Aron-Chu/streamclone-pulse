@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { extensionEmoteImageUrls } from '../shared/emoteUrl.ts'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import type { MomentPictureView } from '../shared/momentFramesContract.ts'
@@ -6,6 +6,8 @@ import { useMomentBookmarks, type BookmarkTarget } from './momentBookmarks.tsx'
 import { useMomentPicture, type MomentGame } from './momentPicture.ts'
 import { formatCount } from './mostReacted.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
+import type { JumpNote, JumpPromise, JumpResult } from './jumpMomentAction.ts'
+import { MomentTime } from './MomentTime.tsx'
 
 export type MomentSelectionEmote = Pick<
   ExtensionEmote,
@@ -15,7 +17,10 @@ export type MomentSelectionEmote = Pick<
 export interface MomentSelectionCardProps {
   kind: 'minute' | 'moment'
   label: string
+  /** h:mm:ss. */
   timeLabel: string
+  /** Only the minute is known: a quiet 'about' before the time (K1). */
+  about?: boolean
   detail: ReactNode
   detailStyle?: CSSProperties
   activityLine: string
@@ -24,7 +29,8 @@ export interface MomentSelectionCardProps {
   topEmotes?: readonly MomentSelectionEmote[]
   backendUrl: string
   jumpLabel: string
-  onJump?: () => void
+  /** Its note shows under the buttons, as a status (U). */
+  onJump?: () => JumpResult
   onAnalytics?: () => void
   onClose?: () => void
   className?: string
@@ -49,6 +55,7 @@ export function MomentSelectionCard({
   kind,
   label,
   timeLabel,
+  about,
   detail,
   detailStyle,
   activityLine,
@@ -72,6 +79,9 @@ export function MomentSelectionCard({
   const canBookmark = Boolean(bookmark && bookmarks?.canSave)
   const saved = canBookmark ? bookmarks!.savedFor(bookmark!) != null : false
   const contentRef = useRef<HTMLDivElement>(null)
+  // The last Jump's result, kept for the moment it was pressed on.
+  const [note, setNote] = useState<JumpNote & { key?: string } | null>(null)
+  const shownNote = note?.key === contentKey ? note : null
   // With no picture of the moment the card opens on the game's box art, or on
   // chat's top emote for Just Chatting (its box art says nothing).
   const art = game?.name.toLowerCase() === 'just chatting' ? undefined : game?.art
@@ -105,7 +115,7 @@ export function MomentSelectionCard({
         <div ref={pictureRef} className="pmf-stage" data-moment-picture="true" />
         <div className="pulse-sel-header">
           <span className="pulse-sel-kicker">{label}</span>
-          <span className="pulse-sel-offset" data-moment-inspector-clock="true">{timeLabel}</span>
+          <span className="pulse-sel-offset" data-moment-inspector-clock="true"><MomentTime text={timeLabel} about={about} /></span>
           {onClose ? (
             <button
               type="button"
@@ -182,7 +192,7 @@ export function MomentSelectionCard({
                 type="button"
                 className="pulse-action-chip pulse-action-chip-primary pulse-sel-primary"
                 data-moment-inspector-action="jump"
-                onClick={onJump}
+                onClick={() => void (onJump() as JumpPromise)?.then(next => next && setNote({ ...next, key: contentKey }))}
               >
                 <span aria-hidden="true" className="pulse-sel-play" data-selected-moment-play-icon="true">▶</span>
                 {jumpLabel}
@@ -196,25 +206,32 @@ export function MomentSelectionCard({
                 data-moment-action="bookmark"
                 data-moment-save-state={saved ? 'saved' : bookmarks!.busy ? 'saving' : 'ready'}
                 aria-pressed={saved}
+                // Not disabled while busy: a disabled button drops its focus to the
+                // page. The bookmark context runs one change at a time.
                 aria-busy={bookmarks!.busy}
-                disabled={bookmarks!.busy}
-                aria-label={`${saved ? 'Saved' : 'Save'} ${kind} at ${timeLabel}`}
+                aria-label={`${saved ? 'Saved' : 'Save'} ${kind} at ${about ? 'about ' : ''}${timeLabel}`}
                 onClick={() => bookmarks!.toggle(bookmark!)}
               >
                 {saved ? '✓ Saved' : 'Save'}
               </button>
             ) : null}
             {onAnalytics ? (
+              // Never moves or changes: a Jump note shows beside or under it (U).
               <button
                 type="button"
                 className="pulse-sel-link"
                 data-moment-inspector-action="analytics"
                 onClick={onAnalytics}
               >
-                {/* Full action names wrap within the reserved footer space. */}
-                <span className="pulse-sel-link-text">Open Analytics</span>
+                <span className="pulse-sel-link-text">Analytics</span>
                 <span aria-hidden="true" className="pulse-sel-link-icon">↗</span>
               </button>
+            ) : null}
+            {onJump ? (
+              // In the space under the buttons the card already keeps, wrapped rather than cut.
+              <p className={`pulse-sel-note${shownNote?.ok === false ? ' pulse-note-warn' : ''}`} role="status">
+                {shownNote?.text}
+              </p>
             ) : null}
           </div>
         ) : null}

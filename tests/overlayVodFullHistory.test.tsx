@@ -91,6 +91,6 @@ describe('VOD-5: a growing VOD loads its full history on its own', () => {
 
     expect(sendBackgroundMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'GET_PULSE_VOD', window: 'full', vodId: VOD_ID }))
     expect(node.textContent).not.toContain('Retry full history')
-    expect(node.textContent).toContain('Viewer data from 00:00:50')
+    expect(node.textContent).toContain('Viewer data from 0:00:50')
   })
 })

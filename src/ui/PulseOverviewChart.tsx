@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
-import { formatHeatOffset, momentClockDisplay, reactionAnalyticalOffset } from '@streampulse/pulse-core'
+import { formatMomentClock, formatMomentOffset, reactionAnalyticalOffset } from '@streampulse/pulse-core'
 import {
   GameSegmentOverlay,
   gameSegmentKey,
@@ -2102,7 +2102,7 @@ function PulseOverviewChartImpl({
           const x = plotXForIndex(tickIndex, n, PAD_LEFT, plotWidth)
           const isLast = tickIndex === n - 1
           const endOffset = offset > 0 ? offset : durationSeconds
-          const label = isLast && isLive ? 'Now' : formatHeatOffset(isLast ? endOffset : offset)
+          const label = isLast && isLive ? 'Now' : formatMomentOffset(isLast ? endOffset : offset)
           const insetX = isLast ? Math.min(x, width - PAD_RIGHT - 2) : x
           return (
             <text
@@ -2238,8 +2238,7 @@ function PulseOverviewChartImpl({
             {paintedMomentMarkers.map(({ marker, pin }) => {
               const active = marker.pinned || activeMomentMarkerKey === marker.key
               const presentation = chartMomentMarkerPresentation(active)
-              const clock = momentClockDisplay(marker.peak)
-              const accessibleClock = `minute bucket ${clock.text}`
+              const accessibleClock = formatMomentClock(marker.peak)
               // A pin's head sits on the top edge, a guide down to its minute.
               const head = pin ? { x: pin.x, y: 8 } : marker
               const tint = pin?.n ? '#ff4f8b' : '#a78bfa'

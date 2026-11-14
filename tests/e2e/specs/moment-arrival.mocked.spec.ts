@@ -60,7 +60,7 @@ test('a timestamped VOD link locks its minute until ×', async ({ extension, pre
 
   const chip = root.locator('.pulse-arrival')
   await expect(chip).toHaveAttribute('data-moment-arrival', 'link')
-  await expect(chip).toContainText('From link · 00:01:00')
+  await expect(chip).toContainText('From link · 0:01:00')
   await expect(root.getByLabel(/^Selected moment at/)).toBeVisible()
 
   await chip.getByRole('button', { name: 'Unlock this moment' }).click()
@@ -81,7 +81,7 @@ test('a My Moments note is read once and says where the viewer came from', async
   const root = vod.locator('#streamclone-pulse-root')
 
   await expect(root.locator('.pulse-arrival')).toHaveAttribute('data-moment-arrival', 'library')
-  await expect(root.locator('.pulse-arrival')).toContainText('From My Moments · 00:02:05')
+  await expect(root.locator('.pulse-arrival')).toContainText('From My Moments · 0:02:05')
   await expect(root.getByLabel(/^Selected moment at/)).toBeVisible()
   await expect.poll(() => extension.serviceWorker.evaluate(() => chrome.storage.local.get('sp.momentArrival.v1'))).toEqual({})
 })
@@ -113,7 +113,7 @@ function arrivalFitTest(placement: keyof typeof PLACEMENTS, size: { width: numbe
     await stubTwitchMedia(vod, 'vod')
     await waitForPulseRoot(vod)
     const root = vod.locator('#streamclone-pulse-root')
-    await expect(root.locator('.pulse-arrival')).toContainText(`${source === 'library' ? 'From My Moments' : 'From link'} · 00:02:05`)
+    await expect(root.locator('.pulse-arrival')).toContainText(`${source === 'library' ? 'From My Moments' : 'From link'} · 0:02:05`)
     const card = root.getByLabel(/^Selected (moment|minute) at/)
     await expect(card).toBeVisible()
 
@@ -158,7 +158,7 @@ test('a replay of a stream still live locks its minute on the live chart', async
   const root = vod.locator('#streamclone-pulse-root')
 
   const chip = root.locator('.pulse-arrival')
-  await expect(chip).toContainText('From My Moments · 00:20:30')
+  await expect(chip).toContainText('From My Moments · 0:20:30')
   const card = root.locator('[data-chart-inspector-owner="activity-chart"]').getByLabel(/^Selected minute at/)
   await expect(card).toBeVisible()
   await expect.poll(() => panelReveal(card)).toMatchObject({ cardInside: true })

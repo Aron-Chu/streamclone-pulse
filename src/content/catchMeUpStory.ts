@@ -5,14 +5,6 @@ import type { CatchMeUpModel } from '../shared/catchMeUpContract.ts'
  * panel already has (its rollups and totals). Nothing here ranks or scores.
  */
 
-/** A length or offset as a clock that cannot read as a time of day: 2:34, or 2:34:05 with seconds. */
-export function summaryClock(offsetSeconds: number, withSeconds = false): string {
-  const s = Math.max(0, Math.floor(offsetSeconds))
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  const clock = `${Math.floor(s / 3600)}:${pad(Math.floor((s % 3600) / 60))}`
-  return withSeconds ? `${clock}:${pad(s % 60)}` : clock
-}
-
 /** How far the minutes may stop short of the stream's start or end and still stand for all of it. */
 const EDGE_SLACK = 300
 

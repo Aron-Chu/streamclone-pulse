@@ -209,7 +209,7 @@ describe('Top Moments card (live panel)', () => {
 
     const card = openCard(host)!
     expect(card).not.toBeNull()
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:07/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:07:00/)
     expect(clearButton(host)).not.toBeNull()
     // Directly above the rows, in a slot that opens and closes, at one height
     // whatever the moment shows.
@@ -228,7 +228,7 @@ describe('Top Moments card (live panel)', () => {
     // Another pick swaps into the same card.
     click(third)
     expect(openCard(host)).toBe(card)
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:09/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:09:00/)
     expect(third.getAttribute('aria-pressed')).toBe('true')
     expect(second.getAttribute('aria-pressed')).toBe('false')
     expect(selectionCards(host)).toHaveLength(1)
@@ -256,7 +256,7 @@ describe('Top Moments card (live panel)', () => {
     // The top moment's spike marker on the chart picks it.
     pickChartMarker(host, 300)
     expect(openCard(host)).not.toBeNull()
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:05/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:05:00/)
     expect(chartCard(host)).toBeNull()
     expect(rows(host)[0].getAttribute('aria-pressed')).toBe('true')
     expect(selectionCards(host)).toHaveLength(1)
@@ -274,8 +274,30 @@ describe('Top Moments card (live panel)', () => {
     // A list pick takes the selection back from the chart.
     click(rows(host)[2])
     expect(chartCard(host)).toBeNull()
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:09/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:09:00/)
     expect(selectionCards(host)).toHaveLength(1)
+  })
+
+  it('moves focus to the card’s Jump on a keyboard pick, and Escape brings it back (EXT-MOMENTS-7)', () => {
+    // Frames run when the test says, after the pick has rendered its card.
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback))
+    const frame = () => act(() => { for (const callback of frames.splice(0)) callback(0) })
+    const host = mount(<Panel />)
+    const [, second, third] = rows(host)
+    act(() => second.focus())
+    // Enter or Space on a button is a click with no pointer detail.
+    click(second)
+    frame()
+    const jump = openCard(host)!.querySelector<HTMLButtonElement>('[data-moment-inspector-action="jump"]')!
+    expect(document.activeElement).toBe(jump)
+    key(jump, 'Escape')
+    expect(document.activeElement).toBe(second)
+    // A pointer pick leaves focus where the pointer put it.
+    act(() => { third.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })) })
+    frame()
+    expect(openCard(host)).not.toBeNull()
+    expect(document.activeElement).toBe(second)
   })
 
   it('closes with Escape, × or the picked row again, keeping focus on the row', () => {
@@ -352,7 +374,7 @@ describe('Top Moments card (live panel)', () => {
   it('hands the selection to the chart when a poll drops the picked moment', () => {
     const host = mount(<Panel />)
     click(rows(host)[1])
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:07/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:07:00/)
 
     // The next poll no longer ranks the 00:07 moment.
     act(() => root!.render(<Panel payload={makePayload({ peaks: [peaks[0], peaks[2]] })} />))
@@ -380,7 +402,7 @@ describe('Top Moments card (live panel)', () => {
     // ...but not its row or the card: no remount, focus kept.
     expect(rows(host)[1]).toBe(row)
     expect(openCard(host)).toBe(card)
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:07/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:07:00/)
     expect(document.activeElement).toBe(row)
   })
 
@@ -395,7 +417,7 @@ describe('Top Moments card (live panel)', () => {
     // the same nodes, so Jump keeps focus.
     const stronger = { ...peaks[0], offsetSeconds: 660, score: 99 }
     act(() => root!.render(<Panel payload={makePayload({ peaks: [stronger, ...peaks] })} />))
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:07/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:07:00/)
     expect(action('jump')).toBe(jump)
     expect(document.activeElement).toBe(jump)
 
@@ -404,7 +426,7 @@ describe('Top Moments card (live panel)', () => {
     act(() => analytics.focus())
     const refined = { ...peaks[1], reactionApexOffsetSeconds: 431, refinementStatus: 'refined' }
     act(() => root!.render(<Panel payload={makePayload({ peaks: [stronger, peaks[0], refined, peaks[2]] })} />))
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:07/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:07:00/)
     expect(action('analytics')).toBe(analytics)
     expect(document.activeElement).toBe(analytics)
     // The details still fade in on the swap.
@@ -422,9 +444,9 @@ describe('Top Moments card (live panel)', () => {
     // Collapsed again, the picked row stays listed after the first five.
     expect(rows(host)).toHaveLength(6)
     expect(rows(host)[5].getAttribute('aria-pressed')).toBe('true')
-    expect(rows(host)[5].getAttribute('aria-label')).toContain('00:17')
+    expect(rows(host)[5].getAttribute('aria-label')).toContain('about 0:17:00')
     expect(expander(host).textContent).toContain('Show 2 more moments')
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:17/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:17:00/)
 
     // The row leaves with the pick; focus goes on to Show more.
     click(clearButton(host)!)
@@ -437,19 +459,19 @@ describe('Top Moments card (live panel)', () => {
   it('keeps a picked row, its focus and its press when a poll ranks it past the fold', () => {
     const host = mount(<Panel payload={manyPayload} />)
     const picked = rows(host)[4]
-    expect(picked.getAttribute('aria-label')).toContain('00:13')
+    expect(picked.getAttribute('aria-label')).toContain('about 0:13:00')
     act(() => picked.focus())
     click(picked)
 
     // The next poll ranks a new, stronger moment first: the pick is sixth.
     act(() => root!.render(<Panel payload={outrankedPayload} />))
     expect(rows(host)).toHaveLength(6)
-    expect(rows(host)[0].getAttribute('aria-label')).toContain('00:21')
+    expect(rows(host)[0].getAttribute('aria-label')).toContain('about 0:21:00')
     expect(rows(host)[5]).toBe(picked)
     expect(document.activeElement).toBe(picked)
     expect(picked.getAttribute('aria-pressed')).toBe('true')
     expect(expander(host).textContent).toContain('Show 3 more moments')
-    expect(topCardLabel(host)).toMatch(/^Selected moment at 00:13/)
+    expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:13:00/)
   })
 
   it('moves focus to Show more when a poll ranks a focused row past the fold', () => {
@@ -643,7 +665,7 @@ describe('Top Moments card in static markup', () => {
     expect(html.match(/aria-pressed="true"/g)).toHaveLength(1)
     expect(html.match(/data-top-moment-card=/g)).toHaveLength(1)
     expect(html).toContain('data-top-moment-card="selected"')
-    expect(html).toMatch(/aria-label="Selected moment at 00:07/)
+    expect(html).toMatch(/aria-label="Selected moment at about 0:07:00/)
     // The card comes before the first row.
     expect(html.indexOf('data-top-moment-card')).toBeLessThan(html.indexOf('pulse-moment-row-button'))
   })
@@ -796,7 +818,7 @@ describe('Stream recap Top moments', () => {
       expect(list[0].getAttribute('aria-pressed')).toBe('true')
       expect(host.querySelector('svg[data-chart-locked-index]')).not.toBeNull()
       const card = openCard(host)!
-      expect(topCardLabel(host)).toMatch(/^Selected moment at 00:05/)
+      expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:05:00/)
       expect(card.nextElementSibling).toBe(list[0].parentElement)
       expect(list.map(row => row.getAttribute('aria-controls'))).toEqual(list.map(() => card.id))
       expect(clearButton(host)).not.toBeNull()
@@ -807,13 +829,13 @@ describe('Stream recap Top moments', () => {
       expect(selectionCards(host)).toHaveLength(0)
 
       click(list[1])
-      expect(topCardLabel(host)).toMatch(/^Selected moment at 00:07/)
+      expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:07:00/)
       expect(rows(host)).toEqual(list)
       expect(slotCard(host)).toHaveLength(0)
       expect(selectionCards(host)).toHaveLength(1)
 
       click(list[2])
-      expect(topCardLabel(host)).toMatch(/^Selected moment at 00:09/)
+      expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:09:00/)
       expect(selectionCards(host)).toHaveLength(1)
 
       // A chart pick opens its own card above the list, as before, and the
@@ -830,14 +852,14 @@ describe('Stream recap Top moments', () => {
       // live panel: its row is pressed and the chart's card closes.
       showSpikes(host)
       clickMarker(host, 420)
-      expect(topCardLabel(host)).toMatch(/^Selected moment at 00:07/)
+      expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:07:00/)
       expect(list[1].getAttribute('aria-pressed')).toBe('true')
       expect(slotCard(host)).toHaveLength(0)
       expect(selectionCards(host)).toHaveLength(1)
       expect(markerState(host, 420)).toBe('active')
 
       click(list[0])
-      expect(topCardLabel(host)).toMatch(/^Selected moment at 00:05/)
+      expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:05:00/)
       expect(slotCard(host)).toHaveLength(0)
       act(() => list[0].focus())
       key(list[0], 'Escape')
@@ -868,7 +890,7 @@ describe('Stream recap Top moments', () => {
       expect(rows(host)).toHaveLength(6)
       expect(rows(host)[5].getAttribute('aria-pressed')).toBe('true')
       expect(expander(host).textContent).toContain('Show 2 more moments')
-      expect(topCardLabel(host)).toMatch(/^Selected moment at 00:17/)
+      expect(topCardLabel(host)).toMatch(/^Selected moment at about 0:17:00/)
       expect(selectionCards(host)).toHaveLength(1)
 
       // The row leaves with the pick; focus goes on to Show more.
@@ -982,14 +1004,14 @@ describe('Top Moments row keys', () => {
    * still shows 00:02:25.
    */
   function expectPickStaysWithItsMoment(host: ParentNode, picked: HTMLButtonElement) {
-    if (picked.isConnected) expect(picked.getAttribute('aria-label')).toContain('00:02:25')
+    if (picked.isConnected) expect(picked.getAttribute('aria-label')).toContain('0:02:25')
     const focused = document.activeElement
     if (focused instanceof HTMLButtonElement && focused.classList.contains('pulse-moment-row-button')) {
-      expect(focused.getAttribute('aria-label')).toContain('00:02:25')
+      expect(focused.getAttribute('aria-label')).toContain('0:02:25')
     }
     expect(rows(host).filter(row => row.getAttribute('aria-pressed') === 'true').map(row => row.getAttribute('aria-label')))
-      .toEqual([expect.stringContaining('00:02:25')])
-    expect(topCardLabel(host)).toBe('Selected moment at 00:02:25')
+      .toEqual([expect.stringContaining('0:02:25')])
+    expect(topCardLabel(host)).toBe('Selected moment at 0:02:25')
   }
   const live = (moments: ExtensionPeak[]) => (
     <MostReactedSection
@@ -1000,7 +1022,7 @@ describe('Top Moments row keys', () => {
       onAnalytics={() => undefined}
     />
   )
-  const pickedRow = (host: ParentNode) => rows(host).find(row => row.getAttribute('aria-label')?.includes('00:02:25'))!
+  const pickedRow = (host: ParentNode) => rows(host).find(row => row.getAttribute('aria-label')?.includes('0:02:25'))!
 
   it('keeps a picked moment\'s row when a new moment joins its bucket with an earlier onset', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)

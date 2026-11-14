@@ -67,7 +67,7 @@ export function RecapAnalyticsNav({
           style={styles.streamCta}
           onClick={() => openAnalyticsHref(streamHref)}
         >
-          Open stream analytics
+          Analytics
         </button>
       ) : null}
     </div>

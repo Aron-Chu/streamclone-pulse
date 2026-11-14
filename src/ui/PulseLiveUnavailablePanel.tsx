@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import type { PulseLiveAccessState } from './resolvePulseLiveAccess.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { theme } from './theme.ts'
@@ -28,7 +28,7 @@ export function PulseLiveUnavailablePanel({
   const body =
     variant === 'not_irc_tracked'
       ? `${login} is live, but your StreamPulse stack isn’t reading this channel’s chat, so there’s no chart or moments here.`
-      : `StreamPulse is tracking this stream from ${formatHeatOffset(coverageStartOffsetSeconds)}, but you opened the channel late. Full live charts are available for protected watchlist channels or when you open a stream within the first 2 minutes.`
+      : `StreamPulse is tracking this stream from ${formatMomentOffset(coverageStartOffsetSeconds)}, but you opened the channel late. Full live charts are available for protected watchlist channels or when you open a stream within the first 2 minutes.`
 
   return (
     <PulseSectionCard title={title}>
