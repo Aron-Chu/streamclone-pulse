@@ -167,7 +167,7 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     await expect(row(page, 2).locator('.ssr-why')).toHaveText('Emote spike')
     await expect(first.locator('.ssr-sc b')).toHaveText('89')
     await expect(row(page, 3).locator('.ssr-sc b')).toHaveText('83')
-    await expect(first).toHaveAccessibleName(/^Moment 1 0:10:00 /)
+    await expect(first).toHaveAccessibleName(/^Moment 1 about 0:10:00 /)
     // F8: the backend label and score only; no rate or spark on a card.
     await expect(page.locator(`${CARD} .ssr-rt, ${CARD} svg.ssr-msp`)).toHaveCount(0)
 
@@ -183,7 +183,9 @@ test.describe('session Moments rows (d3-v2) at 1440', () => {
     const small = await box(row(page, 2))
     await expect(page.locator(CARD)).toHaveClass([/\bflat\b/, /\bflat\b/, /\bflat\b/])
     expect(hero.h).toBeLessThan((hero.w * 9) / 16)
-    expect(small.h).toBeLessThan((small.w * 9) / 16)
+    // Z02 (11-13, SESSION-MOMENTS-9): a small card now carries one emote line, so at 160 px wide it is taller
+    // than 9/16 of its width; it is still a flat row (no picture box), no taller than the big card.
+    expect(small.h).toBeLessThanOrEqual(hero.h)
     expect(hero.w).toBeGreaterThan(small.w * 1.5)
 
     // No reduced-motion glow, and no frame without a verified VOD: the picture is box art (F6).
@@ -367,7 +369,7 @@ test.describe('session Moments rows: game art', () => {
     const frame = first.locator('[data-moment-card-frame]')
     expect(await frame.evaluate(el => getComputedStyle(el).backgroundImage)).toContain(`${SHEET_HOST}/fixture_xqc/storyboards/${PORTAL_VOD_ID}-high-0.jpg`)
     // Tile 3 (747-996 s): the chip shows its start on the stream's clock.
-    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:10:27')
+    await expect(first.locator('.ssr-rc-at')).toHaveText('about 0:10:27')
     await expect(page.locator('[data-moment-reel-note]')).toHaveText(
       "Pictures are Twitch's VOD preview frames, one every 4 min 9 s. Move across one to step through them.",
     )
@@ -381,11 +383,11 @@ test.describe('session Moments rows: game art', () => {
     await page.mouse.move(b.x + b.width - 2, b.y + b.height / 2)
     await settle(page)
     await expect(first).toHaveClass(/\bscrubbing\b/)
-    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:22:54')
+    await expect(first.locator('.ssr-rc-at')).toHaveText('about 0:22:54')
     await page.mouse.move(2, 2)
     await settle(page)
     await expect(first).not.toHaveClass(/\bscrubbing\b/)
-    await expect(first.locator('.ssr-rc-at')).toHaveText('≈ 0:10:27')
+    await expect(first.locator('.ssr-rc-at')).toHaveText('about 0:10:27')
   })
 })
 

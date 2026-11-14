@@ -105,14 +105,14 @@ describe('Chat’s big moments: where each card sits', () => {
 })
 
 describe('Chat’s big moments: the card’s words and pictures', () => {
-  it('says how far into the stream, from a minute in', () => {
+  it('says how far into the stream, from a minute in, with the shared clock (K1)', () => {
     expect(bigIntoStream(null)).toBeNull()
     expect(bigIntoStream(undefined)).toBeNull()
     expect(bigIntoStream(Number.NaN)).toBeNull()
     expect(bigIntoStream(20)).toBeNull()
-    expect(bigIntoStream(30)).toBe('1 min into the stream')
-    expect(bigIntoStream(42 * 60)).toBe('42 min into the stream')
-    expect(bigIntoStream(125 * 60)).toBe('2 h 5 min into the stream')
+    expect(bigIntoStream(30)).toBeNull()
+    expect(bigIntoStream(42 * 60)).toEqual({ text: '0:42:00', approximate: true })
+    expect(bigIntoStream(125 * 60)).toEqual({ text: '2:05:00', approximate: true })
   })
 
   it('measures now against the usual, the larger as the full bar, and only with both', () => {
@@ -134,11 +134,19 @@ describe('Chat’s big moments: the card’s words and pictures', () => {
   })
 
   it('names each slide, counts viewers short and links the channel', () => {
-    expect(bigSlideLabel({ name: 'Aldo_Geo', kind: 'emotes', x: 5.24 }, 0, 3)).toBe('1 of 3: Aldo_Geo, emote spike, 5.2 times usual emotes')
-    expect(bigSlideLabel({ name: 'supertf', kind: 'chat', x: 12.4 }, 2, 3)).toBe('3 of 3: supertf, chat spike, 12 times usual chat')
+    expect(bigSlideLabel({ name: 'Aldo_Geo', kind: 'emotes', x: 5.24 }, 0, 3)).toBe('1 of 3: Aldo_Geo, emote spike, 5.2 times more emotes')
+    expect(bigSlideLabel({ name: 'supertf', kind: 'chat', x: 12.4 }, 2, 3)).toBe('3 of 3: supertf, chat spike, 12 times more chat')
     expect(bigViewers(5600)).toBe('5.6K')
     expect(bigViewers(940)).toBe('940')
     expect(bigWatchHref('aldo_geo')).toBe('https://www.twitch.tv/aldo_geo')
+  })
+})
+
+describe('Top moments today: a card in its stream’s last 10 minutes (E1, round 2)', () => {
+  it('says "Stream end" beside the spike, in the label and its spoken name', () => {
+    expect(bigLabel({ kind: 'emotes', plain: null, x: 6.2, edge: 'closing' })).toBe('Emote spike · Stream end')
+    expect(bigLabel({ kind: 'emotes', plain: null, x: 6.2, edge: null, offsetSeconds: 3600 })).toBe('Emote spike')
+    expect(bigSlideLabel({ name: 'Aldo_Geo', kind: 'emotes', x: 6.2, edge: 'closing' }, 0, 3)).toBe('1 of 3: Aldo_Geo, emote spike, stream end, 6.2 times more emotes')
   })
 })
 

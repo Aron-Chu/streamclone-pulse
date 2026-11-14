@@ -130,7 +130,7 @@ describe('MostReactedSection', () => {
     )
 
     expect((html.match(/aria-pressed="true"/g) ?? [])).toHaveLength(1)
-    expect(html).toContain('aria-label="Select minute bucket 00:03')
+    expect(html).toContain('aria-label="about 0:03:00, ')
     expect(html).not.toContain('Approx.')
     expect(html).not.toContain('approximately')
   })
@@ -164,7 +164,7 @@ describe('MostReactedSection', () => {
     expect(idle).not.toContain('Strongest moment')
     expect(rowsMarkup(idle)).not.toContain('aria-controls')
     expect(idle).not.toContain('aria-pressed="true"')
-    expect(active).toContain('aria-label="Selected moment at 00:02')
+    expect(active).toContain('aria-label="Selected moment at about 0:02:00')
     expect(active.match(/data-moment-inspector-card="true"/g)).toHaveLength(1)
     expect(active.match(/aria-pressed="true"/g)).toHaveLength(1)
     expect(active).toContain('data-most-reacted-count="true"')
@@ -198,7 +198,7 @@ describe('MostReactedSection', () => {
     const rows = rowsMarkup(render(1020)).split('pulse-moment-row-button').slice(1)
     expect(rows).toHaveLength(6)
     expect(rows[5]).toContain('aria-pressed="true"')
-    expect(rows[5]).toContain('Select minute bucket 00:17')
+    expect(rows[5]).toContain('about 0:17:00, ')
     expect(render(1020)).toContain('Show 2 more moments')
   })
 

@@ -21,8 +21,9 @@
  *   chart's hub/moments reads fills in (busiestFillRows): "Busiest minute",
  *   never a spike.
  */
+import { compareStreamEdgeLast, formatLiftRatio, streamEdgeLabel, type StreamEdgeKind } from '@streampulse/pulse-core'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
-import { avatarImage, boxArtImage, checkMoment, clk, emoteImage, fx, int, topBursts, TOP_BURST_MS, when, type CheckedMoment } from '../../../../lib/momentsChecked'
+import { avatarImage, boxArtImage, checkMoment, clk, EARLY_STREAM_MIN, EARLY_STREAM_WORDS, earlyInStream, edgeFlag, emoteImage, feedStreamEnds, int, momentEdge, topBursts, TOP_BURST_MS, when, type CheckedMoment } from '../../../../lib/momentsChecked'
 import { momentsFeedFrom, type MomentsFeedCategoryFacet, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
 import type { MomentVodRef } from '../../../../lib/momentsFeedVod'
 import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
@@ -36,8 +37,8 @@ export const TOP_READ = 50
 export const TOP_DAY_MS = 24 * 60 * 60_000
 /** A list read that failed leaves its last answer up, greyed, this long; then the hub's rows stand in. */
 export const TOP_KEEP_MS = 15 * 60_000
-/** Hub rows: none from a stream's first 20 minutes (too soon for its own average), and a ready × of at least 1.5. */
-export const TOP_START_MIN = 20
+/** Hub rows: none from a stream's first 20 minutes (too soon for its own average), and a ready × of at least 1.5. The 20 minutes are the shared early rule (X1, 11-13). */
+export const TOP_START_MIN = EARLY_STREAM_MIN
 export const TOP_MIN_X = 1.5
 
 /** `from` for the last 24 hours, floored to 10 minutes so readers in the same 10 minutes share one cached URL. */
@@ -124,9 +125,15 @@ export interface TopRowData extends MomentVodRef {
   also: string[]
   /** The Moments list's moment, with the minutes around it; null for a hub row. */
   checked: CheckedMoment | null
+  /**
+   * Its stream edge (E1, 11-13): the backend's flag when the data carries one,
+   * else a stream's first 5 minutes or, once an ended stream's chat has
+   * stopped, its last 10 (topEdge). Unset: worked out from the offset.
+   */
+  edge?: StreamEdgeKind | null
 }
 
-function feedRow(m: CheckedMoment): TopRowData {
+function feedRow(m: CheckedMoment, ends: ReadonlyMap<string, number>): TopRowData {
   const item = m.item
   const emotes = item.topEmotes.slice(0, 3).map((e) => ({ name: e.name, imageUrl: emoteImage(e), count: e.count }))
   return {
@@ -136,18 +143,39 @@ function feedRow(m: CheckedMoment): TopRowData {
     emote: m.kind === 'emotes' ? emotes[0] ?? null : null, emotes,
     rate: item[m.kind].perMin, usual: m.kind === 'chat' ? m.baseC : m.baseE, viewers: item.viewers ?? null, live: item.streamLive,
     href: `/analytics/moments?${new URLSearchParams({ m: item.id })}`, also: [], checked: m,
+    edge: momentEdge(item.offsetSeconds, item.streamEdge, ends.get(`${item.login.toLowerCase()}|${item.streamId}`)) ?? null,
   }
 }
 
-/** The Moments list's answer as rows: the moments that hold up and rose, one per burst, by the feed's score, at most 20. */
+/**
+ * The Moments list's answer as rows: the moments that hold up and rose, one
+ * per burst, by the feed's score, with a stream's edge minutes after the rest
+ * (E1), at most 20. An ended stream's last 10 minutes are its edge once a
+ * moment's minutes show where its chat stopped (feedStreamEnds).
+ */
 export function topFeedRows(snap: Pick<MomentsFeedSnapshot, 'items' | 'generatedAt'>): TopRowData[] {
+  const ends = feedStreamEnds(snap.items)
   return topBursts(snap.items.map((item) => checkMoment(item, snap.generatedAt)).filter((m) => m.rowX != null))
+    .map((m) => feedRow(m, ends))
+    .sort((a, b) => compareStreamEdgeLast({ streamEdge: a.edge }, { streamEdge: b.edge }))
     .slice(0, TOP_ROWS)
-    .map(feedRow)
 }
 
-/** The list's order: rows with a × first, strongest first; then the rest by their rate; the newer first on a tie. */
-export function topOrder(a: Pick<TopRowData, 'x' | 'rate' | 'at'>, b: Pick<TopRowData, 'x' | 'rate' | 'at'>): number {
+/**
+ * A row's stream edge (E1, 11-13, pulse-core's rule): the one it carries (the
+ * backend's flag, or an ended stream's last 10 minutes), else a stream's first
+ * 5 minutes by its offset.
+ */
+export function topEdge(row: { offsetSeconds?: number | null; edge?: StreamEdgeKind | null }): StreamEdgeKind | undefined {
+  if (row.edge !== undefined) return row.edge ?? undefined
+  return row.offsetSeconds == null ? undefined : momentEdge(row.offsetSeconds, undefined)
+}
+
+type Ordered = Pick<TopRowData, 'x' | 'rate' | 'at'> & Partial<Pick<TopRowData, 'offsetSeconds' | 'edge'>>
+/** The list's order: a stream's edge minutes last (E1); rows with a × first, strongest first; then the rest by their rate; the newer first on a tie. */
+export function topOrder(a: Ordered, b: Ordered): number {
+  const edge = compareStreamEdgeLast({ streamEdge: topEdge(a) }, { streamEdge: topEdge(b) })
+  if (edge) return edge
   if ((a.x == null) !== (b.x == null)) return a.x == null ? 1 : -1
   return (a.x != null && b.x != null ? b.x - a.x : (b.rate ?? 0) - (a.rate ?? 0)) || b.at - a.at
 }
@@ -198,6 +226,7 @@ export function topDayParse(raw: unknown): TopRowData[] {
       emotes: Array.isArray(r.emotes) ? r.emotes.flatMap((e) => keptEmote(e) ?? []).slice(0, 3) : [],
       rate: orNull(r.rate, num), usual: orNull(r.usual, num), viewers: orNull(r.viewers, num), live: false,
       href: r.href, also: Array.isArray(r.also) ? r.also.filter(str) : [], checked: null,
+      ...(r.edge === null || edgeFlag(r.edge) ? { edge: edgeFlag(r.edge) ?? null } : {}),
     }]
   })
 }
@@ -209,21 +238,24 @@ export function hubTopRows(hub: Pick<PublicHub, 'liveChannels' | 'livePulseMomen
   const art = hubCategoryArt(hub.livePulseMoments ?? [])
   // the last 24 hours by the answer's own clock (no clock: none left out)
   const from = Date.parse(hub.generatedAt) - TOP_DAY_MS
-  type Gated = { row: (typeof rows)[number]; x: number | null; plain: TopPlain | null; at: number; rate: number | null }
+  type Gated = { row: (typeof rows)[number]; x: number | null; plain: TopPlain | null; at: number; rate: number | null; offsetSeconds: number; edge: StreamEdgeKind | null }
   const rows = momentRowsV5(hub.livePulseMoments ?? [])
   const gated = rows.flatMap((row): Gated[] => {
     if (row.at == null || row.at < from) return []
     const x = 'x' in row.cmp ? row.cmp.x : null
     const at = row.at
+    const offsetSeconds = row.moment.offsetSeconds || 0
     // a stream's first 20 minutes, or a minute whose two counts disagree: its rate, no ×
-    const plain: TopPlain | null = (row.moment.offsetSeconds || 0) / 60 < TOP_START_MIN ? 'early'
+    const plain: TopPlain | null = earlyInStream(offsetSeconds) ? 'early'
       : 'why' in row.cmp && row.cmp.why === 'not compared' ? 'unmatched' : null
-    if (plain) return row.rate != null ? [{ row, x: null, plain, at, rate: row.rate }] : []
-    return x != null && x >= TOP_MIN_X ? [{ row, x, plain, at, rate: row.rate }] : []
+    // the backend's edge flag wins; its streams are live, so no closing edge of its own (E1)
+    const edge = momentEdge(offsetSeconds, row.moment.streamEdge) ?? null
+    if (plain) return row.rate != null ? [{ row, x: null, plain, at, rate: row.rate, offsetSeconds, edge }] : []
+    return x != null && x >= TOP_MIN_X ? [{ row, x, plain, at, rate: row.rate, offsetSeconds, edge }] : []
   }).sort(topOrder)
   const kept: TopRowData[] = []
   const twins = new Map<string, TopRowData>()
-  for (const { row, x, plain, at } of gated) {
+  for (const { row, x, plain, at, edge } of gated) {
     const m = row.moment
     const login = row.login.toLowerCase()
     const c = live.get(login)
@@ -248,7 +280,7 @@ export function hubTopRows(hub: Pick<PublicHub, 'liveChannels' | 'livePulseMomen
       art: m.categoryMetadataRejected ? null : m.boxArtUrl || (m.category ? art.get(m.category) ?? null : null),
       emote: top ? { name: row.topEmoteName ?? top.name, imageUrl: sanitizeEmoteImageUrl(top.imageUrl), count: top.count || 0 } : null, emotes,
       rate: row.rate, usual: x != null && 'x' in row.cmp ? row.cmp.avg : null, viewers: Number.isFinite(m.viewers) ? m.viewers! : null, live: !!c,
-      href: row.href, also: [], checked: null,
+      href: row.href, also: [], checked: null, edge,
     }
     if (counts) twins.set(twinKey, next)
     kept.push(next)
@@ -295,17 +327,35 @@ export function busiestFillRows(
       emotes: (m.topEmotes ?? []).slice().sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 3)
         .map((e) => ({ name: e.name, imageUrl: sanitizeEmoteImageUrl(e.imageUrl), count: e.count || 0 })),
       rate: m.chatPerMin, usual: null, viewers: num(m.viewers) ? m.viewers : null, live: live.has(login),
-      href: momentHref(m), also: [], checked: null,
+      href: momentHref(m), also: [], checked: null, edge: momentEdge(m.offsetSeconds || 0, m.streamEdge) ?? null,
     }))
 }
 
 /** What a plain row says in place of its × ("Busiest minute", "Early in the stream", "Not compared"). */
-export const topPlainLabel = (plain: TopPlain) => (plain === 'busiest' ? 'Busiest minute' : plain === 'early' ? 'Early in the stream' : 'Not compared')
+export const topPlainLabel = (plain: TopPlain) => (plain === 'busiest' ? 'Busiest minute' : plain === 'early' ? EARLY_STREAM_WORDS : 'Not compared')
 
-/** What rose, for a label: "chat 2.4 times usual", or "Busiest minute, 1,204 chat a minute". */
-export function topFigureWords(row: Pick<TopRowData, 'kind' | 'x' | 'plain' | 'rate'>): string {
-  if (row.x != null) return `${row.kind} ${fx(row.x).replace('×', ' times')} usual`
-  return `${row.plain ? `${topPlainLabel(row.plain)}, ` : ''}${int(row.rate)} ${row.kind} a minute`
+/** A plain row's reason; an early row in its stream's first 5 minutes is tagged 'Stream start' (E1, 11-13). */
+export function topRowWhy(row: Pick<TopRowData, 'plain'> & Partial<Pick<TopRowData, 'offsetSeconds' | 'edge'>>): string | null {
+  if (!row.plain) return null
+  const edge = row.plain === 'early' ? topEdge(row) : undefined
+  return edge ? streamEdgeLabel(edge) : topPlainLabel(row.plain)
+}
+
+/** The quiet tag on a row with a × in its stream's edge: 'Stream end' for an ended stream's last 10 minutes (E1, round 2). */
+export function topEdgeTag(row: Pick<TopRowData, 'x'> & Partial<Pick<TopRowData, 'offsetSeconds' | 'edge'>>): string | null {
+  if (row.x == null) return null
+  const edge = topEdge(row)
+  return edge ? streamEdgeLabel(edge) : null
+}
+
+/** What rose, for a label: "6.2 times more chat" (Z06: one wording), or "Busiest minute, 1,204 chat a minute". */
+export function topFigureWords(row: Pick<TopRowData, 'kind' | 'x' | 'plain' | 'rate'> & Partial<Pick<TopRowData, 'offsetSeconds' | 'edge'>>): string {
+  if (row.x != null) {
+    const tag = topEdgeTag(row)
+    return `${tag ? `${tag}, ` : ''}${formatLiftRatio(row.x)} times more ${row.kind}`
+  }
+  const why = topRowWhy(row)
+  return `${why ? `${why}, ` : ''}${int(row.rate)} ${row.kind} a minute`
 }
 
 /** A row's label; `open` null for the phone peek, whose rows open in the rail. */

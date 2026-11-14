@@ -1,10 +1,12 @@
 import {
   compareStreamEdgeLast,
+  extensionPayloadStreamEdges,
   extensionRollupStreamEdges,
   mergeRecapMoments as mergeRecapMomentsCore,
   momentStreamEdge,
   OPENING_STREAM_EDGE,
   peaksToLiveHeatPoints,
+  withStreamEdges,
 } from '@streampulse/pulse-core'
 import type { LiveHeatPoint, LiveHeatReason, StreamEdges } from '@streampulse/pulse-core'
 import type {
@@ -17,6 +19,7 @@ import type {
 } from '../shared/messages.ts'
 import { pickRecapRollups, recapMomentToLiveHeatPoint, rollupAtOffset, rollupEmoteCount } from './recapMomentMetrics.ts'
 import { nearestMomentForOffset } from './chartRollupUtils.ts'
+import { buildRecapEmoteCatalog } from './recapEmotes.ts'
 
 const MOMENT_SELECT_TOLERANCE_SECONDS = 90
 
@@ -315,4 +318,26 @@ export function rollupToRecapHeatPoint(
     topEmotes: rollup.topEmotes,
   }
   return peaksToLiveHeatPoints([synthetic], startedAt, catalog)[0]!
+}
+
+/** How many moments the recap lists. */
+export const RECAP_MOMENTS_MAX_COUNT = 20
+
+export function offlinePeakPoints(payload: PulsePayload, catalog: ExtensionEmote[]): LiveHeatPoint[] {
+  return peaksToLiveHeatPoints(
+    withStreamEdges(payload.peaks ?? [], extensionPayloadStreamEdges(payload))
+      .sort((a, b) => compareStreamEdgeLast(a, b) || b.score - a.score)
+      .slice(0, RECAP_MOMENTS_MAX_COUNT) as ExtensionPeak[],
+    payload.startedAt,
+    catalog,
+  )
+}
+
+/** The first row the recap's Top moments lists: the dock's top moment on a VOD page (T), and the popup's once a stream ends (M). */
+export function recapTopPoint(payload: PulsePayload): LiveHeatPoint | null {
+  const catalog = buildRecapEmoteCatalog(payload)
+  if (!payload.recap) return offlinePeakPoints(payload, catalog)[0] ?? null
+  const rollups = pickRecapRollups(payload)
+  const top = mergeRecapMoments(payload.recap, payload.peaks, RECAP_MOMENTS_MAX_COUNT, rollups, !payload.isLive)[0]
+  return top ? recapMomentToLiveHeatPoint(top, catalog, payload.startedAt, rollups, payload.peaks) : null
 }

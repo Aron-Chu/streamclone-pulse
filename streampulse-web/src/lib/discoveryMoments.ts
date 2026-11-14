@@ -1,6 +1,6 @@
 import { apiClient } from './apiClient'
 import { verifiedArchiveArtwork, type ArchiveArtwork } from './archiveArtwork'
-import { measurementTimeMs } from '@streampulse/pulse-core'
+import { isStreamEdgeMoment, measurementTimeMs, type StreamEdgeKind } from '@streampulse/pulse-core'
 import { buildAnalyticsHref } from './analyticsLinks'
 import { buildVodTimestampUrl, type FigmaMomentRow } from './figmaSessionAnalytics'
 import { resolveMomentAtMs, type LiveWireMomentComparison } from './liveWire'
@@ -36,6 +36,8 @@ export interface DiscoveryMoment {
   measurementScope?: 'verified_minute' | 'detector_snapshot'
   /** Allowlisted broadcast thumbnail for display only; never source authority. */
   archiveArtwork?: ArchiveArtwork
+  /** The backend's stream-edge flag when the data carries one; it wins over the offset rule (E1). */
+  streamEdge?: StreamEdgeKind
   provenance: 'hub' | 'session' | 'saved'
 }
 
@@ -78,7 +80,8 @@ export function fromHubMoment(moment: FigmaMomentRow & { archiveArtwork?: Archiv
     emotesPerMin: verifiedMinute ? comparison!.emotes.currentPerMin : moment.emotesPerMin,
     measurementScope: verifiedMinute ? 'verified_minute' : 'detector_snapshot',
     comparison: comparisonForMoment, reactionSignal: momentReactionSignal(moment.kind), topEmotes: moment.topEmotes,
-    vodId: validVodId(moment.vodId) ? moment.vodId : undefined, handoffRef: moment.handoffRef, archiveArtwork, provenance: 'hub' }
+    vodId: validVodId(moment.vodId) ? moment.vodId : undefined, handoffRef: moment.handoffRef, archiveArtwork,
+    streamEdge: isStreamEdgeMoment(moment) ? moment.streamEdge as StreamEdgeKind : undefined, provenance: 'hub' }
 }
 
 export function fromNewsroomUpdate(story: NewsroomStory, update: NewsroomUpdate): DiscoveryMoment | null {

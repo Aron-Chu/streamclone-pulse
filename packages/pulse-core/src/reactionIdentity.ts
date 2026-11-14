@@ -4,6 +4,7 @@
  */
 
 import { formatHeatOffset } from './liveHeat.ts'
+import { formatMomentOffset } from './momentWords.ts'
 
 export type ReactionIdentityFields = {
   offsetSeconds: number
@@ -46,17 +47,13 @@ export function momentClockDisplay(fields: ReactionIdentityFields): MomentClockD
   const onset = fields.reactionOnsetOffsetSeconds
   if (hasSecondLevelPrecision(fields) && onset != null && Number.isFinite(onset)) {
     return {
-      text: formatHeatOffset(Math.max(0, Math.round(onset))),
+      text: formatMomentOffset(Math.max(0, Math.round(onset))),
       approximate: false,
     }
   }
-  const floored = floorOffsetToMinute(fields.offsetSeconds)
-  const s = Math.max(0, Math.floor(floored))
-  const hh = Math.floor(s / 3600)
-  const mm = Math.floor((s % 3600) / 60)
-  const pad = (n: number) => n.toString().padStart(2, '0')
+  // Only the minute is known: same h:mm:ss form, and the UI adds a quiet 'about' (K1, 11-13).
   return {
-    text: `${pad(hh)}:${pad(mm)}`,
+    text: formatMomentOffset(floorOffsetToMinute(fields.offsetSeconds)),
     approximate: true,
   }
 }
@@ -64,7 +61,7 @@ export function momentClockDisplay(fields: ReactionIdentityFields): MomentClockD
 /** Legacy formatted clock for non-visual/portal callers. Prefer structured UI metadata. */
 export function formatMomentClock(fields: ReactionIdentityFields): string {
   const display = momentClockDisplay(fields)
-  return display.approximate ? `~${display.text}` : display.text
+  return display.approximate ? `about ${display.text}` : display.text
 }
 
 /** Playback Jump / Open Twitch only. */

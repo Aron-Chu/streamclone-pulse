@@ -1,3 +1,4 @@
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import { keptVodOriginDelta } from '../../shared/vodOriginAlignment.ts'
 import type { BackupMoment } from '../../shared/myMomentsBackup.ts'
 
@@ -86,10 +87,9 @@ export type LibraryView = 'saved' | 'recent' | 'storage'
 export const NOTE_LIMIT = 1000
 export const DAY = 86_400_000
 
+/** Time into the stream as h:mm:ss, the panel's clock (K1): 1:42:18. */
 export function timestamp(seconds: number | null): string {
-  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return 'Position unknown'
-  const value = Math.floor(seconds)
-  return [Math.floor(value / 3600), Math.floor(value / 60) % 60, value % 60].map(v => String(v).padStart(2, '0')).join(':')
+  return seconds === null || !Number.isFinite(seconds) || seconds < 0 ? 'Position unknown' : formatMomentOffset(seconds)
 }
 /**
  * The moment on Twitch. `offsetSeconds` counts from go-live and `?t=` from the

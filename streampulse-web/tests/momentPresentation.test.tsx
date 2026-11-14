@@ -13,7 +13,7 @@ describe('session reaction timestamps', () => {
     const second = { ...first, key: 'second', offsetSeconds: 180 }
     const select = vi.fn()
     const { rerender } = render(<SessionMomentMap moments={[second, first]} onSelect={select} />)
-    fireEvent.click(screen.getByRole('button', { name: '3:00' }))
+    fireEvent.click(screen.getByRole('button', { name: '0:03:00' }))
     expect(select).toHaveBeenCalledWith(second)
     rerender(<SessionMomentMap moments={[first, { ...second, streamId: 'another' }]} onSelect={select} />)
     expect(screen.queryByRole('region')).toBeNull()
@@ -72,7 +72,7 @@ describe('measured comparison bars', () => {
   it('retains a measured zero and refuses to draw a ratio against it', () => {
     const moment = { comparison: { chat: { state: 'ready', baselinePerMin: 100, currentPerMin: 200 }, emotes: { state: 'new_activity', baselinePerMin: 0, currentPerMin: 20 } } } as DiscoveryMoment
     const { container } = render(<MomentEvidenceBars moment={moment} />)
-    expect(screen.getByText('2.0× earlier average')).toBeTruthy()
+    expect(screen.getByText('2.0× more chat')).toBeTruthy()
     expect(screen.getByText('new activity')).toBeTruthy()
     expect(screen.getByText(/No earlier emotes was measured/)).toBeTruthy()
     // The measured zero is still stated as the earlier rate.

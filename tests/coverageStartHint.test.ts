@@ -46,7 +46,7 @@ describe('resolveCoverageStartHint', () => {
       isLive: true,
     })
     expect(outOfCap.tone).toBe('warn')
-    expect(outOfCap.text).toBe('Tracked from 00:03')
+    expect(outOfCap.text).toBe('Tracked from 0:03:00')
 
     const largeGap = resolveCoverageStartHint({
       coverageStartOffsetSeconds: 900,
@@ -70,7 +70,7 @@ describe('resolveCoverageStartHint', () => {
   })
 
   it('says where tracking starts to the minute, as the moment rows do', () => {
-    expect(trackedFromLabel(260)).toBe('Tracked from 00:04')
-    expect(trackedFromLabel(3_725)).toBe('Tracked from 01:02')
+    expect(trackedFromLabel(260)).toBe('Tracked from 0:04:00')
+    expect(trackedFromLabel(3_725)).toBe('Tracked from 1:02:00')
   })
 })

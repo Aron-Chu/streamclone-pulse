@@ -70,7 +70,7 @@ describe('Library semantics', () => {
     }
   })
   it('formats timestamps and bounds notes', () => {
-    expect(timestamp(6138)).toBe('01:42:18'); expect(timestamp(null)).toBe('Position unknown')
+    expect(timestamp(6138)).toBe('1:42:18'); expect(timestamp(45 * 60)).toBe('0:45:00'); expect(timestamp(null)).toBe('Position unknown')
     expect(validateNote('x'.repeat(1001))).toBeTruthy(); expect(validateNote('<script>plain text</script>')).toBeNull()
   })
 })

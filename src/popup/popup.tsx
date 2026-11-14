@@ -13,11 +13,9 @@ import { rememberMomentArrival } from '../shared/momentArrival.ts'
 import type { HubSnapshot } from '../shared/hubSnapshot.ts'
 import type { MyMomentsRecent } from '../shared/myMoments.ts'
 import { popupStyles } from './popupStyles.ts'
+import { formatAgo, formatMomentOffset } from '@streampulse/pulse-core'
 import {
-  formatAgo,
-  formatClock,
   formatCount,
-  formatSince,
   emoteImage,
   notChartedNote,
   popupShowsDeviceHistory,
@@ -301,11 +299,11 @@ function ChannelCard({ login, load, avatar, onOpen, onRetry, analyticsHref = nul
   const notCharted = notChartedNote(summary)
   const name = summary?.displayName ?? login
   const isLive = summary?.isLive ?? false
-  const meta = summary
-    ? isLive
-      ? [summary.category, summary.uptime].filter(Boolean).join(' · ')
-      : [summary.endedAt ? `Last live ${formatSince(summary.endedAt)}` : null, summary.category].filter(Boolean).join(' · ')
-    : null
+  // 'Last live' is a label and the Hub's time its value (Z08): 'Yesterday 12:00 PM', 'Nov 10, 1:05 PM'.
+  const meta = !summary ? null
+    : isLive ? [summary.category, summary.uptime].filter(Boolean).join(' · ')
+    : summary.endedAt ? <><span className="pp-k">Last live</span> {formatAgo(summary.endedAt, Date.now())}{summary.category ? ` · ${summary.category}` : ''}</>
+    : summary.category
 
   return (
     <section className="pp-card" aria-labelledby="pp-channel-name">
@@ -315,7 +313,7 @@ function ChannelCard({ login, load, avatar, onOpen, onRetry, analyticsHref = nul
         ) : (
           <span className="pp-avatar" aria-hidden="true" data-live={isLive ? '' : undefined}>{name.charAt(0).toUpperCase()}</span>
         )}
-        <div style={{ minWidth: 0 }}>
+        <div className="pp-who">
           <h1 className="pp-name" id="pp-channel-name">{name}</h1>
           {meta ? <p className="pp-meta">{meta}</p> : null}
         </div>
@@ -418,11 +416,15 @@ function ChannelPulse({ summary }: { summary: PopupChannelSummary }) {
         </dl>
       ) : null}
 
-      {summary.biggest ? (
+      {summary.topMoment ? (
         <p className="pp-moment">
           <BoltIcon />
-          <span><b>Biggest moment</b> · {summary.biggest.label}</span>
-          <time>{summary.biggest.agoSeconds !== null ? formatAgo(summary.biggest.agoSeconds) : `at ${formatClock(summary.biggest.offsetSeconds)}`}</time>
+          {/* The reason wins the line: a Stream start / end tag that can't fit beside it drops to a hidden second line, still read out (E1). */}
+          <span className="pp-moment-what">
+            <span><b>Top moment</b> · {summary.topMoment.label}</span>
+            {summary.topMoment.edge ? <>{' '}<span className="pp-edge">{summary.topMoment.edge}</span></> : null}
+          </span>{' '}
+          <time>at {summary.topMoment.approximate ? 'about ' : ''}{summary.topMoment.clock}</time>
         </p>
       ) : null}
     </>
@@ -495,7 +497,7 @@ function JumpBackIn({ recent, onReplay, onOpenMoments }: {
               <span className="pp-jump-icon" aria-hidden="true"><BoltIcon /></span>
               <span className="pp-jump-text">
                 <b>{moment.channel} · {moment.title}</b>
-                <small>Last watched {formatSince(moment.jumpedAt)} · replay at {formatClock(moment.offsetSeconds ?? 0)}</small>
+                <small><span className="pp-k">Last watched</span> {formatAgo(moment.jumpedAt, Date.now())} · replay at {formatMomentOffset(moment.offsetSeconds ?? 0)}</small>
               </span>
               <span className="pp-jump-go" aria-hidden="true">Watch ›</span>
             </button>

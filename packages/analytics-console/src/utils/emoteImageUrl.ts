@@ -7,6 +7,10 @@ const BTTV_CDN_TEMPLATE = 'https://cdn.betterttv.net/emote/%s/3x'
 
 const LOCAL_EMOTE_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const SEVEN_TV_EMOTE_ID = /^[0-9A-HJKMNP-TV-Z]{20,32}$/i
+/** BTTV ids are 24 hex characters; a bare emote name is not one (SESSION-MOMENTS-6: the name made a 404 URL). */
+const BTTV_EMOTE_ID = /^[0-9a-f]{24}$/i
+/** FFZ ids are numbers. */
+const FFZ_EMOTE_ID = /^\d{1,12}$/
 
 export function preferSmallerSevenTVAsset(url: string): string {
   try {
@@ -166,10 +170,12 @@ export function resolveEmoteImageUrl(opts: ResolveEmoteImageUrlOptions): string 
       return SEVEN_TV_EMOTE_ID.test(id) ? SEVEN_TV_CDN_TEMPLATE.replace('%s', id) : safeImageUrl
     case 'ffz':
     case 'frankerfacez':
-      return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : FFZ_CDN_TEMPLATE.replace('%s', id)
+      if (isLocalEmoteUuid(id)) return localEmotePath(id, scale)
+      return FFZ_EMOTE_ID.test(id) ? FFZ_CDN_TEMPLATE.replace('%s', id) : safeImageUrl
     case 'bttv':
     case 'betterttv':
-      return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : BTTV_CDN_TEMPLATE.replace('%s', id)
+      if (isLocalEmoteUuid(id)) return localEmotePath(id, scale)
+      return BTTV_EMOTE_ID.test(id) ? BTTV_CDN_TEMPLATE.replace('%s', id) : safeImageUrl
     default:
       return isLocalEmoteUuid(id) ? localEmotePath(id, scale) : safeImageUrl
   }

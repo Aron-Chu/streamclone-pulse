@@ -30,7 +30,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { isApiError } from '../../../../lib/apiClient'
 import { emoteDisplaySrc } from '../../../../lib/emoteAssetUrl'
-import { clk, fx, int, whenShort } from '../../../../lib/momentsChecked'
+import { clk, fx, int } from '../../../../lib/momentsChecked'
 import { loadMomentsWindow, type MomentsFeedCategoryFacet, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
 import { momentsFeedEnabled } from '../../../../lib/momentsFeedFlag'
 import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
@@ -38,6 +38,7 @@ import { publicHubCacheWritesStopped, STORAGE_PREFIX } from '../../../../lib/pub
 import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
 import { GameArt } from './HubV5Rack'
+import { bigWhen } from './hubV5BigMomentsModel'
 import { feedFreshText, feedStale, feedUp, type FeedUp } from './hubV5FeedModel'
 import { hubCategoryArt, hubSavedAt, hubSavedClock, screenerDown } from './hubV5Model'
 import {
@@ -53,8 +54,9 @@ import {
   topFeedRows,
   topFrom,
   topGames,
-  topPlainLabel,
   topRowAria,
+  topEdgeTag,
+  topRowWhy,
   type TopGame,
   type TopRowData,
 } from './hubV5TopModel'
@@ -196,11 +198,14 @@ export interface TopToday {
   avatars: ReadonlyMap<string, string>
   /** Box art by game name, for Picking up. */
   art: ReadonlyMap<string, string>
+  /** Rows that arrived in the last refresh of the same list: a quiet 'New' tag until the next one (R1, 11-13). */
+  fresh?: ReadonlySet<string>
 }
 
 /** How long Picking up keeps its last good list, greyed, while the chat counts don't load. */
 export const UP_KEEP_MS = 3 * 60_000
 const NO_UP: FeedUp = { up: [], upWindow: '' }
+const NO_FRESH: ReadonlySet<string> = new Set()
 
 /** The rail's state, shared by the rail and the phone peek (see the top of this file). */
 const NO_MOMENTS: readonly HubLivePulseMoment[] = []
@@ -261,10 +266,21 @@ export function useTopToday({ hub, savedAt, reading, attempt, nowMs, busiest = N
   const openRef = useRef(open)
   openRef.current = open
   const held = useRef({ hover: false, focus: false })
+  // R1 (11-13): what a refresh of the same list brought; a first answer, a picked game or a change of source brings no tags
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(NO_FRESH)
   // a change of source (the list's rows against the hub's) waits only on an open row, with no "N new"
   const isHeld = useCallback((prev: TopView | null, next: TopView) => !!prev && prev.key === next.key && prev.rows.length > 0
     && (openRef.current != null || (!otherSource(prev, next) && (held.current.hover || held.current.focus))), [])
   const show = useCallback((next: TopView | null) => {
+    const prev = shownRef.current
+    // the same answer again (rows this browser kept, a fill) keeps its tags; the next refresh replaces them
+    if (!(prev && next && prev.asOf === next.asOf && prev.key === next.key && prev.source === next.source)) {
+      // a saved copy from an earlier visit is not a refresh: the first live answer after it brings no tags
+      const comparable = !!prev && !!next && prev.key === next.key && prev.rows.length > 0 && prev.source !== 'saved' && !otherSource(prev, next)
+      const before = new Set(comparable ? prev!.rows.map((r) => r.id) : [])
+      const brought = comparable ? next!.rows.filter((r) => !before.has(r.id)).map((r) => r.id) : []
+      setFresh(brought.length ? new Set(brought) : NO_FRESH)
+    }
     shownRef.current = next
     setShown(next)
   }, [])
@@ -312,7 +328,7 @@ export function useTopToday({ hub, savedAt, reading, attempt, nowMs, busiest = N
 
   return {
     shown, hold,
-    chips: feed && read != null, game, games, pickGame, open, setOpen: setOpenState, up, upAsOf, upSaved: savedAt != null, upDown, avatars, art,
+    chips: feed && read != null, game, games, pickGame, open, setOpen: setOpenState, up, upAsOf, upSaved: savedAt != null, upDown, avatars, art, fresh,
   }
 }
 
@@ -320,22 +336,23 @@ export function useTopToday({ hub, savedAt, reading, attempt, nowMs, busiest = N
 
 /** "5.0× more emotes", as Moments writes it (games first, 10-22). */
 const More = ({ x, ser }: { x: string; ser: 'chat' | 'emotes' }) => <span className="hv5-f2-x"><b>{x}</b> more {ser}</span>
-/** A row with no ×: "Busiest minute · 1,204 chat/min". On a narrow row the game goes first, then the reason ellipses; the rate stays. */
+/** A row with no ×: "Busiest minute · 1,204 chat/min", or "Stream start" for a stream's first 5 minutes (E1). On a narrow row the game goes first, then the reason ellipses; the rate stays. */
 const Plain = ({ row }: { row: TopRowData }) => (
   <span className="hv5-f2-x hv5-f2-plain">
-    {row.plain ? <span className="hv5-f2-why">{topPlainLabel(row.plain)} ·</span> : null}
+    {row.plain ? <span className="hv5-f2-why">{topRowWhy(row)} ·</span> : null}
     <span className="hv5-f2-rt"> <b>{int(row.rate)}</b> {row.kind}/min</span>
   </span>
 )
 
+/** The game and its dot as one piece, so a row too narrow for the game drops both, never leaving a lone '·' (11-14). */
 function Game({ cat, art }: { cat: string | null; art: string | null }) {
   if (!cat) return null
   return (
-    <>
+    <span className="hv5-tm-gw">
       {SEP}
       {art ? <img src={art} alt="" width={12} height={16} decoding="async" referrerPolicy="no-referrer" /> : null}
       <span className="hv5-fd-g">{cat}</span>
-    </>
+    </span>
   )
 }
 
@@ -382,8 +399,8 @@ export function TopGames({ games, game, onGame }: { games: TopGame[]; game: TopG
   )
 }
 
-/** What a row shows (F1's look): rank, the channel's picture, who and the emote, "6.2× more emotes", the game's cover, the time. */
-function RowFace({ row, avatar, rank, nowMs }: { row: TopRowData; avatar: string | null; rank: number; nowMs: number }) {
+/** What a row shows (F1's look): rank, the channel's picture, who and the emote, "6.2× more emotes", the game's cover, the time; 'New' for one refresh (R1). */
+function RowFace({ row, avatar, rank, nowMs, fresh = false }: { row: TopRowData; avatar: string | null; rank: number; nowMs: number; fresh?: boolean }) {
   const emoteSrc = emoteDisplaySrc(row.emote?.imageUrl, 18)
   return (
     <>
@@ -400,14 +417,15 @@ function RowFace({ row, avatar, rank, nowMs }: { row: TopRowData; avatar: string
               <span>{row.emote.name}</span>
             </span>
           ) : null}
+          {fresh ? <span className="hv5-new">New</span> : null}
         </span>
         <span className="hv5-tm-l2">
-          {row.x != null ? <More x={fx(row.x)} ser={row.kind} /> : <Plain row={row} />}
+          {row.x != null ? <>{topEdgeTag(row) ? <span className="hv5-f2-x hv5-f2-plain"><span className="hv5-f2-why">{topEdgeTag(row)} ·</span></span> : null}<More x={fx(row.x)} ser={row.kind} /></> : <Plain row={row} />}
           <Game cat={row.game} art={null} />
         </span>
       </span>
       {row.game ? <span className="hv5-tm-cv hv5-tm-gm" aria-hidden="true"><GameArt url={row.art ?? undefined} name={row.game} w={18} h={24} streamIds={[row.streamId]} /></span> : null}
-      <time className="hv5-tm-t" dateTime={new Date(row.at).toISOString()} title={clk(row.at)} aria-hidden="true">{whenShort(row.at, nowMs)}</time>
+      <time className="hv5-tm-t" dateTime={new Date(row.at).toISOString()} title={clk(row.at)} aria-hidden="true">{bigWhen(row.at, nowMs)}</time>
     </>
   )
 }
@@ -445,10 +463,11 @@ export const topEndLine = (v: TopView, rows: number, nowMs: number) => { const c
 /* ---------- phones: the peek under the hero ---------- */
 
 /**
- * Phones: "Top today" under the hero (CSS shows it under 720 px), Top moments
+ * "Top today" under the hero, at every width since B1 (11-11): Top moments
  * today's rows 1–3. A row brings its channel's card to the front of the
  * carousel below (HubV5BigMoments), which comes into view; the link goes down
- * to it. It says what the carousel says when it has no rows.
+ * to it and takes focus there. It says what the carousel says when it has no
+ * rows. No live dot: it is the day's list (D1, 11-13).
  */
 export function HubV5TopPeek({ top, nowMs }: { top: TopToday; nowMs: number }) {
   const { shown } = top
@@ -458,6 +477,12 @@ export function HubV5TopPeek({ top, nowMs }: { top: TopToday; nowMs: number }) {
     if (!target) return
     event.preventDefault()
     target.scrollIntoView({ block: 'start', behavior: calm() ? 'auto' : 'smooth' })
+    // focus follows the jump (HUB-LIVE-6): the carousel, else the section's heading
+    const into = target.querySelector<HTMLElement>('.hv5-bm') ?? target.querySelector<HTMLElement>('h2')
+    if (into) {
+      if (into.tabIndex < 0 && !into.hasAttribute('tabindex')) into.setAttribute('tabindex', '-1')
+      into.focus({ preventScroll: true })
+    }
   }
   // the carousel takes the pick (top.open), brings the card to the front and comes into view
   const onPick = (id: string) => top.setOpen(id)
@@ -472,7 +497,7 @@ export function HubV5TopPeek({ top, nowMs }: { top: TopToday; nowMs: number }) {
       data-wait={shown ? undefined : ''}
     >
       <div className="hv5-rh">
-        <h2 id="hv5-pk-h"><span className="hv5-fd-dot" aria-hidden="true" />Top today</h2>
+        <h2 id="hv5-pk-h">Top today</h2>
         <span className="hv5-f2-fresh">{topFresh(shown, nowMs)}</span>
         <span className="hv5-end"><a className="hv5-mo-all" href="#big-moments" onClick={onJump}>Top moments ↓</a></span>
       </div>
@@ -483,10 +508,10 @@ export function HubV5TopPeek({ top, nowMs }: { top: TopToday; nowMs: number }) {
               <button
                 className="hv5-tm-row"
                 type="button"
-                aria-label={topRowAria(row, i + 1, nowMs)}
+                aria-label={`${top.fresh?.has(row.id) ? 'New. ' : ''}${topRowAria(row, i + 1, nowMs)}`}
                 onClick={() => onPick(row.id)}
               >
-                <RowFace row={row} avatar={row.avatar ?? top.avatars.get(row.login) ?? null} rank={i + 1} nowMs={nowMs} />
+                <RowFace row={row} avatar={row.avatar ?? top.avatars.get(row.login) ?? null} rank={i + 1} nowMs={nowMs} fresh={!!top.fresh?.has(row.id)} />
               </button>
             </li>
           ))}

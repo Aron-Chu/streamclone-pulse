@@ -122,6 +122,6 @@ export interface FigmaGlobalActivityPanelProps {
   accentBucketT?: number | null;
   selectedMomentKey?: string | null;
   onSelectMoment?: (moment: FigmaMomentRow) => void;
-  /** Fresh Live Wire breakouts mounted directly above the chart they control. */
+  /** A lane mounted directly above the chart it describes (the Hub's activity line). */
   annotationLane?: ReactNode;
 }

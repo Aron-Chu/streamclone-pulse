@@ -2,15 +2,21 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { MomentsFeedItem } from '../src/lib/momentsFeed'
-import { checkMoment, topBursts } from '../src/lib/momentsChecked'
+import { checkMoment, feedStreamEnds, fx, momentEdge, sparkLastDataOffset, topBursts } from '../src/lib/momentsChecked'
 import { normalizePublicHub, type HubLiveChannel, type HubLivePulseMoment, type PublicHub } from '../src/lib/publicHub'
 import {
-  TOP_DAY_MS, TOP_FILL_TO, TOP_ROWS, busiestFillRows, hubTopRows, topCount, topDayParse, topDayRows, topFeedRows, topFrom, topGames, topMomentsHref, topRowAria, type TopRowData,
+  TOP_DAY_MS, TOP_FILL_TO, TOP_ROWS, busiestFillRows, hubTopRows, topCount, topDayParse, topDayRows, topEdgeTag, topFeedRows, topFigureWords, topFrom, topGames, topMomentsHref, topRowAria, type TopRowData,
 } from '../src/ui/components/hub/v5/hubV5TopModel'
 
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/moments_feed_v1.json'), 'utf8')) as { generatedAt: number; items: MomentsFeedItem[] }
 const NOW = fixture.generatedAt
 const MIN = 60_000
+
+describe('the Hub strength figure (Z06, 11-13)', () => {
+  it('reads 9.95 up to 10 as 10×, as the Moments page does, not 10.0×', () => {
+    expect([fx(4.2), fx(9.94), fx(9.97), fx(12)]).toEqual(['4.2×', '9.9×', '10×', '12×'])
+  })
+})
 
 describe('Top moments today window', () => {
   it('reads the last 24 hours from a start floored to 10 minutes, so readers in those 10 minutes share the URL', () => {
@@ -54,6 +60,60 @@ describe('Top moments today from the Moments list', () => {
     expect(topMomentsHref(null)).toBe('/analytics/moments')
     expect(topMomentsHref('Counter-Strike')).toBe('/analytics/moments?category=Counter-Strike')
     expect(topMomentsHref('Slots & Casino')).toBe('/analytics/moments?category=Slots+%26+Casino')
+  })
+})
+
+/* Stream edges (E1, round 2 11-13): an ended stream's last 10 minutes are tagged and ranked last. */
+
+/** The item with its stream ended and its chat stopping `afterSlots` minutes after the moment. */
+function ended(item: MomentsFeedItem, afterSlots: number): MomentsFeedItem {
+  const cut = (xs: Array<number | null>) => xs.map((v, i) => (i > item.spark.momentIndex + afterSlots ? null : v))
+  return { ...item, streamLive: false, spark: { ...item.spark, chat: cut(item.spark.chat), emotes: cut(item.spark.emotes) } }
+}
+
+describe('stream edges from the Moments list (E1, round 2)', () => {
+  const first = fixture.items.find((item) => item.id === topFeedRows(fixture)[0]!.id)!
+
+  it('reads an ended stream’s last measured minute from the moment’s minutes, and nothing for a live one', () => {
+    expect(sparkLastDataOffset(first)).toBeUndefined()
+    expect(sparkLastDataOffset(ended(first, 2))).toBe(first.offsetSeconds + 120)
+    // chat to the last slot: the stream may go on past the window, so no end is known
+    const full = first.spark.chat.map(() => 10)
+    expect(sparkLastDataOffset({ ...first, streamLive: false, spark: { ...first.spark, chat: full, emotes: full } })).toBeUndefined()
+  })
+
+  it('keeps an end only when no later moment of the stream exists', () => {
+    const end = ended(first, 2)
+    expect(feedStreamEnds([end]).get(`${first.login.toLowerCase()}|${first.streamId}`)).toBe(first.offsetSeconds + 120)
+    expect(feedStreamEnds([end, { ...first, id: 'later', offsetSeconds: first.offsetSeconds + 3600 }]).size).toBe(0)
+  })
+
+  it('lets the backend flag win over the offset rule', () => {
+    expect(momentEdge(60, undefined)).toBe('opening')
+    expect(momentEdge(3600, undefined)).toBeUndefined()
+    expect(momentEdge(3600, undefined, 3700)).toBe('closing')
+    expect(momentEdge(3600, undefined, 4300)).toBeUndefined()
+    expect(momentEdge(3600, 'closing')).toBe('closing')
+    expect(momentEdge(60, 'closing')).toBe('closing')
+    expect(momentEdge(3600, 'nonsense')).toBeUndefined()
+  })
+
+  it('tags an ended stream’s last 10 minutes "Stream end" and ranks them after the rest', () => {
+    const items = fixture.items.map((item) => (item.id === first.id ? ended(item, 2) : item))
+    const rows = topFeedRows({ ...fixture, items })
+    const last = rows[rows.length - 1]!
+    expect(last.id).toBe(first.id)
+    expect(last.edge).toBe('closing')
+    expect(topEdgeTag(last)).toBe('Stream end')
+    expect(topFigureWords(last)).toMatch(/^Stream end, \d+(\.\d)? times more (chat|emotes)$/)
+    expect(rows.slice(0, -1).every((row) => row.edge == null)).toBe(true)
+  })
+
+  it('ranks a flagged moment last too, as the backend marks it', () => {
+    const items = fixture.items.map((item) => (item.id === first.id ? { ...item, streamEdge: 'closing' } : item))
+    const rows = topFeedRows({ ...fixture, items })
+    expect(rows[rows.length - 1]!.id).toBe(first.id)
+    expect(topEdgeTag(rows[rows.length - 1]!)).toBe('Stream end')
   })
 })
 
@@ -279,7 +339,7 @@ describe('Top moments today row words', () => {
 
   it('says the rank, who, what rose, the game and when, then what a click does', () => {
     // the phone peek's rows bring their card to the front of the carousel below
-    expect(topRowAria(hubRow!, 1, now)).toMatch(/^1\. ALPHA, KEKW, emotes 12 times usual, Chess, 13 min ago at .+\. Open it in Top moments below\.$/)
+    expect(topRowAria(hubRow!, 1, now)).toMatch(/^1\. ALPHA, KEKW, 12 times more emotes, Chess, 13 min ago at .+\. Open it in Top moments below\.$/)
     expect(topRowAria(feedRow, 2, NOW)).toMatch(/^2\. .+ Open it in Top moments below\.$/)
   })
 

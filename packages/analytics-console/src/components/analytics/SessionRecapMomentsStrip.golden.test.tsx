@@ -26,14 +26,15 @@ const props = () => ({
   topEmotesCatalog: STRIP_TOP_EMOTES,
 })
 
-/** rank, offset label, reason, score: the strip fixture's seven moments in strip order. */
+/** rank, offset label, reason, score: the strip fixture's seven moments in strip order. Minute-only moments read the
+ * minute they fall in (K1, 11-13: 'about' sits in its own span). */
 const GOLDEN = [
   { rank: 1, offset: 4518, label: '1:15:18', reason: 'Emote spike', score: '94' },
-  { rank: 2, offset: 8960, label: '2:29:20', reason: 'Chat spike', score: '81' },
+  { rank: 2, offset: 8960, label: '2:29:00', reason: 'Chat spike', score: '81' },
   { rank: 3, offset: 9720, label: '2:42:00', reason: 'Emote spike', score: '77' },
   { rank: 4, offset: 7200, label: '2:00:00', reason: 'Viewer surge', score: '70' },
-  { rank: 5, offset: 5300, label: '1:28:20', reason: 'Emote spike', score: '66' },
-  { rank: 6, offset: 5390, label: '1:29:50', reason: 'Chat spike', score: '52' },
+  { rank: 5, offset: 5300, label: '1:28:00', reason: 'Emote spike', score: '66' },
+  { rank: 6, offset: 5390, label: '1:29:00', reason: 'Chat spike', score: '52' },
   { rank: 7, offset: 1200, label: '0:20:00', reason: 'Chat spike', score: '41' },
 ]
 

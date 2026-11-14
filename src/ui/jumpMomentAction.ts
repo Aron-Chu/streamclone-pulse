@@ -1,14 +1,16 @@
+/** What a Jump did, said where it was pressed: under the card's buttons, or on the dock's second line (U). */
+/** A note that is not ok (the Jump failed) offers Open Analytics after its text. */
+export interface JumpNote { ok: boolean; text: string }
+/** A Jump handler's answer: the note to show, or nothing (it opened Analytics, or another Jump is running). */
+export type JumpResult = Promise<JumpNote | null> | void
+export type JumpPromise = Promise<JumpNote | null> | undefined
+
 export type JumpMomentAction =
   | { kind: 'seek-vod'; offsetSeconds: number }
   | { kind: 'open-vod-tab'; vodId: string; offsetSeconds: number }
   | { kind: 'seek-live-dvr'; offsetSeconds: number; liveCurrentOffset: number }
   | { kind: 'open-analytics'; offsetSeconds: number }
-  | {
-      kind: 'live-outside-buffer'
-      offsetSeconds: number
-      /** Exact verified VOD may be offered as a secondary action — never a silent redirect. */
-      secondaryVodId?: string
-    }
+  | { kind: 'live-outside-buffer'; offsetSeconds: number }
 
 export function resolveJumpMomentAction(input: {
   context: { kind: string; vodId?: string | null }
@@ -65,11 +67,8 @@ export function resolveJumpMomentAction(input: {
         liveCurrentOffset: liveCurrentOffset as number,
       }
     }
-    return {
-      kind: 'live-outside-buffer',
-      offsetSeconds,
-      secondaryVodId: vodId,
-    }
+    // On a channel a linked VOD already opened its own tab above, so no VOD is left to offer.
+    return { kind: 'live-outside-buffer', offsetSeconds }
   }
 
   if (vodId) {

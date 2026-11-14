@@ -1,8 +1,10 @@
-import { displayMomentReasonLabel, momentClockDisplay, reactionAnalyticalOffset, type LiveHeatPoint } from '@streampulse/pulse-core'
+import { displayMomentReasonLabel, formatMomentClock, momentClockDisplay, reactionAnalyticalOffset, type LiveHeatPoint } from '@streampulse/pulse-core'
 import type { ExtensionGameSegment } from '../shared/messages.ts'
 import { MomentSelectionCard } from './MomentSelectionCard.tsx'
 import { gameAtOffset, momentPictureView } from './momentPicture.ts'
-import { formatSelectedMomentActivity } from './momentActivity.ts'
+import { formatMomentMetricsLine } from './momentActivity.ts'
+import type { JumpResult } from './jumpMomentAction.ts'
+import { momentEdgeLabel } from './MomentTime.tsx'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'
 import { liveHeatPointKey } from './mostReacted.ts'
 import { keptMomentSecond } from './keptMoment.ts'
@@ -10,7 +12,7 @@ import { keptMomentSecond } from './keptMoment.ts'
 export interface SelectedMomentCardProps {
   point: LiveHeatPoint
   backendUrl: string
-  onJump: (point: LiveHeatPoint) => void
+  onJump: (point: LiveHeatPoint) => JumpResult
   onAnalytics: (point: LiveHeatPoint) => void
   onClear?: () => void
   jumpLabel?: string
@@ -27,23 +29,25 @@ export function SelectedMomentCard({
   onJump,
   onAnalytics,
   onClear,
-  jumpLabel = 'Jump',
+  // Says where it goes; a caller with the VOD passes 'Jump in VOD' (Z07).
+  jumpLabel = 'Jump in player',
   viewerUnavailableDetail,
   games,
 }: SelectedMomentCardProps) {
   const clock = momentClockDisplay(point)
-  const offsetLabel = clock.text
   const pointIdentity = liveHeatPointKey(undefined, point)
   const label = displayMomentReasonLabel(point.reason, point.reasonLabel)
+  const edge = momentEdgeLabel(point)
 
   return (
     <MomentSelectionCard
       kind="moment"
       label="Selected moment"
-      timeLabel={offsetLabel}
-      detail={label}
+      timeLabel={clock.text}
+      about={clock.approximate}
+      detail={edge ? <>{label} <span className="pulse-edge-tag">{edge}</span></> : label}
       detailStyle={momentReasonLabelStyle(point.reason, point.reasonLabel, 'md')}
-      activityLine={formatSelectedMomentActivity(point)}
+      activityLine={formatMomentMetricsLine(point)}
       activityTitle={viewerUnavailableDetail}
       topEmotes={point.topEmotes}
       backendUrl={backendUrl}
@@ -53,7 +57,7 @@ export function SelectedMomentCard({
       onClose={onClear}
       style={{ marginBottom: 8 }}
       contentKey={pointIdentity}
-      ariaLabel={`Selected moment at ${offsetLabel}${clock.approximate ? ', start of minute bucket' : ''}`}
+      ariaLabel={`Selected moment at ${formatMomentClock(point)}`}
       picture={momentPictureView('card', point)}
       game={gameAtOffset(games, reactionAnalyticalOffset(point))}
       bookmark={{ kind: 'moment', offsetSeconds: keptMomentSecond(point), label }}

@@ -15,6 +15,10 @@ interface EmoteImgProps {
   displayPx?: number
   fetchPriority?: 'high' | 'low' | 'auto'
   hideFallbackText?: boolean
+  /** The picture's text alternative; '' (the default) where a name beside it already says it. */
+  alt?: string
+  /** A picture that fails shows the whole name rather than its first letter (MOMENTS-PAGE-8). */
+  fallbackName?: boolean
 }
 
 function sanitizeEmoteSrcSet(srcSet: string | undefined): string | undefined {
@@ -42,6 +46,8 @@ export function EmoteImg({
   displayPx,
   fetchPriority = 'low',
   hideFallbackText = false,
+  alt = '',
+  fallbackName = false,
 }: EmoteImgProps) {
   const [failedSource, setFailedSource] = useState<string>()
   const cssPx = displayPx ?? width ?? 28
@@ -65,6 +71,7 @@ export function EmoteImg({
         </span>
       )
     }
+    if (fallbackName) return <span className={fallbackClassName} title={alt || name}>{name}</span>
     const fallbackClass = fallbackClassName
       ? `${fallbackClassName} emote-name-badge`
       : 'emote-name-badge'
@@ -81,7 +88,7 @@ export function EmoteImg({
       src={safeSrc}
       srcSet={safeSrcSet}
       sizes={`${cssPx}px`}
-      alt=""
+      alt={alt}
       loading="lazy"
       decoding="async"
       // React 18 DOM: lowercase custom attribute for fetch priority hint.

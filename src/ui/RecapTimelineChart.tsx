@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
 import { createPortal } from 'react-dom'
-import { deriveLiveStats, formatHeatOffset, reactionAnalyticalOffset, toLiveStatsInputFromExtension, type LiveHeatPoint } from '@streampulse/pulse-core'
+import { deriveLiveStats, formatMomentOffset, reactionAnalyticalOffset, toLiveStatsInputFromExtension, type LiveHeatPoint } from '@streampulse/pulse-core'
 import type { ExtensionEmote, ExtensionPeak, PulsePayload, PulseRecapMoment } from '../shared/messages.ts'
 import {
   fullHistoryActivationKey,
@@ -541,8 +541,8 @@ export function RecapTimelineChart({
   const chartRangeStatus = chartIsFullRange
     ? 'Full stream'
     : chartAtAvailableRange
-      ? `Available coverage · from ${formatHeatOffset(chartCoverageStartSeconds)}`
-      : `Viewing ${formatHeatOffset(chartViewportForRender.startSeconds)} – ${formatHeatOffset(chartViewportForRender.endSeconds)}`
+      ? `Available coverage · from ${formatMomentOffset(chartCoverageStartSeconds)}`
+      : `Viewing ${formatMomentOffset(chartViewportForRender.startSeconds)} – ${formatMomentOffset(chartViewportForRender.endSeconds)}`
   // Preview only for a hover that found its minute, so the video's minute never reads as one.
   const chartReadoutMode = hoveredRollup && hoveredRollup.offsetSeconds !== pinOffsetSeconds
     ? 'preview'

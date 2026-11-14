@@ -523,6 +523,8 @@ export interface HubLivePulseMoment extends HubFeaturedMoment {
   categoryMetadataRejected?: true
   streamStartedAt?: number
   activityTag?: string
+  /** The backend's stream-edge flag ('opening' | 'closing'), once a release sends one here; it wins over the site's rule (E1). */
+  streamEdge?: string
   /** Same-stream history strictly before this event; absent until qualified. */
   comparison?: LiveWireMomentComparison
   /** Verified archive display metadata. Never grants replay or media access. */

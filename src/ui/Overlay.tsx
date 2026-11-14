@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  formatHeatOffset,
+  formatMomentOffset,
   LIVE_HEAT_MIN_COMPLETED_ROLLUPS,
   reactionAnalyticalOffset,
   reactionLeadInOffset,
@@ -101,15 +101,17 @@ import {
   shouldShowMissedMomentsBanner,
   shouldShowStreamStartAction,
   canShowVodBackfillCTA,
+  formatSpan,
 } from './missedMoments.ts'
 import { initPulseDebug, pulseDebug } from '../shared/pulseDebug.ts'
 import { resolveMostReactedHeat, sortLiveHeatPoints } from './mostReacted.ts'
 import { MomentBookmarkToast, MomentBookmarksProvider, endedStreamVodId } from './momentBookmarks.tsx'
 import { useArchiveVodId, useLiveVodId, useMomentCapture } from './momentPicture.ts'
 import { StreamRecapSection } from './StreamRecapSection.tsx'
+import { recapTopPoint } from './recapChartPeaks.ts'
 import { resolveRecapUiState } from './recapUiState.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
-import { resolveJumpMomentAction } from './jumpMomentAction.ts'
+import { resolveJumpMomentAction, type JumpNote } from './jumpMomentAction.ts'
 import type { ChartTimelineWindow } from './chatActivityEmotes.ts'
 import type { ExtensionVodPulseResponse } from '../types/vodPulseTypes.ts'
 import { resolveVodPulseState, MAX_VOD_SECONDS } from '../vod/normalizeVodPulseFetch.ts'
@@ -949,7 +951,7 @@ function OverlayMain({
       void observeMomentPlayback(video, { id: 'moment', channel: found.login ?? payload?.login ?? login, title: found.title ?? 'Moment',
         vodId: found.vodId, streamId: found.streamId ?? payload?.streamId, offsetSeconds: at,
         ...(vodOriginDeltaSeconds === undefined ? {} : { vodOriginDeltaSeconds }), availability: 'unresolved' }, start, end, () => {
-        if (mountedRef.current) setArrivalNotice({ key: Date.now(), text: `Added to History · ${formatHeatOffset(at)}` })
+        if (mountedRef.current) setArrivalNotice({ key: Date.now(), text: `Added to History · ${formatMomentOffset(at)}` })
       })
     }, 500)
     arrivalWatchRef.current = () => clearInterval(timer)
@@ -988,7 +990,7 @@ function OverlayMain({
   }, [arrival])
   const arrivalNote = arrival ? (
     <div ref={arrivalChipRef} className="pulse-arrival" data-moment-arrival={arrival.source} data-chart-action="true">
-      <span>{ARRIVAL_LABEL[arrival.source]} · {formatHeatOffset(arrival.at)}</span>
+      <span>{ARRIVAL_LABEL[arrival.source]} · {formatMomentOffset(arrival.at)}</span>
       <button type="button" aria-label="Unlock this moment" title="Unlock" onClick={unlockArrival}>×</button>
     </div>
   ) : null
@@ -1112,7 +1114,7 @@ function OverlayMain({
       setMissedRefreshed(false)
       const missing = after?.coverage?.missingRanges?.[0]
       const label = missing
-        ? formatHeatOffset(Math.max(0, missing.toOffsetSeconds - missing.fromOffsetSeconds))
+        ? formatSpan(missing.toOffsetSeconds - missing.fromOffsetSeconds)
         : 'part of the stream'
       setNotice({
         kind: 'info',
@@ -1627,7 +1629,7 @@ function OverlayMain({
       kind: 'info',
       text:
         coverageStart > PULSE_STREAM_START_TOLERANCE_SEC
-          ? `Chart expanded from stream start — chat data begins at ${formatHeatOffset(coverageStart)}. Backfill still needs a Twitch VOD link.`
+          ? `Chart expanded from stream start — chat data begins at ${formatMomentOffset(coverageStart)}. Backfill still needs a Twitch VOD link.`
           : 'Chart expanded from stream start.',
     })
   }
@@ -1643,19 +1645,9 @@ function OverlayMain({
     seekToStreamStart()
   }
 
-  function jumpToOffset(offsetSeconds: number): void {
-    jumpMoment({
-      minuteTs: '',
-      offsetSeconds,
-      score: 0,
-      estimated: false,
-      reason: 'manual',
-      reasonLabel: 'Chart minute',
-      chatCount: 0,
-      emoteCount: 0,
-      topEmotes: [],
-      collecting: false,
-    })
+  function jumpToOffset(offsetSeconds: number): Promise<JumpNote | null> {
+    // A chart minute: Jump reads only its second and its name (History's title).
+    return jumpMoment({ offsetSeconds, reasonLabel: 'Chart minute' } as LiveHeatPoint)
   }
 
   async function requestFullTimeline(): Promise<FullHistoryRequestResult> {
@@ -1700,11 +1692,12 @@ function OverlayMain({
     openAnalytics(reactionAnalyticalOffset(point))
   }
 
-  async function jumpMoment(point: LiveHeatPoint): Promise<void> {
-    if (jumpBusyRef.current) return
+  /** Jumps, then answers with what happened so the card or dock can say it where Jump was pressed (U). */
+  async function jumpMoment(point: LiveHeatPoint): Promise<JumpNote | null> {
+    if (jumpBusyRef.current) return null
     jumpBusyRef.current = true
     const jumpSurface = surfaceIdentity
-    setNotice(null)
+    const stale = () => !mountedRef.current || jumpSurfaceRef.current !== jumpSurface
     try {
       // A live channel's payload can arrive before the archive id is linked.
       // Resolve that id at action time so Jump prefers the growing Twitch VOD
@@ -1716,7 +1709,7 @@ function OverlayMain({
           ? await submitPageVodHint().catch(() => null)
           : null
       )
-      if (!mountedRef.current || jumpSurfaceRef.current !== jumpSurface) return
+      if (stale()) return null
       const action = resolveJumpMomentAction({
         context,
         payloadVodId: jumpVodId,
@@ -1727,6 +1720,7 @@ function OverlayMain({
         liveCurrentOffset: payload?.currentOffsetSeconds,
         offsetSeconds: reactionLeadInOffset(point, 5),
       })
+      const at = formatMomentOffset(action.offsetSeconds)
       if (action.kind === 'seek-vod' || action.kind === 'open-vod-tab' || action.kind === 'seek-live-dvr') {
         if (vodJumpChartPinEnabled) {
           setChartPinOffset(action.offsetSeconds)
@@ -1746,15 +1740,11 @@ function OverlayMain({
       }
       if (action.kind === 'seek-vod') {
         const result = await seekPlaybackOffsetVerified(getPrimaryVideo(), action.offsetSeconds, { isLive: false })
-        if (!mountedRef.current || jumpSurfaceRef.current !== jumpSurface) return
+        if (stale()) return null
         if (result.ok) remember(result.targetSeconds)
-        setNotice({
-          kind: result.ok ? 'ok' : 'warn',
-          text: result.ok
-            ? `Jumped to ${formatHeatOffset(action.offsetSeconds)} in the VOD player.`
-            : `The VOD player did not hold ${formatHeatOffset(action.offsetSeconds)}. Try scrubbing there or use Analytics.`,
-        })
-        return
+        return result.ok
+          ? { ok: true, text: `Jumped to ${at} in the VOD` }
+          : { ok: false, text: `The VOD didn’t hold ${at}` }
       }
 
       if (action.kind === 'open-vod-tab') {
@@ -1769,16 +1759,12 @@ function OverlayMain({
           })
         }
         window.open(buildTwitchVodUrl(action.vodId, action.offsetSeconds), '_blank', 'noopener,noreferrer')
-        setNotice({
-          kind: 'ok',
-          text: `Opened Twitch VOD at ${formatHeatOffset(action.offsetSeconds)}.`,
-        })
-        return
+        return { ok: true, text: `Opened the VOD at ${at} in a new tab` }
       }
 
       if (action.kind === 'open-analytics') {
         openAnalytics(action.offsetSeconds)
-        return
+        return null
       }
 
       if (action.kind === 'seek-live-dvr') {
@@ -1790,34 +1776,17 @@ function OverlayMain({
           isLive: true,
           liveCurrentOffset: liveCurrentOffset ?? action.liveCurrentOffset,
         })
-        if (!mountedRef.current || jumpSurfaceRef.current !== jumpSurface) return
+        if (stale()) return null
         if (result.ok) {
           remember(result.targetSeconds)
-          setNotice({ kind: 'ok', text: `Jumped to ${formatHeatOffset(action.offsetSeconds)} inside the live DVR buffer.` })
-          return
+          return { ok: true, text: `Jumped to ${at}` }
         }
-        setNotice({
-          kind: 'warn',
-          text: result.reason === 'outside_buffer'
-            ? jumpVodId
-              ? `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window. Use the linked VOD or Analytics for the full moment.`
-              : `${formatHeatOffset(action.offsetSeconds)} is outside Twitch’s live DVR window, and Twitch has not linked a live VOD yet. Use Analytics for the full moment.`
-            : 'Twitch did not hold the requested live-player position. Use Analytics for the full moment.',
-        })
-        return
+        if (result.reason !== 'outside_buffer') return { ok: false, text: `Twitch didn’t hold ${at}` }
       }
-
-      const secondary = action.kind === 'live-outside-buffer' ? action.secondaryVodId?.trim() : undefined
-      setNotice({
-        kind: 'warn',
-        text: secondary
-          ? `${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer. Use Analytics; a linked VOD is available separately.`
-          : `${formatHeatOffset(action.offsetSeconds)} is outside the live DVR buffer. Use Analytics for the full moment.`,
-      })
+      // On a channel a linked VOD always opens its own tab, so this is the no-VOD case.
+      return { ok: false, text: 'Past Twitch’s rewind window' }
     } catch {
-      if (mountedRef.current && jumpSurfaceRef.current === jumpSurface) {
-        setNotice({ kind: 'warn', text: 'Could not open this moment. Retry or use Analytics.' })
-      }
+      return stale() ? null : { ok: false, text: 'Couldn’t jump · Try again' }
     } finally {
       jumpBusyRef.current = false
     }
@@ -1848,11 +1817,14 @@ function OverlayMain({
   }
 
   if (resolvedMode === 'mini') {
-    // The first row the panel's Top moments list would show, ranked as it ranks.
-    const dockTopMoment = !isVodPage && canRenderPayload && pulseSupported && pulseLiveAccess.state === 'full_live'
-      && panelSections?.showMostReacted && mostReactedHeat?.visible
-      ? sortLiveHeatPoints(mostReactedHeat.points, 'reaction')[0] ?? null
-      : null
+    // The first row the panel's Top moments list would show, ranked as it ranks:
+    // on a VOD page the recap's (T), else the live list's.
+    const dockTopMoment = !canRenderPayload || !pulseSupported || !payload ? null
+      : isVodPage
+        ? panelSections?.showRecap && !uiIsLive && (recapUiState === 'ready' || recapUiState === 'partial') ? recapTopPoint(payload) : null
+        : pulseLiveAccess.state === 'full_live' && panelSections?.showMostReacted && mostReactedHeat?.visible
+          ? sortLiveHeatPoints(mostReactedHeat.points, 'reaction')[0] ?? null
+          : null
     return (
       <section className={shellClass} data-pulse-density={density} style={sidebarBodyOnly ? styles.miniHost : undefined} aria-label="StreamPulse mini overlay">
         <MiniDock
@@ -1868,6 +1840,8 @@ function OverlayMain({
           onTrack={localStackBackend ? () => void startTracking() : undefined}
           topMoment={dockTopMoment}
           onJumpTopMoment={point => jumpToOffset(reactionAnalyticalOffset(point))}
+          onAnalyticsTopMoment={openAnalyticsForMoment}
+          jumpLabel={payload?.vodId ?? context.vodId ? 'Jump in VOD' : undefined}
         />
       </section>
     )
@@ -2650,7 +2624,7 @@ function WarmingState({
         {firstMinutePending
           ? 'Chat is counted once a minute. The chart and Top Moments fill in on their own.'
           : lateTracking
-            ? `StreamPulse is tracking this broadcast (${formatHeatOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} full minutes of chat.`
+            ? `StreamPulse is tracking this broadcast (${formatMomentOffset(coverageStart)} in). Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} full minutes of chat.`
             : `Collecting chat and emote activity. Top Moments unlock after ${LIVE_HEAT_MIN_COMPLETED_ROLLUPS} completed minutes.`}
       </p>
       <div className="pulse-shimmer pulse-progress-track"><span className="pulse-progress-fill" style={{ width: `${progress * 100}%` }} /></div>

@@ -1,5 +1,5 @@
 import { Fragment, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, RefObject, SyntheticEvent } from 'react'
 import { X } from 'lucide-react'
 import { Link, useLocation, useNavigate, useNavigationType, useSearchParams } from 'react-router-dom'
 import LegacyMomentSession from './LegacyMomentSession'
@@ -15,7 +15,11 @@ import { fromHubMoment, uniqueDiscoveryMoments,
   checkMomentSource, type DiscoveryMoment, type CheckedMomentSource } from '../../lib/discoveryMoments'
 import { useSavedMoments } from '../../lib/savedDiscoveryMoments'
 import { watchMomentHref } from '../../lib/watchHandoff'
-import { formatStreamOffset } from '../../lib/formatStreamOffset'
+import { streamEdgeLabel } from '@streampulse/pulse-core'
+import { formatStreamOffset, momentRowClock, momentRowClockText } from '../../lib/formatStreamOffset'
+import { EARLY_STREAM_WORDS, earlyInStream, momentEdge } from '../../lib/momentsChecked'
+import { accountMomentsEnabled } from '../../lib/accountMoments'
+import { useAccountSession } from '../../lib/accountSession'
 import { twitchProfileImageRendition } from '../../lib/twitchProfileImage'
 import { ResilientImage } from '../../ui/components/ResilientImage'
 import { formatMomentDateTime, formatMomentOccurrence } from '../../lib/liveWire'
@@ -24,7 +28,8 @@ import { browseLoadedItems, loadedMomentNeighbors, readMomentBrowse } from '../.
 import { AnalyticsFigmaShell } from '../../ui/components/analytics/AnalyticsFigmaShell'
 import { SaveMomentButton } from '../../ui/components/moments/SaveMomentButton'
 import { MomentVodPreview } from '../../ui/components/moments/MomentVodPreview'
-import { MomentLoadingSkeleton } from '../../ui/components/moments/MomentLoadingSkeleton'
+import { focusKeyWithin, noteCarriedFocus, restoreCarriedFocus } from '../../ui/components/moments/focusCarry'
+import { MomentLoadingSkeleton, MomentsTopPlaceholder } from '../../ui/components/moments/MomentLoadingSkeleton'
 import { useCollectionArrival } from '../../ui/motion/useCollectionArrival'
 import { MomentRow } from '../../ui/components/moments/MomentRow'
 import { MomentSelect } from '../../ui/components/moments/MomentSelect'
@@ -56,11 +61,13 @@ const present = (value?: number) => value != null && Number.isFinite(value) ? va
 const valid = (moment: DiscoveryMoment | null): moment is DiscoveryMoment => moment !== null
 /** A moment as assistive technology hears it: the reaction, the creator, and when in the broadcast. */
 const spokenMoment = (moment: Pick<DiscoveryMoment, 'label' | 'displayName' | 'login' | 'offsetSeconds'>) =>
-  `${moment.label}, ${moment.displayName || moment.login}, ${formatStreamOffset(moment.offsetSeconds)} into broadcast`
+  `${moment.label}, ${moment.displayName || moment.login}, ${momentRowClockText(moment.offsetSeconds)} into broadcast`
 const scrollPositions = new Map<string, number>()
 // A session page's return link pushes a new history entry, so its router key never
 // matches. Positions for those returns (and Back into a review) are kept per URL.
 const returnScrollPositions = new Map<string, number>()
+/** The row link the reader left by, per list URL, so Back puts focus on it again (J, 11-13). */
+const returnFocusByUrl = new Map<string, { momentKey: string; href: string }>()
 const RETURN_RESTORE_FRAMES = 120
 const RETURN_RESTORE_STOP_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
 /** One moment is open at a time, so its slot has one id for the row's `aria-controls`. */
@@ -68,6 +75,37 @@ const DETAIL_ID = 'moments-selected-detail'
 const SELECTION_RESET = { login: null, stream: null, offset: null, moment: null } as const
 interface ReviewContinuation { loading: boolean; canLoad: boolean; limited: boolean; error: string | null; load: () => void }
 const isSelectionParams = (params: URLSearchParams) => params.has('offset') && params.has('stream') && params.has('login')
+const measured = (value?: number) => value != null && Number.isFinite(value)
+
+/** The page's phone layout (its 600 px rule). An open moment renders its watch row once, where it shows. */
+const PHONE_LAYOUT = '(max-width: 600px)'
+function usePhoneLayout(): boolean {
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && Boolean(window.matchMedia(PHONE_LAYOUT)?.matches))
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const query = window.matchMedia(PHONE_LAYOUT)
+    if (!query?.addEventListener) return
+    const sync = () => setPhone(query.matches)
+    sync()
+    query.addEventListener('change', sync)
+    return () => query.removeEventListener('change', sync)
+  }, [])
+  return phone
+}
+
+/**
+ * Keeps focus on the same control when crossing the phone breakpoint remounts the watch row in its
+ * other place (round 6, 11-14). It renders nothing and comes first in the row, so it notes the focused
+ * control's key before the row's elements leave the page, and gives that key focus in the new row.
+ * It reads the detail's ref when it acts: on the detail's first render this effect runs before the ref is set.
+ */
+function WatchFocusCarry({ scope, root }: { scope: string; root: RefObject<HTMLElement | null> }) {
+  useLayoutEffect(() => {
+    restoreCarriedFocus(scope, root.current)
+    return () => noteCarriedFocus(scope, focusKeyWithin(root.current))
+  }, [scope, root])
+  return null
+}
 
 /**
  * Where the open selection's detail renders. It is fixed when the detail first shows
@@ -173,10 +211,14 @@ function MomentCreator({ moment, historyAvailable, onNavigate }: { moment: Disco
  * selection with no row in the loaded list (a deep link, or one filtered out),
  * and keeps its own identity, title and occurrence time.
  */
-function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourceState, navigation, onNavigate, continuation, pickedGame, onGame }: { moment: DiscoveryMoment; variant: 'inline' | 'standalone'; onClose: () => void; saved: boolean; onSourceState: (key: string, state: string, artwork?: ArchiveArtwork) => void; navigation: ReturnType<typeof loadedMomentNeighbors<DiscoveryMoment>>; onNavigate: (moment: DiscoveryMoment, control: 'previous' | 'next') => void; continuation?: ReviewContinuation
+function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourceState, navigation, onNavigate, continuation, pickedGame, onGame, outside }: { moment: DiscoveryMoment; variant: 'inline' | 'standalone'; onClose: () => void; saved: boolean; onSourceState: (key: string, state: string, artwork?: ArchiveArtwork) => void; navigation: ReturnType<typeof loadedMomentNeighbors<DiscoveryMoment>>; onNavigate: (moment: DiscoveryMoment, control: 'previous' | 'next') => void; continuation?: ReviewContinuation
   /** The game the list shows (?category=), and how to show another game's moments (C1, 10-22: the game is a link). */
-  pickedGame: string; onGame?: (name: string) => void }) {
+  pickedGame: string; onGame?: (name: string) => void
+  /** What a selection outside the list says it is (Z05, 11-13): 'Shared moment, not in Latest right now'. */
+  outside: string }) {
   const detailLocation = useLocation()
+  const phone = usePhoneLayout()
+  const detailRef = useRef<HTMLElement>(null)
   const [recap, setRecap] = useState<Partial<DiscoveryMoment> | null>(null)
   const [evidenceState, setEvidenceState] = useState('')
   const [evidenceAttempt, setEvidenceAttempt] = useState(0)
@@ -248,26 +290,39 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
   const occurrenceDateTime = formatMomentDateTime(moment.at) ?? formatMomentDateTime(source?.occurrenceAt)
   const occurrenceLabel = occurrenceDateTime ? formatMomentOccurrence(occurrenceDateTime) : null
   const reviewing = navigation.position != null
+  // A shared link outside the list has no rates of its own: it says so, not 'Unavailable' (Z05, 11-13).
+  const sharedLink = variant === 'standalone' && !reviewing
+  const rate = (value?: number) => measured(value) || !sharedLink ? present(value) : 'Not measured for shared links'
+  const perMinute = (value?: number) => measured(value) || !sharedLink ? `${present(value)} /min` : rate(value)
+  // One early-stream rule with the Hub (X1, 11-13): a stream's first 20 minutes show their rates and no ×,
+  // and its first 5 are tagged 'Stream start' by pulse-core's edge rule (E1). The backend's edge flag wins where
+  // the data carries it: a flagged closing minute says 'Stream end' after its × line (round 2).
+  const early = earlyInStream(moment.offsetSeconds)
+  const edge = momentEdge(moment.offsetSeconds, moment.streamEdge)
+  // h:mm:ss through pulse-core, with 'about' when only the minute is known (K1, 11-13).
+  const clock = momentRowClock(moment.offsetSeconds)
   // The head (C1, 10-22): the × in plain words, then when and how far in (standalone; in line the row says so) and the game.
-  const lift = momentLiftLine(moment)
+  const lift = early ? null : momentLiftLine(moment)
   const streamPage = broadcastTimelineHref(moment.login, moment.streamId, detailLocation.pathname + detailLocation.search + detailLocation.hash, moment.offsetSeconds)
   const gameArt = moment.category && moment.categoryId && moment.boxArtUrl && !moment.categoryMetadataRejected && isExactCategoryBoxArt(moment.boxArtUrl, moment.categoryId) ? moment.boxArtUrl : null
   const gameIn = moment.category ? <>{gameArt ? <img src={gameArt} alt="" /> : null}{moment.category}</> : null
   const game = !moment.category ? null : moment.category === pickedGame || !onGame ? <span className="moments-detail-game">{gameIn}</span>
     : <button type="button" className="moments-detail-game" aria-label={`Show ${moment.category} moments`} title={`Show ${moment.category} moments`} onClick={() => onGame(moment.category!)}>{gameIn}</button>
   const head = <>
-    {lift ? <p className="moments-detail-lede"><b>{lift.x}</b> more {lift.what} than this stream’s earlier average</p> : null}
+    {lift ? <p className="moments-detail-lede"><b>{lift.x}</b> more {lift.what} than this stream’s earlier average{edge ? <span className="moments-detail-edge"> · {streamEdgeLabel(edge)}</span> : null}</p>
+      : early ? <p className="moments-detail-lede moments-detail-lede--early">{edge ? streamEdgeLabel(edge) : EARLY_STREAM_WORDS}</p> : null}
     {variant === 'standalone' || game ? <p className="moments-detail-meta">
       {variant === 'standalone' ? <>{occurrenceDateTime ? <><time dateTime={occurrenceDateTime}>{occurrenceLabel}</time><span aria-hidden="true">·</span></> : null}
-        <span><b>{formatStreamOffset(moment.offsetSeconds)}</b> in</span>{game ? <span aria-hidden="true">·</span> : null}</> : null}
+        <span>{clock.approximate ? 'about ' : ''}<b>{clock.text}</b> into broadcast</span>{game ? <span aria-hidden="true">·</span> : null}</> : null}
       {game}
     </p> : null}
   </>
   const measurement = <section className="moments-measurement" aria-label="Moment measurement">
     {/* With the × line above, its summary here would only say it again (C1 trims, 10-22). */}
-    <div className="moments-measurement-heading"><h3>What happened in chat</h3>{summary && !lift ? <span>{summary}</span> : null}</div>
-    <dl><div><dt>Chat / min</dt><dd>{present(moment.chatPerMin)}</dd></div><div><dt>Emotes / min</dt><dd>{present(moment.emotesPerMin)}</dd></div><div><dt>Detection window</dt><dd>1 minute</dd></div></dl>
-    <MomentEvidenceBars moment={moment} />
+    <div className="moments-measurement-heading"><h3>What happened in chat</h3>{summary && !lift && !early ? <span>{summary}</span> : null}</div>
+    <dl><div><dt>Chat / min</dt><dd>{rate(moment.chatPerMin)}</dd></div><div><dt>Emotes / min</dt><dd>{rate(moment.emotesPerMin)}</dd></div><div><dt>Detection window</dt><dd>1 minute</dd></div></dl>
+    {/* Early in the stream no × shows anywhere (X1), so neither do its bars. */}
+    {early ? null : <MomentEvidenceBars moment={moment} />}
   </section>
   const reactions = moment.topEmotes?.length ? <section className="moments-reactions" aria-label="Selected moment reactions"><h3>Reactions in this moment</h3>
     <ul>{moment.topEmotes.slice(0, 5).map((emote, index) => {
@@ -282,10 +337,35 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
     </li>
     })}</ul><p className="moments-muted">Supplied emote uses · bars relative to the leading emote shown</p>
   </section> : null
+  // Watching and keeping: the replay, Save, the VOD and, while the stream is live, its live link
+  // beside the VOD (V1, 11-13). On phones it sits right under the lede and the evidence follows
+  // (D1, 11-13); wider, it heads the side column. It renders once, in the place that shows.
+  // On phones Save and Open VOD sit right under "Watch on Twitch at …", above its playback
+  // note, so watching and keeping read as one group (D, round 2 11-13).
+  // Each control that moves with the row has a focus key, so a layout switch keeps focus on it (round 6, 11-14).
+  const actions = <div className="moments-actions moments-primary-actions"><SaveMomentButton moment={moment} focusKey="save" />
+    {source?.vodHref ? <a href={source.vodHref} target="_blank" rel="noopener noreferrer" data-focus-key="open-vod">Open VOD at {formatStreamOffset(source.vodOffsetSeconds ?? moment.offsetSeconds)} ↗</a> : null}
+    {source?.liveHref ? <a href={source.liveHref} target="_blank" rel="noopener noreferrer" data-focus-key="watch-live">Watch live now ↗</a> : null}
+    {source?.vodHref && source.vodOffsetSeconds != null ? <VodOffsetNote broadcastSeconds={moment.offsetSeconds} vodSeconds={source.vodOffsetSeconds} /> : null}
+  </div>
+  const actionsInPreview = phone && Boolean(source?.vodHref)
+  const watch = <>
+    <WatchFocusCarry scope={source?.vodHref ?? moment.key} root={detailRef} />
+    {source?.vodHref ? <MomentVodPreview key={source.vodHref} href={source.vodHref} artwork={source.archiveArtwork} actions={actionsInPreview ? actions : undefined} /> : null}
+    {!source?.vodHref ? <div className="moment-replay-pending" role="status"><span className="moment-replay-symbol" aria-hidden="true">▷</span>
+      <div><strong>{loading ? 'Checking this moment’s replay' : error ? 'Replay lookup failed' : source?.pendingArchive ? 'Waiting for this broadcast’s archive' : 'Replay unavailable'}</strong>
+        <p>{loading ? 'Looking for the archive at this exact timestamp.' : error || source?.reason || 'No verified replay mapping is available for this moment.'}</p>
+        {autoRechecking ? <small>We’ll recheck automatically while this page is open.</small> : null}
+        {!loading ? <button type="button" onClick={() => { setAutomaticChecks(0); setAttempt(value => value + 1) }}>Check replay now</button> : null}
+      </div>
+    </div> : null}
+    {source?.vodHref && (loading || error) ? <p className="moments-muted" role="status">{loading ? 'Rechecking source without restarting the preview…' : error}</p> : null}
+    {actionsInPreview ? null : actions}
+  </>
   // Named for its moment: in line it has no heading of its own, and Previous/Next swap it in place.
-  return <section className="moments-detail" data-variant={variant} aria-label={`Selected moment: ${spokenMoment(moment)}`} tabIndex={-1}>
+  return <section ref={detailRef} className="moments-detail" data-variant={variant} aria-label={`Selected moment: ${spokenMoment(moment)}`} tabIndex={-1}>
     <div className="moments-detail-head">
-      <span>{reviewing ? `${navigation.position} of ${navigation.total} loaded moments` : 'Selection outside loaded matches'}</span>
+      <span>{reviewing ? `${navigation.position} of ${navigation.total} loaded moments` : outside}</span>
       <div>
         {reviewing && navigation.total > 1 ? <nav aria-label="Review loaded moments">
           <button type="button" data-review="previous" aria-label="Previous moment" disabled={!navigation.previous} onClick={() => { if (navigation.previous) onNavigate(navigation.previous, 'previous') }}>Previous</button>
@@ -302,25 +382,14 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
     {/* Standalone, no row names it: the name opens the stream's page at this minute (C1, 10-22). */}
     {variant === 'standalone' ? <h2 tabIndex={-1} className="moments-detail-title"><Link className="moments-detail-name" to={streamPage} title="Open the stream’s page">{moment.displayName || moment.login}</Link> · {moment.label}</h2> : null}
     {head}
+    {phone ? <div className="moments-detail-watch">{watch}</div> : null}
     {evidenceState ? <p className="moments-muted" role="status">{evidenceState}{!evidenceState.startsWith('Loading') ? <> <button type="button" onClick={() => setEvidenceAttempt(value => value + 1)}>Retry reaction details</button></> : null}</p> : null}
     <MomentMinuteChart moment={moment} />
     <div className="moments-detail-grid">
       {/* What happened (why it was selected) on the left; watching and actions on the right. */}
       <div className="moments-detail-main">{measurement}{reactions}</div>
       <div className="moments-detail-side">
-        {source?.vodHref ? <MomentVodPreview key={source.vodHref} href={source.vodHref} artwork={source.archiveArtwork} /> : null}
-        {!source?.vodHref ? <div className="moment-replay-pending" role="status"><span className="moment-replay-symbol" aria-hidden="true">▷</span>
-          <div><strong>{loading ? 'Checking this moment’s replay' : error ? 'Replay lookup failed' : source?.pendingArchive ? 'Waiting for this broadcast’s archive' : 'Replay unavailable'}</strong>
-            <p>{loading ? 'Looking for the archive at this exact timestamp.' : error || source?.reason || 'No verified replay mapping is available for this moment.'}</p>
-            {autoRechecking ? <small>We’ll recheck automatically while this page is open.</small> : null}
-            {!loading ? <button type="button" onClick={() => { setAutomaticChecks(0); setAttempt(value => value + 1) }}>Check replay now</button> : null}
-          </div>
-        </div> : null}
-        {source?.vodHref && (loading || error) ? <p className="moments-muted" role="status">{loading ? 'Rechecking source without restarting the preview…' : error}</p> : null}
-        <div className="moments-actions moments-primary-actions"><SaveMomentButton moment={moment} />
-          {source?.vodHref ? <a href={source.vodHref} target="_blank" rel="noopener noreferrer">Open VOD at {formatStreamOffset(source.vodOffsetSeconds ?? moment.offsetSeconds)} ↗</a> : null}
-          {source?.vodHref && source.vodOffsetSeconds != null ? <VodOffsetNote broadcastSeconds={moment.offsetSeconds} vodSeconds={source.vodOffsetSeconds} /> : null}
-        </div>
+        {phone ? null : watch}
         <MomentNote key={moment.key} momentKey={moment.key} />
         <details className="moments-source" open={!source?.vodHref}>
           <summary>{loading ? 'Checking source…' : source?.vodHref ? 'Source & playback details' : 'No replay link confirmed'}</summary>
@@ -329,7 +398,6 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
           {source?.vodHref ? <p>{error || source.reason}</p> : null}
           {saved ? <p>Saved metadata is historical. Source links are checked again when opened here.</p> : null}
           <div className="moments-actions">
-            {source?.liveHref ? <a href={source.liveHref} target="_blank" rel="noopener noreferrer">Watch live now ↗</a> : null}
             {watchHref ? <a href={watchHref} target="_blank" rel="noopener noreferrer">Review in Streamclone ↗</a> : null}
             {/* The row already links this moment's analytics; in review it belongs with the other source navigation. */}
             <Link to={streamPage}>View stream timeline</Link>
@@ -342,7 +410,7 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
         <details className="moments-evidence"><summary>Measured evidence</summary>
           {moment.measurementScope === 'verified_minute' && <p>Counts and comparison use the same verified minute. Measurements can change between published snapshots.</p>}
           <p>{moment.provenance === 'session' ? `Session update${moment.revision != null ? ` · revision ${moment.revision}` : ''}` : moment.provenance === 'saved' ? 'Saved detection snapshot' : 'Detection feed snapshot'}{moment.evidenceAsOf && Number.isFinite(Date.parse(moment.evidenceAsOf)) ? ` · published ${new Date(moment.evidenceAsOf).toLocaleString()}` : ''}. Publication time is separate from the reaction timestamp. Rechecking playback does not refresh these measurements.</p>
-          <dl><dt>Chat</dt><dd>{present(moment.chatPerMin)} /min</dd><dt>Emotes</dt><dd>{present(moment.emotesPerMin)} /min</dd>
+          <dl><dt>Chat</dt><dd>{perMinute(moment.chatPerMin)}</dd><dt>Emotes</dt><dd>{perMinute(moment.emotesPerMin)}</dd>
             <dt>Baseline measured</dt><dd>{comparison ? `${comparison.evidence.baselineMeasuredMinutes}/${comparison.evidence.baselineExpectedMinutes} minutes` : 'Unavailable'}</dd>
             <dt>Source stream</dt><dd>{moment.streamId}</dd><dt>Public moment</dt><dd>{moment.publicMomentId || 'Not supplied'}</dd></dl>
           <p>Reaction measurements are not editorial quality ratings.</p>
@@ -418,6 +486,10 @@ function MomentsWorkspace() {
   /** Whether a selection is open in the URL as last written, which can be ahead of this render. */
   const reviewingNow = () => isSelectionParams(latestParams.current)
   const saved = useSavedMoments()
+  const session = useAccountSession()
+  // With account moments on and signed in, a save also reaches the account (Z12, 11-13).
+  const savedToAccount = accountMomentsEnabled() && session.status === 'signed_in'
+  const [explainerOpen, setExplainerOpen] = useState(false)
   const [sourceStates, setSourceStates] = useState<Record<string, string>>({})
   const [filtersExpanded, setFiltersExpanded] = useState(false)
   // Keep each view's own URL filters while switching tabs. Latest and Saved
@@ -455,7 +527,8 @@ function MomentsWorkspace() {
     const previous = visibleRecentRef.current
     const next = recent.slice(0, 200)
     const fromCache = hub.loadSource === 'cache'
-    // Only hold ordering while an exact review is open. A healthy refresh must
+    // Only hold ordering while an exact review is open or the reader has scrolled
+    // (R1, 11-13: the row being read stays put). A healthy refresh must
     // replace a cache snapshot during ordinary browsing, including with an
     // honestly empty result, rather than preserving stale identities forever.
     const replacingCache = visibleFromCacheRef.current && !fromCache
@@ -464,7 +537,7 @@ function MomentsWorkspace() {
     // Mid-review, the first network result drops cached rows it no longer has
     // (they were never a live collection) but keeps the reader's order for the rest.
     const retained = replacingCache ? previous.filter(moment => byKey.has(moment.key)) : previous
-    if (!previous.length || !requested || !retained.length) {
+    if (!previous.length || !(requested || window.scrollY > 0) || !retained.length) {
       setVisibleRecent(next)
       setPendingRecent([])
       return
@@ -479,7 +552,8 @@ function MomentsWorkspace() {
   const gameLink = rankedMode ? null : params.get('game')
   const category = browse.category || (gameLink && /^\d{1,20}$/.test(gameLink) ? momentsGameName(gameLink, collection) ?? '' : '')
   const filtered = rankedMode ? collection : browseLoadedItems(collection, { ...browse, category }, moment => ({ key: moment.key, at: moment.at, category: moment.category,
-    text: `${moment.displayName || moment.login} ${moment.login} ${moment.category || ''} ${moment.label}` }), now)
+    // The emotes a row shows are searchable too (Z04, 11-13).
+    text: `${moment.displayName || moment.login} ${moment.login} ${moment.category || ''} ${moment.label} ${(moment.topEmotes ?? []).map(emote => emote.name).join(' ')}` }), now)
   const games = rankedMode ? [] : momentsGames(collection)
   const selected = collection.find(moment => moment.login === params.get('login') && moment.streamId === params.get('stream') && moment.offsetSeconds === offset
     && (!params.get('moment') || moment.publicMomentId === params.get('moment')))
@@ -570,9 +644,33 @@ function MomentsWorkspace() {
   const noticeOnly = Boolean(failure || momentsUnavailable) && !displayed.length
   const refreshInFlight = view === 'recent' && hub.refreshing
   const resultsRef = useRef<HTMLHeadingElement>(null)
+  // After Try again, focus lands on what came back (J, 11-13): the results heading, which
+  // names how many are shown, or the button again while the feed is still down.
+  const retryButton = useRef<HTMLButtonElement>(null)
+  const retryFocus = useRef<'idle' | 'asked' | 'running'>('idle')
+  const retryBusy = busy || refreshInFlight
+  useEffect(() => {
+    if (retryFocus.current === 'asked' && retryBusy) { retryFocus.current = 'running'; return }
+    if (retryFocus.current !== 'running' || retryBusy) return
+    retryFocus.current = 'idle'
+    requestAnimationFrame(() => (retryButton.current ?? resultsRef.current)?.focus())
+  }, [retryBusy])
+  function retryFeed() {
+    retryFocus.current = 'asked'
+    hub.refresh()
+  }
+  // The first load keeps the list's shape (L1, 11-13); after about 5 s it says the wait is expected.
+  const loadingFirst = busy && !displayed.length && !noticeOnly
+  const [loadingLong, setLoadingLong] = useState(false)
+  useEffect(() => {
+    if (!loadingFirst) { setLoadingLong(false); return }
+    const timer = setTimeout(() => setLoadingLong(true), 5_000)
+    return () => clearTimeout(timer)
+  }, [loadingFirst])
+  const loadingLate = loadingFirst && (loadingLong || (view === 'recent' && hub.hubReadLate))
   const lastSelectedKey = useRef<string | null>(null)
   useEffect(() => {
-    // A review opened from Live Wire or a shared URL did not call select() here.
+    // A review opened from the Hub or a shared URL did not call select() here.
     // It still needs the same return-focus target once results have loaded.
     if (chosen) lastSelectedKey.current = chosen.key
   }, [chosen?.key])
@@ -786,6 +884,47 @@ function MomentsWorkspace() {
     }
   }, [location.key, requested, view])
   const locationUrl = location.pathname + location.search
+  /** A row link that leaves the list (a stream timeline, analytics) is where Back puts focus (J, 11-13). */
+  function rememberLeavingLink(event: ReactMouseEvent<HTMLDivElement>) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null
+    const momentKey = link?.closest<HTMLElement>('.moments-result')?.querySelector<HTMLElement>('[data-discovery-key]')?.dataset.discoveryKey
+    if (!link || !momentKey || link.target === '_blank') return
+    returnFocusByUrl.delete(locationUrl)
+    returnFocusByUrl.set(locationUrl, { momentKey, href: link.getAttribute('href') ?? '' })
+    if (returnFocusByUrl.size > 40) returnFocusByUrl.delete(returnFocusByUrl.keys().next().value!)
+  }
+  // Back to the list: focus returns to that link once its row has rendered, unless
+  // the reader has already moved on (a scroll, a key, a press, or focus elsewhere).
+  useEffect(() => {
+    if (requested || !(navigationType === 'POP' || location.state?.momentsReturn === true)) return
+    const target = returnFocusByUrl.get(locationUrl)
+    if (!target) return
+    let frame = 0
+    let frames = 0
+    const stop = () => {
+      cancelAnimationFrame(frame)
+      for (const type of RETURN_RESTORE_STOP_EVENTS) window.removeEventListener(type, stop)
+    }
+    for (const type of RETURN_RESTORE_STOP_EVENTS) window.addEventListener(type, stop, { passive: true })
+    const step = () => {
+      const row = [...document.querySelectorAll<HTMLElement>('.moments-result')]
+        .find(element => element.querySelector<HTMLElement>('[data-discovery-key]')?.dataset.discoveryKey === target.momentKey)
+      const control = row ? [...row.querySelectorAll<HTMLElement>('a[href]')].find(link => link.getAttribute('href') === target.href)
+        ?? row.querySelector<HTMLElement>('.moments-card-primary') : null
+      const active = document.activeElement
+      if (control && (!active || active === document.body || active === workspaceRef.current)) {
+        control.focus({ preventScroll: true })
+        returnFocusByUrl.delete(locationUrl)
+      }
+      if (control || ++frames >= RETURN_RESTORE_FRAMES) { stop(); return }
+      frame = requestAnimationFrame(step)
+    }
+    frame = requestAnimationFrame(step)
+    return stop
+    // Once per arrival, as the scroll restore below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key])
   useEffect(() => {
     const remember = () => {
       // Navigation commits before this listener is removed; ignore the next page's scroll.
@@ -893,8 +1032,11 @@ function MomentsWorkspace() {
     openedKey.current = chosen?.key ?? null
     if (chosen) openGeneration.current += 1
   }
+  // A selection outside the list names the list (Z05, 11-13); one whose row left a settled list was not shared.
+  const listName = view === 'saved' ? 'Saved' : historyMode ? 'History' : explore ? 'Explore' : 'Latest'
+  const outside = place?.moved ? `Not in ${listName} right now` : `Shared moment, not in ${listName} right now`
   const detail = chosen ? <MomentDetail key={`${chosen.key}:${chosen.publicMomentId || ''}:${openGeneration.current}`} variant={inlineKey ? 'inline' : 'standalone'} moment={chosen} onSourceState={onSourceState} onClose={() => close('row')} saved={view === 'saved' && Boolean(selected)} navigation={loadedMomentNeighbors(displayed, chosen.key)} onNavigate={review}
-    pickedGame={category} onGame={rankedMode ? undefined : pickGame}
+    pickedGame={category} onGame={rankedMode ? undefined : pickGame} outside={outside}
     continuation={rankedMode && ranked.data ? { loading: ranked.loading, canLoad: ranked.canLoad, limited: ranked.limited, error: ranked.error, load: ranked.loadMore } : undefined} /> : null
   // Explore and History stay hidden while the ranked backend is not deployed (owner
   // request). A bookmarked ranked view keeps its own tab and honest unavailable panel.
@@ -915,9 +1057,16 @@ function MomentsWorkspace() {
   return <AnalyticsFigmaShell hideSidebar><main ref={workspaceRef} id="analytics-main" className="moments-workspace" data-filters-expanded={filtersExpanded} tabIndex={-1}>
     <header className="moments-heading"><div><h1>{historyMode ? 'Moment history' : view === 'saved' ? 'Saved moments' : view === 'clips' ? 'Clips' : 'Moments'}</h1><p>{historyMode ? 'Browse recent indexed detections by UTC day and creator.' : view === 'saved' ? 'Your shortlist of reactions to return to.' : view === 'clips' ? 'Twitch clips StreamPulse made when chat reacted strongly.' : 'Catch a reaction. Open its timeline. Keep what matters.'}</p></div><Link to="/analytics">Live activity →</Link></header>
     <nav aria-label="Moment views"><div className={`moments-tabs${viewTabs.length === 4 ? ' moments-tabs-four' : viewTabs.length === 2 ? ' moments-tabs-two' : ''}${clipsOn ? ' moments-tabs-indexed' : ''}`} style={clipsOn ? { '--moments-tab-index': viewTabs.indexOf(view) } as CSSProperties : undefined} data-view={view} role="tablist" aria-label="Moment views" onKeyDown={onViewTabsKeyDown}><span className="moments-tab-indicator" aria-hidden="true" />{viewTabs.map(tab => <button type="button" role="tab" id={`moments-view-tab-${tab}`} aria-controls="moments-view-panel" aria-selected={view === tab} tabIndex={view === tab ? 0 : -1} key={tab} onClick={() => changeView(tab)}>{tab === 'saved' ? `Saved (${saved.items.length})` : tab === 'recent' ? 'Latest' : tab === 'clips' ? 'Clips' : tab === 'explore' ? 'Explore' : 'History'}</button>)}</div></nav>
-    <div id="moments-view-panel" role="tabpanel" aria-labelledby={`moments-view-tab-${view}`} tabIndex={0}>
+    {/* Not a Tab stop of its own: its first control follows the tabs (J, 11-13). */}
+    <div id="moments-view-panel" role="tabpanel" aria-labelledby={`moments-view-tab-${view}`}>
     {clipsOn && view === 'clips' && NativeClipsLibrary ? <Suspense fallback={null}><NativeClipsLibrary onOpenMoments={() => { changeView('recent'); document.getElementById('moments-view-tab-recent')?.focus() }} /></Suspense> : <>
-    <p className="moments-muted">{explore ? 'Detector-selected moments from indexed completed broadcasts, ordered by observed IRC chat/min. Coverage is partial; this is not a list of all busy Twitch minutes.' : view === 'saved' ? 'Saved in this browser · not synced to the extension or your account.' : historyMode ? 'Recent indexed completed broadcasts with measured IRC activity. Coverage is partial; older days are not a durable archive.' : <>Latest shows up to 10 high-scoring detections from currently live streams, ordered by occurrence time. A detection may be older than the chart range. It leaves out a stream’s first 5 minutes and minutes under 1.2× the stream’s earlier average.{historyAvailable ? <> For earlier broadcasts, open <Link to="/analytics/moments?view=history">History</Link>.</> : null}</>}</p>
+    {/* On phones Latest's explainer is one line, the rest behind 'How it works' (F1, 11-13); wider, it reads as before. */}
+    {!explore && !historyMode && view !== 'saved' ? <p className="moments-muted moments-explainer" data-open={explainerOpen}>
+      <span className="moments-explainer-lead">Latest shows up to 10 high-scoring detections from currently live streams, ordered by occurrence time.</span>
+      <span id="moments-explainer-rest" className="moments-explainer-rest"> A detection may be older than the chart range. It leaves out a stream’s first 5 minutes and minutes under 1.2× the stream’s earlier average.{historyAvailable ? <> For earlier broadcasts, open <Link to="/analytics/moments?view=history">History</Link>.</> : null}</span>
+      <button type="button" className="moments-explainer-toggle" aria-expanded={explainerOpen} aria-controls="moments-explainer-rest" onClick={() => setExplainerOpen(open => !open)}>How it works</button>
+    </p>
+      : <p className="moments-muted">{explore ? 'Detector-selected moments from indexed completed broadcasts, ordered by observed IRC chat/min. Coverage is partial; this is not a list of all busy Twitch minutes.' : view === 'saved' ? savedToAccount ? <>Saved in this browser and your account · <Link to="/account/moments">My Moments</Link></> : 'Saved in this browser · not synced to the extension or your account.' : 'Recent indexed completed broadcasts with measured IRC activity. Coverage is partial; older days are not a durable archive.'}</p>}
     {explore ? <RankedExploreControls params={params} now={certifiedClock} indexedRetentionStart={retention.from} certifiedThroughExclusive={retention.throughExclusive} retentionCheckedAt={retention.checkedAt} data={ranked.data} loading={retention.loading || ranked.loading} retained={ranked.retained || Boolean(rankedValidation)} error={retention.error || rankedValidation || ranked.error} invalid={Boolean(rankedValidation)} notDeployed={retention.notDeployed}
       onChange={(values, options) => { leaveSelection(); keepPlaceFor(options); update({ ...resetSelection, ...values, view: 'explore', sort: 'volume', q: null }, options?.replace ?? false) }}
       onReset={() => { leaveSelection(); setRankedClock(new Date()); setParams({ view: 'explore', period: 'latest', sort: 'volume' }) }}
@@ -928,15 +1077,18 @@ function MomentsWorkspace() {
       onRefresh={() => { if (!chosen) setRankedClock(new Date()); retention.refresh() }} /> : null}
     {/* The games on top, outside the filters so a phone shows them too (M1, 10-22). */}
     {!rankedMode && (games.length > 1 || category) ? <MomentsGameRow games={games} total={collection.length} picked={category} onPick={pickGame} /> : null}
+    {/* While Latest first loads, the games row and filters keep their space (L1, 11-13). */}
+    {view === 'recent' && loadingFirst && !collection.length ? <MomentsTopPlaceholder /> : null}
     {!rankedMode && (collection.length > 0 || displayed.length > 0) ? <>
       <button type="button" className="moments-filter-toggle" aria-expanded={filtersExpanded} aria-controls="moments-filters" onClick={() => setFiltersExpanded(value => !value)}>{filtersExpanded ? 'Hide filters' : hasBrowseFilters ? 'Filters · active' : 'Filters'}</button>
       <div id="moments-filters" className="moments-toolbar">
-        <label>Find in results<input type="search" aria-label="Find loaded moments" placeholder="Creator or reaction" maxLength={200} value={browse.query} onChange={event => updateFilters({ q: event.target.value || null }, true)} /></label>
+        <label>Find in results<input type="search" aria-label="Find loaded moments" placeholder="Creator, game, reaction or emote" maxLength={200} value={browse.query} onChange={event => updateFilters({ q: event.target.value || null }, true)} /></label>
         {!historyMode ? <div className="moments-filter-field"><span>Order</span><MomentSelect aria-label="Sort loaded results" value={browse.order} onValueChange={value => updateFilters({ sort: value === 'newest' ? null : value })}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="category">Category A–Z</option></MomentSelect></div> : null}
         {hasBrowseFilters ? <button type="button" onClick={() => updateFilters({ category: null, game: null, q: null, sort: null })}>Clear filters</button> : null}
       </div>
     </> : null}
-    {view === 'recent' && pendingRecent.length ? <button type="button" data-keeps-selection onClick={() => { setVisibleRecent(uniqueDiscoveryMoments([...presentedRecent, ...pendingRecent, ...recent]).slice(0, 200)); setPendingRecent([]) }}>Show {pendingRecent.length} new moment{pendingRecent.length === 1 ? '' : 's'}</button> : null}
+    {/* Shown, the new rows lead the list: focus goes to its heading, which says how many (J, 11-13). */}
+    {view === 'recent' && pendingRecent.length ? <button type="button" data-keeps-selection onClick={() => { setVisibleRecent(uniqueDiscoveryMoments([...presentedRecent, ...pendingRecent, ...recent]).slice(0, 200)); setPendingRecent([]); requestAnimationFrame(() => resultsRef.current?.focus()) }}>Show {pendingRecent.length} new moment{pendingRecent.length === 1 ? '' : 's'}</button> : null}
     {feed?.banner && view === 'recent' ? <p role="status">{feed.banner}</p> : null}
     {/* Outside the results, whose aria-busy can hold back announcements while a page loads. */}
     <span className="sr-only" aria-live="polite" aria-atomic="true" data-review-announcement="">{reviewAnnouncement && reviewAnnouncement.key === chosen?.key ? reviewAnnouncement.text : ''}</span>
@@ -946,10 +1098,16 @@ function MomentsWorkspace() {
         {/* A selection with no row in the list leads the results, above any loading or
             empty state, so a retrying feed never moves it. */}
         <MomentInlineReveal open={standaloneShown} standalone animate={!swapping} id={DETAIL_ID} onInsidePress={markInsidePress}>{standaloneShown ? detail : null}</MomentInlineReveal>
-        {failure || momentsUnavailable ? <section className="moments-notice" role="status"><h2 ref={noticeOnly ? resultsRef : undefined} tabIndex={noticeOnly ? -1 : undefined}>{momentsUnavailable ? 'Live moments temporarily unavailable' : 'Moments could not be refreshed'}</h2><p>{failure ?? 'The live moments endpoint is unavailable. Aggregate health is still available on Live activity.'}</p><button data-keeps-selection disabled={busy || refreshInFlight} onClick={hub.refresh}>{busy || refreshInFlight ? 'Retrying…' : 'Retry'}</button><Link className="moments-back" to="/analytics">Open live activity →</Link></section> : null}
-        {busy && !displayed.length && !noticeOnly ? <MomentLoadingSkeleton /> : null}
-        {rankedMode ? !busy && !ranked.error && !rankedValidation && ranked.data && !displayed.length ? <p role="status">{rankedEmptyMessage(ranked.data)}</p> : null : view === 'saved' && saved.items.length === 0 && !displayed.length ? <div className="moments-empty-saved"><h3>Keep reactions worth returning to</h3><p>Save a moment to build your shortlist here.</p><button type="button" onClick={() => changeView('recent')}>Find moments to save</button></div> : !busy && !failure && !momentsUnavailable && !displayed.length ? <p role="status">{hasBrowseFilters ? 'No moments match these filters.' : 'No available moments.'}</p> : null}
-        <div className="moments-result-list">
+        {/* Plain words, never the server's (S1, 11-13). */}
+        {failure || momentsUnavailable ? <section className="moments-notice" role="status"><h2 ref={noticeOnly ? resultsRef : undefined} tabIndex={noticeOnly ? -1 : undefined}>Couldn’t load moments.</h2><button ref={retryButton} type="button" data-keeps-selection disabled={retryBusy} onClick={retryFeed}>{retryBusy ? 'Trying again…' : 'Try again'}</button><Link className="moments-back" to="/analytics">Open live activity →</Link></section> : null}
+        {rankedMode ? !busy && !ranked.error && !rankedValidation && ranked.data && !displayed.length ? <p role="status">{rankedEmptyMessage(ranked.data)}</p> : null : view === 'saved' && saved.items.length === 0 && !displayed.length ? <div className="moments-empty-saved"><h3>Keep reactions worth returning to</h3><p>Save a moment to build your shortlist here.</p><button type="button" onClick={() => changeView('recent')}>Find moments to save</button></div> : !busy && !failure && !momentsUnavailable && !displayed.length ? hasBrowseFilters || view !== 'recent' ? <p role="status">{hasBrowseFilters ? 'No moments match these filters.' : 'No available moments.'}</p>
+          // Why it is empty, and where to go next (S1, 11-13).
+          : <div className="moments-empty-live"><p role="status">No big chat reactions in live streams right now. New ones show up here as they happen.</p>
+            <div className="moments-actions"><Link to="/analytics">See live activity</Link>{saved.items.length ? <button type="button" onClick={() => { changeView('saved'); document.getElementById('moments-view-tab-saved')?.focus() }}>Open your saved moments</button> : null}</div></div> : null}
+        <div className="moments-result-list" onClick={rememberLeavingLink}>
+          {/* The placeholders sit in the list's own frame; the first one says when the wait runs long,
+              in its own box, so nothing is covered or moved and the first row lands there (L, round 5 11-13). */}
+          {loadingFirst ? <MomentLoadingSkeleton late={loadingLate} /> : null}
           {profiledResults.map(moment => {
             const rank = rankedMode ? ranked.data?.items.find(item => item.key === moment.key) : undefined
             const open = inlineKey === moment.key

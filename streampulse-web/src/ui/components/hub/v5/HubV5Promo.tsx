@@ -12,6 +12,7 @@
  * in place and plays it once. Desktop and tablet are unchanged.
  */
 import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import blocksCave from '../../../../demo/pictures/blocks-cave.svg'
 import blocksDay from '../../../../demo/pictures/blocks-day.svg'
 import sceneCard from '../../../../demo/pictures/panel-scene-card-2x.webp'
@@ -48,9 +49,8 @@ const MAX_LOOPS = 2
 const PANEL_W = 338
 const JUMP = { x: 58, y: 385 }
 
-function clock(s: number): string {
-  return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-}
+/** The pictured player's clock, h:mm:ss through pulse-core (K1, 11-13). */
+const clock = (s: number) => formatMomentOffset(s)
 
 function chatLine([color, name, says]: readonly [string, string, string | readonly Emote[]]): HTMLElement {
   const line = document.createElement('div')

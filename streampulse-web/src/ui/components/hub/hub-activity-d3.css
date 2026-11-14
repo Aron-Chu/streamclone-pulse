@@ -17,7 +17,8 @@
   --ha-focus: var(--sp-focus, #99f6e4);
   --ha-accent: #5eead4;
   --ha-chat: #a78bfa;
-  --ha-emotes: #f7b645;
+  /* C1 (11-13): the session's green, so emotes keep one colour from the Hub to a session */
+  --ha-emotes: #34d399;
   --ha-viewers: #c0c7ce;
   container: hubact / inline-size;
   position: relative;
@@ -434,3 +435,6 @@
 .hub-act .spc-navslot .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] {
   padding-right: var(--spc-tick);
 }
+
+/* C1 (11-13): SpChart paints its own series on .spc; the Hub's emote line takes the session's green, as .ssc .spc does */
+.hub-act .spc { --sp-emotes: #34d399; }

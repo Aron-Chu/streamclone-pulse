@@ -26,13 +26,13 @@ describe('Games played run times past the data end (fix, 10-30, GP-3)', () => {
     )
     const [chatting, gakuen] = runTimes(container)
     // 10,476 s rounds to 2h 55m; the "+" says the length is not known.
-    expect(gakuen!.textContent).toBe('≈2h 55m+')
+    expect(gakuen!.textContent).toBe('about 2h 55m+')
     expect(gakuen!.getAttribute('title')).toBe('Data ends at 6:35:49; the games list runs past it. Estimated from the stream category.')
     // A game that ended before the data end keeps a plain length.
-    expect(chatting!.textContent).toBe('≈3h 41m')
+    expect(chatting!.textContent).toBe('about 3h 41m')
     expect(chatting!.getAttribute('title')).toBe('Estimated from the stream category.')
     expect(screen.getByRole('listitem', { name: /^Gakuen/ }).getAttribute('aria-label'))
-      .toBe('Gakuen iDOLM@STER · 03:41:13–06:35:49 · about 2h 55m+ · Data ends at 6:35:49; the games list runs past it. Estimated from the stream category.')
+      .toBe('Gakuen iDOLM@STER · 3:41:13–6:35:49 · about 2h 55m+ · Data ends at 6:35:49; the games list runs past it. Estimated from the stream category.')
   })
 
   it('reads a game that ends within two minutes of the data end as ended (the live poll runs to now)', () => {
@@ -41,12 +41,12 @@ describe('Games played run times past the data end (fix, 10-30, GP-3)', () => {
     expect(gamesOpenAtDataEnd(live, 10_734).size).toBe(0)
     expect(gamesOpenAtDataEnd(PAST_GAMES, DATA_END)).toEqual(new Set(['gakuen idolm@ster:13273']))
     const { container } = render(<GamesPlayedStrip games={live} durationSeconds={10_734} dataEndSeconds={10_734} headerless />)
-    expect(runTimes(container).map(el => el.textContent)).toEqual(['≈2h 59m'])
+    expect(runTimes(container).map(el => el.textContent)).toEqual(['about 2h 59m'])
   })
 
   it('without a data end nothing is open', () => {
     const { container } = render(<GamesPlayedStrip games={PAST_GAMES} durationSeconds={DATA_END} headerless />)
-    expect(runTimes(container).map(el => el.textContent)).toEqual(['≈3h 41m', '≈2h 55m'])
+    expect(runTimes(container).map(el => el.textContent)).toEqual(['about 3h 41m', 'about 2h 55m'])
   })
 })
 
@@ -58,7 +58,7 @@ describe('Estimated game switches (fix, 10-30, GP-7)', () => {
     expect(isEstimatedGameSource(undefined)).toBe(false)
   })
 
-  it('prefixes an estimated run time with ≈ and titles it; a stored one stays plain', () => {
+  it('prefixes an estimated run time with "about" and titles it; a stored one stays plain', () => {
     const { container } = render(
       <GamesPlayedStrip
         games={[
@@ -70,7 +70,7 @@ describe('Estimated game switches (fix, 10-30, GP-7)', () => {
       />,
     )
     const [fallback, stored] = runTimes(container)
-    expect(fallback!.textContent).toBe('≈30m')
+    expect(fallback!.textContent).toBe('about 30m')
     expect(fallback!.getAttribute('title')).toBe('Estimated from the stream category.')
     expect(stored!.textContent).toBe('30m')
     expect(stored!.hasAttribute('title')).toBe(false)

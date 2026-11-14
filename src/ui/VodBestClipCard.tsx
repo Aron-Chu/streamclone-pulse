@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import type { VodClipCandidate } from '../types/vodPulseTypes.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { theme } from './theme.ts'
@@ -23,7 +23,7 @@ export function VodBestClipCard({
         ) : null}
         <div style={styles.meta}>
           <strong style={styles.time}>
-            {formatHeatOffset(candidate.offsetSeconds)}
+            {formatMomentOffset(candidate.offsetSeconds)}
             {candidate.durationSeconds ? ` · ${candidate.durationSeconds}s` : ''}
           </strong>
           <span style={styles.label}>{candidate.label}</span>

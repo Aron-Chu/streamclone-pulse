@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HubV5BigMoments, type HubV5BigMomentsProps } from '../src/ui/components/hub/v5/HubV5BigMoments'
+import { bigFrontByEntry } from '../src/ui/components/hub/v5/hubV5BigMomentsModel'
 import type { TopView } from '../src/ui/components/hub/v5/HubV5TopMoments'
 import type { TopGame, TopRowData } from '../src/ui/components/hub/v5/hubV5TopModel'
 
@@ -77,6 +78,7 @@ const reducedMotion = () => vi.spyOn(window, 'matchMedia').mockImplementation((q
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  bigFrontByEntry.clear()
 })
 
 describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
@@ -97,9 +99,14 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
     expect(stage().getAttribute('aria-roledescription')).toBe('carousel')
     expect(slides().map((s) => [s.querySelector('strong')!.textContent, s.dataset.pos])).toEqual([['A', '0'], ['B', '1'], ['A', '2'], ['C', '-1']])
     expect(front().getAttribute('aria-roledescription')).toBe('slide')
-    expect(front().getAttribute('aria-label')).toBe('1 of 4: A, emote spike, 4.2 times usual emotes')
+    expect(front().getAttribute('aria-label')).toBe('1 of 4: A, emote spike, 4.2 times more emotes')
     expect(front().getAttribute('aria-hidden')).toBeNull()
-    expect(within(front()).getByText('Just Chatting · 42 min into the stream')).toBeTruthy()
+    expect(front().querySelector('.hv5-bm-id small')!.textContent).toBe('Just Chatting · about 0:42:00 into broadcast')
+    // 'about' sits in its own quiet span, the time beside it (K1, 11-14)
+    expect(front().querySelector('.hv5-bm-id small .hv5-bm-ab')!.textContent).toBe('about')
+    // the clock is one piece that never shrinks; the game and ' into broadcast' are the parts that give way (11-14)
+    expect(front().querySelector('.hv5-bm-id small .hv5-bm-clk')!.textContent).toBe('about 0:42:00')
+    expect(front().querySelector('.hv5-bm-id small .hv5-bm-gm')!.textContent).toBe('Just Chatting')
     expect(within(front()).getByText('5 min ago')).toBeTruthy()
     expect(within(front()).getByText('300/min')).toBeTruthy()
     expect(within(front()).getByText('60/min')).toBeTruthy()
@@ -111,7 +118,7 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
     }
     expect(count()).toBe('1 / 4')
     expect(dots().map((d) => d.getAttribute('aria-current'))).toEqual(['true', null, null, null])
-    expect(dots().map((d) => d.getAttribute('aria-label'))).toEqual(['A, 4.2×', 'B, 4.2×', 'A, 4.2×', 'C, 4.2×'])
+    expect(dots().map((d) => d.getAttribute('aria-label'))).toEqual(['A, 4.2× more emotes', 'B, 4.2× more emotes', 'A, 4.2× more emotes', 'C, 4.2× more emotes'])
   })
 
   it('links the picked game’s moments while its Moments list is shown, else every game’s', () => {
@@ -165,7 +172,8 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
     expect(slides()).toHaveLength(1)
     expect(screen.queryByRole('button', { name: 'Next moment' })).toBeNull()
     expect(dots()).toHaveLength(0)
-    expect(stage().getAttribute('tabindex')).toBeNull()
+    // no Tab stop of its own, but a peek row's jump can still put focus on it (HUB-LIVE-6)
+    expect(stage().getAttribute('tabindex')).toBe('-1')
     expect(track().getAttribute('aria-live')).toBe('polite')
     fireEvent.keyDown(stage(), { key: 'ArrowRight' })
     expect(frontName()).toBe('A')
@@ -199,7 +207,7 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
     expect(frontName()).toBe('B')
     fireEvent.click(screen.getByRole('button', { name: 'Previous moment' }))
     expect(frontName()).toBe('A')
-    fireEvent.click(screen.getByRole('button', { name: 'C, 4.2×' }))
+    fireEvent.click(screen.getByRole('button', { name: 'C, 4.2× more emotes' }))
     expect(frontName()).toBe('C')
     expect(dots().map((d) => [d.getAttribute('aria-current'), d.classList.contains('hv5-bm-done')])).toEqual([[null, true], [null, true], ['true', false]])
   })
@@ -433,5 +441,14 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
     expect(section()!.querySelector('.hv5-bm')).toBeNull()
     rerender(ui(abc()))
     expect(frontName()).toBe('A')
+  })
+})
+
+describe('the New tag (R1, 11-13)', () => {
+  it('marks only the cards the last refresh brought', () => {
+    render(ui(abc(), null, { fresh: new Set(['m-b']) }))
+    expect(slide('b').querySelector('.hv5-new')!.textContent).toBe('New')
+    expect(slide('a').querySelector('.hv5-new')).toBeNull()
+    expect(slide('c').querySelector('.hv5-new')).toBeNull()
   })
 })

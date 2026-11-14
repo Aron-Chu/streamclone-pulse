@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useReducedMotion } from './motion/useReducedMotion.ts'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import {
   buildGamesPlayedTimelineSlots,
   gameSegmentKey,
@@ -157,7 +157,7 @@ function formatStreamDuration(durationSeconds: number): string {
 }
 
 function formatWindowLabel(startOffset: number, endOffset: number): string {
-  return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${formatStreamDuration(endOffset - startOffset)}`
+  return `${formatMomentOffset(startOffset)}–${formatMomentOffset(endOffset)} · ${formatStreamDuration(endOffset - startOffset)}`
 }
 
 function GameArt({

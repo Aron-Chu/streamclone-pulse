@@ -1,5 +1,14 @@
 import { useMemo, type MouseEvent, type ReactNode } from 'react'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import {
+  formatMomentClock,
+  formatMomentOffset,
+  momentClockDisplay,
+  streamEdgeKind,
+  streamEdgeLabel,
+  type MomentClockDisplay,
+  type ReactionIdentityFields,
+  type StreamEdges,
+} from '@streampulse/pulse-core'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseRecapEmote, PulseStreamRecap } from '../../apiTypes.ts'
 import {
   resolveRecapBurstHighlight,
@@ -20,6 +29,7 @@ export function StreamRecapPanel({
   vodDurationSeconds,
   onJumpToOffset,
   onPreviewOffset,
+  streamEdges,
 }: {
   recap: PulseStreamRecap
   topEmotesCatalog?: AnalyticsTopEmote[]
@@ -32,7 +42,13 @@ export function StreamRecapPanel({
   vodDurationSeconds?: number | null
   onJumpToOffset?: (offsetSeconds: number) => void
   onPreviewOffset?: (offsetSeconds: number | null) => void
+  /** The session's stream edges (sessionStreamEdges): a figure there keeps its place and gets a quiet tag (E1, 11-13). */
+  streamEdges?: StreamEdges
 }) {
+  const edgeTag = (offsetSeconds: number) => {
+    const kind = streamEdges ? streamEdgeKind(streamEdges, offsetSeconds) : undefined
+    return kind ? streamEdgeLabel(kind) : null
+  }
   const topMoments = recap.topMoments ?? []
   const topEmotes = useMemo(
     () => resolveRecapDisplayEmotes(recap.topEmotes ?? [], topEmotesCatalog, 10),
@@ -55,6 +71,14 @@ export function StreamRecapPanel({
   const burstOffsetSeconds =
     burstHighlight?.offsetSeconds ?? recap.funniestEmoteBurst?.offsetSeconds ?? 0
   const canJump = Boolean(onJumpToOffset)
+  // Round 2: the figures follow the list, cards and pins (K1, 11-13). A minute-only time reads with a quiet "about";
+  // an onset the payload carries at second precision stays exact. The fields pass through as the backend sent them.
+  const spikeFields: ReactionIdentityFields | null = recap.biggestChatSpike ? { ...recap.biggestChatSpike } : null
+  const burstFields: ReactionIdentityFields | null = recap.funniestEmoteBurst
+    ? burstOffsetSeconds === recap.funniestEmoteBurst.offsetSeconds
+      ? { ...recap.funniestEmoteBurst }
+      : { offsetSeconds: burstOffsetSeconds } // the busiest rollup minute: minute-only
+    : null
 
   // No totals, no highlight rows and no emotes: the card would be a bare title. Its moments are not listed here (the
   // Pulse Moments list below has them), so a recap with moments only draws no card either.
@@ -109,7 +133,9 @@ export function StreamRecapPanel({
               offsetSeconds={recap.biggestChatSpike.offsetSeconds}
               onJumpToOffset={onJumpToOffset}
               onPreviewOffset={onPreviewOffset}
-              ariaLabel={`Biggest spike at ${formatRecapOffset(recap.biggestChatSpike.offsetSeconds)}${
+              ariaLabel={`Biggest spike at ${formatMomentClock(spikeFields!)}${
+                edgeTag(recap.biggestChatSpike.offsetSeconds) ? `, ${edgeTag(recap.biggestChatSpike.offsetSeconds)}` : ''
+              }${
                 recap.biggestChatSpike.chatPerMin != null ? `, ${count(recap.biggestChatSpike.chatPerMin)} chat messages a minute` : ''
               }`}
               vodLink={(
@@ -125,11 +151,13 @@ export function StreamRecapPanel({
                 Biggest spike at{' '}
                 <RecapOffsetTimestamp
                   offsetSeconds={recap.biggestChatSpike.offsetSeconds}
+                  clock={momentClockDisplay(spikeFields!)}
                   vodId={vodId}
                   vodAlignSeconds={vodAlignSeconds}
                   vodDurationSeconds={vodDurationSeconds}
                   plain={canJump}
                 />
+                <RecapEdgeTag label={edgeTag(recap.biggestChatSpike.offsetSeconds)} />
               </span>
               {recap.biggestChatSpike.chatPerMin != null ? (
                 <>{' · '}<span className="whitespace-nowrap">{count(recap.biggestChatSpike.chatPerMin)} chat/min</span></>
@@ -142,7 +170,9 @@ export function StreamRecapPanel({
               offsetSeconds={burstOffsetSeconds}
               onJumpToOffset={onJumpToOffset}
               onPreviewOffset={onPreviewOffset}
-              ariaLabel={`Emote burst at ${formatRecapOffset(burstOffsetSeconds)}${burstCode ? `, ${burstCode}` : ''}${
+              ariaLabel={`Emote burst at ${formatMomentClock(burstFields!)}${
+                edgeTag(burstOffsetSeconds) ? `, ${edgeTag(burstOffsetSeconds)}` : ''
+              }${burstCode ? `, ${burstCode}` : ''}${
                 burstCount != null ? `, ${count(burstCount)} uses` : ''
               }`}
               vodLink={(
@@ -158,11 +188,13 @@ export function StreamRecapPanel({
                 Emote burst at{' '}
                 <RecapOffsetTimestamp
                   offsetSeconds={burstOffsetSeconds}
+                  clock={momentClockDisplay(burstFields!)}
                   vodId={vodId}
                   vodAlignSeconds={vodAlignSeconds}
                   vodDurationSeconds={vodDurationSeconds}
                   plain={canJump}
                 />
+                <RecapEdgeTag label={edgeTag(burstOffsetSeconds)} />
               </span>
               {/* Same source as the time: the rollup peak may replace the
                   backend burst when it is bigger. */}
@@ -197,6 +229,12 @@ export function StreamRecapPanel({
           four places at once. */}
     </section>
   )
+}
+
+/** The quiet "Stream start" / "Stream end" tag beside a recap figure in a stream's edge (E1, 11-13). */
+function RecapEdgeTag({ label }: { label: string | null }) {
+  if (!label) return null
+  return <span className="ml-1.5 font-normal text-zinc-400" data-stream-recap-edge>{label}</span>
 }
 
 function RecapHighlightButton({
@@ -280,24 +318,33 @@ function RecapVodLink({
 /** Cyan offset — Twitch VOD deep link when vodId is known. */
 export function RecapOffsetTimestamp({
   offsetSeconds,
+  clock,
   vodId,
   vodAlignSeconds,
   vodDurationSeconds,
   plain = false,
 }: {
   offsetSeconds: number
+  /** The figure's clock (momentClockDisplay): a minute-only time gets the quiet "about" before it (round 2). */
+  clock?: MomentClockDisplay
   vodId?: string
   vodAlignSeconds?: number | null
   vodDurationSeconds?: number | null
   /** Text only, for use inside a button; the VOD link is rendered beside it. */
   plain?: boolean
 }) {
-  const label = formatRecapOffset(offsetSeconds)
+  const label = clock?.text ?? formatRecapOffset(offsetSeconds)
   const href = plain ? undefined : recapVodHref(offsetSeconds, vodId, vodAlignSeconds, vodDurationSeconds)
+  // The quiet "about" matches the panel's edge tag (normal weight, zinc-400) and stays outside the time and its link.
+  const about = clock?.approximate
+    ? <><span className="font-normal text-zinc-400" data-stream-recap-about>about</span>{' '}</>
+    : null
   if (!href) {
-    return <strong className="font-bold tabular-nums text-cyan-200">{label}</strong>
+    return <>{about}<strong className="font-bold tabular-nums text-cyan-200">{label}</strong></>
   }
   return (
+    <>
+    {about}
     <a
       href={href}
       target="_blank"
@@ -309,12 +356,13 @@ export function RecapOffsetTimestamp({
     >
       {label}
     </a>
+    </>
   )
 }
 
-/** The recap's time label, as the mockup prints it: hours unpadded (6:28:00). */
+/** The recap's time label: pulse-core's one session clock, hours unpadded (6:28:00; K1, 11-13). */
 export function formatRecapOffset(offsetSeconds: number): string {
-  return formatHeatOffset(offsetSeconds).replace(/^0(?=\d:)/, '')
+  return formatMomentOffset(offsetSeconds)
 }
 
 function RecapEmoteChip({ emote }: { emote: PulseRecapEmote }) {

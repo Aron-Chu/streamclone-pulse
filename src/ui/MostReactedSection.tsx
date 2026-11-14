@@ -24,6 +24,7 @@ import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
 import { TopMomentCard } from './TopMomentCard.tsx'
 import { theme } from './theme.ts'
+import type { JumpResult } from './jumpMomentAction.ts'
 
 export interface MostReactedSectionProps {
   payload: PulsePayload
@@ -32,7 +33,7 @@ export interface MostReactedSectionProps {
   pinnedOffsetSeconds?: number | null
   chartMinuteSelection?: ExtensionRollup | null
   onJump: (point: LiveHeatPoint) => void
-  onJumpToOffset?: (offsetSeconds: number) => void
+  onJumpToOffset?: (offsetSeconds: number) => JumpResult
   onAnalytics: (point: LiveHeatPoint) => void
   onAnalyticsAtOffset?: (offsetSeconds: number) => void
   onHighlightOffset?: (offsetSeconds: number | null) => void
@@ -44,11 +45,6 @@ export interface MostReactedSectionProps {
   onPinOffset?: (offsetSeconds: number | null) => void
   hasVodContext?: boolean
   demoMode?: boolean
-}
-
-function resolveJumpLabel(payload: PulsePayload, hasVodContext?: boolean): string {
-  if (hasVodContext || payload.vodId) return 'Jump in VOD'
-  return 'Jump in player'
 }
 
 export function MostReactedSection({
@@ -129,7 +125,7 @@ export function MostReactedSection({
               label="Sort"
               value={sortMode}
               options={MOMENT_SORT_OPTIONS}
-              ariaLabel="Sort most reacted moments"
+              ariaLabel="Sort top moments"
               disabled={demoMode}
               onChange={setSortMode}
             />
@@ -164,7 +160,7 @@ export function MostReactedSection({
           id={cardId}
           point={cardPoint}
           backendUrl={backendUrl}
-          jumpLabel={resolveJumpLabel(payload, hasVodContext)}
+          jumpLabel={hasVodContext || payload.vodId ? 'Jump in VOD' : undefined}
           onJump={next => onJumpToOffset?.(reactionAnalyticalOffset(next))}
           onAnalytics={next => onAnalyticsAtOffset?.(reactionAnalyticalOffset(next))}
           onClear={() => onPinOffset?.(null)}

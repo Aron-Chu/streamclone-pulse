@@ -1,3 +1,4 @@
+import { STREAM_OPENING_EDGE_SECONDS, formatLiftRatio } from '@streampulse/pulse-core'
 import type { DiscoveryMoment } from './discoveryMoments'
 import { isExactCategoryBoxArt } from './momentCategoryArtwork'
 import { loadedCategories } from '../ui/components/moments/MomentCategoryBrowser'
@@ -9,7 +10,7 @@ import { loadedCategories } from '../ui/components/moments/MomentCategoryBrowser
  * earlier average on both chat and emotes ("0.41× Emote spike"). A row with
  * no comparison stays: there is nothing to judge it by.
  */
-export const MOMENTS_START_SECONDS = 5 * 60
+export const MOMENTS_START_SECONDS = STREAM_OPENING_EDGE_SECONDS
 export const MOMENTS_MIN_X = 1.2
 
 /** The strongest ready × (chat or emotes), or null when the hub sent no comparison to judge by. */
@@ -43,8 +44,8 @@ export function momentLiftLine(moment: Pick<DiscoveryMoment, 'comparison' | 'rea
   for (const [what, metric] of order) {
     // "1.0× more" would claim a rise that rounds away; such a minute keeps the plain summary.
     if (metric?.state !== 'ready' || metric.multiplier == null || !Number.isFinite(metric.multiplier) || metric.multiplier < 1.05) continue
-    // 9.95–9.99 rounds to ten, so it reads "10×", not "10.0×"
-    return { x: `${metric.multiplier.toFixed(metric.multiplier >= 9.95 ? 0 : 1)}×`, what }
+    // pulse-core's strength figure (Z06, 11-13)
+    return { x: `${formatLiftRatio(metric.multiplier)}×`, what }
   }
   return null
 }
