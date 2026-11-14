@@ -175,7 +175,7 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     const many = [moment(3054, 56), moment(3060, 50), moment(3070, 40), moment(3080, 30)].map((m, i) => ({ rank: i + 1, moment: m }))
     const { rerender } = renderStrip({ barMoments: many, onLockMoment, onClear, onShowMoreMoments })
     await act(async () => {})
-    fireEvent.click(screen.getByRole('button', { name: 'Moment 2 at 0:51:00, Emote spike · score 50' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Moment 2 at about 0:51:00, Emote spike · score 50' }))
     expect(onLockMoment).toHaveBeenCalledWith(3060)
     fireEvent.click(screen.getByRole('button', { name: '1 more' }))
     expect(onShowMoreMoments).toHaveBeenCalledTimes(1)
@@ -233,6 +233,83 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     cleanup()
     renderStrip()
     expect(screen.queryByRole('button', { name: 'Zoom to bucket' })).toBeNull()
+  })
+
+  // B1 (11-13, SESSION-MOMENTS-1): what opened the details gets focus back when they close
+  function opener(offset?: string) {
+    const button = document.createElement('button')
+    button.textContent = 'Moment 1 card'
+    if (offset) button.setAttribute('data-moment-offset', offset)
+    document.body.appendChild(button)
+    button.focus()
+    return button
+  }
+
+  it('B1: gives focus back to the card that opened the details when they close', async () => {
+    const card = opener()
+    const { unmount } = renderStrip()
+    await act(async () => {})
+    // details in view (jsdom lays nothing out): focus stays on the card (J1)
+    expect(document.activeElement).toBe(card)
+    screen.getByRole('button', { name: 'Clear selected moment' }).focus()
+    unmount()
+    expect(document.activeElement).toBe(card)
+    card.remove()
+  })
+
+  it('B1: falls back to the Moments row for the same moment when the opener is gone', async () => {
+    const card = opener('3054')
+    const { unmount } = renderStrip()
+    await act(async () => {})
+    card.remove()
+    const row = document.createElement('button')
+    row.setAttribute('data-moment-row', '')
+    row.setAttribute('data-moment-offset', '3054')
+    document.body.appendChild(row)
+    unmount()
+    expect(document.activeElement).toBe(row)
+    row.remove()
+  })
+
+  it('B1: leaves focus alone when it already moved on outside the details', async () => {
+    const card = opener()
+    const { unmount } = renderStrip()
+    await act(async () => {})
+    const elsewhere = document.createElement('input')
+    document.body.appendChild(elsewhere)
+    elsewhere.focus()
+    unmount()
+    expect(document.activeElement).toBe(elsewhere)
+    card.remove()
+    elsewhere.remove()
+  })
+
+  it('J1: details that open fully off the screen scroll into view and take focus (SESSION-MOMENTS-2)', async () => {
+    const scrollBy = vi.fn()
+    window.scrollBy = scrollBy as unknown as typeof window.scrollBy
+    const below = window.innerHeight + 400
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const r = (top: number, height: number) =>
+        ({ top, height, bottom: top + height, left: 0, right: 300, width: 300, x: 0, y: top, toJSON: () => ({}) }) as DOMRect
+      return this.classList.contains('bkc--below') ? r(below, 300) : r(0, 0)
+    })
+    const card = opener()
+    const { container } = renderStrip()
+    await act(async () => {})
+    expect(scrollBy).toHaveBeenCalledWith({ top: below - 8, behavior: 'auto' })
+    expect(document.activeElement).toBe(container.querySelector('.bkc--below'))
+    card.remove()
+  })
+
+  it("G1: a card's Play starts the details player at the moment's lead-in, only for the locked moment (SESSION-MOMENTS-3)", async () => {
+    const { container, rerender } = renderStrip({ playRequest: { offsetSeconds: 3060, token: 1 } })
+    await act(async () => {})
+    expect(container.querySelector('iframe')).toBeNull()
+    rerender(stripEl({ playRequest: { offsetSeconds: 3054, token: 2 } }))
+    await act(async () => {})
+    expect(container.querySelectorAll('iframe')).toHaveLength(1)
+    expect(container.querySelector('iframe')?.getAttribute('src'))
+      .toBe(`https://player.twitch.tv/?video=v${VOD}&time=50m39s&parent=localhost&autoplay=true`)
   })
 
   it('enters with motion only, and scrolls only so far that the plot stays in view', async () => {

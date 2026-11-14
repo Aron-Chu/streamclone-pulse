@@ -24,6 +24,14 @@ describe('resolveEmoteImageUrl', () => {
     expect(resolveEmoteImageUrl({ provider: '7tv', id: 'Clap', imageUrl: '/emotes/Clap/1x.webp' })).toBe('')
     expect(getEmoteImageUrl({ key: '7tv:Clap:Clap' })).toBeUndefined()
   })
+
+  it('builds BTTV and FFZ CDN paths only from real ids, never from a name (SESSION-MOMENTS-6)', () => {
+    expect(resolveEmoteImageUrl({ provider: 'bttv', id: '5e76d338d6581c3724c0f0b2' }))
+      .toBe('https://cdn.betterttv.net/emote/5e76d338d6581c3724c0f0b2/3x')
+    expect(resolveEmoteImageUrl({ provider: 'bttv', id: 'catJAM' })).toBe('')
+    expect(resolveEmoteImageUrl({ provider: 'ffz', id: '12345' })).toBe('https://cdn.frankerfacez.com/emoticon/12345/4')
+    expect(resolveEmoteImageUrl({ provider: 'ffz', id: 'OMEGALUL' })).toBe('')
+  })
 })
 
 describe('emoteDisplaySources', () => {

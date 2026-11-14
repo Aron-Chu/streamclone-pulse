@@ -50,8 +50,9 @@ import type {
 import type { ReplayHeatmapPoint } from '../../types/heatmap.ts'
 import {
   momentRowClock,
+  momentRowEdgeLabel,
   momentRowGameAt,
-  momentRowHms,
+  momentRowMomentClock,
   momentRowNamesNotCaptured,
   momentRowRate,
   momentRowReasonLabel,
@@ -265,11 +266,14 @@ export function SessionRecapMomentsStrip({
       const { exact, fromRecap, emotes } = stripMomentEmotes({ moment, rollups, streamStartedAt, topEmotesCatalog })
       const rawScore = moment.reactionScore ?? moment.score
       const game = momentRowGameAt(games, offsetSeconds)
+      const clock = momentRowMomentClock(moment)
       return {
         key: `${offsetSeconds}:${moment.score}:${index}`,
         rank: index + 1,
         offsetSeconds,
-        offsetLabel: momentRowHms(offsetSeconds),
+        offsetLabel: clock.text,
+        approximate: clock.approximate,
+        edgeLabel: momentRowEdgeLabel(moment, streamEdges),
         clockLabel: momentRowClock(streamStartedAt, offsetSeconds),
         reasonLabel,
         reasonTone: momentRowReasonTone(reasonLabel),
@@ -290,7 +294,7 @@ export function SessionRecapMomentsStrip({
         snapshotOnly: !exact,
       }
     }),
-  [visibleMoments, offsets, rollups, streamStartedAt, topEmotesCatalog, games])
+  [visibleMoments, offsets, rollups, streamStartedAt, topEmotesCatalog, games, streamEdges])
 
   // ---- the reel: the top three as pictures (strip mode only) ----
   const reelOn = reel && lockMode === 'strip'

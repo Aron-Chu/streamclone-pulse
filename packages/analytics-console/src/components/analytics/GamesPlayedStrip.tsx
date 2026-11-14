@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import {
   buildGamesPlayedTimelineSlots,
   gameSegmentKey,
@@ -62,9 +62,9 @@ export function gamesOpenAtDataEnd(
   return open
 }
 
-/** (fix, 10-30) GP-3 / GP-7: "≈2h 55m+", about when estimated, "+" when the data ends first. */
+/** (fix, 10-30) GP-3 / GP-7: "about 2h 55m+", about when estimated, "+" when the data ends first (the word, not the sign: round 2). */
 function runTimeText(seconds: number, estimated: boolean, open: boolean): string {
-  return `${estimated ? '≈' : ''}${formatRunTime(seconds)}${open ? '+' : ''}`
+  return `${estimated ? 'about ' : ''}${formatRunTime(seconds)}${open ? '+' : ''}`
 }
 
 function runTimeNote(estimated: boolean, openAtSeconds: number | null): string {
@@ -128,7 +128,7 @@ function formatWindowLabel(
 ): string {
   const span = Math.max(0, endOffset - startOffset)
   const run = rounded ? formatRunTime(span) : formatStreamDuration(span)
-  return `${formatHeatOffset(startOffset)}–${formatHeatOffset(endOffset)} · ${estimated ? 'about ' : ''}${run}${open ? '+' : ''}`
+  return `${formatMomentOffset(startOffset)}–${formatMomentOffset(endOffset)} · ${estimated ? 'about ' : ''}${run}${open ? '+' : ''}`
 }
 
 function countHiddenAhead(node: HTMLDivElement, total: number): number {

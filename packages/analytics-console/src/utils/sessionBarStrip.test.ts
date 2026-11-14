@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { streamEdgesFor } from '@streampulse/pulse-core'
 import type { AnalyticsMinuteRollup, PulseRecapMoment } from '../apiTypes.ts'
 import type { VodLinkState } from './twitchVodUrl.ts'
 import {
@@ -119,7 +120,7 @@ describe('buildSessionBarStrip', () => {
     const no7tv = rows.map((row) => ({ ...row, seventvEmoteCount: 0 }))
     expect(buildSessionBarStrip({ ...base, span: { startSec: 3054, endSec: 3114, levelMinutes: 1 }, rollups: no7tv, moments: [] }).providers).toBeNull()
     expect(m.category).toEqual({ name: 'Grand Theft Auto V', artUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/32982_IGDB-144x192.jpg' })
-    expect(m.moments.map((x) => [x.rank, x.offsetLabel, x.label, x.locked])).toEqual([[1, '0:50:54', 'Emote spike · score 56', true]])
+    expect(m.moments.map((x) => [x.rank, x.offsetLabel, x.label, x.locked])).toEqual([[1, '0:50:00', 'Emote spike · score 56', true]])
     expect(m.moments[0]!.topEmote).toMatchObject({ code: 'HUH', count: 56 })
     // 0:50:54 on the stream = 0:50:49 on the VOD, minus the 10 s lead-in
     expect(m.vod).toMatchObject({
@@ -134,6 +135,17 @@ describe('buildSessionBarStrip', () => {
       frameVodOffset: 3079,
     })
     expect(JSON.stringify(m)).not.toMatch(/usual/)
+  })
+
+  it('tags a closing-edge moment the backend did not flag from the page stream edges (E1, round 2)', () => {
+    const span = { startSec: 3054, endSec: 3114, levelMinutes: 1 }
+    const one = { ...base, span, rollups: [minute(2994), minute(3054), minute(3114)], moments: [{ rank: 1, moment: moment(3054, 56) }] }
+    // without the page's edges only the opening edge is known
+    expect(buildSessionBarStrip(one).moments[0]!.edgeLabel).toBeNull()
+    // the stream ended with data to 0:55:00: the last 10 minutes are the closing edge
+    expect(buildSessionBarStrip({ ...one, streamEdges: streamEdgesFor(3300, true) }).moments[0]!.edgeLabel).toBe('Stream end')
+    // a stream still live has no closing edge yet
+    expect(buildSessionBarStrip({ ...one, streamEdges: streamEdgesFor(3300, false) }).moments[0]!.edgeLabel).toBeNull()
   })
 
   it('a bar without a moment plays from its own start, without lead-in', () => {

@@ -28,9 +28,9 @@ describe('StreamRecapPanel emote burst row', () => {
       element.textContent?.includes('Emote burst at') && !element.querySelector('div, button'))!
     expect(row).toBeTruthy()
     const text = row.textContent!.replace(/\s+/g, ' ')
-    // One row (d3-v2 session-original): "Emote burst at 3:00:00 [chip]". The
-    // chip and the time both describe the rollup peak (xqcL, 534 at 3:00:00).
-    expect(text).toContain('Emote burst at 3:00:00')
+    // One row (d3-v2 session-original): "Emote burst at about 3:00:00 [chip]". The
+    // chip and the time both describe the rollup peak (xqcL, 534 at 3:00:00), a minute-only time.
+    expect(text).toContain('Emote burst at about 3:00:00')
     const chip = row.querySelector('[data-stream-recap-burst-chip]')!
     expect(chip).toBeTruthy()
     expect(chip.textContent).toContain('xqcL')
@@ -56,11 +56,11 @@ describe('StreamRecapPanel emote burst row', () => {
         onJumpToOffset={onJump}
       />,
     )
-    const spike = screen.getByRole('button', { name: 'Biggest spike at 5:18:00, 757 chat messages a minute' })
-    expect(spike.textContent!.replace(/\s+/g, ' ')).toBe('Biggest spike at 5:18:00 · 757 chat/min')
-    const burst = screen.getByRole('button', { name: 'Emote burst at 6:28:00, BAND, 402 uses' })
+    const spike = screen.getByRole('button', { name: 'Biggest spike at about 5:18:00, 757 chat messages a minute' })
+    expect(spike.textContent!.replace(/\s+/g, ' ')).toBe('Biggest spike at about 5:18:00 · 757 chat/min')
+    const burst = screen.getByRole('button', { name: 'Emote burst at about 6:28:00, BAND, 402 uses' })
     // The chip's letter fallback (no image URL here) is part of its text.
-    expect(burst.textContent!.replace(/\s+/g, ' ')).toMatch(/^Emote burst at 6:28:00 B?BAND402$/)
+    expect(burst.textContent!.replace(/\s+/g, ' ')).toMatch(/^Emote burst at about 6:28:00 B?BAND402$/)
     // The VOD link sits beside each row, not inside the button.
     const vodLinks = [...container.querySelectorAll<HTMLAnchorElement>('[data-stream-recap-row] > a')]
     expect(vodLinks.map(link => link.textContent)).toEqual(['VOD ↗', 'VOD ↗'])
@@ -85,9 +85,42 @@ describe('StreamRecapPanel emote burst row', () => {
       />,
     )
     const text = container.textContent!.replace(/\s+/g, ' ')
-    expect(text).toContain('Emote burst at 0:10:00')
+    expect(text).toContain('Emote burst at about 0:10:00')
     const chip = container.querySelector('[data-stream-recap-burst-chip]')!
     expect(chip.textContent).toContain('catPls')
     expect(chip.textContent).toContain('493')
+  })
+
+  // Round 2: the list's minute-only rule. "about" is a quiet span outside the time; an exact onset stays exact.
+  it('writes a quiet about before a minute-only figure and keeps an exact onset exact', () => {
+    const { container } = render(
+      <StreamRecapPanel
+        recap={{
+          streamId: 's1',
+          totalMessages: 1000,
+          biggestChatSpike: { offsetSeconds: 1200, chatPerMin: 757 },
+          funniestEmoteBurst: {
+            offsetSeconds: 2400, code: 'BAND', count: 402, reactionOnsetOffsetSeconds: 2413, precisionSeconds: 1,
+          } as never,
+        }}
+        streamStartedAt={streamStartedAt}
+        vodId="2899924626"
+        vodAlignSeconds={0}
+        vodDurationSeconds={40_000}
+        onJumpToOffset={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Biggest spike at about 0:20:00, 757 chat messages a minute' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Emote burst at 0:40:13, BAND, 402 uses' })).toBeTruthy()
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-stream-recap-row]')]
+    const spikeRow = rows.find(row => row.textContent!.includes('Biggest spike'))!
+    const about = spikeRow.querySelector('[data-stream-recap-about]')!
+    expect(about.textContent).toBe('about')
+    expect(about.className).toContain('font-normal')
+    expect(spikeRow.querySelector('strong')!.textContent).toBe('0:20:00')
+    expect(spikeRow.textContent!.replace(/\s+/g, ' ')).toContain('Biggest spike at about 0:20:00')
+    const burstRow = rows.find(row => row.textContent!.includes('Emote burst'))!
+    expect(burstRow.querySelector('[data-stream-recap-about]')).toBeNull()
+    expect(burstRow.textContent!.replace(/\s+/g, ' ')).toContain('Emote burst at 0:40:13')
   })
 })

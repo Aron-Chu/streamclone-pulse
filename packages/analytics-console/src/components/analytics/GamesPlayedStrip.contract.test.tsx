@@ -125,7 +125,7 @@ describe('GamesPlayedStrip live versus offline contract', () => {
     // 40.5 min rounds up; 35,700 s is 9h 55m.
     expect(runTimes).toEqual(['41m', '9h 55m'])
     expect(screen.getByRole('listitem', { name: /^Grand Theft Auto V/ }).getAttribute('aria-label'))
-      .toBe('Grand Theft Auto V · 00:40:30–10:35:30 · 9h 55m')
+      .toBe('Grand Theft Auto V · 0:40:30–10:35:30 · 9h 55m')
   })
 
   it('is fully expanded with no range toggle for VOD/offline visibleRange=null', () => {
@@ -163,11 +163,11 @@ describe('GamesPlayedStrip live versus offline contract', () => {
       expect.stringContaining('VALORANT'),
     ])
 
-    const firstArt = screen.getByRole('button', { name: /Just Chatting.*00:00:00/i }).querySelector('img')
+    const firstArt = screen.getByRole('button', { name: /Just Chatting.*· 0:00:00/i }).querySelector('img')
     const minecraftArt = screen.getByRole('button', { name: /Minecraft/i }).querySelector('img')
     expect(firstArt?.getAttribute('src')).toContain('static-cdn.jtvnw.net')
     expect(minecraftArt?.getAttribute('src')).toContain('static-cdn.jtvnw.net')
-    expect(screen.getByRole('button', { name: /Just Chatting.*00:10:00/i }).querySelector('img')?.getAttribute('src')).toContain('509658-144x192.jpg')
+    expect(screen.getByRole('button', { name: /Just Chatting.*· 0:10:00/i }).querySelector('img')?.getAttribute('src')).toContain('509658-144x192.jpg')
     expect(screen.getByRole('button', { name: /VALORANT/i }).querySelector('img')?.getAttribute('src'))
       .toBe('https://static-cdn.jtvnw.net/ttv-boxart/VALORANT-144x192.jpg')
 
@@ -192,7 +192,7 @@ describe('GamesPlayedStrip live versus offline contract', () => {
     const details = document.querySelector('[data-games-played-details]')
     expect(details).not.toBeNull()
     expect(details?.textContent).toContain('Minecraft')
-    expect(details?.textContent).toContain('00:05:00')
+    expect(details?.textContent).toContain('0:05:00')
     expect(details?.textContent).toMatch(/pinned/i)
     expect(details?.querySelector('img')).toBeNull()
   })

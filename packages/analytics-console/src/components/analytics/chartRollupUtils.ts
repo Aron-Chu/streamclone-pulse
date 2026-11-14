@@ -1,5 +1,5 @@
 import type { AnalyticsMinuteRollup } from '../../api.ts'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 
 export function count(value: number | null | undefined) {
   if (value === null || value === undefined) return '-'
@@ -15,7 +15,7 @@ export function clock(value?: string) {
   return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-/** VOD offset from stream start (00:00:00 at startedAt). Falls back to local clock when start is unknown. */
+/** VOD offset from stream start (0:00:00 at startedAt, K1 11-13). Falls back to local clock when start is unknown. */
 export function vodClock(minuteTs?: string, startedAt?: string): string {
   if (!minuteTs) return '-'
   if (!startedAt) return clock(minuteTs)
@@ -23,7 +23,7 @@ export function vodClock(minuteTs?: string, startedAt?: string): string {
   const minuteMs = new Date(minuteTs).getTime()
   if (!Number.isFinite(startMs) || !Number.isFinite(minuteMs)) return clock(minuteTs)
   const offsetSeconds = Math.max(0, Math.floor((minuteMs - startMs) / 1000))
-  return formatHeatOffset(offsetSeconds)
+  return formatMomentOffset(offsetSeconds)
 }
 
 export function formatVodClock(sec?: number) {

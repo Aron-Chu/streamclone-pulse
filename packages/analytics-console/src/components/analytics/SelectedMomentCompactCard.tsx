@@ -15,7 +15,7 @@
  * Styles: WEB/src/ui/charts/sp-session-strip.css.
  */
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { recapMomentAnalyticalOffset } from '@streampulse/pulse-core'
+import { recapMomentAnalyticalOffset, type StreamEdges } from '@streampulse/pulse-core'
 import { useConsoleMotion } from '../../hooks/useConsoleMotion.ts'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseRecapMoment } from '../../apiTypes.ts'
 import type { ReplayHeatmapDetailPoint, ReplayHeatmapPoint } from '../../types/heatmap.ts'
@@ -76,6 +76,13 @@ export interface SelectedMomentCompactCardProps {
   onShowMoreMoments?: () => void
   /** "Zoom to bucket". */
   onZoomToBar?: () => void
+  /**
+   * A moment card's Play was pressed (G1, 11-13): the details player starts at the moment's lead-in. The page
+   * passes it only while it names the locked moment; each press is a new token.
+   */
+  playRequest?: { offsetSeconds: number; token: number } | null
+  /** The page's stream edges (the Moments list's), so a closing-edge row says "Stream end" (E1, round 2). */
+  streamEdges?: StreamEdges
 }
 
 const ICON = {
@@ -100,6 +107,12 @@ function BoxArt({ src, onFail }: { src: string | null; onFail: (src: string) => 
   )
 }
 
+/** 'emotes/min' may break after the slash on a 320 px phone rather than cut (SESSION-MOMENTS-5). */
+function slashBreak(label: string) {
+  const parts = label.split('/')
+  return parts.map((part, i) => (i === 0 ? part : <span key={i}>/<wbr />{part}</span>))
+}
+
 function Figures({ model }: { model: SessionBarStripModel }) {
   return (
     <div className="bkc-fg">
@@ -107,7 +120,7 @@ function Figures({ model }: { model: SessionBarStripModel }) {
         {model.figures.map((fig) => (
           <div key={fig.key} className="bkc-fig" title={fig.tip ?? undefined} data-strip-figure={fig.key}>
             <span className={`bkc-n${fig.value == null ? ' na' : ''}`}>{stripInt(fig.value)}</span>
-            <span className="bkc-fl"><i className={`sw ${fig.key}`} aria-hidden="true" />{fig.label}</span>
+            <span className="bkc-fl"><i className={`sw ${fig.key}`} aria-hidden="true" /><span>{slashBreak(fig.label)}</span></span>
             <span className="bkc-u"><span className="bkc-ut">{fig.third ?? ' '}</span></span>
           </div>
         ))}
@@ -173,19 +186,21 @@ function Moments({
           const content = (
             <>
               <span className="rk">{item.rank ?? ''}</span>
-              <span className="tm">{item.offsetLabel}</span>
+              <span className="tm">{item.approximate ? <><span className="ab">about</span>{' '}</> : null}{item.offsetLabel}</span>
               <span className="lb">{item.label}</span>
+              {item.edgeLabel ? <span className="eg" data-strip-moment-edge>{item.edgeLabel}</span> : null}
               {item.topEmote ? (
-                <span className="em" title={`${item.topEmote.code} ×${stripInt(item.topEmote.count)} in that minute`}>
+                <span className="em" title={`${item.topEmote.code}: ${stripInt(item.topEmote.count)} uses in that minute`}>
                   {item.topEmote.imageUrl ? (
                     <ConsoleEmoteImg src={item.topEmote.imageUrl} name={item.topEmote.code} width={20} height={20} fallbackClassName="bkc-noimg sm" />
                   ) : null}
-                  <span className="sr-only">{item.topEmote.code} </span>×{stripInt(item.topEmote.count)}
+                  <span className="sr-only">{item.topEmote.code} </span>{stripInt(item.topEmote.count)} uses
                 </span>
               ) : null}
             </>
           )
-          const label = `Moment${item.rank != null ? ` ${item.rank}` : ''} at ${item.offsetLabel}, ${item.label}`
+          const at = `${item.approximate ? 'about ' : ''}${item.offsetLabel}`
+          const label = `Moment${item.rank != null ? ` ${item.rank}` : ''} at ${at}, ${item.label}${item.edgeLabel ? `, ${item.edgeLabel}` : ''}`
           return (
             <li key={item.key}>
               {onLockMoment ? (
@@ -249,9 +264,11 @@ export function stripSummary(model: SessionBarStripModel): string {
 // Moments list or a #t= link selects the same minute and keeps the page still (prod: analytics-chart-touch).
 const PLOT_SELECTOR = '.spc-svg, [data-chart-plot]'
 let lastPlotGesture = Number.NEGATIVE_INFINITY
+let lastPointerDown = Number.NEGATIVE_INFINITY
 const nowMs = () => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now())
 if (typeof document !== 'undefined') {
   const note = (event: Event) => {
+    if (event.type === 'pointerdown') lastPointerDown = nowMs()
     const target = event.target as Element | null
     if (target && typeof target.closest === 'function' && target.closest(PLOT_SELECTOR)) lastPlotGesture = nowMs()
   }
@@ -261,6 +278,16 @@ if (typeof document !== 'undefined') {
 /** True when the plot took a pointer or key press in the last second. */
 export function openedFromPlot(): boolean {
   return nowMs() - lastPlotGesture < 1000
+}
+
+/** The Play token for the locked moment, or null when the request names another moment (or none). */
+function playRequestFor(
+  model: SessionBarStripModel,
+  request: { offsetSeconds: number; token: number } | null | undefined,
+): number | null {
+  const locked = model.lockedMoment
+  if (!request || !locked || model.vod.playAt == null) return null
+  return Math.abs(locked.offsetSec - request.offsetSeconds) < 1 ? request.token : null
 }
 
 /** Walk up from the strip to the chart that owns it and read its plot's top. */
@@ -276,7 +303,7 @@ function plotTopOf(el: HTMLElement): number {
  * The bottom of whatever sticks to the top of the window (the site's header), so
  * the scroll never parks the plot under it. 0 when nothing does, or without layout.
  */
-function stickyTopInset(self: HTMLElement): number {
+function stickyTopInset(self: Element): number {
   if (typeof document.elementsFromPoint !== 'function') return 0
   let inset = 0
   try {
@@ -291,6 +318,59 @@ function stickyTopInset(self: HTMLElement): number {
     return 0
   }
   return inset
+}
+
+/** True when no part of `el` is on the screen (under the sticky header counts as off). */
+function fullyOffScreen(el: HTMLElement): boolean {
+  const r = el.getBoundingClientRect()
+  if (r.width === 0 && r.height === 0) return false // no layout (jsdom): nothing to measure
+  return r.bottom <= stickyTopInset(el) || r.top >= window.innerHeight
+}
+
+/** Scrolls `el` to just under the sticky header when it is fully off the screen (J1, 11-13). */
+function bringIntoView(el: HTMLElement, smooth: boolean): boolean {
+  if (typeof window.scrollBy !== 'function' || !fullyOffScreen(el)) return false
+  const by = Math.round(el.getBoundingClientRect().top - (stickyTopInset(el) + 8))
+  if (Math.abs(by) > 1) window.scrollBy({ top: by, behavior: smooth ? 'smooth' : 'auto' })
+  return true
+}
+
+/** The share of `el`'s height on the screen, below the sticky header; null without layout (jsdom). */
+function visibleShare(el: Element): number | null {
+  const r = el.getBoundingClientRect()
+  if (r.width === 0 && r.height === 0) return null
+  if (r.height <= 0) return 0
+  const shown = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, stickyTopInset(el))
+  return Math.max(0, shown) / r.height
+}
+
+/** Less than `min` of `el` shows (round 2: G at 60 %, the opener at half). */
+function mostlyOffScreen(el: Element, min: number): boolean {
+  const share = visibleShare(el)
+  return share != null && share < min
+}
+
+/**
+ * Round 2 (G, J): scrolls the least that shows `el` whole when under 60 % of it is on the screen: its bottom to the
+ * window's foot when it hangs below, its top under the sticky header when it hides above (or is taller than the window).
+ */
+function revealMostly(el: HTMLElement, smooth: boolean): boolean {
+  if (typeof window.scrollBy !== 'function' || !mostlyOffScreen(el, 0.6)) return false
+  const r = el.getBoundingClientRect()
+  const top = stickyTopInset(el) + 8
+  const by = r.top < top ? r.top - top : Math.min(r.bottom - (window.innerHeight - 8), r.top - top)
+  if (Math.abs(by) > 1) window.scrollBy({ top: Math.round(by), behavior: smooth ? 'smooth' : 'auto' })
+  return true
+}
+
+type Opener = { el: HTMLElement | SVGElement; offset: string | null }
+
+/** The control that opened the details: the focused card, pin or row, never the page or the details. */
+function focusedOpener(host: HTMLElement | null): Opener | null {
+  const active = typeof document === 'undefined' ? null : document.activeElement
+  if (!(active instanceof HTMLElement || active instanceof SVGElement) || active === document.body) return null
+  if (host?.contains(active)) return null
+  return { el: active, offset: active.getAttribute('data-moment-offset') }
 }
 
 /** Selected bar's strip, attached beneath the session chart. */
@@ -314,9 +394,12 @@ export function SelectedMomentCompactCard({
   vodRecording,
   onShowMoreMoments,
   onZoomToBar,
+  playRequest,
+  streamEdges,
 }: SelectedMomentCompactCardProps) {
   const titleId = useId()
   const hostRef = useRef<HTMLDivElement>(null)
+  const sectionRef = useRef<HTMLElement>(null)
   const { motionEnabled } = useConsoleMotion()
   const [entering, setEntering] = useState(motionEnabled)
 
@@ -346,9 +429,10 @@ export function SelectedMomentCompactCard({
       vodId,
       vodAlignSeconds,
       vodDurationSeconds,
+      streamEdges,
     })
   }, [barMoments, barSpan, clockStart, gameName, games, lockedMomentOffsetSeconds, recapMoment, rollup, rollups,
-    topEmotesCatalog, vodAlignSeconds, vodDurationSeconds, vodId, vodLinkState])
+    streamEdges, topEmotesCatalog, vodAlignSeconds, vodDurationSeconds, vodId, vodLinkState])
 
   const { vod } = model
   const frameState = useVodFrame(vod.vodId, vod.frameVodOffset)
@@ -368,20 +452,105 @@ export function SelectedMomentCompactCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // B1 (11-13, SESSION-MOMENTS-1): what opened the details (a card, a pin, a row) gets focus back when they close
+  // (Clear, Esc), as the extension does. Read before anything moves focus; a pick inside the details keeps it.
+  const selectionKey = `${model.span.startSec}-${model.span.endSec}:${model.lockedMoment?.offsetSec ?? ''}`
+  const openerRef = useRef<Opener | null>(null)
+  const openerNow = useRef<Opener | null>(null)
+  useLayoutEffect(() => {
+    const opener = focusedOpener(hostRef.current)
+    openerNow.current = opener
+    if (opener) openerRef.current = opener
+  }, [selectionKey])
+  useLayoutEffect(() => {
+    const host = hostRef.current
+    return () => {
+      const active = document.activeElement
+      if (active && active !== document.body && !host?.contains(active)) return // focus already moved on
+      const opener = openerRef.current
+      const target = opener?.el.isConnected
+        ? opener.el
+        : opener?.offset != null
+          ? document.querySelector<HTMLElement>(`[data-moment-row][data-moment-offset="${opener.offset}"]`)
+          : null
+      // a tap or click (Clear, outside) keeps the page where it is; Esc or Enter brings the card back into view
+      target?.focus({ preventScroll: nowMs() - lastPointerDown < 600 })
+    }
+  }, [])
+
   // A first open from the plot scrolls toward the strip, but the chart wins: it stops before the plot's top leaves
   // the window (or slides under the site's sticky header), so the locked bar and the strip's head and figures show
-  // together. Swapping bars, a Moments-list pick and a #t= link don't scroll.
+  // together. Swapping bars and a #t= link don't scroll.
+  // J1 (11-13, SESSION-MOMENTS-2): a card, row or pin that opens the details fully off the screen (phones, pin
+  // presses) scrolls them into view and moves focus to them; a desktop list pick with the details in view stays
+  // still and keeps focus on the card. The live line under the strip announces them either way.
+  // Round 2: focus stays on the opener only while it stays in view. When opening the details pushes the tapped
+  // card off the screen (a phone, the card under the chart), focus moves to the details, which say their name.
+  const firstOpen = useRef(true)
+  const autoPlayToken = playRequestFor(model, playRequest)
   useEffect(() => {
-    const el = hostRef.current?.querySelector<HTMLElement>('.bkc--below')
-    if (!el || typeof window.scrollBy !== 'function' || !openedFromPlot()) return
-    const r = el.getBoundingClientRect()
-    const top = stickyTopInset(el) + 8
-    const want = Math.min(r.height, Math.round(window.innerHeight * 0.6))
-    const by = Math.round(Math.min(r.top + want - (window.innerHeight - 8), r.top - top, plotTopOf(el) - top))
-    if (by > 1) window.scrollBy({ top: by, behavior: motionEnabled ? 'smooth' : 'auto' })
-    // first open only
+    const first = firstOpen.current
+    firstOpen.current = false
+    const el = sectionRef.current
+    if (!el) return
+    if (openedFromPlot()) {
+      if (!first || typeof window.scrollBy !== 'function') return
+      const r = el.getBoundingClientRect()
+      const top = stickyTopInset(el) + 8
+      const want = Math.min(r.height, Math.round(window.innerHeight * 0.6))
+      const by = Math.round(Math.min(r.top + want - (window.innerHeight - 8), r.top - top, plotTopOf(el) - top))
+      if (by > 1) window.scrollBy({ top: by, behavior: motionEnabled ? 'smooth' : 'auto' })
+      return
+    }
+    // a #t= link or a pick inside the details has no outside opener: the page stays still
+    if (!openerNow.current || autoPlayToken != null) return // Play brings its player in view itself
+    if (bringIntoView(el, motionEnabled)) {
+      el.focus({ preventScroll: true })
+      return
+    }
+    const opener = openerNow.current.el
+    if (opener.isConnected && !mostlyOffScreen(opener, 0.5)) return // the opener is still on the screen: focus stays
+    revealMostly(el, motionEnabled)
+    el.focus({ preventScroll: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [selectionKey])
+
+  // G1 (11-13, SESSION-MOMENTS-3): a card's Play starts the details player at the moment's lead-in (the player
+  // takes focus); it scrolls into view when most of it is off the screen (under 60 % showing, round 2).
+  // Round 3: the player mounts a render after Play (a plain Play tile grows to 16:9; a framed one keeps its size), so
+  // the reveal waits until the player is in the panel and measures it then: once, on the first size report or DOM
+  // change that has the player.
+  useEffect(() => {
+    if (autoPlayToken == null) return
+    const box = hostRef.current?.querySelector<HTMLElement>('[data-moment-vod-panel]')
+    if (!box) return
+    if (typeof ResizeObserver !== 'function' || typeof MutationObserver !== 'function') {
+      revealMostly(box, motionEnabled)
+      return
+    }
+    let done = false
+    const attempt = () => {
+      if (done || !box.querySelector('[data-vod-player-mounted]')) return
+      done = true
+      sized.disconnect()
+      mounted.disconnect()
+      revealMostly(box, motionEnabled)
+    }
+    const sized = new ResizeObserver(attempt)
+    const mounted = new MutationObserver(attempt)
+    sized.observe(box)
+    mounted.observe(box, { childList: true, subtree: true })
+    return () => {
+      done = true
+      sized.disconnect()
+      mounted.disconnect()
+    }
+  }, [autoPlayToken, motionEnabled])
+
+  // The screen-reader line fills after the strip mounts, so a live region that arrives with the strip still speaks.
+  const summary = stripSummary(model)
+  const [said, setSaid] = useState('')
+  useEffect(() => setSaid(summary), [summary])
 
   const unitEyebrow = model.gap ? 'Bucket selected' : `Bucket selected · ${model.span.levelMinutes} min`
   const when = [model.clockLabel, model.zone].filter(Boolean).join(' ')
@@ -391,7 +560,7 @@ export function SelectedMomentCompactCard({
   return (
     <div ref={hostRef} className="bkc-below-host" data-selected-moment-card
       data-selected-bar={`${model.span.startSec}-${model.span.endSec}`}>
-      <section className={`bkc bkc--below${entering ? ' bkc-enter' : ''}`} role="region" aria-labelledby={titleId} data-scope="session">
+      <section ref={sectionRef} tabIndex={-1} className={`bkc bkc--below${entering ? ' bkc-enter' : ''}`} role="region" aria-labelledby={titleId} data-scope="session">
         <div className="bkc-in">
           <header className="bkc-h">
             <div className="bkc-top">
@@ -435,6 +604,7 @@ export function SelectedMomentCompactCard({
                 subjectVodStart={vod.subjectVodStart}
                 hasArt={Boolean(shownArt)}
                 recording={recording}
+                autoPlayToken={autoPlayToken}
               />
             </div>
           )}
@@ -467,7 +637,7 @@ export function SelectedMomentCompactCard({
           ) : null}
         </div>
       </section>
-      <p className="sr-only" aria-live="polite" aria-atomic="true">{stripSummary(model)}</p>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">{said}</p>
     </div>
   )
 }

@@ -1266,8 +1266,13 @@ export const portalAnalyticsApi: AnalyticsApi = {
         portalPath(`/streams/${encodeURIComponent(streamId)}/recap`),
       )
       return normalizePulseStreamRecap(data)
-    } catch {
-      return null
+    } catch (error) {
+      // Only "no recap" reads as null: a 404, or a cancelled request. Anything else (server, unreachable, timeout,
+      // rate_limited, other 4xx) rethrows, so the session says "Recap unavailable" with Try again instead of
+      // looking like an empty recap (SESSION-MOMENTS-4, round 3).
+      const apiError = typeof error === 'object' && error !== null ? error as { kind?: unknown; status?: unknown } : null
+      if (apiError?.status === 404 || apiError?.kind === 'aborted') return null
+      throw error
     }
   },
 

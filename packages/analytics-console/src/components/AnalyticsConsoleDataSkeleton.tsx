@@ -4,15 +4,22 @@
  * columns from 1280 px. The accessible emote bar reserves 44 px touch rows. Long names, additional emotes,
  * games and other content can wrap to more rows; this is not an all-data zero-layout-shift guarantee.
  *
+ * Z01 (round 2): with `minuteTableOutside` (one column, under 1280 px) the "Minute-by-minute table" line
+ * (12 px gap + 44 px summary) sits after the chart region, so each reserve under 1280 px is 56 px shorter:
+ * 762, 730, 722 and 822 px. Desktop keeps 874 px.
+ *
  * A readout-styled loading line paints before the data; its text stays out of the spoken status.
  */
-export function AnalyticsConsoleDataSkeleton() {
+export function AnalyticsConsoleDataSkeleton({ minuteTableOutside = false }: { minuteTableOutside?: boolean } = {}) {
+  const reserve = minuteTableOutside
+    ? 'min-h-[47.625rem] min-[610px]:min-h-[45.625rem] sm:min-h-[45.125rem] min-[720px]:min-h-[51.375rem]'
+    : 'min-h-[51.125rem] min-[610px]:min-h-[49.125rem] sm:min-h-[48.625rem] min-[720px]:min-h-[54.875rem]'
   return (
     <div
       role="status"
       aria-label="Loading analytics chart"
       data-console-skeleton="chart"
-      className="flex min-h-[51.125rem] min-[610px]:min-h-[49.125rem] sm:min-h-[48.625rem] min-[720px]:min-h-[54.875rem] xl:min-h-[54.625rem] animate-pulse flex-col rounded border border-white/[0.07] bg-white/[0.025] p-4"
+      className={`flex ${reserve} xl:min-h-[54.625rem] animate-pulse flex-col rounded border border-white/[0.07] bg-white/[0.025] p-4`}
     >
       <span className="sr-only">Loading analytics chart</span>
       <div className="ssc-head" aria-hidden="true">
