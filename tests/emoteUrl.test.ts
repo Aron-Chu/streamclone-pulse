@@ -91,3 +91,26 @@ describe('extensionEmoteImageUrl', () => {
     ])
   })
 })
+
+describe('extensionEmoteImageUrls at a size', () => {
+  const SEVEN_TV = { id: 'local-id', provider: '7tv', providerEmoteId: '01F6MQ33FG000FFJ97ZB8MWV52', imageUrl: 'https://cdn.7tv.app/emote/01F6MQ33FG000FFJ97ZB8MWV52/4x.webp' }
+  const file = (scale: string) => `https://cdn.7tv.app/emote/01F6MQ33FG000FFJ97ZB8MWV52/${scale}.webp`
+  const urls = (size?: number) => extensionEmoteImageUrls(SEVEN_TV, 'https://api.streampulse.stream', size)
+
+  it('asks 7TV for the file a 2x screen needs at that size first, in place of the 4x file', () => {
+    expect(urls()).toEqual([file('4x'), file('2x'), file('1x')])
+    expect(urls(16)).toEqual([file('1x'), file('2x')])
+    expect(urls(20)).toEqual([file('2x'), file('1x')])
+    expect(urls(48)).toEqual([file('3x'), file('2x'), file('1x')])
+    expect(urls(80)).toEqual([file('4x'), file('2x'), file('1x')])
+  })
+
+  it('keeps an image the backend hosts first, and other providers as they were', () => {
+    const hosted = { ...SEVEN_TV, imageUrl: 'https://cdn.streampulse.stream/emotes/provider-id.webp' }
+    expect(extensionEmoteImageUrls(hosted, 'https://api.streampulse.stream', 20).slice(0, 2))
+      .toEqual(['https://cdn.streampulse.stream/emotes/provider-id.webp', file('2x')])
+    const bttv = { id: 'x', provider: 'bttv', providerEmoteId: 'provider-id' }
+    expect(extensionEmoteImageUrls(bttv, 'https://api.streampulse.stream', 20))
+      .toEqual(extensionEmoteImageUrls(bttv, 'https://api.streampulse.stream'))
+  })
+})

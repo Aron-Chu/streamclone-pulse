@@ -42,10 +42,17 @@ function pushUnique(candidates: string[], candidate: string | undefined): void {
   if (candidate && !candidates.includes(candidate)) candidates.push(candidate)
 }
 
-/** Resolve BFF emote metadata into ordered, validated image candidates. */
+/**
+ * Resolve BFF emote metadata into ordered, validated image candidates. `size`
+ * is the CSS px the image shows at: given one, each 7TV 4x file becomes the
+ * smallest file that stays sharp at that size on a 2x screen (1x is 32 px
+ * tall, 4x is 128). The 7TV CDN is the slow part, and a 4x file holds up to
+ * 16 times the pixels of a 1x.
+ */
 export function extensionEmoteImageUrls(
   emote: Pick<ExtensionEmote, 'id' | 'providerEmoteId' | 'imageUrl' | 'provider'>,
   backendUrl: string,
+  size?: number,
 ): string[] {
   const provider = normalizeEmoteProvider(emote.provider)
   const id = emote.id?.trim() ?? ''
@@ -81,6 +88,10 @@ export function extensionEmoteImageUrls(
     )
   }
 
+  if (size) {
+    const scale = `/${Math.min(4, Math.ceil(size / 16))}x.`
+    return [...new Set(candidates.map(url => url.startsWith('https://cdn.7tv.app/emote/') ? url.replace('/4x.', scale) : url))]
+  }
   return candidates
 }
 

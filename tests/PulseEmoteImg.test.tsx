@@ -62,8 +62,9 @@ describe('PulseEmoteImg', () => {
     expect(wrapper?.tabIndex).toBe(0)
     expect(wrapper?.getAttribute('aria-describedby')).toBe(preview?.id)
     expect(images).toHaveLength(2)
-    expect(images[0]?.src).toContain('/emote/01FFWH9WV80000JT8GHDKHJNZC/4x.webp')
-    expect(images[1]?.src).toContain('/emote/01FFWH9WV80000JT8GHDKHJNZC/4x.webp')
+    // The 7TV file sharp for the 48px preview on a 2x screen, not the 4x one.
+    expect(images[0]?.src).toContain('/emote/01FFWH9WV80000JT8GHDKHJNZC/3x.webp')
+    expect(images[1]?.src).toContain('/emote/01FFWH9WV80000JT8GHDKHJNZC/3x.webp')
     expect(preview?.textContent).toContain('Aware')
     expect(preview?.textContent).toContain('42 uses')
   })

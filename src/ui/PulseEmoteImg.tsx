@@ -44,9 +44,10 @@ export function PulseEmoteImg({
   previewFocusable = false,
   eager = false,
 }: PulseEmoteImgProps) {
+  // The image, or its 48px hover preview, sets the 7TV file asked for first.
   const candidates = useMemo(
-    () => extensionEmoteImageUrls(emote, backendUrl),
-    [emote.id, emote.imageUrl, emote.name, emote.provider, emote.providerEmoteId, backendUrl],
+    () => extensionEmoteImageUrls(emote, backendUrl, showHoverPreview ? 48 : width),
+    [emote.id, emote.imageUrl, emote.name, emote.provider, emote.providerEmoteId, backendUrl, showHoverPreview, width],
   )
   const candidateKey = candidates.join('\n')
   const [candidateIndex, setCandidateIndex] = useState(0)

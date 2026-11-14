@@ -23,7 +23,7 @@ import { MomentFrameStore, nearestFrameIndex, type StoredFrame } from './momentF
  * turning "Moment pictures" off in Settings drops them at once. When a moment
  * is saved or watched from here, the worker asks for its one frame and keeps
  * it on this device with the save (src/background/momentPictures.ts).
- * A moment card, and the top three Top Moments rows, that this tab holds no
+ * A moment card, and every Top Moments row, that this tab holds no
  * frame of first show the exact frame of the moment's second, read from the
  * VOD's own video in this tab (src/background/vodFrameInject.ts), which works
  * while Twitch is still recording the VOD. Those frames are this tab's object
@@ -263,8 +263,41 @@ function vod(at?: MomentPictureAt): Promise<VodPictures | null> {
   return asked.found
 }
 
-/** Most exact frames a tab keeps; the oldest goes first. */
-const MAX_EXACT_FRAMES = 24
+/** Most exact frames a tab keeps, enough for an opened Top Moments list and its cards; the oldest goes first. */
+const MAX_EXACT_FRAMES = 48
+
+/**
+ * Exact frames read at once. Each read costs Twitch a playback token, the
+ * VOD's playlist and part of a segment, so the rows of a list take turns in
+ * the order they asked, and a card goes first. A read still unanswered after
+ * EXACT_TURN_MS hands its turn on, so one stalled read never holds the rest.
+ */
+const EXACT_AT_ONCE = 2
+const EXACT_TURN_MS = 15_000
+let exactReading = 0
+const exactWaiting: Array<() => void> = []
+
+/** Resolves with the call that ends the turn once a read may start. */
+function exactTurn(first: boolean): Promise<() => void> {
+  return new Promise(resolve => {
+    const start = (): void => {
+      exactReading++
+      let over = false
+      const done = (): void => {
+        if (over) return
+        over = true
+        window.clearTimeout(timer)
+        exactReading--
+        exactWaiting.shift()?.()
+      }
+      const timer = window.setTimeout(done, EXACT_TURN_MS)
+      resolve(done)
+    }
+    if (exactReading < EXACT_AT_ONCE) start()
+    else if (first) exactWaiting.unshift(start)
+    else exactWaiting.push(start)
+  })
+}
 
 /**
  * Exact frames of seconds of `exactVod`, the VOD this tab last asked about, as
@@ -273,7 +306,7 @@ const MAX_EXACT_FRAMES = 24
  * with no picture mounted releases them.
  */
 const exactFrames = new Map<string, Promise<string | null>>()
-/** Ordinary rows reuse a frame a card already asked for; they never start a frame request. */
+/** Rows take the exact frame of their second once a card's read or their own lands. */
 const exactRows = new Set<(vodId?: string, second?: number) => void>()
 let exactVod: string | undefined
 let exactRelease: number | undefined
@@ -293,10 +326,16 @@ function vodFrame(at: MomentPictureAt | undefined, seconds: number, height: 160 
   }
   const second = Math.round(seconds)
   const key = `${second} ${height}`
-  let found = exactFrames.get(key)
+  // A row's small ask takes a card's frame of the same second, held or still being read.
+  let found = exactFrames.get(key) ?? (height === 160 ? exactFrames.get(`${second} 360`) : undefined)
   if (!found) {
-    const asked: Promise<string | null> = Promise.resolve()
-      .then(() => chrome.runtime.sendMessage({ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: second, height }))
+    const asked: Promise<string | null> = exactTurn(height === 360)
+      .then(done => exactFrames.get(key) !== asked
+        // Released, evicted or replaced while waiting its turn: Twitch isn't asked.
+        ? (done(), undefined)
+        : Promise.resolve()
+          .then(() => chrome.runtime.sendMessage({ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: second, height }))
+          .finally(done))
       .then(response => {
         const frame = (response as { frame?: VodFrame | { error: string } | null } | undefined)?.frame
         // Released or replaced while Twitch was asked: nothing to keep.
@@ -352,7 +391,7 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
   const card = view.kind === 'card'
   let gone = false
   // The same moment of the same stream, at the same alignment: a VOD id
-  // arriving or a move in or out of the top 3 keeps the box's picture.
+  // arriving keeps the box's picture.
   const id = `${at?.key} ${at?.vodOriginDeltaSeconds ?? 0} ${view.kind} ${view.from} ${view.to} ${view.peak}`
   const handed = handoffs.get(host)
   handoffs.delete(host)
@@ -416,12 +455,14 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
       if (art) name(art, standIn('game art'))
       if (emote) name(emote, standIn('chat’s top emote'))
     })
-    // A card, or a row that asks, first tries the exact frame from the VOD's own video.
-    if (card || view.exact) {
-      const url = await vodFrame(at, view.peak - (at?.vodOriginDeltaSeconds ?? 0), card ? 360 : 160)
+    // A card first tries the exact frame from the VOD's own video. A row that
+    // asks for one shows what it finds meanwhile, since its read waits its
+    // turn, and takes the frame once read (shareExactFrame).
+    if (card) {
+      const url = await vodFrame(at, view.peak - (at?.vodOriginDeltaSeconds ?? 0), 360)
       const exact = url ? await loaded(url) : null
       if (exact) return framed('Twitch VOD frame', '#22d3ee', exact)
-    }
+    } else if (view.exact) void vodFrame(at, view.peak - (at?.vodOriginDeltaSeconds ?? 0), 160)
     const pictures = await asked
     const tile = pictures && vodTile(pictures, view.peak - (at?.vodOriginDeltaSeconds ?? 0))
     const sheet = tile && await loaded(tile.sheet)
@@ -637,8 +678,7 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
       render()
     })
   }
-  const sharesExactFrame = !card && !view.exact
-  if (sharesExactFrame) {
+  if (!card) {
     exactRows.add(shareExactFrame)
     shareExactFrame(at?.vodId ?? undefined, Math.round(view.peak - (at?.vodOriginDeltaSeconds ?? 0)))
   }
@@ -666,7 +706,7 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     }
     if (card) return blank()
     // A row leaves its picture up for a mount that takes the box over in the
-    // same render (its VOD id arrived, or it moved in or out of the top 3), so
+    // same render (its VOD id arrived), so
     // the picture neither blinks nor closes the list's picture column.
     const handoff = { id, image, blank }
     handoffs.set(host, handoff)
