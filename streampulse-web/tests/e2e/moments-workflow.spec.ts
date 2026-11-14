@@ -136,12 +136,12 @@ test('pending replay recovers automatically for the same selected broadcast', as
   let linked = false
   let reads = 0
   await page.route(/\/v1\/portal\/analytics\/streams\/s1(?:\?.*)?$/, route => {
-    if (new URL(route.request().url()).searchParams.get('momentOffsetSeconds') === '120') reads++
+    if (new URL(route.request().url()).searchParams.get('momentOffsetSeconds') === '420') reads++
     return route.fulfill({ json: linked
       ? { channel: 'xqc', stream: { streamId: 's1', vodId: '123456' }, vodTiming: { state: 'verified' }, vodAlignSeconds: 0, vodDurationSeconds: 18000 }
       : { channel: 'xqc', stream: { streamId: 's1' }, vodTiming: { state: 'unavailable', reason: 'archive_not_linked' }, availability: { vodState: 'pending_live' } } })
   })
-  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=120')
+  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=420')
   const detail = page.getByRole('region', { name: /^Selected moment: / })
   await expect(detail.getByText('Waiting for this broadcast’s archive', { exact: true })).toBeVisible()
   await expect(detail.locator('iframe')).toHaveCount(0)
@@ -150,7 +150,7 @@ test('pending replay recovers automatically for the same selected broadcast', as
   linked = true
   await page.clock.fastForward(60_000)
   await detail.getByRole('button', { name: /Load Twitch preview/ }).click()
-  await expect(detail.locator('iframe')).toHaveAttribute('src', /video=v123456&time=120s/)
+  await expect(detail.locator('iframe')).toHaveAttribute('src', /video=v123456&time=420s/)
   expect(reads).toBe(initialReads + 1)
   await page.clock.fastForward(180_000)
   expect(reads).toBe(initialReads + 1)
@@ -160,10 +160,10 @@ test('pending replay retries stop after five checks and manual retry restarts re
   await page.clock.install()
   let reads = 0
   await page.route(/\/v1\/portal\/analytics\/streams\/s1(?:\?.*)?$/, route => {
-    if (new URL(route.request().url()).searchParams.get('momentOffsetSeconds') === '120') reads++
+    if (new URL(route.request().url()).searchParams.get('momentOffsetSeconds') === '420') reads++
     return route.fulfill({ json: { channel: 'xqc', stream: { streamId: 's1' }, availability: { vodState: 'pending_live' } } })
   })
-  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=120')
+  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=420')
   const detail = page.getByRole('region', { name: /^Selected moment: / })
   await expect(detail.getByRole('button', { name: 'Check replay now' })).toBeVisible()
   const initialReads = reads
@@ -190,10 +190,10 @@ test('rechecking keeps the player mounted through slow and failed lookups but cl
       ? { channel: 'xqc', stream: { streamId: 's1' }, availability: { vodState: 'unavailable' } }
       : { channel: 'xqc', stream: { streamId: 's1', vodId: '123456' }, vodTiming: { state: 'verified' }, vodAlignSeconds: 0, vodDurationSeconds: 18000 } })
   })
-  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=120')
+  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=420')
   const detail = page.getByRole('region', { name: /^Selected moment: / })
   await detail.getByRole('button', { name: /Load Twitch preview/ }).click()
-  await expect(detail.locator('iframe')).toHaveAttribute('src', /video=v123456&time=120s/)
+  await expect(detail.locator('iframe')).toHaveAttribute('src', /video=v123456&time=420s/)
   const original = await detail.locator('iframe').elementHandle()
   await detail.locator('.moments-source > summary').click()
   state = 'slow'
@@ -239,7 +239,8 @@ test('designed menus support keyboard selection and reduced motion on a narrow s
 })
 
 test('moment evidence bars and saved notes survive reload without replacing the source', async ({ page }, testInfo) => {
-  await installHubUxMock(page, { withComparisons: true })
+  // past a stream's first 20 minutes, where the bars show (X1, 11-13)
+  await installHubUxMock(page, { withComparisons: true, momentOffsets: [5400, 7200] })
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/analytics/moments')
   await page.locator('[data-discovery-key]').first().click()
@@ -303,7 +304,7 @@ test('exact moment source, device save, reload and legacy session link', async (
   await page.goto('/analytics/moments')
   await expect(page.locator('.moments-result')).toHaveCount(2)
   await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
-  await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
+  await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=420s')
   await page.locator('.moments-detail').getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click()
   await expect(page.getByText('Saved in this browser · not synced to the extension or your account.')).toBeVisible()
@@ -311,7 +312,7 @@ test('exact moment source, device save, reload and legacy session link', async (
   await expect(page.locator('.moments-result')).toHaveCount(1)
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()
   await expect(page.getByRole('link', { name: /^Open VOD at/ })).toBeVisible()
-  await expect.poll(() => exactRefreshes.some(url => new URL(url).searchParams.get('momentOffsetSeconds') === '120')).toBe(true)
+  await expect.poll(() => exactRefreshes.some(url => new URL(url).searchParams.get('momentOffsetSeconds') === '420')).toBe(true)
   expect(await page.evaluate(() => localStorage.getItem('streampulse.saved-moments.v2'))).not.toContain('handoffRef')
   await page.goto('/analytics/newsroom/story-xqc?window=live#keep')
   await expect(page).toHaveURL(/\/analytics\/moments$/)
@@ -438,8 +439,8 @@ test('reviewed archive artwork returns only to its exact card without background
   await expect(page.locator('.moments-result').first().locator('.moments-card-artwork img')).toHaveAttribute('src', artwork.url)
   await expect(page.locator('.moments-result').nth(1).locator('.moments-card-artwork')).toHaveCount(0)
   expect(checks).toBe(selectedChecks)
-  await page.locator('.moments-result').first().getByRole('button', { name: 'Twitch emote spike — Open moment for xQc at 2:00 into broadcast', exact: true }).click()
-  await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
+  await page.locator('.moments-result').first().getByRole('button', { name: 'Twitch emote spike — Open moment for xQc at about 0:07:00 into broadcast', exact: true }).click()
+  await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=420s')
   expect(checks).toBeGreaterThan(selectedChecks)
 })
 
@@ -478,15 +479,15 @@ test('recent hub artwork is display-only, request-free per card, and suppressed 
 test('moment cards keep background, keyboard, Save, analytics, and emote interactions independent', async ({ page }) => {
   await page.goto('/analytics/moments')
   const first = page.locator('.moments-result').first()
-  await expect(first).toHaveAttribute('aria-label', 'xQc Twitch emote spike at 2:00 into broadcast')
+  await expect(first).toHaveAttribute('aria-label', 'xQc Twitch emote spike at about 0:07:00 into broadcast')
   // One row shape in every state: the measured rates and the emote strip are
   // always the row's evidence, and a row never embeds a player.
   await expect(first.locator('.moments-result-evidence')).toContainText('chat/min')
   await expect(first.locator('iframe')).toHaveCount(0)
   const primary = first.locator('.moments-card-primary')
-  await expect(primary).toHaveAccessibleName('Twitch emote spike — Open moment for xQc at 2:00 into broadcast')
+  await expect(primary).toHaveAccessibleName('Twitch emote spike — Open moment for xQc at about 0:07:00 into broadcast')
   await expect(primary).toContainText('Twitch emote spike')
-  await expect(first.locator('.moments-result-timing')).toContainText('2:00 into broadcast')
+  await expect(first.locator('.moments-result-timing')).toContainText('about 0:07:00 into broadcast')
   await expect(primary).not.toHaveAttribute('aria-pressed')
   await expect(first.locator('.moments-row-emotes')).toHaveCount(1)
   const emote = first.locator('.moments-row-emotes > span').first()
@@ -497,7 +498,7 @@ test('moment cards keep background, keyboard, Save, analytics, and emote interac
   await expect(primary).toHaveAttribute('aria-current', 'true')
   await expect(primary).toHaveAttribute('aria-expanded', 'true')
   // Pressed again, the open row closes its moment, and its name says so.
-  await expect(primary).toHaveAccessibleName('Twitch emote spike — Close moment for xQc at 2:00 into broadcast')
+  await expect(primary).toHaveAccessibleName('Twitch emote spike — Close moment for xQc at about 0:07:00 into broadcast')
   await expect(first.locator('.moments-row-emotes')).toHaveCount(1)
   await page.getByRole('button', { name: 'Close', exact: true }).click()
 
@@ -517,16 +518,16 @@ test('moment cards keep background, keyboard, Save, analytics, and emote interac
   await page.keyboard.press('Enter')
   await expect(page.getByRole('region', { name: /^Selected moment: / })).toHaveCount(0)
   await expect(primary).toBeFocused()
-  await expect(primary).toHaveAccessibleName('Twitch emote spike — Open moment for xQc at 2:00 into broadcast')
+  await expect(primary).toHaveAccessibleName('Twitch emote spike — Open moment for xQc at about 0:07:00 into broadcast')
   await primary.focus()
   await page.keyboard.press('Space')
   await expect(page.locator('.moments-detail')).toBeVisible()
   await page.getByRole('button', { name: 'Close', exact: true }).click()
 
   const analytics = first.getByRole('link', { name: /^Stream analytics/ })
-  await expect(analytics).toHaveAttribute('href', '/analytics/xqc/s1#t=120')
+  await expect(analytics).toHaveAttribute('href', '/analytics/xqc/s1#t=420')
   await analytics.click()
-  await expect(page).toHaveURL(/\/analytics\/xqc\/s1#t=120$/)
+  await expect(page).toHaveURL(/\/analytics\/xqc\/s1#t=420$/)
 })
 
 test('cached recent moments render immediately, then converge to the healthy refresh', async ({ page }) => {
@@ -536,9 +537,11 @@ test('cached recent moments render immediately, then converge to the healthy ref
   expect(cacheState, JSON.stringify(cacheState)).not.toHaveLength(0)
   await installHubUxMock(page, { mode: 'empty', hubDelayMs: 700 })
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await expect(page.getByText('No available moments.')).toHaveCount(0, { timeout: 500 })
+  // Latest's empty copy says why and where next (S1, 11-13)
+  const empty = page.getByText('No big chat reactions in live streams right now. New ones show up here as they happen.')
+  await expect(empty).toHaveCount(0, { timeout: 500 })
   await expect(page.locator('.moments-result')).toHaveCount(2, { timeout: 500 })
-  await expect(page.getByText('No available moments.')).toBeVisible({ timeout: 3_000 })
+  await expect(empty).toBeVisible({ timeout: 3_000 })
   await expect(page.locator('.moments-result')).toHaveCount(0)
 })
 
@@ -566,7 +569,7 @@ test('loaded search and ordering survive exact-detail Back and refresh', async (
   await expect(page.locator('.moments-result')).toHaveCount(1)
   await expect(page.getByText('A detection may be older than the chart range.', { exact: false })).toBeVisible()
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()
-  await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
+  await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=420s')
   await page.goBack()
   await expect(page.getByLabel('Find loaded moments')).toHaveValue('xqc')
   await expect(page.locator('.moments-result').getByRole('button', { name: 'Open moment' })).toBeFocused()
@@ -586,7 +589,7 @@ test('selected verified preview stays unloaded until asked, then plays without a
     playerRequests += 1
     return route.fulfill({ contentType: 'text/html', body: '<p>Player contract fixture</p>' })
   })
-  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=120')
+  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=420')
   const frame = page.getByTitle('Selected moment Twitch VOD preview')
 
   // Selecting a result must not create player traffic.
@@ -597,11 +600,11 @@ test('selected verified preview stays unloaded until asked, then plays without a
   expect(playerRequests).toBe(0)
 
   await page.getByRole('button', { name: /Load Twitch preview/ }).click()
-  await expect(frame).toHaveAttribute('src', /video=v123456&time=120s&parent=127.0.0.1&autoplay=false/)
+  await expect(frame).toHaveAttribute('src', /video=v123456&time=420s&parent=127.0.0.1&autoplay=false/)
   // A matching src alone passed while the document CSP blocked every real preview.
   await expect(page.frameLocator('iframe[title="Selected moment Twitch VOD preview"]').getByText('Player contract fixture')).toBeVisible()
   expect(playerRequests).toBeGreaterThan(0)
-  await expect(page.getByRole('link', { name: 'Open on Twitch' })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
+  await expect(page.getByRole('link', { name: 'Open on Twitch' })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=420s')
   await page.getByRole('button', { name: 'Close preview', exact: true }).click()
   await expect(page.getByRole('button', { name: /Load Twitch preview/ })).toBeFocused()
   await expect(frame).toHaveCount(0)
@@ -610,8 +613,8 @@ test('selected verified preview stays unloaded until asked, then plays without a
   await expect(page.getByRole('button', { name: 'Close preview', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(frame).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Watch on Twitch at 2:00' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Watch on Twitch at 2:00' })).toBeFocused()
+  await expect(page.getByRole('link', { name: 'Watch on Twitch at 0:07:00' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Watch on Twitch at 0:07:00' })).toBeFocused()
   const mobileTargets = page.locator('.moment-vod-preview__fallback a, .moments-detail summary')
   expect(await mobileTargets.count()).toBeGreaterThan(1)
   for (const target of await mobileTargets.all()) {

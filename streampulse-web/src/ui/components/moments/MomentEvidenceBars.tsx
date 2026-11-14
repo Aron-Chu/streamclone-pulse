@@ -1,8 +1,15 @@
+import { formatLiftRatio, formatLiftWords } from '@streampulse/pulse-core'
 import type { DiscoveryMoment } from '../../../lib/discoveryMoments'
 
 const measured = (value?: number): value is number => value != null && Number.isFinite(value) && value >= 0
 const number = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 1 })
-const times = (value: number) => `${value.toFixed(value >= 10 ? 0 : 1)}×`
+/**
+ * A row's figure in pulse-core's words, as the list rows write it (Z06, round 2
+ * 11-13): "6.2× more emotes". A minute under its earlier average rose nothing,
+ * so it keeps "0.4× earlier average" rather than claim "more".
+ */
+const figure = (value: number, series: 'chat' | 'emotes') =>
+  value >= 1 ? formatLiftWords(value, series) : `${formatLiftRatio(value)}× earlier average`
 
 /**
  * Smallest power of ten that contains this ratio, so 2×, 14× and 229× all land
@@ -63,7 +70,7 @@ export function MomentEvidenceBars({ moment }: { moment: DiscoveryMoment }) {
       <div className="moment-ratio__head">
         <strong>{row.name}</strong>
         <span>{number(row.baseline)} <i aria-hidden="true">→</i> <b>{number(row.current)}</b> / min</span>
-        <em>{row.multiplier == null ? 'new activity' : `${times(row.multiplier)} earlier average`}</em>
+        <em>{row.multiplier == null ? 'new activity' : figure(row.multiplier, row.name === 'Emotes' ? 'emotes' : 'chat')}</em>
       </div>
       {row.multiplier == null
         ? <p className="moment-ratio__zero">No earlier {row.name.toLowerCase()} was measured on this stream, so there is no ratio to draw.</p>

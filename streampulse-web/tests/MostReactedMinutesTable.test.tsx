@@ -45,7 +45,7 @@ describe('MostReactedMinutesTable pulse-live rows', () => {
     expect(within(row).getByRole('link', { name: /KEKW on 7TV/i }).getAttribute('href')).toBe(
       'https://7tv.app/emotes/01H7TVEMOTEIDENTITY01',
     )
-    expect(within(row).getByRole('link', { name: '2:00' }).getAttribute('href')).toBe(
+    expect(within(row).getByRole('link', { name: '0:02:00' }).getAttribute('href')).toBe(
       '/analytics/moments?view=recent&login=xqc&stream=stream-1&offset=120',
     )
     expect(container.querySelector('a[href*="twitch.tv/videos"]')).toBeNull()
@@ -88,7 +88,7 @@ describe('MostReactedMinutesTable pulse-live rows', () => {
     const onSelect = vi.fn()
     renderPulseLive(onSelect)
     const row = screen.getByRole('row', { name: /Chat spike/i })
-    fireEvent.click(within(row).getByRole('link', { name: '2:00' }))
+    fireEvent.click(within(row).getByRole('link', { name: '0:02:00' }))
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ offsetSeconds: 120 }))
   })
 

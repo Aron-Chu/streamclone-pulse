@@ -1,3 +1,4 @@
+import { formatLiftRatio, formatLiftWords } from '@streampulse/pulse-core'
 import type { LiveWireMetricComparison, LiveWireMomentComparison } from './liveWire'
 
 export type MomentReactionSignal = 'chat' | 'emotes'
@@ -17,11 +18,16 @@ function comparisonCandidates(comparison?: LiveWireMomentComparison, signal?: Mo
     : [['Chat', comparison?.chat], ['Emotes', comparison?.emotes]]
 }
 
-const multiplierText = (multiplier: number) => `${multiplier.toFixed(multiplier >= 10 ? 0 : 1)}×`
+/** pulse-core's strength figure (Z06, 11-13): 6.2×, 10×, 12×. */
+const multiplierText = (multiplier: number) => `${formatLiftRatio(multiplier)}×`
 
 export interface MomentComparisonBadge {
   /** The signal this ratio belongs to, so a row never leaves it to be guessed. */
   label: string
+  /** The same signal in pulse-core's words ('chat' | 'emotes'). */
+  series: MomentReactionSignal
+  /** The figure a row shows as "6.2× more emotes" (formatLiftWords); null for a stated new-activity baseline. */
+  words: string | null
   /** Room-for-one-cell form, e.g. `14×`. Meaningless without `label`/`long`. */
   short: string
   /** The same claim in full, for the title/label a badge alone cannot carry. */
@@ -45,12 +51,14 @@ export interface MomentComparisonBadge {
 export function momentComparisonBadge(comparison?: LiveWireMomentComparison, signal?: MomentReactionSignal): MomentComparisonBadge | null {
   for (const [label, metric] of comparisonCandidates(comparison, signal)) {
     if (!metric || metric.currentPerMin == null || !Number.isFinite(metric.currentPerMin) || metric.currentPerMin < 0) continue
-    if (metric.state === 'new_activity') return { label, short: 'new', long: `${label} is new from a zero earlier baseline`, belowBaseline: false }
+    const series: MomentReactionSignal = label === 'Emotes' ? 'emotes' : 'chat'
+    if (metric.state === 'new_activity') return { label, series, words: null, short: 'new', long: `${label} is new from a zero earlier baseline`, belowBaseline: false }
     if (metric.state !== 'ready') continue
     if (metric.multiplier != null && Number.isFinite(metric.multiplier) && metric.multiplier >= 0) {
       // Under the earlier average: not the reason this row exists.
       if (metric.multiplier < 1) continue
-      return { label, short: multiplierText(metric.multiplier), long: `${label} ${multiplierText(metric.multiplier)} this stream's earlier average`,
+      const words = formatLiftWords(metric.multiplier, series)
+      return { label, series, words, short: multiplierText(metric.multiplier), long: `${words} than this stream's earlier average`,
         belowBaseline: false }
     }
     return null
@@ -65,7 +73,7 @@ export function momentComparisonSummary(comparison?: LiveWireMomentComparison, s
     if (metric.state === 'new_activity') return `${label} is new from a zero earlier baseline`
     if (metric.state !== 'ready') continue
     if (metric.multiplier != null && Number.isFinite(metric.multiplier) && metric.multiplier >= 0) {
-      return `${label} ${metric.multiplier.toFixed(metric.multiplier >= 10 ? 0 : 1)}× this stream's earlier average`
+      return `${label} ${multiplierText(metric.multiplier)} this stream's earlier average`
     }
     if (metric.changePct != null && Number.isFinite(metric.changePct)) {
       return `${label} ${metric.changePct > 0 ? '+' : ''}${Math.round(metric.changePct)}% versus earlier`

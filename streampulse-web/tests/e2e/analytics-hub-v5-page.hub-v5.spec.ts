@@ -109,7 +109,7 @@ test('the Featured stream sits under Busiest now with its moments and no chat/mi
   await expect(page.locator('#busiest li[data-rank="1"]')).toHaveAttribute('data-login', 'xqc')
   await expect(card.locator('.hv5-mst-l2')).toHaveCount(0)
   await expect(card).not.toContainText(/chat\/min|200/)
-  await expect(card.locator('.hv5-mst-mo')).toHaveText(['0:13:54 YappingDuck 930', '1:35:54 NotLikeThis 1,286', '0:41:54 YappingDuck 319'])
+  await expect(card.locator('.hv5-mst-mo')).toHaveText(['about 0:13:00 YappingDuck 930', 'about 1:35:00 NotLikeThis 1,286', 'about 0:41:00 YappingDuck 319'])
   await expect(card.getByRole('link', { name: 'Open stream: xQc' })).toHaveAttribute('href', '/analytics/xqc/s1')
 
   // under Busiest now and as wide as Activity at every width (desktop took the phone order, B1 11-11); each side of
@@ -408,14 +408,15 @@ test('Top moments today is the carousel under the chart, and the rail is only wh
   await expect(page).toHaveURL(/\/analytics\/moments\?login=xqc&stream=s1&offset=3600$/)
 })
 
-// Board 2A (11-02): the mock's two moments are 2 and 4 minutes into their streams, so
-// they show as "Early in the stream" with their rate and no ×. The locks' warm-up reads
+// Board 2A (11-02): here the mock's two moments are 2 and 4 minutes into their streams, so
+// they show their rate and no ×. Inside a stream's first 5 minutes they carry pulse-core's
+// 'Stream start' tag rather than 'Early in the stream' (E1, 11-13). The locks' warm-up reads
 // hub/moments on its own; another channel's busiest minute from those reads fills a
 // card, and a channel already shown (xQc) never gets a second one.
 test('Top moments today keeps early moments with no × and fills with busiest minutes from the chart’s own reads', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1440, height: 900 })
-  await installHubUxMock(page, { featuredSession: READY_FEATURED_SESSION })
+  await installHubUxMock(page, { featuredSession: READY_FEATURED_SESSION, momentOffsets: [120, 240] })
   const now = Date.now()
   const busy = (login: string, displayName: string, chatPerMin: number) => ({
     login, displayName, streamId: `hist-${login}`, offsetSeconds: 1800, score: 80, label: 'Corpus peak', source: 'corpus',
@@ -427,7 +428,7 @@ test('Top moments today keeps early moments with no × and fills with busiest mi
   }))
   await page.goto('/analytics')
   const big = page.locator('#big-moments')
-  await expect(big.locator('.hv5-bm-card .hv5-bm-lbl', { hasText: 'Early in the stream' })).toHaveCount(2)
+  await expect(big.locator('.hv5-bm-card .hv5-bm-lbl', { hasText: 'Stream start' })).toHaveCount(2)
   const fill = big.locator('.hv5-bm-card', { has: page.locator('.hv5-bm-lbl', { hasText: 'Busiest minute' }) })
   await expect(fill).toHaveCount(1, { timeout: 15_000 })
   await expect(fill).toContainText('KaiCenat')
@@ -535,4 +536,18 @@ test('on a phone the promo opens on See how it works, and Find emote clears with
   for (const selector of ['.hv5-pr-stage', '.hv5-pr-p', '.hv5-pr-sub']) await expect(promo.locator(selector)).toBeHidden()
   await expect(more).toBeHidden()
   expect((await promo.boundingBox())!.height).toBeLessThanOrEqual(64)
+})
+
+test('a Top moments card on a phone keeps its clock whole; the game and the tail give way first (11-14)', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openV5Hub(page, TOP_MOMENT)
+  const sub = page.locator('#big-moments .hv5-bm-card[data-pos="0"] .hv5-bm-id small')
+  await expect(sub).toHaveText(/ · about \d+:\d\d:\d\d into broadcast$/)
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 })
+    await expect.poll(() => sub.evaluate(el => {
+      const clock = el.querySelector('.hv5-bm-clk')!.getBoundingClientRect(), box = el.getBoundingClientRect()
+      return clock.width > 0 && clock.left >= box.left - 0.5 && clock.right <= box.right + 0.5
+    }), { message: `the clock is whole at ${width}px` }).toBe(true)
+  }
 })

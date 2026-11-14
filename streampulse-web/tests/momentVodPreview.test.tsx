@@ -57,7 +57,7 @@ describe('selected verified preview lifecycle', () => {
     width = 390
     const view = render(<MomentVodPreview href={first} />)
     expect(view.container.querySelector('iframe')).toBeNull()
-    expect(screen.getByRole('link', { name: 'Watch on Twitch at 2:00' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Watch on Twitch at 0:02:00' })).toBeTruthy()
   })
   it('shows bound broadcast artwork on mobile and survives image failure', () => {
     width = 390
@@ -67,7 +67,42 @@ describe('selected verified preview lifecycle', () => {
     expect(view.container.querySelector('iframe')).toBeNull()
     fireEvent.error(view.container.querySelector('img')!)
     expect(view.container.querySelector('img')).toBeNull()
-    expect(screen.getByRole('link', { name: 'Watch on Twitch at 2:00' }).getAttribute('href')).toBe(first)
+    expect(screen.getByRole('link', { name: 'Watch on Twitch at 0:02:00' }).getAttribute('href')).toBe(first)
+  })
+  it('on a phone puts the given actions in the card, under "Watch on Twitch at …" and above the note in the DOM (D, rounds 2-3)', () => {
+    width = 320
+    const view = render(<MomentVodPreview href={first} actions={<div className="moments-primary-actions"><button type="button">Save</button></div>} />)
+    const card = view.container.querySelector('.moment-vod-preview')!
+    expect(card.classList.contains('moment-vod-preview--actions')).toBe(true)
+    expect(card.querySelector(':scope > .moments-primary-actions button')?.textContent).toBe('Save')
+    // reading order is the shown order: the link, Save, then the playback note
+    const link = screen.getByRole('link', { name: 'Watch on Twitch at 0:02:00' })
+    const save = screen.getByRole('button', { name: 'Save' })
+    const note = screen.getByText('Playback depends on Twitch availability.')
+    expect(link.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(save.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // wide enough for the player, nothing is reordered
+    width = 640
+    view.rerender(<MomentVodPreview href="https://www.twitch.tv/videos/654321?t=300s" actions={<div className="moments-primary-actions" />} />)
+    expect(view.container.querySelector('.moment-vod-preview--actions')).toBeNull()
+  })
+  it('keeps focus on the card when a layout switch moves it to another parent (D1)', () => {
+    // The phone layout renders the watch row in another parent, so the card remounts at the switch.
+    const Moved = ({ phone }: { phone: boolean }) => <>
+      <section>{phone ? null : <MomentVodPreview href={first} />}</section>
+      <section>{phone ? <MomentVodPreview href={first} /> : null}</section>
+    </>
+    const view = render(<Moved phone={false} />)
+    fireEvent.click(screen.getByRole('button', { name: /Load Twitch preview/ }))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close preview' }))
+    width = 390
+    view.rerender(<Moved phone />)
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Watch on Twitch at 0:02:00' }))
+    // A card that held no focus hands none on.
+    ;(document.activeElement as HTMLElement).blur()
+    width = 640
+    view.rerender(<Moved phone={false} />)
+    expect(document.activeElement).toBe(document.body)
   })
   it.each(['https://evil.example/videos/123456?t=1s', 'https://www.twitch.tv/videos/abc?t=1s', 'https://www.twitch.tv/videos/123456'])('rejects malformed/untrusted playback URL %s', href => {
     const view = render(<MomentVodPreview href={href} />)

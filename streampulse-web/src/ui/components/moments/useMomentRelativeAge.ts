@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from 'react'
-import { formatRelativeTime } from '../../../lib/formatStats'
+import { formatAgo } from '@streampulse/pulse-core'
 
 const listeners = new Set<() => void>()
 let timer: number | null = null
@@ -41,11 +41,22 @@ function subscribe(listener: () => void) {
   }
 }
 
+/** Midnight before last: formatAgo calls anything before today "Yesterday", so older rows show only their date. */
+const startOfYesterday = (now: number) => {
+  const day = new Date(now)
+  day.setHours(0, 0, 0, 0)
+  day.setDate(day.getDate() - 1)
+  return day.getTime()
+}
+
+/** pulse-core's 'ago', floored to the minute like the Hub's (Z08, 11-13): 'just now', '13 min ago', the clock, 'Yesterday' and the clock. */
 function relativeAge(at: string | undefined): string | null {
   if (!at) return null
   const timestamp = Date.parse(at)
   if (!Number.isFinite(timestamp)) return null
-  return timestamp > Date.now() ? 'Time ahead of this device' : formatRelativeTime(timestamp)
+  const now = Date.now()
+  if (timestamp > now) return 'Time ahead of this device'
+  return timestamp < startOfYesterday(now) ? null : formatAgo(timestamp, now)
 }
 
 /** One visible-tab timer; only rows whose displayed label changed rerender. */

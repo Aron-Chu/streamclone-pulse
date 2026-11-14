@@ -330,7 +330,7 @@ describe('momentWallClockLabel', () => {
   it('falls back to stream offset when wall clock is unknown', async () => {
     const { momentWallClockLabel } = await import('../src/lib/pulseMomentsUtils')
     const label = momentWallClockLabel({ offsetSeconds: 180, score: 1, label: 'x' })
-    expect(label.primary).toBe('3:00')
+    expect(label.primary).toBe('0:03:00')
   })
 })
 

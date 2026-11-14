@@ -43,6 +43,8 @@ export interface FigmaMomentRow {
   categoryMetadataRejected?: true
   streamStartedAt?: number
   activityTag?: string
+  /** The backend's stream-edge flag ('opening' | 'closing') where the data carries one; it wins (E1). */
+  streamEdge?: string
 }
 
 export interface FigmaChartPoint {
@@ -214,6 +216,7 @@ export function mapHubPulseMoment(moment: PublicHub['livePulseMoments'][number])
     categoryMetadataRejected: moment.categoryMetadataRejected,
     streamStartedAt: moment.streamStartedAt,
     activityTag: moment.activityTag,
+    streamEdge: moment.streamEdge,
     href:
       login && streamId
         ? buildAnalyticsHref({ login, streamId, offsetSeconds: moment.offsetSeconds })

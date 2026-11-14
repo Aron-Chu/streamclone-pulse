@@ -102,7 +102,7 @@ export type HubUxMockOptions = {
   legacySuccessfulCoarseFallback?: boolean
   /** Holds only the canonical 30m reply, so tests can inspect independent live lanes. */
   recentHubGate?: Promise<void>
-  /** Broadcast offsets for the two Pulse moments (default 120s and 240s). */
+  /** Broadcast offsets for the two Pulse moments (default 420s and 540s: past the first 5 minutes, which Latest hides). */
   momentOffsets?: [number, number]
   /** More Pulse moments after the two defaults, `minutesBefore` the second one. */
   extraPulseMoments?: Array<{ login: string; streamId: string; offsetSeconds: number; label: string; minutesBefore: number }>
@@ -373,7 +373,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
             profileImageUrl: options.firstMomentProfileImageUrl,
             archiveArtwork: options.firstMomentArchiveArtwork,
             handoffRef: options.firstMomentHandoffRef,
-            offsetSeconds: options.momentOffsets?.[0] ?? 120,
+            offsetSeconds: options.momentOffsets?.[0] ?? 420,
             comparison,
             score: 92,
             label: 'Twitch emote spike',
@@ -397,7 +397,7 @@ export async function installHubUxMock(page: Page, options: HubUxMockOptions = {
             login: 'sodapoppin',
             displayName: 'sodapoppin',
             streamId: 's2',
-            offsetSeconds: options.momentOffsets?.[1] ?? 240,
+            offsetSeconds: options.momentOffsets?.[1] ?? 540,
             score: 84,
             label: 'Chat spike',
             kind: 'chat_spike',

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
+import portalTimingFixture from '../fixtures/portal_vod_timing_v1.json' with { type: 'json' }
 
 // The approved 2026-10-06 Moments behaviour: a moment opens in line under its own
 // row, the list keeps its width, and a click away (or Esc) closes it.
@@ -218,7 +219,7 @@ test('a press that starts inside the open moment and ends outside it is not a cl
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('')
   await page.waitForTimeout(300)
   await expect(detail(page)).toBeVisible()
-  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=120/)
+  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=420/)
 })
 
 test('selecting text outside the open moment is not a click away', async ({ page }) => {
@@ -238,7 +239,7 @@ test('selecting text outside the open moment is not a click away', async ({ page
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toContain('Moments')
   await page.waitForTimeout(300)
   await expect(detail(page)).toBeVisible()
-  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=120/)
+  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=420/)
 })
 
 test('a row pressed while a close is stepping back opens once the step back lands', async ({ page }) => {
@@ -246,17 +247,17 @@ test('a row pressed while a close is stepping back opens once the step back land
   await page.goto('/analytics/moments')
   await rows(page).first().locator('.moments-card-primary').click()
   await expect(detail(page)).toBeVisible()
-  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=120/)
+  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=420/)
   // Esc steps history back, which lands a task later; the next row is pressed before it does.
   await page.evaluate(() => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     document.querySelectorAll<HTMLElement>('.moments-result .moments-card-primary')[1]!.click()
   })
-  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=240/)
+  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   await expect.poll(() => rows(page).nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
   await expect(detail(page)).toHaveCount(1)
   await page.waitForTimeout(1200)
-  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=240/)
+  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   // It was pushed over the list: Back returns to the list, not past it.
   await page.goBack()
   await expect(page).toHaveURL(/\/analytics\/moments$/)
@@ -274,7 +275,7 @@ test('a click away steps back in history, and browser Back from the next moment 
   const second = rows(page).nth(1).locator('.moments-card-primary')
   await rows(page).first().locator('.moments-card-primary').click()
   await expect(detail(page)).toBeVisible()
-  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=120/)
+  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=420/)
   // The page margin beside the content.
   await page.mouse.click(8, 600)
   await expect(detail(page)).toHaveCount(0)
@@ -282,7 +283,7 @@ test('a click away steps back in history, and browser Back from the next moment 
   // The next moment closes by browser Back while focus is inside its detail.
   await second.click()
   await expect(detail(page)).toBeVisible()
-  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=240/)
+  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   await detail(page).getByRole('button', { name: 'Close', exact: true }).focus()
   await page.goBack()
   await expect(page).toHaveURL(/\/analytics\/moments\?view=recent$/)
@@ -309,7 +310,7 @@ test('opening another row closes the first and keeps the clicked row in place', 
   const topBefore = (await second.boundingBox())!.y
   const scrollBefore = await page.evaluate(() => window.scrollY)
   await page.mouse.click(evidence.x + evidence.width / 2, evidence.y + evidence.height / 2)
-  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=240/)
+  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   await page.waitForTimeout(700)
   // The first detail collapsed above the clicked row; the page scrolled to hold it still.
   expect(Math.abs((await second.boundingBox())!.y - topBefore)).toBeLessThan(3)
@@ -328,14 +329,14 @@ test('Previous and Next move the detail in line and keep its top on screen', asy
   const slot = page.locator('#moments-selected-detail')
   const top = (await slot.boundingBox())!.y
   await detail(page).getByRole('button', { name: 'Next moment', exact: true }).click()
-  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=240/)
+  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   await expect(detail(page).locator('.moments-detail-head')).toContainText('2 of 2 loaded moments')
   await expect.poll(() => rows(page).nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
   expect(Math.abs((await slot.boundingBox())!.y - top)).toBeLessThan(2)
   // At the end of the list focus stays on the control that still moves.
   await expect(detail(page).getByRole('button', { name: 'Previous moment', exact: true })).toBeFocused()
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=120/)
+  await expect(page).toHaveURL(/login=xqc&stream=s1&offset=420/)
   await expect.poll(() => rows(page).first().evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
   expect(Math.abs((await slot.boundingBox())!.y - top)).toBeLessThan(2)
 })
@@ -354,23 +355,23 @@ test('Previous and Next keep focus on the control just used while both still mov
   const announcement = page.locator('[data-review-announcement]')
   await expect(announcement).toHaveAttribute('aria-live', 'polite')
   await expect(announcement).toHaveText('')
-  await expect(page.getByRole('region', { name: 'Selected moment: Twitch emote spike, xQc, 2:00 into broadcast', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Selected moment: Twitch emote spike, xQc, about 0:07:00 into broadcast', exact: true })).toBeVisible()
   await next.focus()
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=240/)
+  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   await expect(head).toContainText('2 of 3 loaded moments')
   await expect(next).toBeFocused()
-  await expect(announcement).toHaveText('Moment 2 of 3: Chat spike, sodapoppin, 4:00 into broadcast')
-  await expect(page.getByRole('region', { name: 'Selected moment: Chat spike, sodapoppin, 4:00 into broadcast', exact: true })).toBeVisible()
+  await expect(announcement).toHaveText('Moment 2 of 3: Chat spike, sodapoppin, about 0:09:00 into broadcast')
+  await expect(page.getByRole('region', { name: 'Selected moment: Chat spike, sodapoppin, about 0:09:00 into broadcast', exact: true })).toBeVisible()
   expect(await announcement.evaluate(region => region.closest('#moments-selected-detail, [aria-busy="true"]'))).toBeNull()
   // A second Enter keeps going the same way.
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/login=forsen&stream=s3&offset=360/)
   await expect(head).toContainText('3 of 3 loaded moments')
   await expect(previous).toBeFocused()
-  await expect(announcement).toHaveText('Moment 3 of 3: Laugh spike, forsen, 6:00 into broadcast')
+  await expect(announcement).toHaveText('Moment 3 of 3: Laugh spike, forsen, about 0:06:00 into broadcast')
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=240/)
+  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   await expect(head).toContainText('2 of 3 loaded moments')
   await expect(previous).toBeFocused()
   await expect.poll(() => rows(page).nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
@@ -404,14 +405,14 @@ test('a deep link keeps its selection through a click or Esc while its feed is s
   let release!: () => void
   const recentHubGate = new Promise<void>(resolve => { release = resolve })
   await installHubUxMock(page, { withComparisons: true, recentHubGate })
-  await page.goto('/analytics/moments?login=sodapoppin&stream=s2&offset=240')
+  await page.goto('/analytics/moments?login=sodapoppin&stream=s2&offset=540')
   await expect(page.locator('.moments-loading')).toBeVisible()
   await expect(detail(page)).toHaveCount(0)
   // Nothing is on screen to click away from yet.
   await page.getByRole('heading', { level: 1 }).click()
   await page.keyboard.press('Escape')
   await page.waitForTimeout(300)
-  await expect(page).toHaveURL(/\?login=sodapoppin&stream=s2&offset=240$/)
+  await expect(page).toHaveURL(/\?login=sodapoppin&stream=s2&offset=540$/)
   release()
   await expect(detail(page)).toBeVisible()
   expect(await rows(page).nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
@@ -428,7 +429,7 @@ test('a deep link outside the loaded list stands alone at the top of the list', 
   await page.goto('/analytics/moments?login=xqc&stream=s9&offset=600')
   const open = detail(page)
   await expect(open.getByRole('heading', { name: 'Chat spike', exact: true })).toBeVisible()
-  await expect(open.getByText('Selection outside loaded matches', { exact: true })).toBeVisible()
+  await expect(open.getByText('Shared moment, not in Latest right now', { exact: true })).toBeVisible()
   await expect(open.locator('.moments-identity')).toBeVisible()
   // It leads the results: directly under their heading, ahead of the list.
   expect(await page.locator('#moments-selected-detail').evaluate(card => card.parentElement?.className)).toBe('moments-results')
@@ -494,19 +495,19 @@ test('the minute chart draws measured minutes against the earlier average', asyn
 
 test('the minute chart draws nothing before the broadcast started or past the latest minute returned', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
-  // Four minutes into a live broadcast whose rollups have reached three minutes after the moment.
-  const { momentAts } = await installHubUxMock(page, { withComparisons: true, momentOffsets: [240, 7200] })
-  const reads = await installMinutes(page, { streamId: 's1', login: 'xqc', offsetSeconds: 240, at: momentAts[0], chat: xqcChat, through: 3 })
+  // Six minutes into a live broadcast whose rollups have reached three minutes after the moment.
+  const { momentAts } = await installHubUxMock(page, { withComparisons: true, momentOffsets: [360, 7200] })
+  const reads = await installMinutes(page, { streamId: 's1', login: 'xqc', offsetSeconds: 360, at: momentAts[0], chat: xqcChat, through: 3 })
   await page.goto('/analytics/moments')
   await rows(page).first().locator('.moments-card-primary').click()
   const chart = detail(page).getByRole('figure', { name: 'Chat per minute around this moment' })
   await expect(chart).toHaveAttribute('data-state', 'ready')
   expect(Number(reads[0].searchParams.get('afterOffset'))).toBe(0)
-  await expect(chart.locator('.moment-minutes__bar')).toHaveCount(8)
+  await expect(chart.locator('.moment-minutes__bar')).toHaveCount(10)
   expect(await chart.locator('svg [data-relative]').evaluateAll(marks => marks.map(mark => Number(mark.getAttribute('data-relative')))))
-    .toEqual([-4, -3, -2, -1, 0, 1, 2, 3])
+    .toEqual([-6, -5, -4, -3, -2, -1, 0, 1, 2, 3])
   // Only the minutes inside the broadcast so far are counted; the rest are named.
-  await expect(chart.getByRole('img')).toHaveAttribute('aria-label', /This minute: 393 chat per minute\..* 8 of 8 minutes measured\. The first 26 minutes came before the broadcast started\. The last 7 minutes aren’t available yet\.$/)
+  await expect(chart.getByRole('img')).toHaveAttribute('aria-label', /This minute: 393 chat per minute\..* 10 of 10 minutes measured\. The first 24 minutes came before the broadcast started\. The last 7 minutes aren’t available yet\.$/)
   await page.evaluate(() => Promise.all(document.getAnimations()
     .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
     .map(animation => animation.finished.catch(() => undefined))))
@@ -659,10 +660,48 @@ test('motion: the slot grows from 0fr and the detail fades in', async ({ page })
 test('motion: a deep link shows the open moment without replaying the opening', async ({ page }) => {
   await installHubUxMock(page, { withComparisons: true })
   const transitions = await recordInlineTransitions(page)
-  await page.goto('/analytics/moments?view=recent&login=sodapoppin&stream=s2&offset=240')
+  await page.goto('/analytics/moments?view=recent&login=sodapoppin&stream=s2&offset=540')
   await expect(detail(page)).toBeVisible()
   await expect(page.locator('.moments-inline')).toHaveClass(/is-open/)
   await page.waitForTimeout(600)
   expect(await transitions()).toEqual([])
   expect(await page.locator('.moments-inline .moments-detail').evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+})
+
+test('crossing the phone breakpoint keeps focus on the same watch control, both ways (D1, round 6)', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  // Mock-only: an API read this test does not answer fails here, never against production.
+  await page.route('**/v1/**', route => route.fulfill({ status: 503, json: { error: 'unmocked_endpoint' } }))
+  await page.route(/\/v1\/portal\/analytics\/streams\/321192454233\/minutes(?:\?.*)?$/, route => route.fulfill({ status: 503, json: { error: 'stream_unavailable' } }))
+  await page.route('https://player.twitch.tv/**', route => route.fulfill({ contentType: 'text/html', body: '<p>Replay preview</p>' }))
+  await page.route(/\/v1\/portal\/analytics\/streams\/321192454233(?:\?.*)?$/, route => route.fulfill({ json: portalTimingFixture }))
+  await page.route('**/v1/portal/analytics/streams/321192454233/recap', route => route.fulfill({ json: {
+    login: 'xqc', streamId: '321192454233', topMoments: [{ offsetSeconds: 5183, reasons: ['chat_spike'] }],
+  } }))
+  await page.goto('/analytics/moments?login=xqc&stream=321192454233&offset=5183')
+  const open = detail(page)
+  await expect(open.getByRole('link', { name: /^Open VOD at/ })).toHaveCount(1)
+  const focused = () => page.evaluate(() => document.activeElement?.getAttribute('data-focus-key') ?? document.activeElement?.tagName)
+  // Save, Open VOD and the watch link each move with the row: a resize either way keeps focus on the one used.
+  for (const key of ['save', 'open-vod', 'watch-link']) {
+    await open.locator(`[data-focus-key="${key}"]`).focus()
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(open.locator('.moments-detail-watch')).toHaveCount(1)
+    await expect.poll(focused).toBe(key)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await expect(open.locator('.moments-detail-watch')).toHaveCount(0)
+    await expect.poll(focused).toBe(key)
+  }
+  // and from the phone first
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(open.locator('.moments-detail-watch')).toHaveCount(1)
+  for (const key of ['save', 'open-vod']) {
+    await open.locator(`[data-focus-key="${key}"]`).focus()
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await expect(open.locator('.moments-detail-watch')).toHaveCount(0)
+    await expect.poll(focused).toBe(key)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(open.locator('.moments-detail-watch')).toHaveCount(1)
+    await expect.poll(focused).toBe(key)
+  }
 })

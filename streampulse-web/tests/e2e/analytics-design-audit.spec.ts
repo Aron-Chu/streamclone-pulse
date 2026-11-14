@@ -17,7 +17,7 @@ type EvidenceStep = {
   poolSize?: number | null
   hubState?: string | null
   poolText?: string | null
-  liveWireSnippet?: string | null
+  momentsSnippet?: string | null
   consoleErrors: string[]
   failedRequests: string[]
 }
@@ -26,11 +26,12 @@ async function collectDomEvidence(page: Page): Promise<Omit<EvidenceStep, 'step'
   return page.evaluate(() => {
     const main = document.querySelector('main[data-hub-state]')
     const pool = document.querySelector('[data-testid="live-pool-size"]')
-    const liveWire = document.querySelector('.hub-live-wire, #section-live-wire')
+    // The Hub's moments carousel (the Live Wire rail it replaced is gone, H06).
+    const moments = document.querySelector('#big-moments')
     return {
       hubState: main?.getAttribute('data-hub-state') ?? null,
       poolText: pool?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
-      liveWireSnippet: liveWire?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 220) ?? null,
+      momentsSnippet: moments?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 220) ?? null,
     }
   })
 }
@@ -183,7 +184,7 @@ test.describe('analytics design audit (deterministic capture)', () => {
     const readyEvidence = evidence.find((e) => e.step === '03-after-ui-ready')
     expect(readyEvidence?.hubState).toMatch(/ready|empty/)
     if (poolSize != null && poolSize > 0) {
-      expect(readyEvidence?.liveWireSnippet ?? '').not.toMatch(/hub unavailable/i)
+      expect(readyEvidence?.momentsSnippet ?? '').not.toMatch(/hub unavailable/i)
       expect(readyEvidence?.poolText ?? '').toMatch(String(poolSize))
     }
 

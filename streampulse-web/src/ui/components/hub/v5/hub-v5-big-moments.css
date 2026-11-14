@@ -26,8 +26,9 @@
     grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "most most" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
   }
 }
-/* A1 (11-12): from 1440 px the two lists that follow each other, Picking up now and Top moments today, sit side by side; the order does not change */
-@media (min-width: 1440px) {
+/* A1 (11-12): the two lists that follow each other, Picking up now and Top moments today, sit side by side; the order does not change.
+   From 1200 px since W1 (11-13), as at 1440. */
+@media (min-width: 1200px) {
   .hub-v5.hub-d3:has(> .hv5-big) {
     grid-template-areas: "mast mast" "fol fol" "peek busy" "act act" "intv intv" "rail big" "emo games" "chan chan" "meas meas";
   }
@@ -99,11 +100,25 @@
 .hv5-bm-card[data-live] .hv5-bm-av { box-shadow: 0 0 0 2px var(--hv5-live); }
 .hv5-bm-id { min-width: 0; flex: 1 1 auto; }
 .hv5-bm-id strong { display: block; overflow: hidden; font-size: 16px; line-height: 20px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
-.hv5-bm-id small { display: block; overflow: hidden; color: var(--sp-text-2); font-size: 12px; line-height: 16px; white-space: nowrap; text-overflow: ellipsis; }
+/* The clock is never cut, and ' into broadcast' shows whole or not at all (11-14). The line is a one-line box that
+   wraps: the tail never shrinks, so when the game, its dot, the clock and the whole tail don't all fit, the tail moves
+   to a second line this box never shows. Only then may the game-and-clock piece shrink, and inside it only the game
+   ellipsizes. With no room for a few letters of the game either, the game, its dot and the tail step aside and the
+   clock stands alone. */
+.hv5-bm-id small { display: flex; flex-wrap: wrap; align-content: flex-start; height: 16px; overflow: hidden; container-type: inline-size; color: var(--sp-text-2); font-size: 12px; line-height: 16px; white-space: nowrap; }
+.hv5-bm-gc { display: flex; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.hv5-bm-gm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hv5-bm-sep { flex: none; white-space: pre; }
+.hv5-bm-clk { flex: none; }
+.hv5-bm-in { flex: none; white-space: pre; }
+@container (max-width: 10.5em) { .hv5-bm-gm, .hv5-bm-sep, .hv5-bm-in { display: none; } }
+/* K1 (11-14): a quiet 'about' beside the normal-weight time */
+.hv5-bm-ab { color: var(--sp-text-3); font-weight: 400; }
 /* white on Twitch's live red is 4.5:1 */
 .hv5-bm-live { flex: none; padding: 1px 7px; border-radius: 4px; background: #e91916; color: #fff; font-size: 12px; line-height: 16px; font-weight: 700; letter-spacing: 0.03em; white-space: nowrap; }
 
 .hv5-bm-what { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.hv5-bm-what .hv5-new { align-self: center; }
 .hv5-bm-lbl { padding: 2px 8px; border-radius: 999px; background: color-mix(in oklab, var(--hv5-bm-s) 18%, transparent); color: var(--hv5-bm-s); font-size: 12px; line-height: 16px; font-weight: 600; }
 .hv5-bm-x { font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; }
 .hv5-bm-x small { margin-left: 4px; color: var(--sp-text-2); font-size: 14px; font-weight: 500; letter-spacing: 0; }
@@ -166,8 +181,25 @@
   .hv5-bm-em b { max-width: 64px; }
   .hv5-bm-foot { flex-wrap: wrap; row-gap: 8px; }
   .hv5-bm-nav { gap: 6px; }
-  .hv5-bm-dots { gap: 4px; }
-  .hub-v5 .hv5-bm-dots button { width: 10px; }
-  .hub-v5 .hv5-bm-dots button[aria-current="true"] { width: 22px; }
+  /* HUB-LIVE-7 (round 2, 11-13): every dot is a 24 x 24 target, centres 24 px apart, so ten take
+     240 px; with Previous, Next and Pause that is more than a phone's row, so the dots get their own
+     line above them. The dot drawn stays 10 px (22 px for the current one). */
+  .hv5-bm-nav { flex-wrap: wrap; row-gap: 4px; }
+  .hv5-bm-dots { order: -1; flex: 0 0 100%; justify-content: center; gap: 0; }
+  .hub-v5 .hv5-bm-dots button,
+  .hub-v5 .hv5-bm-dots button[aria-current="true"] { width: 24px; }
+  .hv5-bm-dot { left: 7px; right: 7px; transition: left var(--sp-dur-move) var(--sp-ease), right var(--sp-dur-move) var(--sp-ease); }
+  .hv5-bm-dots button[aria-current="true"] .hv5-bm-dot { left: 1px; right: 1px; }
+  /* and taller to the finger, upward only, so it takes no tap from the buttons under it */
+  .hub-v5 .hv5-bm-dots button::after { content: ""; position: absolute; inset: -8px 0 0; }
   .hv5-bm-count { display: none; }
+}
+/* N1 (11-13): under 480 px the name gets the whole top row, and "LIVE · 9K" starts the game line under it; the card keeps its height */
+@media (max-width: 479px) {
+  .hv5-bm-who { display: grid; grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: "av nm nm" "av live sub"; align-items: center; column-gap: 0; }
+  .hv5-bm-who > :first-child { grid-area: av; margin-right: 10px; }
+  .hv5-bm-id { display: contents; }
+  .hv5-bm-id strong { grid-area: nm; min-width: 0; }
+  .hv5-bm-id small { grid-area: sub; min-width: 0; }
+  .hv5-bm-live { grid-area: live; justify-self: start; margin-right: 6px; padding: 0 6px; }
 }

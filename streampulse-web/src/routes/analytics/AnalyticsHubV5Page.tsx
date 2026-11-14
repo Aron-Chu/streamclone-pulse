@@ -9,8 +9,8 @@
  * the ranked rack (R5-22), Channels and one "How this is measured" disclosure
  * on the d3 grid (one column on phones, the rail beside the page from 1536 px).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigationType, useSearchParams } from 'react-router-dom'
 import { optionsForBoundedActivityFallback } from '../../lib/activityRangeCapabilities'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
 import { getBackendUrl } from '../../lib/apiClient'
@@ -91,6 +91,50 @@ export function formatCachedSnapshotNotice(cachedAt: number, nowMs: number): str
 
 const reducedMotion = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+/** The reader's place on each Hub history entry (HUB-LIVE-2). */
+const hubScroll = new Map<string, number>()
+const HUB_RESTORE_FRAMES = 120
+const HUB_RESTORE_STOP_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+
+/**
+ * Back from a stream page lands where the reader was (HUB-LIVE-2, 11-13). The
+ * browser restores the offset before the Hub has its height, so a short page
+ * caps it; this keeps placing it for up to 120 frames, until it holds or the
+ * reader scrolls, taps or types. The same way the Moments page brings a reader
+ * back to their place. A #section entry stays RouteScrollManager's.
+ */
+function useHubReturnScroll() {
+  const { key, hash } = useLocation()
+  const navigationType = useNavigationType()
+  // A layout cleanup runs before RouteScrollManager opens the next page at the top, so it records the reader's place, not 0.
+  useLayoutEffect(() => () => {
+    hubScroll.delete(key)
+    hubScroll.set(key, window.scrollY)
+    if (hubScroll.size > 40) hubScroll.delete(hubScroll.keys().next().value!)
+  }, [key])
+  useEffect(() => {
+    if (navigationType !== 'POP' || hash) return
+    const target = hubScroll.get(key)
+    if (target == null || target <= 0) return
+    let frame = 0
+    let frames = 0
+    const stop = () => {
+      cancelAnimationFrame(frame)
+      for (const type of HUB_RESTORE_STOP_EVENTS) window.removeEventListener(type, stop)
+    }
+    for (const type of HUB_RESTORE_STOP_EVENTS) window.addEventListener(type, stop, { passive: true })
+    const step = () => {
+      if (Math.abs(window.scrollY - target) > 2) window.scrollTo(0, target)
+      if (++frames < HUB_RESTORE_FRAMES) frame = requestAnimationFrame(step)
+      else stop()
+    }
+    frame = requestAnimationFrame(step)
+    return stop
+    // Restore once per arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+}
+
 /** The clock the "Live" cues read: every 10 s while the tab is visible, and on return. */
 function useFreshnessClock(): number {
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -145,6 +189,7 @@ export default function AnalyticsHubV5Page() {
   const loadingInitial = hub.loading && !hub.data
   // A #channels link lands once the sections have their real heights, not on the skeleton.
   useHashScrollHold(loadingInitial)
+  useHubReturnScroll()
   const measurementAvailable = Boolean(hub.data && hub.loadSource !== 'stats-fallback')
   // A hub answer is on screen: not totals only, not a saved copy.
   const hubAnswered = measurementAvailable && hub.loadSource !== 'cache'

@@ -205,7 +205,7 @@ for (const width of [390, 768, 1440]) test(`ranked exact playback and deep-link 
     await page.getByRole('button', { name: /Load Twitch preview/ }).click()
     await expect(page.getByTitle('Selected moment Twitch VOD preview')).toHaveAttribute('src', /video=v123456&time=60s/)
     await expect(page.frameLocator('iframe[title="Selected moment Twitch VOD preview"]').getByText('Exact player fixture')).toBeVisible()
-  } else await expect(page.getByRole('link', { name: 'Watch on Twitch at 1:00' })).toBeVisible()
+  } else await expect(page.getByRole('link', { name: 'Watch on Twitch at 0:01:00' })).toBeVisible()
   const selectedUrl = page.url()
   await page.reload()
   await expect(page).toHaveURL(selectedUrl)

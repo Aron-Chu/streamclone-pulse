@@ -58,7 +58,7 @@ describe('shared moment reaction presentation', () => {
     expect(momentComparisonSummary({ ...comparison, emotes: { ...comparison.emotes, state: 'new_activity' } }, 'emotes')).toBe('Emotes is new from a zero earlier baseline')
   })
   it('preserves measured zero and does not render non-finite or unready comparisons', () => {
-    expect(momentComparisonSummary({ ...comparison, chat: { ...comparison.chat, currentPerMin: 0, multiplier: 0 } }, 'chat')).toContain('Chat 0.0×')
+    expect(momentComparisonSummary({ ...comparison, chat: { ...comparison.chat, currentPerMin: 0, multiplier: 0 } }, 'chat')).toContain('Chat 0×')
     expect(momentComparisonSummary({ chat: { state: 'partial', multiplier: 40 }, emotes: { state: 'ready', currentPerMin: NaN, multiplier: Infinity } } as LiveWireMomentComparison)).toBeNull()
     expect(momentReactionSignal('manual')).toBeUndefined()
   })
@@ -66,12 +66,12 @@ describe('shared moment reaction presentation', () => {
 
 describe('compact comparison badge', () => {
   it('compresses the same signal the headline chose', () => {
-    expect(momentComparisonBadge(comparison, 'emotes')).toEqual({ label: 'Emotes', short: '7.1×', long: "Emotes 7.1× this stream's earlier average", belowBaseline: false })
-    expect(momentComparisonBadge(comparison, 'chat')).toEqual({ label: 'Chat', short: '2.1×', long: "Chat 2.1× this stream's earlier average", belowBaseline: false })
+    expect(momentComparisonBadge(comparison, 'emotes')).toEqual({ label: 'Emotes', series: 'emotes', words: '7.1× more emotes', short: '7.1×', long: "7.1× more emotes than this stream's earlier average", belowBaseline: false })
+    expect(momentComparisonBadge(comparison, 'chat')).toEqual({ label: 'Chat', series: 'chat', words: '2.1× more chat', short: '2.1×', long: "2.1× more chat than this stream's earlier average", belowBaseline: false })
   })
   it('never shows a dip as the chip: it moves to the signal that rose', () => {
     const dip = { ...comparison, chat: { ...comparison.chat, multiplier: 0.14 } } as LiveWireMomentComparison
-    expect(momentComparisonBadge(dip, 'chat')).toEqual({ label: 'Emotes', short: '7.1×', long: "Emotes 7.1× this stream's earlier average", belowBaseline: false })
+    expect(momentComparisonBadge(dip, 'chat')).toEqual({ label: 'Emotes', series: 'emotes', words: '7.1× more emotes', short: '7.1×', long: "7.1× more emotes than this stream's earlier average", belowBaseline: false })
   })
   it('shows the chat rise on the caseoh_ "Emote spike" row whose emotes fell to 0.1×', () => {
     // The row the audit saw on /analytics/moments: titled "Emote spike", chip "Emotes 0.1× earlier avg".
@@ -84,7 +84,7 @@ describe('compact comparison badge', () => {
     })!
     expect(caseoh.reactionSignal).toBe('emotes')
     const badge = momentComparisonBadge(caseoh.comparison, caseoh.reactionSignal)
-    expect(badge).toEqual({ label: 'Chat', short: '2.6×', long: "Chat 2.6× this stream's earlier average", belowBaseline: false })
+    expect(badge).toEqual({ label: 'Chat', series: 'chat', words: '2.6× more chat', short: '2.6×', long: "2.6× more chat than this stream's earlier average", belowBaseline: false })
     expect(`${badge!.label} ${badge!.short}`).not.toMatch(/^Emotes 0\.1×/)
   })
   it('shows no chip when every signal fell under its earlier average', () => {
@@ -106,6 +106,12 @@ describe('compact comparison badge', () => {
   })
   it('names new activity instead of dividing by a zero baseline', () => {
     const fresh = { ...comparison, emotes: { ...comparison.emotes, state: 'new_activity' } } as LiveWireMomentComparison
-    expect(momentComparisonBadge(fresh, 'emotes')).toEqual({ label: 'Emotes', short: 'new', long: 'Emotes is new from a zero earlier baseline', belowBaseline: false })
+    expect(momentComparisonBadge(fresh, 'emotes')).toEqual({ label: 'Emotes', series: 'emotes', words: null, short: 'new', long: 'Emotes is new from a zero earlier baseline', belowBaseline: false })
+  })
+  it('writes the figure in pulse-core words, and 9.95 up to 10 as 10× rather than 10.0× (Z06)', () => {
+    const near = { chat: { state: 'ready', currentPerMin: 100, multiplier: 9.97 } } as LiveWireMomentComparison
+    expect(momentComparisonBadge(near, 'chat')).toMatchObject({ words: '10× more chat', short: '10×' })
+    const small = { emotes: { state: 'ready', currentPerMin: 100, multiplier: 6.24 } } as LiveWireMomentComparison
+    expect(momentComparisonBadge(small, 'emotes')).toMatchObject({ words: '6.2× more emotes', short: '6.2×' })
   })
 })

@@ -1,3 +1,4 @@
+import { formatMomentClock, formatMomentOffset } from '@streampulse/pulse-core'
 import { accountRequest, AccountError } from './accountApi'
 import { buildAnalyticsHref } from './analyticsLinks'
 
@@ -26,6 +27,8 @@ export interface AccountMoment {
   expiresAt?: number
   /** Saves only: the note kept with the account. */
   notes?: string
+  /** Saves only: where it was saved, when the account says. A site save knows only its minute. */
+  source?: 'web' | 'extension'
 }
 export interface HistoryPage { syncEnabled: boolean; retentionDays: number; entries: AccountMoment[]; next?: string }
 export interface SavesPage { saves: AccountMoment[]; next?: string }
@@ -47,7 +50,8 @@ function moment(v: unknown, kind: 'history' | 'save'): AccountMoment | null {
   const expiresAt = kind === 'history' ? Date.parse(String(v.expiresAt)) : NaN
   return { key, login: v.login, ...(v.streamId ? { streamId: v.streamId as string } : {}), ...(v.vodId ? { vodId: v.vodId as string } : {}),
     offsetSeconds: v.offsetSeconds as number, title: title.slice(0, 200), at,
-    ...(Number.isFinite(expiresAt) ? { expiresAt } : {}), ...(kind === 'save' && typeof v.notes === 'string' && v.notes ? { notes: v.notes.slice(0, 1000) } : {}) }
+    ...(Number.isFinite(expiresAt) ? { expiresAt } : {}), ...(kind === 'save' && typeof v.notes === 'string' && v.notes ? { notes: v.notes.slice(0, 1000) } : {}),
+    ...(kind === 'save' && (v.source === 'web' || v.source === 'extension') ? { source: v.source } : {}) }
 }
 const rows = (v: unknown, kind: 'history' | 'save') => Array.isArray(v) ? v.map(item => moment(item, kind)).filter((m): m is AccountMoment => m !== null) : null
 
@@ -72,9 +76,13 @@ export async function forgetHistory(): Promise<void> {
   await accountRequest('/history/forget', {})
 }
 
-export function momentTimestamp(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds))
-  return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(n => String(n).padStart(2, '0')).join(':')
+/**
+ * Time into the stream, h:mm:ss through pulse-core (K1, 11-13). A save made on
+ * the site knows only its minute, so it reads 'about 0:12:00'; the extension's
+ * saves and watched moments keep the whole second.
+ */
+export function momentTimestamp(m: Pick<AccountMoment, 'offsetSeconds' | 'source'>): string {
+  return m.source === 'web' ? formatMomentClock({ offsetSeconds: m.offsetSeconds }) : formatMomentOffset(m.offsetSeconds)
 }
 /**
  * The replay on Twitch at that second. Pulse offsets count from go-live and

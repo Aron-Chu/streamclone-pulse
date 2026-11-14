@@ -195,6 +195,9 @@
    its own row, so browsing and reviewing never change the list's width. */
 .moments-result-list {
   display: grid;
+  /* One track the list's own width, so a long name or the action bar wraps
+     inside the row rather than widening it past the frame (MOMENTS-PAGE-1). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
   container: moments-list / inline-size;
   border: 1px solid var(--fma-border);
@@ -227,9 +230,13 @@
 
 /* Verified broadcast thumbnail: an identifier for the stream, never the moment's
    own frame — which is why the caption stays in the row rather than a tooltip. */
-.moments-result .moments-card-artwork { flex: none; width: 88px; overflow: hidden; border-radius: 4px; background: var(--fma-bg); }
+/* Every row keeps the 88 px slot, so titles, times and emotes line up row to row;
+   with no thumbnail it is a quiet empty tile (Z03, 11-13). */
+.moments-result .moments-card-slot { flex: none; width: 88px; }
+.moments-result .moments-card-slot:empty { aspect-ratio: 16 / 9; border-radius: 4px; background: var(--fma-bg); }
+.moments-result .moments-card-artwork { width: 88px; overflow: hidden; border-radius: 4px; background: var(--fma-bg); }
 .moments-card-artwork img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
-.moments-card-artwork span { display: block; padding: 2px 4px; color: var(--fma-muted); font-size: 9px; line-height: 1.2; }
+.moments-card-artwork span { display: block; padding: 2px 4px; color: var(--fma-muted); font-size: 11px; line-height: 1.25; }
 
 .moments-result .moments-creator-link { display: flex; align-items: center; gap: 8px; flex: 0 1 11rem; min-width: 0; min-height: 36px; color: var(--fma-text); text-decoration: none; border-radius: 4px; }
 .moments-creator-link > span:last-child { min-width: 0; }
@@ -250,6 +257,8 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-result .moments-card-primary > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .moments-result .moments-card-primary:hover { background: var(--sp-surface-3, var(--fma-dim)); }
 .moments-result-offset { flex: none; color: var(--fma-sub); font: 12px var(--fma-mono, monospace); font-variant-numeric: tabular-nums; }
+/* K1 (11-14): a quiet 'about' beside the normal-weight time */
+.moments-result-about { color: var(--sp-text-3, #8e8e96); font-weight: 400; } /* quieter than the time (5.71:1), as on the Hub card and the session (11-14) */
 .moments-result .moments-result-timing { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 2px; color: var(--fma-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .moments-result-timing time { color: var(--fma-sub); }
 .moments-result-age { color: var(--fma-text); font-weight: 600; }
@@ -258,10 +267,12 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-result-ratio { color: var(--fma-text); font-weight: 600; }
 .moments-result-ratio[data-below] { color: var(--fma-muted); font-weight: 400; }
 .moments-result-ratio small { display: inline; color: var(--fma-muted); font-weight: 400; }
+/* Early in the stream: the rates stand with the reason, as on the Hub (X1, E1, 11-13). */
+.moments-result-early { color: var(--fma-sub); }
 .moments-row-emotes { position: relative; z-index: 2; display: flex; align-items: center; gap: 6px; min-width: 6.5rem; min-height: 24px; }
 .moments-row-emotes > span { display: inline-flex; }
 .moments-row-emote-name { max-width: 6rem; overflow: hidden; padding: 2px 5px; border: 1px solid var(--sp-border, var(--fma-border)); border-radius: 4px; color: var(--fma-sub); font-size: 12px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
-.moments-result .moments-actions { flex: none; gap: 4px; margin-left: auto; }
+.moments-result .moments-actions { flex: 0 1 auto; min-width: 0; gap: 4px; margin-left: auto; }
 .moments-result :is(.moments-creator-link, .moments-actions a, .moments-actions button) { position: relative; z-index: 2; }
 .moments-result .moments-actions :is(a, button) { min-height: 30px; padding: 4px 7px; border-color: transparent; background: transparent; font-size: 12px; }
 .moments-result .moments-actions a { color: var(--fma-muted); text-decoration: none; }
@@ -269,7 +280,7 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 
 /* Keep occurrence time and the labelled broadcast offset readable at every width. */
 @container moments-list (max-width: 780px) {
-  .moments-result .moments-card-artwork { display: none; }
+  .moments-result .moments-card-slot { display: none; }
 }
 /* A phone-width row is three short lines — creator, evidence, reactions and
    actions together — rather than one stacked cell per element. */
@@ -362,20 +373,37 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
   .moments-inline.is-open .moment-minutes__bar { animation: moment-minute-bar-enter 400ms cubic-bezier(.22, 1, .36, 1) both; }
   .moment-minutes__plot--loading > span { animation: moments-loading-breathe 1.8s ease-in-out infinite alternate; }
 }
-.moments-loading { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,330px),1fr)); gap: 16px; }
-.moments-loading__card { border: 1px solid var(--fma-border); border-radius: 8px; padding: 16px; min-height: 280px; }
-.moments-loading--sessions .moments-loading__card { min-height: 142px; }
-.moments-loading__preview { height: 120px; border-radius: 6px; margin-bottom: 18px; }
-.moments-loading__identity { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
-.moments-loading__identity > span { width: 32px; height: 32px; border-radius: 50%; }
-.moments-loading__identity > i { width: 45%; height: 12px; border-radius: 4px; }
-.moments-loading__line { width: 85%; height: 10px; border-radius: 4px; margin-top: 14px; }
-.moments-loading__line--short { width: 55%; }
-.moments-loading__preview, .moments-loading__identity > *, .moments-loading__line { background: color-mix(in srgb, var(--fma-text) 7%, var(--fma-panel)); }
+/* Row-shaped placeholders in the list's own frame (L1, 11-13): a row's slot, creator,
+   lines and emotes, with its padding and narrow-list rules, so rows land in place. */
+.moments-loading { container: moments-loading / inline-size; border: 1px solid var(--fma-border); border-radius: 7px; background: var(--fma-panel); overflow: hidden; }
+/* Each placeholder is a MomentRow's own parts (L, round 2 11-13): the row rules and the list's
+   width rules size it, so a row lands where its placeholder was. Words hold widths; only bars show. */
+.moments-loading__row { pointer-events: none; }
+.moments-loading__row:hover { background: transparent; }
+.moments-loading__row :is(small, .moments-result-timing, .moments-result-evidence > span:not(.moments-loading__bar), .moments-actions) { visibility: hidden; }
+.moments-loading__bar { color: transparent; border-radius: 4px; }
+.moments-loading__row .moments-avatar { border: 0; }
+.moments-loading__row .moments-row-emotes > i { width: 24px; height: 24px; border-radius: 4px; }
+.moments-loading__row strong.moments-loading__bar { width: fit-content; max-width: 100%; }
+.moments-result.moments-loading__row .moments-card-slot, .moments-loading__row .moments-avatar, .moments-loading__bar, .moments-loading__row .moments-row-emotes > i,
+.moments-loading-top .moments-cover-art, .moments-loading__name, .moments-loading__count, .moments-loading__filters { background: color-mix(in srgb, var(--fma-text) 7%, var(--fma-panel)); }
+/* The games row's and filters' space while Latest first loads: the covers' own frame and the filters' height. */
+.moments-loading-top .moments-cover-art { box-shadow: none; }
+.moments-loading__name { display: block; width: 72%; height: 18px; margin-top: 7px; padding-block: 3px; border-radius: 4px; background-clip: content-box; }
+.moments-loading__count { display: block; width: 50%; height: 16px; padding-block: 3px; border-radius: 4px; background-clip: content-box; }
+.moments-loading__filters { display: block; height: 87px; margin: 12px 0; border-radius: 5px; }
 .moments-loading-status { color: var(--fma-muted); font-size: 12px; }
+/* L (round 5, 11-13): the late line lives in the first placeholder's box, out of the row's flow.
+   When it shows, that placeholder's bars hide but keep their space, so the box keeps its height:
+   nothing is covered, nothing moves, and the first row lands in the same box. The line never
+   breathes, as when it sat outside the rows. */
+.moments-result-list > .moments-loading { border: 0; border-radius: 0; }
+.moments-loading__row > .moments-loading-status { position: absolute; inset: 0; display: flex; align-items: center; margin: 0; padding: 9px 14px; line-height: 1.55; }
+.moments-loading__row[data-late] > :not(.moments-loading-status) { visibility: hidden; }
+.moments-loading__row[data-late] { animation: none; }
 .moments-workspace :is(button,a,input,select,summary):focus-visible { outline: 2px solid var(--fma-accent-text); outline-offset: 3px; }
 @media (prefers-reduced-motion: no-preference) {
-  .moments-loading__card { animation: moments-loading-breathe 1.8s ease-in-out infinite alternate; }
+  .moments-loading__row, .moments-loading-top { animation: moments-loading-breathe 1.8s ease-in-out infinite alternate; }
   .moments-workspace :is(button,a,select,input) { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1); }
   /* the approved press (2026-10-21): a button dips and springs back; cards and wide rows dip less */
   .moments-workspace button:not(:disabled):active { scale: .96; transition-duration: 140ms, 140ms, 140ms, 140ms, 70ms; }
@@ -647,3 +675,47 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-detail-name { color: inherit; text-decoration: underline dashed var(--fma-muted) 1px; text-underline-offset: 5px; }
 .moments-workspace a.moments-detail-name { color: inherit; }
 .moments-detail-name:hover { text-decoration-style: solid; }
+
+/* Early in the stream the lede is the reason there is no × (X1, E1, 11-13). */
+.moments-detail-lede--early { color: var(--fma-sub); font-weight: 600; }
+/* On phones the watch row sits under the lede, before the evidence (D1, 11-13). */
+.moments-detail-watch { margin-bottom: 18px; }
+.moments-detail-watch > .moments-primary-actions:last-child { margin-bottom: 0; }
+/* ...and Save and Open VOD sit right under "Watch on Twitch at …", above its playback note, so
+   the three read as one group (D, round 2 11-13). The DOM holds that order too (round 3), so
+   nothing is reordered: the link's and the note's paragraphs step aside and the three stack. */
+.moment-vod-preview--actions { display: flex; flex-direction: column; margin-bottom: 0; }
+.moment-vod-preview--actions > p { display: contents; }
+.moment-vod-preview--actions > .moments-primary-actions { margin: 10px 0; }
+/* The card's muted 12px words are its own; the actions keep their own type. */
+.moment-vod-preview > .moments-primary-actions span { color: inherit; font-size: inherit; }
+
+/* Empty Latest: why, and where to go next (S1, 11-13). */
+.moments-empty-live { padding-block: 4px 8px; }
+.moments-empty-live > p { margin: 0 0 12px; }
+
+/* Latest's explainer reads as before on wider screens; the toggle is for phones (F1, 11-13). */
+.moments-workspace .moments-explainer-toggle { display: none; }
+
+@media (max-width: 850px) {
+  /* The site's 44 px touch goal (MOMENTS-PAGE-11): the row title, the creator, and the
+     detail's game, whose target grows past its line rather than taller than it. */
+  .moments-result .moments-card-primary { min-height: 44px; align-items: center; }
+  .moments-result .moments-creator-link { min-height: 44px; }
+  .moments-workspace button.moments-detail-game { min-height: 44px; margin-block: -12px; }
+  .moments-loading__name { margin-top: 5px; }
+  .moments-loading__filters { height: 93px; }
+}
+
+@media (max-width: 600px) {
+  /* One line, then 'How it works' for the rest (F1, 11-13). */
+  .moments-explainer[data-open="false"] { display: flex; align-items: center; gap: 8px; }
+  .moments-explainer[data-open="false"] .moments-explainer-lead { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .moments-explainer[data-open="false"] .moments-explainer-rest { display: none; }
+  .moments-workspace .moments-explainer-toggle { display: inline-flex; flex: none; min-height: 44px; margin-block: -13px; padding: 0 2px; border: 0; background: transparent; color: var(--fma-accent-text); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+  .moments-workspace .moments-explainer-toggle:hover:not(:disabled) { background: transparent; color: var(--fma-text); }
+  /* Square game tiles; a tile's count stays in its name for screen readers. */
+  .moments-cover-art { aspect-ratio: 1; }
+  .moments-cover-count, .moments-loading__count { display: none; }
+  .moments-loading__filters { width: 92px; height: 44px; margin: 10px 0 6px; }
+}

@@ -17,12 +17,15 @@ test('slow first load reserves cards and reveals arrivals without replaying filt
       return animation
     }
   })
-  await installHubUxMock(page)
+  // past each stream's first 5 minutes, so Latest lists them (momentsPage.ts)
+  await installHubUxMock(page, { momentOffsets: [5400, 7200] })
   let release!: () => void
   const held = new Promise<void>(resolve => { release = resolve })
   await page.route('**/v1/public/hub?**', async route => { await held; await route.fallback() })
   await page.goto('/analytics/moments?view=recent')
-  await expect(page.locator('.moments-loading__card')).toHaveCount(6)
+  // row-shaped placeholders, with the games row and filters kept (L1, 11-13)
+  await expect(page.locator('.moments-loading__row')).toHaveCount(5)
+  await expect(page.locator('.moments-loading-top')).toHaveCount(1)
   await expect(page.getByRole('region', { name: 'Moment results' })).toHaveAttribute('aria-busy','true')
   release()
   await expect(page.locator('.moments-result').first()).toBeVisible()
@@ -41,8 +44,10 @@ test('slow first load reserves cards and reveals arrivals without replaying filt
 
 test('reduced motion leaves loaded cards immediately readable', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await installHubUxMock(page)
+  await installHubUxMock(page, { momentOffsets: [5400, 7200] })
   await page.goto('/analytics/moments?view=recent')
-  await expect(page.locator('.moments-result').first()).toBeVisible()
-  expect(await page.locator('.moments-result').first().evaluate(el => ({ opacity: getComputedStyle(el).opacity, animations: el.getAnimations().length }))).toEqual({ opacity: '1', animations: 0 })
+  // loaded rows only: the loading placeholders share .moments-result (data-placeholder)
+  const loaded = page.locator('.moments-result:not([data-placeholder])')
+  await expect(loaded.first()).toBeVisible()
+  expect(await loaded.first().evaluate(el => ({ opacity: getComputedStyle(el).opacity, animations: el.getAnimations().length }))).toEqual({ opacity: '1', animations: 0 })
 })

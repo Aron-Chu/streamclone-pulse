@@ -173,7 +173,7 @@ const banner = () => document.querySelector('.hx-health-banner')?.textContent ??
 function expectRows() {
   expect(peekEl().hasAttribute('data-wait')).toBe(false)
   expect(peekEl().querySelector('h2')!.textContent).toBe('Top today')
-  expect(within(peekEl()).getByRole('button', { name: /^1\. ALPHA, chat 3\.0 times usual, Just Chatting, 2 min ago at .+ Open it in Top moments below\.$/ })).toBeTruthy()
+  expect(within(peekEl()).getByRole('button', { name: /^1\. ALPHA, 3\.0 times more chat, Just Chatting, 2 min ago at .+ Open it in Top moments below\.$/ })).toBeTruthy()
   expect(bigEl()!.querySelector('.hv5-bm-card[data-pos="0"]')!.getAttribute('aria-label')).toMatch(/^1 of \d+: ALPHA, /)
   expect(bigEl()!.className).not.toContain('hv5-f2-stale')
   expect(bigEl()!.querySelector('.hv5-f2-fresh')!.textContent).toMatch(/^as of /)

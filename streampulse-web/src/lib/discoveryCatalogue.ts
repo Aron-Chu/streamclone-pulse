@@ -87,7 +87,8 @@ export function normalizeDiscoveryCatalogue(value: unknown, scope: DiscoveryScop
       displayName: typeof m.displayName === 'string' ? m.displayName.slice(0, 100) : undefined,
       category: m.categorySource === 'measured_segment' && typeof m.category === 'string' ? m.category.slice(0, 150) : undefined,
       categoryId: exactCategoryId, boxArtUrl: exactBoxArtUrl, categoryMetadataRejected: categoryMetadataRejected || undefined,
-      chatPerMin: m.chatPerMin, emotesPerMin: m.emotesPerMin, topEmotes: emotes })
+      chatPerMin: m.chatPerMin, emotesPerMin: m.emotesPerMin, topEmotes: emotes,
+      streamEdge: typeof m.streamEdge === 'string' ? m.streamEdge : undefined })
     if (!moment || keys.has(moment.key)) return bad()
     keys.add(moment.key)
     // Catalogue IDs are not the separate existing publicMomentId namespace.
