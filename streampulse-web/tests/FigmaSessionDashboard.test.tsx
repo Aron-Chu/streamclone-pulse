@@ -38,7 +38,7 @@ describe('FigmaSessionDashboard chart selection', () => {
 
   it('keeps exact table selection when its exact-identity review link is clicked', () => {
     render(<MemoryRouter><FigmaSessionDashboard model={readyModel()} /></MemoryRouter>)
-    const review = screen.getByRole('link', { name: '5:00' })
+    const review = screen.getByRole('link', { name: '0:05:00' })
     expect(review.getAttribute('href')).toBe('/analytics/moments?view=recent&login=xqc&stream=stream-1&offset=300')
     fireEvent.click(review)
     const activeRow = document.querySelector('tr.is-active')

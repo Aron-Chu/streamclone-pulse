@@ -142,11 +142,25 @@ export function panelComponentCss(): string {
   .pulse-mini-heat-bar { border-radius: 3px; display: block; flex: 1 1 4px; max-width: 8px; min-width: 3px; transform-origin: bottom center; }
   .pulse-mini-heat-ghost { background: rgba(139, 92, 246, 0.14); border-radius: 3px; display: block; flex: 1 1 4px; height: 22%; max-width: 8px; min-width: 3px; }
   .pulse-mini-dock-actions { align-items: center; display: flex; flex-shrink: 0; gap: 2px; }
+  /* The dock's chips and icon buttons look the same at rest and on hover, as when they were inline styles: the hover selectors outrank the dock's and the gear's hover tints. */
+  .pulse-mini-dock .pulse-mini-chip, .pulse-mini-dock button.pulse-mini-chip[title]:not(.pulse-mini-dock-main):hover { background: rgba(139, 92, 246, 0.16); border: 1px solid ${theme.borderAccent}; border-radius: ${theme.radiusButton}px; color: ${theme.accentSoft}; cursor: pointer; font-size: 12px; font-weight: 800; padding: 6px 8px; white-space: nowrap; }
+  .pulse-mini-dock .pulse-mini-jump { align-items: center; display: inline-flex; gap: 5px; }
+  .pulse-mini-dock .pulse-mini-icon, .pulse-mini-dock button.pulse-mini-icon[title]:not(.pulse-mini-dock-main):hover { align-items: center; background: transparent; border: 0; border-radius: 7px; color: ${theme.textMuted}; cursor: pointer; display: inline-flex; height: 28px; justify-content: center; padding: 0; width: 28px; }
   .pulse-mini-moment { display: grid; gap: 1px; min-width: 0; }
   .pulse-mini-moment-label, .pulse-mini-moment-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-mini-moment-label { font-size: 12px; font-weight: 800; }
   .pulse-mini-moment-detail { color: ${theme.textSecondary}; font-size: 11px; font-weight: 700; }
   .pulse-mini-moment-time { font-variant-numeric: tabular-nums; }
+  /* A note takes the dock's whole second line for a few seconds; the dock keeps its height (U1). */
+  .pulse-mini-dock-noted { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding-bottom: 4px; padding-top: 4px; row-gap: 4px; }
+  .pulse-mini-dock-noted .pulse-mini-dock-main { padding-bottom: 2px; padding-top: 2px; }
+  .pulse-mini-note-row { align-items: baseline; display: flex; gap: 3px; grid-column: 1 / -1; min-width: 0; }
+  .pulse-mini-note { color: ${theme.textSecondary}; font-size: 11px; font-weight: 700; line-height: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pulse-mini-note-link { background: none; border: 0; color: ${theme.accentSoft}; cursor: pointer; flex-shrink: 0; font-size: 11px; font-weight: 800; line-height: 14px; padding: 0; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+  /* The star's '·' between the note and Open Analytics (U1). */
+  .pulse-mini-note:has(+ .pulse-mini-note-link)::after { content: ' ·'; }
+  /* The bottom dock keeps its 62 px with the note (U1). */
+  .pulse-mini-dock-noted:not(.pulse-mini-dock-sidebar) { row-gap: 2px; }
 
   .pulse-settings-footer { flex-shrink: 0; padding: 0 10px 10px; }
   .pulse-settings-bottom-bar { align-items: center; background: rgba(17, 17, 23, 0.96); border: 1px solid ${theme.borderAccent}; border-radius: 8px; box-sizing: border-box; color: ${theme.textSecondary}; cursor: pointer; display: flex; font-size: 12px; font-weight: 800; gap: 8px; justify-content: space-between; margin-top: 0; min-height: 44px; padding: 9px 11px; text-align: left; width: 100%; }
@@ -169,12 +183,24 @@ export function panelComponentCss(): string {
   .pulse-sel-item { align-items: center; display: flex; gap: 8px; min-width: 0; }
   .pulse-sel-name { color: #fafafc; flex: 1; font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-sel-uses { color: #9090a5; flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; }
-  .pulse-sel-actions { align-items: center; align-content: start; display: flex; flex-wrap: wrap; gap: 4px 8px; min-height: ${MOMENT_CARD_ACTIONS_HEIGHT}px; justify-content: space-between; min-width: 0; width: 100%; }
+  .pulse-sel-actions { align-items: center; align-content: start; container-type: inline-size; display: flex; flex-wrap: wrap; gap: 4px 8px; min-height: ${MOMENT_CARD_ACTIONS_HEIGHT}px; justify-content: space-between; min-width: 0; position: relative; width: 100%; }
   .pulse-sel-primary { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9px; color: var(--pulse-accent-ink, #ddd6fe); cursor: pointer; font-size: 12px; font-weight: 800; padding: 5px 10px; white-space: nowrap; align-items: center; border-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.46); display: inline-flex; flex-shrink: 0; gap: 5px; min-height: 28px; }
   .pulse-sel-play { font-size: 11px; line-height: 1; }
   .pulse-sel-link { background: transparent; border: 0; color: var(--pulse-accent-soft, #c4b5fd); cursor: pointer; font: inherit; font-weight: 700; padding: 4px 0; text-decoration: underline; text-decoration-color: rgba(var(--pulse-accent-light-rgb, 167, 139, 250), 0.35); text-underline-offset: 2px; align-items: center; display: inline-flex; flex-shrink: 1; font-size: 12px; gap: 3px; margin-left: auto; min-width: 0; max-width: 100%; white-space: normal; }
   .pulse-sel-link-text { min-width: 0; overflow-wrap: anywhere; }
   .pulse-sel-link-icon { flex-shrink: 0; font-size: 11px; line-height: 1; }
+  /* What Jump did (U), in the space under the buttons the card already keeps and out of the flow, so nothing moves when it shows. It wraps rather than cut, and stops short of the Analytics control, which never moves. */
+  .pulse-sel-note { color: #a1a1b2; font-size: 11px; font-weight: 600; left: 0; line-height: 14px; margin: 0; position: absolute; right: 70px; top: 32px; }
+  /* Narrow, the Analytics control sits beside the note: the note lines up with it and ends in the star's '·' before it. */
+  @container (max-width: 256px) {
+    .pulse-sel-note { top: 37px; }
+    .pulse-sel-note.pulse-note-warn::after { content: ' ·' / ''; }
+  }
+  .pulse-note-warn { color: #fdba74; }
+  /* A time known only to its minute: a quiet 'about' before it (K1). */
+  .pulse-about { color: #9090a5; font-weight: 500; }
+  /* 'Stream start' / 'Stream end' after the reason (E1): a quiet tag, plain muted text as the site, the Hub and the session write it. */
+  .pulse-edge-tag { color: #9090a5; font-size: 11px; font-weight: 400; white-space: nowrap; }
 
   .pulse-insp { background: rgba(13, 13, 18, 0.96); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; box-sizing: border-box; display: grid; gap: 4px; min-width: 0; padding: 8px 10px; width: 100%; }
   .pulse-insp-header { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; }
@@ -274,9 +300,23 @@ export function panelComponentCss(): string {
   .pulse-mr-thumb { display: none; }
   .pulse-mr-inner { align-items: center; display: flex; flex: 1; gap: 10px; justify-content: space-between; min-width: 0; }
   .pulse-mr-main { display: grid; flex: 1; gap: 2px; min-width: 0; }
-  .pulse-mr-title-row { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; }
+  /* One line, so a row stays two lines in a narrow chat: the reason gives way (ellipsis) before the time or an edge tag; the row's name keeps it whole. */
+  .pulse-mr-title-row { align-items: center; display: flex; gap: 6px; min-width: 0; white-space: nowrap; }
+  .pulse-mr-title-row > * { flex-shrink: 0; }
+  .pulse-mr-title-row > :nth-child(2) { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .pulse-mr-offset { color: #fafafc; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  /* Laid out right to left, last figure first, so the first one is the first to wrap onto the hidden second line: viewers, then (inside the rates) chat/min. */
+  .pulse-mr-counts, .pulse-mr-rates { display: flex; flex-flow: row-reverse wrap; gap: 0 4px; justify-content: flex-end; max-height: 1lh; min-width: 0; overflow: hidden; }
   .pulse-mr-counts { color: #9090a5; font-size: 11px; font-weight: 600; }
+  .pulse-mr-counts span { white-space: nowrap; }
+  .pulse-mr-counts > :empty { display: none; }
+  .pulse-mr-counts :not(:last-child) { order: 1; }
+  .pulse-mr-counts :not(:last-child)::after { content: ' ·'; }
+  /* A chat spike keeps its chat/min: its rates run left to right, so emotes/min wraps away first, its '·' with it. */
+  [data-reason='chat_spike'] .pulse-mr-rates { flex-direction: row; justify-content: flex-start; }
+  [data-reason='chat_spike'] .pulse-mr-rates > * { order: 0; }
+  [data-reason='chat_spike'] .pulse-mr-rates > ::after { content: none; }
+  [data-reason='chat_spike'] .pulse-mr-rates > :not(:first-child)::before { content: '· '; }
   .pulse-mr-collecting-badge { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 999px; color: #fde68a; font-size: 12px; font-weight: 900; padding: 2px 8px; }
   .pulse-mr-emotes { align-items: center; display: flex; flex-shrink: 0; gap: 4px; }
   .pulse-mr-emote { align-items: center; display: inline-flex; line-height: 0; }

@@ -180,14 +180,14 @@ async function openRecap(page: Page) {
 
 /**
  * The partial-history header the audit row forbids: "Activity chart from X"
- * at all, or "Viewer data from" any time but 00:00:00. A live panel with
- * viewer samples from the start still says "Viewer data from 00:00:00 ·
+ * at all, or "Viewer data from" any time but 0:00:00. A live panel with
+ * viewer samples from the start still says "Viewer data from 0:00:00 ·
  * sampling now"; that is the full-history state, not the late-start header.
  */
 async function expectNoPartialHistoryHeader(page: Page): Promise<void> {
   const text = await shadowText(page)
   expect(text).not.toContain('Activity chart from')
-  for (const match of text.matchAll(/Viewer data(?: from)? (\d{2}:\d{2}:\d{2})/g)) expect(match[1]).toBe('00:00:00')
+  for (const match of text.matchAll(/Viewer data(?: from)? (\d+:\d{2}:\d{2})/g)) expect(match[1]).toBe('0:00:00')
 }
 
 test.describe('long-stream charts (Codex audit #70)', () => {
@@ -233,7 +233,7 @@ test.describe('long-stream charts (Codex audit #70)', () => {
       await servePulse(extension.context, surface === 'live' ? livePayload(SIX_HOURS, hole) : recapPayload(SIX_HOURS, hole))
       const { root, chart } = surface === 'live' ? await openLive(extension.page) : await openRecap(extension.page)
       await expect(chart).toBeVisible()
-      await expect(root.getByText('Missing chat data from 03:00:00 to 03:30:00', { exact: true })).toBeVisible()
+      await expect(root.getByText('Missing chat data from 3:00:00 to 3:30:00', { exact: true })).toBeVisible()
       await expect.poll(async () => (await chartGeometry(chart)).bands.length).toBeGreaterThan(0)
       const geometry = await chartGeometry(chart)
       expect(geometry.viewportStart).toBe(0)
@@ -277,7 +277,7 @@ test.describe('long-stream charts (Codex audit #70)', () => {
     await servePulse(extension.context, livePayload(SIX_HOURS, hole))
     const { root, chart } = await openLive(extension.page)
     const range = root.getByRole('combobox', { name: 'Chart time range' })
-    await expect(root.getByText('Missing chat data from 05:40:00 to 05:50:00', { exact: true })).toBeVisible()
+    await expect(root.getByText('Missing chat data from 5:40:00 to 5:50:00', { exact: true })).toBeVisible()
     for (const [label, seconds] of [['15 min', 900], ['30 min', 1800], ['1 hour', 3600], ['2 hours', 7200], ['4 hours', 14_400], ['Full stream', SIX_HOURS]] as const) {
       await range.click()
       await root.getByRole('option', { name: label, exact: true }).click()

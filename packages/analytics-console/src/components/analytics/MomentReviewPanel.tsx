@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef } from 'react'
 import {
+  OPENING_STREAM_EDGE,
+  compareStreamEdgeLast,
   findRollupForMomentCandidate,
-  formatHeatOffset,
   heatmapEmoteToRollupHit,
   heatmapPointsToMomentCandidates,
+  momentClockDisplay,
+  momentStreamEdge,
   normalizeMinuteBucket,
   rollupFallbackMomentCandidates,
+  streamEdgeLabel,
   topEmotesFromRollup,
   type RollupEmoteHit,
+  type StreamEdgeKind,
+  type StreamEdges,
 } from '@streampulse/pulse-core'
 import { viewerReadoutValue } from '@streampulse/pulse-charts'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote } from '../../apiTypes.ts'
@@ -47,6 +53,7 @@ export function MomentReviewPanel({
   topEmotesCatalog,
   heatmapPoints,
   streamStartedAt,
+  streamEdges,
   embedded = false,
 }: {
   rollups: AnalyticsMinuteRollup[]
@@ -57,6 +64,8 @@ export function MomentReviewPanel({
   topEmotesCatalog?: AnalyticsTopEmote[]
   heatmapPoints?: ReplayHeatmapPoint[]
   streamStartedAt?: string
+  /** The page's stream edges, so a row at either end carries the list's edge tag. */
+  streamEdges?: StreamEdges
   embedded?: boolean
 }) {
   const { motionEnabled } = useConsoleMotion()
@@ -68,26 +77,47 @@ export function MomentReviewPanel({
       ? heatmapPointsToMomentCandidates(heatmapPoints, streamStartedAt, catalog)
       : rollupFallbackMomentCandidates(rollups, catalog, streamStartedAt)
 
+    // A backend streamEdge flag on the heatmap point wins over the offset (pulse-core momentStreamEdge)
+    const backendEdgeByMinute = new Map<string, string>()
+    for (const point of heatmapPoints ?? []) {
+      const flag = (point as { streamEdge?: string | null }).streamEdge
+      if (flag) backendEdgeByMinute.set(normalizeMinuteBucket(point.minuteTs), flag)
+    }
+    const edges = streamEdges ?? OPENING_STREAM_EDGE
+
     const rows: Array<{
       rollup: AnalyticsMinuteRollup
       score: number
       scoreLabel: string
       reasonLabel: string
       estimated: boolean
+      offsetSeconds: number | null
+      streamEdge: StreamEdgeKind | undefined
     }> = []
     for (const candidate of momentCandidates) {
       const rollup = findRollupForMomentCandidate(rollups, candidate) as AnalyticsMinuteRollup | undefined
       if (!rollup) continue
+      const offsetSeconds = streamStartedAt ? rollupOffsetSeconds(rollup, streamStartedAt) : null
       rows.push({
         rollup,
         score: candidate.score,
         scoreLabel: candidate.scoreLabel,
         reasonLabel: candidate.reasonLabel,
         estimated: candidate.estimated,
+        offsetSeconds,
+        streamEdge: momentStreamEdge(
+          {
+            offsetSeconds: offsetSeconds ?? Number.NaN,
+            streamEdge: backendEdgeByMinute.get(normalizeMinuteBucket(candidate.minuteTs)),
+          },
+          edges,
+        ),
       })
     }
-    return rows
-  }, [heatmapPoints, rollups, streamStartedAt, topEmotesCatalog])
+    // E1 (11-13): hello / goodbye spam at the stream's edges ranks after every other moment, as in every
+    // other moment list; the stable sort keeps the score order within each group
+    return rows.sort(compareStreamEdgeLast)
+  }, [heatmapPoints, rollups, streamEdges, streamStartedAt, topEmotesCatalog])
 
   const topScore = useMemo(
     () => candidates.reduce((max, row) => Math.max(max, row.score ?? 0), 0),
@@ -95,15 +125,21 @@ export function MomentReviewPanel({
   )
 
   const rows = useMemo((): MomentRowModel[] =>
-    candidates.map(({ rollup, score, reasonLabel, estimated }, index) => {
-      const offsetLabel = streamStartedAt
-        ? formatHeatOffset(rollupOffsetSeconds(rollup, streamStartedAt))
+    candidates.map(({ rollup, score, reasonLabel, estimated, offsetSeconds, streamEdge }, index) => {
+      // K1 (11-13): the session's one clock; minute data only knows the minute, so the row prints a quiet
+      // 'about' before it (SessionMomentClock) and the list's edge tag at either end of the stream (round 2),
+      // from the same edge the rail is sorted by
+      const clock = offsetSeconds != null ? momentClockDisplay({ offsetSeconds, precisionSeconds: 60 }) : null
+      const offsetLabel = clock
+        ? clock.text
         : new Date(rollup.minuteTs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       const viewers = viewerReadoutValue(rollup)
       return {
         key: `${rollup.minuteTs}-${index}`,
         rank: index + 1,
         primaryTime: offsetLabel,
+        approximate: clock?.approximate ?? false,
+        edgeLabel: streamEdge ? streamEdgeLabel(streamEdge) : null,
         score,
         scoreRatio: topScore > 0 ? score / topScore : 0,
         reasonLabel,
@@ -125,7 +161,7 @@ export function MomentReviewPanel({
         })),
       }
     }),
-  [candidates, heatmapPoints, streamStartedAt, topEmotesCatalog, topScore])
+  [candidates, heatmapPoints, topEmotesCatalog, topScore])
 
   useEffect(() => {
     if (!selectedRollup?.minuteTs) return

@@ -157,7 +157,7 @@ describe('Moment pictures from the backend', () => {
     await load()
     const figure = card.querySelector('.pmf-pic')!
     expect(figure.getAttribute('role')).toBe('img')
-    expect(figure.getAttribute('aria-label')).toBe('Picture at 00:50:49: Twitch preview')
+    expect(figure.getAttribute('aria-label')).toBe('Picture at 0:50:49: Twitch preview')
     expect(figure.querySelector('img')!.getAttribute('src')).toBe(PICTURE)
     expect(figure.querySelector('.pmf-chip')!.textContent).toBe('Twitch preview')
     expect(card.hasAttribute('data-top')).toBe(true)
@@ -543,7 +543,7 @@ describe('Exact VOD frames', () => {
     const cardUrl = `blob:pulse-frame-${made + 1}`
     await load(cardUrl)
     expect(card.querySelector('.pmf-chip')!.textContent).toBe('Twitch VOD frame')
-    expect(card.querySelector('.pmf-pic')!.getAttribute('aria-label')).toBe('Picture at 00:50:49: Twitch VOD frame')
+    expect(card.querySelector('.pmf-pic')!.getAttribute('aria-label')).toBe('Picture at 0:50:49: Twitch VOD frame')
     // Stream second 3049 is VOD second 1549.
     expect(frameAsks(id)).toEqual([[{ type: 'MOMENT_PICTURE', action: 'vodFrame', vodId: id, seconds: 1549, height: 360 }]])
     unmount()

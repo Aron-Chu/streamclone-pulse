@@ -142,6 +142,22 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   const [clock, setClock] = useState(now())
   const heading = useRef<HTMLHeadingElement>(null)
   const tabButtons = useRef<Array<HTMLButtonElement | null>>([])
+  const feedback = useRef<HTMLDivElement>(null)
+  const undoButton = useRef<HTMLButtonElement>(null)
+  const count = useRef<HTMLParagraphElement>(null)
+  // J1: once an action settles, its result is in view and has focus, so nobody
+  // is left on the page body: Undo after a remove, the 'N moments' line after
+  // paging or Clear filters (from the top of the list), else the message.
+  // Only paging scrolls: the message and Undo stay in view at the top (sticky),
+  // so a remove leaves the page where it was (item 5).
+  const [focusNext, setFocusNext] = useState<'undo' | 'count' | 'feedback' | null>(null)
+  useEffect(() => {
+    if (!focusNext || library.busy) return
+    setFocusNext(null)
+    const target = (focusNext === 'undo' ? undoButton.current : focusNext === 'count' ? count.current : null) ?? feedback.current
+    if (focusNext === 'count') target?.scrollIntoView?.({ block: 'start' })
+    target?.focus({ preventScroll: true })
+  })
   const id = useId()
   useEffect(() => {
     setEditing(null); setPreview(null); setRemoved(null); setRestore(null); setRemovedVisit(null); setConfirmation(null); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice('')
@@ -150,7 +166,7 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   useEffect(() => { setPage(1) }, [query, view, channel, watchLater])
   useEffect(() => { setLocalNotice('') }, [library.notice])
   function navigate(next: LibraryView, focus: 'heading' | 'tab' = 'heading') {
-    setView(next); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice(''); setRemoved(null); setRemovedVisit(null)
+    setView(next); setQuery(''); setChannel(''); setWatchLater(false); setPage(1); setLocalNotice(''); setRemoved(null); setRemovedVisit(null); library.clearNotice()
     if (focus === 'heading') heading.current?.focus()
   }
   function navigateFromTab(index: number, event: { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; preventDefault(): void }) {
@@ -218,9 +234,12 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
         await onExport(json)
         setLocalNotice(bookmarksState === 'ready'
           ? 'Export prepared. It includes all your authorized records, not just these search results.'
-          : 'Device export prepared. Cloud bookmarks were not included until your account connection is restored.')
+          : bookmarksState === 'not_linked'
+            ? 'Export prepared. It includes every moment and note on this device, not just these search results.'
+            : 'Device export prepared. Cloud bookmarks were not included until your account connection is restored.')
       }
       catch { setLocalNotice('Could not prepare the download. Your data has not been changed.') }
+      setFocusNext('feedback')
     }
   }
   function save(reference: MomentReference) { void library.run({ kind: 'save', reference }, 'Moment saved. It will remain when history expires.') }
@@ -252,6 +271,8 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
   async function importFile(file: File) {
     setLocalNotice(''); setRemoved(null); setRemovedVisit(null)
     if (!snapshot) return
+    // J1: the feedback line takes focus now and reads out the result when it lands.
+    setFocusNext('feedback')
     if (file.size > BACKUP_MAX_BYTES) { setLocalNotice('That file is too large to be a My Moments export.'); return }
     let text: string
     try { text = await file.text() } catch { setLocalNotice('Couldn’t read that file. Try again.'); return }
@@ -292,8 +313,8 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
       className="pl-tab" aria-selected={view === item.id} onClick={() => navigate(item.id)}
       onKeyDown={event => navigateFromTab(index, event)}>{item.label}</button>)}</div>
 
-    <div className="pl-feedback-row"><div className="pl-feedback" role="status" aria-live="polite" aria-atomic="true">{localNotice || library.notice}</div>
-      {undoable ? <button type="button" className="pl-button pl-undo" disabled={library.busy} onClick={() => void (removedVisit ? undoRemoveVisit() : undoRemove())}>Undo</button> : null}</div>
+    <div className="pl-feedback-row"><div ref={feedback} className="pl-feedback" role="status" aria-live="polite" aria-atomic="true" tabIndex={-1}>{localNotice || library.notice}</div>
+      {undoable ? <button ref={undoButton} type="button" className="pl-button pl-undo" disabled={library.busy} onClick={() => { setFocusNext('feedback'); void (removedVisit ? undoRemoveVisit() : undoRemove()) }}>Undo</button> : null}</div>
     {library.error && !modal ? <div role="alert" className="pl-warning"><p>{library.error}</p>
       {!snapshot ? <button type="button" className="pl-button" onClick={library.retry}>Try loading again</button> : <p className="pl-muted">Your last loaded data is still available. Retry the action when ready.</p>}</div> : null}
     {library.loading ? <section aria-busy="true" aria-label="Loading My Moments" className="pl-stack"><p role="status">Loading your moments…</p>
@@ -319,24 +340,24 @@ export function LibraryWorkspace({ repository, initialView = 'saved', onExport, 
             <label className="pl-field">Channel<PulseThemedSelect ariaLabel="Channel" fullWidth value={channel} onChange={setChannel} options={[{value:'',label:'All channels'}, ...[...new Set(population.map(m=>m.channel))].sort().map(value=>({value,label:value}))]} /></label>
           </div> : null}
           {population.length && view === 'saved' ? <label className="pl-check"><input type="checkbox" checked={watchLater} onChange={e=>setWatchLater(e.target.checked)} />Watch later (no retained watched history)</label> : null}
-          {items.length ? <p className="pl-muted" role="status">{items.length} {items.length === 1 ? 'moment' : 'moments'}{query.trim() ? ' matching your search' : ''}</p> : null}
+          {items.length ? <p ref={count} className="pl-muted pl-count" role="status" tabIndex={-1}>{items.length} {items.length === 1 ? 'moment' : 'moments'}{query.trim() ? ' matching your search' : ''}</p> : null}
 
           {pageItems.length ? <ul className="pl-list">{pageItems.map(moment => <MomentListItem key={moment.id} moment={moment} recent={view === 'recent'} busy={library.busy}
             personalWorkspace analyticsOrigin={analyticsOrigin}
             presentation={presentations?.[moment.id]} context={contexts?.[moment.id]}
             onSave={save} onEdit={setEditing} onPreview={moment => { setPreview(moment); setRemoved(null); setRemovedVisit(null) }}
             // Synced History clears only as a whole: no one-visit remove.
-            onRemove={view === 'saved' ? moment => void removeFromPreview(moment, 'Removed from Saved.') : syncing ? undefined : moment => void removeVisit(moment)}
+            onRemove={view === 'saved' ? moment => { setFocusNext('undo'); void removeFromPreview(moment, 'Removed from Saved.') } : syncing ? undefined : moment => { setFocusNext('undo'); void removeVisit(moment) }}
             onOpenLink={openedLink} />)}</ul>
             : view === 'saved' && !filtered && accountListUnknown ? null
             : <div className="pl-empty"><h3>{filtered ? 'No matching moments' : view === 'recent' ? snapshot.preferences.captureHistory ? 'Nothing yet' : 'History is off' : deviceSaves ? 'No account saves yet' : 'No saves yet'}</h3>
               <p>{filtered ? 'Try a channel name, a word from your note, or clear the filters.'
                 : view === 'recent' ? snapshot.preferences.captureHistory ? 'Jump to a moment and watch it for 10 seconds.' : 'Turn it on to find streams you watched again.'
                   : 'Choose Save on a Pulse moment. No replay is needed.'}</p>
-              {filtered ? <button type="button" className="pl-button" onClick={() => { setQuery(''); setChannel(''); setWatchLater(false) }}>Clear filters</button> : null}</div>}
+              {filtered ? <button type="button" className="pl-button" onClick={() => { setQuery(''); setChannel(''); setWatchLater(false); setFocusNext('count') }}>Clear filters</button> : null}</div>}
 
-          {pages > 1 ? <nav className="pl-row pl-between" aria-label="Moment pages"><button type="button" className="pl-button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
-            <span>Page {currentPage} of {pages}</span><button type="button" className="pl-button" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>Next</button></nav> : null}
+          {pages > 1 ? <nav className="pl-row pl-between" aria-label="Moment pages"><button type="button" className="pl-button" disabled={currentPage === 1} onClick={() => { setPage(currentPage - 1); setFocusNext('count') }}>Previous</button>
+            <span>Page {currentPage} of {pages}</span><button type="button" className="pl-button" disabled={currentPage === pages} onClick={() => { setPage(currentPage + 1); setFocusNext('count') }}>Next</button></nav> : null}
 
           {view === 'saved' && deviceSaves ? <section className="pl-stack pl-device-saves" aria-labelledby={`${id}-device-saves`}>
             <h3 id={`${id}-device-saves`}>Saved on this device</h3>

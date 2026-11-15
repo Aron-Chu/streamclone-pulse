@@ -11,16 +11,19 @@
  *   a number (PORT-PLAN §2.4); otherwise prod's "Open full VOD".
  */
 import {
+  formatMomentOffset,
+  momentClockDisplay,
   recapMomentAnalyticalOffset,
   recapMomentReasonLabel,
   recapMomentSeekOffset,
+  type StreamEdges,
   topEmotesFromRollup,
 } from '@streampulse/pulse-core'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseRecapMoment } from '../apiTypes.ts'
 import { minuteEmoteTotal } from '../components/analytics/chartRollupUtils.ts'
 import { resolveGameArtUrl } from '../components/analytics/GamesPlayedStrip.tsx'
 import { getEmoteImageUrl, rollupOffsetSeconds } from './consoleFormat.ts'
-import { resolveMomentRowRollup } from './momentRowDisplay.ts'
+import { momentRowEdgeLabel, resolveMomentRowRollup } from './momentRowDisplay.ts'
 import { stripMomentEmotes } from './sessionStripMoments.ts'
 import { sessionVodLine } from './sessionState.ts'
 import { alignedVodOffset, buildTwitchVodUrl, type VodLinkState } from './twitchVodUrl.ts'
@@ -45,11 +48,9 @@ export interface SessionBarMoment {
   moment: PulseRecapMoment
 }
 
-/** Unpadded stream-clock time, the mockup's h:mm:ss ("0:50:54"). */
+/** Unpadded stream-clock time, h:mm:ss ("0:50:54"): pulse-core's one session clock (K1, 11-13). */
 export function formatStripClock(seconds: number): string {
-  const s = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0))
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${Math.floor(s / 3600)}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`
+  return formatMomentOffset(seconds)
 }
 
 const nf = new Intl.NumberFormat('en-US')
@@ -216,7 +217,12 @@ export interface StripMomentItem {
   key: string
   rank: number | null
   offsetSec: number
+  /** h:mm:ss, the Moments list's own clock (momentClockDisplay). */
   offsetLabel: string
+  /** Only the minute is known: the row adds a quiet 'about' (K1, 11-13). */
+  approximate: boolean
+  /** 'Stream start' / 'Stream end' for the first 5 and last 10 minutes (E1, 11-13). */
+  edgeLabel: 'Stream start' | 'Stream end' | null
   label: string
   topEmote: { code: string; count: number; imageUrl: string | null } | null
   locked: boolean
@@ -290,6 +296,11 @@ export function buildSessionBarStrip(args: {
   vodAlignSeconds?: number | null
   vodDurationSeconds?: number | null
   timeZone?: string
+  /**
+   * The page's stream edges (sessionStreamEdges, pulse-core streamEdgesFor): a closing-edge moment the backend
+   * didn't flag still reads "Stream end", as the Moments list writes it (E1, round 2). Absent = opening edge only.
+   */
+  streamEdges?: StreamEdges
 }): SessionBarStripModel {
   const { span, startedAt, topEmotesCatalog } = args
   const timeZone = currentTimeZone(args.timeZone)
@@ -407,11 +418,14 @@ export function buildSessionBarStrip(args: {
       const top = fewNames ? null : stripMomentEmotes({
         moment, rollups: args.rollups as AnalyticsMinuteRollup[], streamStartedAt: startedAt, topEmotesCatalog,
       }).emotes[0] ?? null
+      const clock = momentClockDisplay(moment)
       return {
         key: `m${offsetSec}`,
         rank,
         offsetSec,
-        offsetLabel: formatStripClock(offsetSec),
+        offsetLabel: clock.text,
+        approximate: clock.approximate,
+        edgeLabel: momentRowEdgeLabel(moment, args.streamEdges),
         label: barMomentLabel(moment),
         topEmote: top ? { code: top.name, count: top.count, imageUrl: getEmoteImageUrl(top) || null } : null,
         locked: lockedOff != null && Number.isFinite(lockedOff) && Math.abs(lockedOff - offsetSec) < 1,

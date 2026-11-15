@@ -29,7 +29,7 @@ test('a save keeps the frame its tab held; My Moments shows it, and Settings can
     video.srcObject = canvas.captureStream(10)
     await video.play()
   })
-  // The extension reads the player at 00:02:30, inside the minute saved below.
+  // The extension reads the player at 0:02:30, inside the minute saved below.
   await extension.serviceWorker.evaluate(async () => {
     const tab = (await chrome.tabs.query({ url: 'https://www.twitch.tv/videos/*' }))[0]
     await chrome.scripting.executeScript({ target: { tabId: tab.id! }, world: 'ISOLATED', func: () => {
@@ -47,7 +47,7 @@ test('a save keeps the frame its tab held; My Moments shows it, and Settings can
     }
   }))
 
-  // Save minute 00:02 from the panel, as a viewer does.
+  // Save minute 0:02:00 from the panel, as a viewer does.
   const root = vod.locator('#streamclone-pulse-root')
   await root.getByRole('application', { name: /^Chart plot/ }).focus()
   await vod.keyboard.press('End')
@@ -84,7 +84,7 @@ test('a save keeps the frame its tab held; My Moments shows it, and Settings can
   await withPicture.getByRole('button', { name: /^Preview: / }).click()
   const preview = library.getByRole('dialog', { name: 'Moment preview' })
   await expect(preview.locator('img[src^="blob:"]')).toBeVisible()
-  await expect(preview).toContainText('Saved frame · 00:02:')
+  await expect(preview).toContainText('Saved frame · 0:02:')
   // Removing the bookmark in Preview takes its picture with it. (Undo is a unit
   // test: this fixture's stream id is not numeric, so the worker refuses it.)
   await preview.getByRole('button', { name: /^Remove bookmark: / }).click()

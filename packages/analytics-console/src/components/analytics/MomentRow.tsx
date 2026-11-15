@@ -30,6 +30,10 @@ export interface MomentRowModel {
   /** 1-based rank within the visible list. */
   rank: number
   primaryTime: string
+  /** Only the minute is known: a quiet 'about' before `primaryTime` (SessionMomentClock), not part of the time. */
+  approximate?: boolean
+  /** The list's 'Stream start' / 'Stream end' tag (SessionMomentEdgeTag). */
+  edgeLabel?: string | null
   secondaryTime?: string | null
   score: number
   /** Score as a fraction of the top-ranked moment in this list. */
@@ -126,8 +130,9 @@ export function MomentRow({
             #{model.rank}
           </span>
           <span className="font-mono text-xs font-bold tabular-nums text-zinc-300">
-            {model.primaryTime}
+            <SessionMomentClock model={{ offsetLabel: model.primaryTime, approximate: model.approximate }} />
           </span>
+          <SessionMomentEdgeTag label={model.edgeLabel} />
           {model.secondaryTime ? (
             <span className="truncate text-xs font-semibold text-zinc-400">
               {model.secondaryTime}
@@ -221,8 +226,12 @@ export interface SessionMomentRowModel {
   rank: number
   /** The moment's analytical offset: the row's identity. */
   offsetSeconds: number
-  /** "0:50:54" */
+  /** "0:50:54": the moment's clock (pulse-core momentClockDisplay), the minute's start when only the minute is known. */
   offsetLabel: string
+  /** Only the minute is known: the row prints a quiet "about" before `offsetLabel` (K1, 11-13). */
+  approximate?: boolean
+  /** "Stream start" / "Stream end" for an edge moment (E1, 11-13); null otherwise. */
+  edgeLabel?: string | null
   /** "6:37 AM", weekday first on another day. */
   clockLabel: string | null
   reasonLabel: string
@@ -256,6 +265,26 @@ export function MomentPlayIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M8 5.6v12.8a.8.8 0 0 0 1.2.7l10.2-6.4a.8.8 0 0 0 0-1.4L9.2 4.9A.8.8 0 0 0 8 5.6z" fill="currentColor" />
     </svg>
+  )
+}
+
+/** The moment's time into the stream, with a quiet "about" when only the minute is known (K1, 11-13). */
+export function SessionMomentClock({ model }: { model: Pick<SessionMomentRowModel, 'offsetLabel' | 'approximate'> }) {
+  return (
+    <span className="ssr-at">
+      {model.approximate ? <><span className="ssr-ab">about</span>{' '}</> : null}
+      <span className="ssr-off">{model.offsetLabel}</span>
+    </span>
+  )
+}
+
+/** The quiet "Stream start" / "Stream end" tag on an edge moment (E1, 11-13). */
+export function SessionMomentEdgeTag({ label }: { label?: string | null }) {
+  if (!label) return null
+  return (
+    <>
+      <span className="ssr-edge" data-moment-stream-edge>{label}</span>{' '}
+    </>
   )
 }
 
@@ -350,12 +379,13 @@ export function SessionMomentRow({
         <span className="ssr-m1">
           <span className="ssr-vh">Moment</span>{' '}
           <span className="ssr-rk">{model.rank}</span>{' '}
-          <span className="ssr-off">{model.offsetLabel}</span>{' '}
+          <SessionMomentClock model={model} />{' '}
           {model.clockLabel ? <><span className="ssr-clk">{model.clockLabel}</span>{' '}</> : null}
           <span className={`ssr-why ${model.reasonTone}`}>
             <i aria-hidden="true" />
             {model.reasonLabel}
           </span>{' '}
+          <SessionMomentEdgeTag label={model.edgeLabel} />
           {model.score == null ? null : (
             <span className="ssr-sc" title="Reaction score in this stream">
               <span className="ssr-vh">reaction</span>{' '}score <b>{model.score}</b>{' '}

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentProps } from 'react'
-import { recapMomentAnalyticalOffset } from '@streampulse/pulse-core'
+import { recapMomentAnalyticalOffset, streamEdgesFor } from '@streampulse/pulse-core'
 import AnalyticsChart from './AnalyticsChart.tsx'
 import { SESSION_PINS_TOP_PX } from './SessionChartPins.tsx'
 import {
@@ -99,8 +99,31 @@ describe('SessionSpChart pins', () => {
     expect(container.querySelectorAll('[data-session-pin-cluster]')).toHaveLength(0)
     expect(container.querySelector('[data-session-pin="1"]')?.getAttribute('aria-label'))
       .toBe('Moment 1 at 1:15:18, top emote OMEGALUL')
-    expect(container.querySelector('[data-session-pin="4"]')?.getAttribute('aria-label')).toBe('Moment 4 at 2:00:00')
+    expect(container.querySelector('[data-session-pin="4"]')?.getAttribute('aria-label')).toBe('Moment 4 at about 2:00:00') // K1 (11-13): a minute-only moment says 'about'
     expect(performance.getEntriesByName('sp:pins-ready', 'mark').length).toBeGreaterThan(0)
+  })
+
+  it('puts the edge tag in each pin tooltip and accessible name, with no text on the pin (E1, round 2)', () => {
+    // a stream whose data ends 10 minutes in: every moment sits in its closing edge
+    const { container } = renderPins(1400, {
+      stripPins: {
+        recap: STRIP_RECAP, streamStartedAt: STRIP_STARTED_AT, heatmapPoints: STRIP_HEATMAP,
+        topEmotesCatalog: STRIP_TOP_EMOTES, rollups: STRIP_ROLLUPS, onSelectOffset: vi.fn(),
+        streamEdges: streamEdgesFor(600, true),
+      },
+    })
+    const pin = container.querySelector<HTMLElement>('[data-session-pin="1"]')!
+    expect(pin.getAttribute('aria-label')).toBe('Moment 1 at 1:15:18, Stream end, top emote OMEGALUL')
+    expect(pin.getAttribute('title')).toBe(pin.getAttribute('aria-label'))
+    expect(pin.getAttribute('data-session-pin-edge')).toBe('Stream end')
+    expect(pin.textContent).not.toMatch(/Stream end/)
+    // without the page's edges, no tag
+    cleanup()
+    frames?.restore()
+    restoreWidth?.()
+    const plain = renderPins(1400).container.querySelector<HTMLElement>('[data-session-pin="1"]')!
+    expect(plain.getAttribute('aria-label')).toBe('Moment 1 at 1:15:18, top emote OMEGALUL')
+    expect(plain.hasAttribute('data-session-pin-edge')).toBe(false)
   })
 
   it('a pin click is the strip row click: same handler, same offset', () => {

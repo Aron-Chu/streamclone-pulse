@@ -14,7 +14,8 @@
 .hv5-layer {
   --hv5-accent: var(--sp-accent, #5eead4);
   --hv5-chat: #a78bfa;
-  --hv5-emotes: #f7b645;
+  /* C1 (11-13): emotes are green, the session's colour (Aron's 10-15 call), so a moment keeps its colour from the Hub to its session */
+  --hv5-emotes: #34d399;
   --hv5-live: #ef4444;
   /* K1 pace heat on the emote map: taking off, cooling (validated on the #17171a tile) */
   --hv5-rise: #d9733a;
@@ -1472,6 +1473,8 @@
 .hv5-f3-peek .hv5-rh h2 { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 /* steady; the dot greys once the data is over 2 minutes old */
 .hv5-fd-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--hv5-live); }
+/* R1 (11-13): a row or card that arrived in the last refresh, until the next one; no motion */
+.hv5-new { flex: none; padding: 0 6px; border-radius: 4px; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--hv5-accent) 45%, transparent); color: var(--hv5-accent); font: 600 12px/16px var(--sp-font); white-space: nowrap; }
 .hv5-f2-stale .hv5-fd-dot { background: var(--sp-text-3); }
 /* a live section whose "as of" is over 2 min old, or a list kept while its counts don't load, reads greyed:
    the rows lose their colour and only the pictures (avatars, game covers, emotes) fade, so the text keeps
@@ -2310,9 +2313,12 @@
 .hv5-tm-l1 { height: 18px; }
 .hv5-tm-l2 { font-size: 12px; line-height: 15px; color: var(--sp-text-2); }
 .hv5-tm-l2 .hv5-fd-sep { margin: 0; }
+/* The game and its dot are one piece that needs room for a few letters, or it moves to a second line this one-line
+   box never shows: a narrow row drops the game and its dot together, with no lone '·' (11-14) */
+.hv5-tm-l2 { flex-wrap: wrap; align-content: flex-start; height: 15px; overflow: hidden; }
+.hv5-tm-gw { display: flex; flex: 1 1000 3em; align-items: center; gap: 6px; min-width: 0; max-width: max-content; }
 /* a row with no × (board 2A): the game gives way first, then "Early in the stream ·" ellipses; the rate never does */
 .hv5-tm-l2 .hv5-f2-plain { display: inline-flex; gap: 0.3em; flex: 0 1 auto; min-width: 0; }
-.hv5-tm-l2 .hv5-f2-plain ~ .hv5-fd-g { flex-shrink: 1000; }
 .hv5-tm-l2 .hv5-f2-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hv5-tm-l2 .hv5-f2-rt { flex: none; }
 .hv5-tm-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: 13.5px; }
@@ -2330,17 +2336,33 @@
 .hv5-up .hv5-fd-av, .hv5-up .hv5-fd-av .hv5-av { width: 28px; height: 28px; }
 .hv5-up-add { flex: none; color: var(--hv5-chat); font-variant-numeric: tabular-nums; }
 .hv5-up-gm { display: flex; }
+/* Under 400 px "6.0× more chat" takes a line of its own, so the game beside "+340/min" is not cut (Z06 words, 11-14);
+   the row grows 48 → 56 px, a fixed height, so nothing shifts */
+@media (max-width: 399px) {
+  .hub-v5 .hv5-up .hv5-fd { height: 56px; }
+  .hv5-up .hv5-fd-l2 { flex-wrap: wrap; }
+  .hv5-up .hv5-fd-l2 > .hv5-f2-x { flex-basis: 100%; }
+  .hv5-up .hv5-fd-l2 > .hv5-f2-x + .hv5-fd-sep { display: none; }
+}
 @media (max-width: 719px) {
   .hub-v5 .hv5-top .hv5-tm-row { min-height: 52px; }
   /* a peek row or "Top moments ↓" brings the rail up: it lands under the sticky nav (about 101 px), not behind it */
   .hub-v5 :is(#latest, .hv5-tm-it) { scroll-margin-top: 112px; }
 }
+/* Under 400 px, as Picking up, a Top today row's time drops to a line of its own at the right, so the name and its
+   emote keep their room (Z08 words, 11-14). The row is a fixed 61 px (5 + 34 + 2 + 15 + 5), and the peek waits in
+   that height: 43 + 3 x (61 + 1) = 229 px. */
+@media (max-width: 399px) {
+  .hub-v5 .hv5-top .hv5-tm-row { flex-wrap: wrap; row-gap: 2px; min-height: 61px; }
+  .hub-v5 .hv5-top .hv5-tm-t { flex-basis: 100%; }
+  .hv5-f3-peek[data-wait] { min-height: 229px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .hub-v5 .hv5-top .hv5-tm-list { transition: none; }
 }
 
-/* A1: pair the two adjacent existing sections without changing B1's DOM order. */
-@media (min-width: 1440px) {
+/* A1: pair the two adjacent existing sections without changing B1's DOM order. From 1200 px since W1 (11-13), as at 1440. */
+@media (min-width: 1200px) {
   .hub-v5.hub-d3 { grid-template-areas: "mast mast" "fol fol" "peek busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas"; }
   .hub-v5.hub-d3:has(> .hv5-most) { grid-template-areas: "mast mast" "fol fol" "peek busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas"; }
   .hv5-f3-peek, .hv5-busiest { margin-top: 12px; width: 100%; max-width: 720px; }

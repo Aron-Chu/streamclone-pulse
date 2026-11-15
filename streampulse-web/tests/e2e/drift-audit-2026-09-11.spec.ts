@@ -204,7 +204,7 @@ test.describe('drift audit 2026-09-11', () => {
   })
 
   for (const width of [1120, 1440, 1920] as const) {
-    test(`hub inspector stays adjacent to the chart with Live Wire present @ ${width}`, async ({
+    test(`hub inspector stays adjacent to the chart @ ${width}`, async ({
       page,
     }, testInfo) => {
       test.setTimeout(180_000)
@@ -230,7 +230,6 @@ test.describe('drift audit 2026-09-11', () => {
       const boxes = {
         chart: await surface.boundingBox(),
         inspector: inspectorActive ? await inspector.boundingBox() : null,
-        liveWire: await page.locator('.analytics-discovery-layout__wire').first().boundingBox(),
         rightRail: await page.locator('.figma-analytics__right-rail').first().boundingBox(),
       }
       // Which rule actually lays this out, so any fix targets the real cause.
@@ -287,7 +286,7 @@ test.describe('drift audit 2026-09-11', () => {
       test.skip(!inspectorActive, 'no bucket became selectable — hub activity data unavailable')
 
       // Acceptance: selected detail stays within practical reach of the chart
-      // it describes, even with the Live Wire rail present.
+      // it describes.
       expect(
         Math.abs(boxes.inspector!.y - boxes.chart!.y),
         'the bucket inspector drifted more than a viewport from the chart',
@@ -557,7 +556,6 @@ test.describe('drift audit 2026-09-11', () => {
       await page.screenshot({ path: join(outDir, `hover-chart-${width}.png`) })
 
       const hubHovers = [
-        ...(await probeHoverTargets(page, '.hub-live-wire__rail-card')),
         ...(await probeHoverTargets(page, '.analytics-discovery-layout__moments-link', 1)),
       ]
 

@@ -269,6 +269,14 @@
 .pulse-account .pulse-moments-note { margin: 8px 0 0; color: #d4d4de; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pulse-moments-links { display: flex; flex-wrap: wrap; gap: 0 14px; font-size: 14px; }
 .pulse-account .pulse-account-feedback:empty { display: none; }
+/* The read-only note sits on the tabs' line (Z11). */
+.pulse-account .pulse-moments-readonly { margin: -12px 0 16px; }
+/* An expired session: Sign in again beside Retry (MY-MOMENTS-3). */
+.pulse-moments-failed-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+/* A failed next page says so above its button, and the rows stay (MY-MOMENTS-2). */
+.pulse-moments-more { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pulse-account .pulse-moments-more-error { flex: 1 1 100%; margin: 12px 0 0; }
+.pulse-account button[aria-disabled="true"] { opacity: .6; cursor: wait; }
 
 @media (max-width: 540px) {
   .pulse-account { margin: 8px 0 24px; padding: 24px 20px; border-radius: 16px; }

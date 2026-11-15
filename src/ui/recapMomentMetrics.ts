@@ -133,7 +133,7 @@ export function resolveRecapMomentMetrics(
   }
 }
 
-function recapReasonToLiveHeatReason(reason: string | undefined): LiveHeatReason {
+function recapReasonToLiveHeatReason(reason: string | undefined, label?: string): LiveHeatReason {
   const normalized = (reason ?? '').trim().toLowerCase()
   const allowed: LiveHeatReason[] = [
     'chat_spike',
@@ -147,7 +147,9 @@ function recapReasonToLiveHeatReason(reason: string | undefined): LiveHeatReason
   if (allowed.includes(normalized as LiveHeatReason)) {
     return normalized as LiveHeatReason
   }
-  return 'manual'
+  // A VOD moment's reason is free text ('emote burst'); its label names the
+  // reason, so the dock and recap rows say 'Chat spike', not 'Moment'.
+  return allowed.find(code => momentScoreReasonLabel(code) === label) ?? 'manual'
 }
 
 export function recapMomentToLiveHeatPoint(
@@ -187,7 +189,7 @@ export function recapMomentToLiveHeatPoint(
     refinementConfidence: moment.refinementConfidence ?? peak?.refinementConfidence,
     reactionScoringVersion: moment.reactionScoringVersion ?? peak?.reactionScoringVersion,
     estimated: false,
-    reason: recapReasonToLiveHeatReason(reasonCode),
+    reason: recapReasonToLiveHeatReason(reasonCode, peak?.reasonLabel),
     reasonLabel: momentScoreReasonLabel(reasonCode),
     chatCount: metrics.chatCount,
     emoteCount: metrics.emoteCount,
@@ -202,6 +204,7 @@ export function recapMomentToLiveHeatPoint(
       animated: emote.animated,
     })),
     collecting: false,
+    streamEdge: moment.streamEdge,
     viewerCount: metrics.viewerCount,
     viewerDelta,
   }

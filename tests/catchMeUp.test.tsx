@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { CATCH_ME_UP_SCRIPT_FILE, injectCatchMeUp } from '../src/background/catchMeUpScript.ts'
 import { MESSAGE_SENDER_SCOPE } from '../src/background/pulseBroadcastTargets.ts'
-import { peakMinute, summaryClock } from '../src/content/catchMeUpStory.ts'
+import { peakMinute } from '../src/content/catchMeUpStory.ts'
 import type { CatchMeUpModel } from '../src/shared/catchMeUpContract.ts'
 import type { ExtensionCoverageResponse, PulsePayload } from '../src/shared/messages.ts'
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
@@ -63,12 +63,6 @@ describe('Catch me up story', () => {
     // The last hour only, as a live window holds.
     expect(peakMinute(minutes(180, 240), 14_400)).toBeNull()
     expect(peakMinute(minutes(1, 239), 14_400)).toEqual({ offsetSeconds: 238 * 60, chatCount: 247 })
-  })
-
-  it('writes clocks that cannot read as a time of day', () => {
-    expect(summaryClock(9_240)).toBe('2:34')
-    expect(summaryClock(1_290)).toBe('0:21')
-    expect(summaryClock(15_153, true)).toBe('4:12:33')
   })
 
   it('builds the summary: the VOD, the title the recap knows and the games in the order played', () => {
@@ -183,7 +177,9 @@ describe('Catch me up summary', () => {
     expect(vod).toHaveBeenCalledWith({ vodId: '2905053845' })
     // The cover's place is kept while Twitch answers; the title waits for it.
     const place = element.querySelector('.pcu-sum-cover')!
-    expect(place.textContent).toBe('3:00:33')
+    // The stream's length, a duration, not a point on its clock (K1 is for points), written as
+    // the recap header beside it writes it: whole minutes, so 3:00:33 is '3h 0m'.
+    expect(place.textContent).toBe('3h 0m')
     expect(element.querySelector<HTMLElement>('.pcu-sum-title')!.hidden).toBe(true)
     await settle()
     expect(place.querySelector('img')!.getAttribute('src')).toBe(cover)
@@ -191,7 +187,7 @@ describe('Catch me up summary', () => {
     expect([title.hidden, title.textContent]).toEqual([false, 'GAMING TIME'])
     expect(element.querySelector('.pcu-sum-games')!.textContent).toBe('Just Chatting → Minecraft')
     const peak = element.querySelector<HTMLButtonElement>('.pcu-sum-link')!
-    expect(peak.parentElement!.textContent).toBe('Peak 903 chat/min at 2:34')
+    expect(peak.parentElement!.textContent).toBe('Peak 903 chat/min at 2:34:00')
     peak.click()
     expect(minute).toHaveBeenCalledWith(154 * 60)
     block.remove()
@@ -300,7 +296,7 @@ describe('Stream recap: summary, games, chart and Top moments, as on live', () =
     return element
   }
   const rows = (element: ParentNode) => [...element.querySelectorAll<HTMLButtonElement>('.pulse-moment-row-button')]
-  const times = (element: ParentNode) => rows(element).map(row => row.getAttribute('aria-label')!.match(/\d\d:\d\d/)![0])
+  const times = (element: ParentNode) => rows(element).map(row => row.getAttribute('aria-label')!.match(/\d+:\d\d:\d\d/)![0])
   const click = (target: HTMLElement) => act(() => target.click())
   /** Turns Spikes on or off (they start off); the viewer's last choice carries over from an earlier test. */
   const setSpikes = (element: ParentNode, on: boolean) => {
@@ -338,13 +334,13 @@ describe('Stream recap: summary, games, chart and Top moments, as on live', () =
     const element = render()
     expect(element.textContent).toContain('8 moments')
     expect(element.querySelector('[role="combobox"][aria-label="Sort top moments"]')!.textContent).toContain('Strongest reaction')
-    expect(times(element)).toEqual(['00:05', '00:12', '00:19', '00:26', '00:33'])
+    expect(times(element)).toEqual(['0:05:00', '0:12:00', '0:19:00', '0:26:00', '0:33:00'])
     const more = element.querySelector<HTMLButtonElement>('.pulse-moment-more')!
     expect(more.textContent).toContain('Show 3 more moments')
     // Show more is the list's last row.
     expect(more.previousElementSibling!.hasAttribute('data-pmf-list')).toBe(true)
     click(more)
-    expect(times(element)).toEqual(['00:05', '00:12', '00:19', '00:26', '00:33', '00:40', '00:47', '00:54'])
+    expect(times(element)).toEqual(['0:05:00', '0:12:00', '0:19:00', '0:26:00', '0:33:00', '0:40:00', '0:47:00', '0:54:00'])
   })
 
   it('sorts by chat activity as live does', async () => {
@@ -366,7 +362,7 @@ describe('Stream recap: summary, games, chart and Top moments, as on live', () =
       bounds.mockRestore()
       Reflect.deleteProperty(document.documentElement, 'clientWidth')
     }
-    expect(times(element)).toEqual(['00:54', '00:47', '00:40', '00:33', '00:26'])
+    expect(times(element)).toEqual(['0:54:00', '0:47:00', '0:40:00', '0:33:00', '0:26:00'])
   })
 
   it('opens a picked row in the card above the rows, and closes it when picked again', () => {
@@ -374,7 +370,7 @@ describe('Stream recap: summary, games, chart and Top moments, as on live', () =
     const list = element.querySelector('[data-pmf-list]')!
     click(rows(element)[1]!)
     const card = element.querySelector('[data-top-moment-card="selected"]')!
-    expect(card.textContent).toContain('00:12')
+    expect(card.textContent).toContain('about 0:12:00')
     expect(card.nextElementSibling).toBe(list)
     expect(rows(element)[1]!.getAttribute('aria-controls')).toBe(card.id)
     click(rows(element)[1]!)
@@ -385,13 +381,13 @@ describe('Stream recap: summary, games, chart and Top moments, as on live', () =
     const element = render(true)
     setSpikes(element, true)
     act(() => element.querySelector('[data-chart-moment-marker-offset="720"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(element.querySelector('[data-top-moment-card="selected"]')!.textContent).toContain('00:12')
+    expect(element.querySelector('[data-top-moment-card="selected"]')!.textContent).toContain('about 0:12:00')
     setSpikes(element, false)
     // The summary's peak is the chart's busiest minute (the first of a tie), which it selects.
     const peak = element.querySelector<HTMLButtonElement>('.pcu-sum .pcu-sum-link')!
-    expect(peak.parentElement!.textContent).toBe('Peak 20 chat/min at 0:00')
+    expect(peak.parentElement!.textContent).toBe('Peak 20 chat/min at 0:00:00')
     click(peak)
-    expect(element.querySelector('[data-moment-inspector-clock="true"]')!.textContent).toMatch(/^00:00/)
+    expect(element.querySelector('[data-moment-inspector-clock="true"]')!.textContent).toBe('about 0:00:00')
     expect(element.querySelector('[data-top-moment-card="selected"]')).toBeNull()
   })
 

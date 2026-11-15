@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ExtensionRollup, PulsePayload } from '../src/shared/messages.ts'
 import {
-  formatAgo,
-  formatClock,
   formatCount,
-  formatSince,
   formatUptime,
   notChartedNote,
   popupShowsDeviceHistory,
@@ -105,37 +102,50 @@ describe('popup channel summary', () => {
     expect(summary.chatPerMinute).toBeNull()
   })
 
-  it('picks the highest-scoring peak and says how long ago it was on a live stream', () => {
+  // Two hours of minutes, so the live list is past its cold start.
+  const liveMinutes = Array.from({ length: 121 }, (_, minute) => rollup(minute, 50))
+  const chatPeak = (minute: number, score: number, extra: object = {}) =>
+    ({ offsetSeconds: minute * 60, score, reasons: ['chat_spike'], dominantSignal: 'chat', chatCount: 400, ...extra })
+
+  it('shows the panel’s #1 moment, never a viewer-only spike the panel does not list (M)', () => {
     const summary = summarizeChannel('fixturechan', livePayload({
+      rollups: liveMinutes,
       peaks: [
-        { offsetSeconds: 60 * 60, score: 40, reasons: [], dominantSignal: 'chat' },
-        { offsetSeconds: 102 * 60, seekOffsetSeconds: 101 * 60 + 50, score: 90, reasons: [], dominantSignal: 'chat', reasonLabel: 'Peak chat' },
+        { offsetSeconds: 100 * 60, score: 96, reasons: ['viewer_spike'], dominantSignal: 'viewers' },
+        chatPeak(45, 91),
       ],
     }), null, NOW)
-    expect(summary.biggest).toEqual({ label: 'Peak chat', offsetSeconds: 101 * 60 + 50, agoSeconds: 18 * 60 + 10 })
+    expect(summary.topMoment).toEqual({ label: 'Chat spike', clock: '0:45:00', approximate: true, edge: '' })
   })
 
-  it('gives a tied score to the earlier peak whatever order the peaks arrive in', () => {
-    const earlier = { offsetSeconds: 60 * 60, score: 55, reasons: [], dominantSignal: 'seventv' }
-    const later = { offsetSeconds: 100 * 60, score: 55, reasons: [], dominantSignal: 'seventv' }
+  it('writes the second when the moment knows it, with no about (K1)', () => {
+    const refined = chatPeak(45, 91, { reactionOnsetOffsetSeconds: 45 * 60 + 13, precisionSeconds: 5, refinementStatus: 'refined' })
+    expect(summarizeChannel('fixturechan', livePayload({ rollups: liveMinutes, peaks: [refined] }), null, NOW).topMoment)
+      .toMatchObject({ clock: '0:45:13', approximate: false })
+  })
+
+  it('gives a tied score to the earlier moment whatever order the peaks arrive in', () => {
+    const earlier = chatPeak(60, 55)
+    const later = chatPeak(100, 55)
     for (const peaks of [[earlier, later], [later, earlier]]) {
-      expect(summarizeChannel('fixturechan', livePayload({ peaks }), null, NOW).biggest?.offsetSeconds).toBe(60 * 60)
+      expect(summarizeChannel('fixturechan', livePayload({ rollups: liveMinutes, peaks }), null, NOW).topMoment?.clock).toBe('1:00:00')
     }
   })
 
-  it('skips a hello spike in the first five minutes unless nothing else ranked', () => {
-    const hello = { offsetSeconds: 60, score: 99, reasons: [], dominantSignal: 'seventv', reasonLabel: 'Emote spike' }
-    const real = { offsetSeconds: 60 * 60, score: 40, reasons: [], dominantSignal: 'chat', reasonLabel: 'Chat spike' }
-    expect(summarizeChannel('fixturechan', livePayload({ peaks: [hello, real] }), null, NOW).biggest?.offsetSeconds).toBe(60 * 60)
-    expect(summarizeChannel('fixturechan', livePayload({ peaks: [hello] }), null, NOW).biggest?.offsetSeconds).toBe(60)
+  it('ranks a hello spike last, and tags it Stream start when nothing else ranked (E1)', () => {
+    const hello = { offsetSeconds: 60, score: 99, reasons: ['emote_spike'], dominantSignal: 'seventv', emoteCount: 300 }
+    expect(summarizeChannel('fixturechan', livePayload({ rollups: liveMinutes, peaks: [hello, chatPeak(60, 40)] }), null, NOW).topMoment)
+      .toMatchObject({ clock: '1:00:00', edge: '' })
+    expect(summarizeChannel('fixturechan', livePayload({ rollups: liveMinutes, peaks: [hello] }), null, NOW).topMoment)
+      .toEqual({ label: 'Emote spike', clock: '0:01:00', approximate: true, edge: 'Stream start' })
   })
 
-  it('skips a goodbye spike in the last ten minutes of a finished stream', () => {
+  it('takes the recap’s #1 once the stream ends, ranking a goodbye spike last', () => {
     const rollups = Array.from({ length: 96 }, (_, minute) => rollup(minute, 20))
-    const goodbye = { offsetSeconds: 94 * 60, score: 99, reasons: [], dominantSignal: 'seventv', reasonLabel: 'Emote spike' }
-    const real = { offsetSeconds: 50 * 60, score: 40, reasons: [], dominantSignal: 'chat', reasonLabel: 'Chat spike' }
-    const ended = livePayload({ isLive: false, endedAt: '2026-10-01T20:00:00.000Z', rollups: [], fullRollups: rollups, peaks: [goodbye, real] })
-    expect(summarizeChannel('fixturechan', ended, null, NOW).biggest?.offsetSeconds).toBe(50 * 60)
+    const goodbye = { offsetSeconds: 94 * 60, score: 99, reasons: ['emote_spike'], dominantSignal: 'seventv', emoteCount: 300 }
+    const ended = (peaks: object[]) => livePayload({ isLive: false, endedAt: '2026-10-01T20:00:00.000Z', rollups: [], fullRollups: rollups, peaks } as Partial<PulsePayload>)
+    expect(summarizeChannel('fixturechan', ended([goodbye, chatPeak(50, 40)]), null, NOW).topMoment).toMatchObject({ clock: '0:50:00', edge: '' })
+    expect(summarizeChannel('fixturechan', ended([goodbye]), null, NOW).topMoment).toMatchObject({ clock: '1:34:00', edge: 'Stream end' })
   })
 
   it('summarises a finished stream across its whole length', () => {
@@ -146,7 +156,7 @@ describe('popup channel summary', () => {
       durationSeconds: 96 * 60,
       rollups: [],
       fullRollups: rollups,
-      peaks: [{ offsetSeconds: 3_600, score: 70, reasons: [], dominantSignal: 'chat' }],
+      peaks: [{ offsetSeconds: 3_600, score: 70, reasons: ['chat_spike'], dominantSignal: 'chat' }],
     }), null, NOW)
     expect(summary.isLive).toBe(false)
     expect(summary.viewers).toBeNull()
@@ -155,7 +165,7 @@ describe('popup channel summary', () => {
     expect(summary.spark.every(value => value === 20)).toBe(true)
     expect(summary.sparkMinutes).toBe(96)
     expect(summary.endedAt).toBe(Date.parse('2026-10-01T20:00:00.000Z'))
-    expect(summary.biggest).toEqual({ label: 'Chat spike', offsetSeconds: 3_600, agoSeconds: null })
+    expect(summary.topMoment).toEqual({ label: 'Chat spike', clock: '1:00:00', approximate: true, edge: '' })
   })
 
   it('falls back to fresh Helix viewers when no recent minute has a sample', () => {
@@ -167,7 +177,7 @@ describe('popup channel summary', () => {
 
   it('marks channels outside the hosted roster and survives a missing payload', () => {
     expect(summarizeChannel('fixturechan', livePayload({ rosterEligible: false }), null, NOW).tracked).toBe(false)
-    expect(summarizeChannel('fixturechan', null, null, NOW)).toMatchObject({ displayName: 'fixturechan', isLive: false, spark: [], biggest: null })
+    expect(summarizeChannel('fixturechan', null, null, NOW)).toMatchObject({ displayName: 'fixturechan', isLive: false, spark: [], topMoment: null })
   })
 
   it('says why a channel off the list has no chart, and stays quiet otherwise', () => {
@@ -191,17 +201,9 @@ describe('popup channel summary', () => {
 })
 
 describe('popup formatting', () => {
-  it('formats counts, clocks and relative times', () => {
+  it('formats counts and uptime', () => {
     expect(formatCount(1_240)).toBe('1,240')
     expect(formatCount(41_200)).toBe('41.2K')
-    expect(formatClock(2 * 3600 + 41 * 60 + 5)).toBe('2:41:05')
-    expect(formatClock(75)).toBe('1:15')
-    expect(formatAgo(30)).toBe('just now')
-    expect(formatAgo(18 * 60)).toBe('18m ago')
-    expect(formatAgo(80 * 60)).toBe('1h 20m ago')
-    expect(formatSince(NOW - 90 * 60_000, NOW)).toBe('1 h ago')
-    expect(formatSince(NOW - 26 * 3_600_000, NOW)).toBe('yesterday')
-    expect(formatSince(NOW - 4 * 86_400_000, NOW)).toBe('4 days ago')
     expect(formatUptime('2026-10-02T19:15:00.000Z', NOW)).toBe('45m')
     expect(formatUptime('2026-09-29T19:15:00.000Z', NOW)).toBeNull()
   })

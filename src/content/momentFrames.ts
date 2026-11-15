@@ -1,4 +1,4 @@
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import {
   MOMENT_FRAMES_READY_EVENT,
   MOMENT_PICTURE_WANTS,
@@ -360,7 +360,7 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
 
   /** Puts `source` on a card's picture: its chip, and what a screen reader hears. */
   const name = (picture: HTMLElement, source: string): void => {
-    picture.setAttribute('aria-label', `Picture at ${formatHeatOffset(view.peak)}: ${source}`)
+    picture.setAttribute('aria-label', `Picture at ${formatMomentOffset(view.peak)}: ${source}`)
     picture.querySelector('.pmf-chip')!.textContent = source
   }
 
@@ -488,9 +488,9 @@ function mount(host: HTMLElement, view: MomentPictureView, at?: MomentPictureAt)
     }
     if (image.getAttribute('src') !== frame.url) image.src = frame.url
     if (!figure) return
-    time!.textContent = formatHeatOffset(frame.offset)
+    time!.textContent = formatMomentOffset(frame.offset)
     badge!.hidden = index !== peak
-    figure.setAttribute('aria-label', `Picture at ${formatHeatOffset(frame.offset)}, captured while you watched. Use the arrow keys or move across it to see the seconds around it.`)
+    figure.setAttribute('aria-label', `Picture at ${formatMomentOffset(frame.offset)}, captured while you watched. Use the arrow keys or move across it to see the seconds around it.`)
     rail!.childNodes.forEach((tick, tickIndex) => (tick as HTMLElement).toggleAttribute('data-on', tickIndex === index))
   }
 

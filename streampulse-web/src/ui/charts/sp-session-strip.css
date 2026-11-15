@@ -148,6 +148,9 @@ button.bkc-mr:hover { background: var(--sp-raised); }
 .bkc-mr .rk { width: 12px; flex: none; text-align: right; font-size: 12px; color: var(--sp-text-3); }
 .bkc-mr .tm { flex: none; font-weight: 500; }
 .bkc-mr .lb { flex: 1; min-width: 0; color: var(--sp-text-2); overflow: hidden; text-overflow: ellipsis; }
+/* K1 + E1 (11-13): the quiet 'about' for a minute-only time and the 'Stream start' / 'Stream end' tag */
+.bkc-mr .ab, .bkc-mr .eg { font-size: 12px; font-weight: 400; color: var(--sp-text-3); }
+.bkc-mr .eg { flex: none; }
 .bkc-mr .em { display: inline-flex; align-items: center; gap: 4px; flex: none; margin-left: auto; font-size: 12px; color: var(--sp-text-2); }
 .bkc-mr .em img { width: 20px; height: 20px; object-fit: contain; }
 .bkc-mr.lk { background: var(--sp-raised); }
@@ -298,4 +301,31 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
   }
   .bkc--below .mpl-msg { padding: 0 6px; font-size: 11px; line-height: 14px; }
   .bkc--below .bkc-in:has(.mpl-box.on) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "pv" "id" "body" "act"; }
+}
+/* SESSION-MOMENTS-5 (11-13): the time now says 'about' and the count '120 uses', so a moment row's label wraps
+   rather than cutting, at every width (round 2: it cut at 768 too); one line keeps the 28 px row */
+.bkc--below .bkc-mr { height: auto; min-height: 28px; padding-block: 4px; }
+.bkc--below .bkc-mr .lb { white-space: normal; overflow: visible; text-overflow: clip; }
+/* SESSION-MOMENTS-5 (11-13): a 320 or 360 px phone has no room for the 128 px picture column, so the picture takes
+   the strip's width above the time (as it does while playing), and labels, names and moment rows wrap
+   instead of cutting to '0:…' */
+@container bkc-below (max-width: 319px) {
+  .bkc--below > .bkc-in { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "pv" "id" "body" "act"; }
+  .bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top" "id" "body" "act"; }
+  .bkc--below .bkc-t, .bkc--below .bkc-cat span { white-space: normal; overflow-wrap: anywhere; }
+  .bkc--below .bkc-fig { padding: 8px 6px; }
+  .bkc--below .bkc-fl { align-items: flex-start; gap: 4px; white-space: normal; }
+  .bkc--below .bkc-fl .sw { margin-top: 4px; }
+  .bkc--below .bkc-el { flex-wrap: wrap; row-gap: 8px; }
+  .bkc--below .bkc-el li { flex: none; max-width: 100%; }
+  .bkc--below .bkc-en { white-space: normal; overflow-wrap: anywhere; }
+  .bkc--below .bkc-mr { flex-wrap: wrap; row-gap: 2px; white-space: normal; }
+  /* the label takes its own line under the time, so it never wraps word by word beside it */
+  .bkc--below .bkc-mr .lb { flex: 1 0 100%; order: 1; padding-left: 20px; overflow: visible; }
+}
+/* SESSION-MOMENTS-12 (11-13): the details' moment rows, Open VOD, Zoom and Play reach the 44 px phone goal */
+@media (max-width: 767px), (pointer: coarse) {
+  .bkc--below .bkc-mr { height: auto; min-height: 44px; }
+  .bkc--below .bkc-act .bkc-btn, .bkc--below .bkc-act .bkc-qb { height: 44px; }
+  .bkc--below .mpl .mpl-go { min-width: 44px; min-height: 44px; justify-content: center; }
 }

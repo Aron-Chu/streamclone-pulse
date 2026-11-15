@@ -123,7 +123,7 @@ test('packaged My Moments retains notes, separates consent and clears history wi
   await page.reload()
   await page.getByRole('tab',{name:'History',exact:true}).click()
   await expect(page.getByText('Saved comeback',{exact:true})).toBeVisible()
-  await expect(page.getByText(/^Watched \d/).first()).toBeVisible()
+  await expect(page.getByText(/^Watched \S/).first()).toBeVisible()
   await page.getByRole('button',{name:'Save: Another watched moment',exact:true}).click()
   await expect(page.getByText('Moment saved. It will remain when history expires.',{exact:true})).toBeVisible()
   await page.getByRole('tab',{name:'Storage & privacy',exact:true}).click()

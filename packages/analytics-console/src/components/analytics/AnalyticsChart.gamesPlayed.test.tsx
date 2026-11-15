@@ -120,7 +120,7 @@ describe('Games played without chart minutes (fix, 10-30, GP-6)', () => {
     const { container } = renderChart(noMinutes(), SNAPSHOT_GAMES)
     expect(container.textContent).toContain('No minute data')
     expect(screen.getByLabelText('Games played').hasAttribute('data-games-played-list')).toBe(true)
-    expect(listRows(container)).toEqual(['Just Chatting≈3h 41m', 'Gakuen iDOLM@STERfrom 3:41:13'])
+    expect(listRows(container)).toEqual(['Just Chattingabout 3h 41m', 'Gakuen iDOLM@STERfrom 3:41:13'])
     const times = [...container.querySelectorAll<HTMLElement>('[data-games-played-list-time]')]
     expect(times[1]!.getAttribute('title')).toBe('No end recorded yet. Estimated from the stream category.')
     // Never the 42 h length the open record reports.
@@ -145,7 +145,7 @@ describe('Games played without chart minutes (fix, 10-30, GP-6)', () => {
     const { container } = renderChart(undefined as unknown as AnalyticsStreamDetail, SNAPSHOT_GAMES, { loading: true })
     expect(container.textContent).toContain('Loading chart data')
     // No stream record yet, so no end is known.
-    expect(listRows(container)).toEqual(['Just Chatting≈3h 41m', 'Gakuen iDOLM@STERfrom 3:41:13'])
+    expect(listRows(container)).toEqual(['Just Chattingabout 3h 41m', 'Gakuen iDOLM@STERfrom 3:41:13'])
   })
 
   it('adds nothing without games', () => {

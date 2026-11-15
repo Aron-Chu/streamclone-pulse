@@ -60,6 +60,8 @@
 .ssr-more { display: block; flex: none; width: 100%; padding: 8px 12px; text-align: center; font-size: 12px; font-weight: 600; line-height: 16px; color: #a1a1aa; }
 .ssr-more:hover { background: rgb(255 255 255 / .04); color: #e4e4e7; }
 .ssr-more:focus-visible { outline: 2px solid var(--ssr-focus); outline-offset: -2px; }
+/* SESSION-MOMENTS-12 (11-13): 'Show N more moments' reaches the 44 px phone goal */
+@media (max-width: 767px), (pointer: coarse) { .ssr-more { min-height: 44px; } }
 
 /* ---------- the row (.mrow) ---------- */
 .ssr-row {
@@ -88,12 +90,20 @@
 .ssr-list > .ssr-row:first-child { margin-top: 0; }
 .ssr-tx { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .ssr-m1, .ssr-m2 { display: flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; }
+/* "about" and an edge tag can outgrow a narrow row: the line wraps instead of clipping */
+.ssr-m1 { flex-wrap: wrap; row-gap: 4px; }
 .ssr-rk {
   display: grid; place-items: center; flex: none; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
   background: var(--ssr-raised); box-shadow: inset 0 0 0 1px var(--ssr-line-strong);
   font-size: var(--ssr-fs-label); font-weight: 600; line-height: 20px; color: var(--ssr-text-1);
 }
 .ssr-off { font-size: var(--ssr-fs-title); line-height: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* the moment's clock: a quiet "about" when only the minute is known (K1, 11-13), as the extension writes it */
+.ssr-at { display: inline-flex; align-items: baseline; gap: 4px; flex: none; }
+/* the fallbacks let the legacy minute-data rows (MomentRow, outside .ssr) use the same quiet spans */
+.ssr-ab { color: var(--ssr-text-3, #8e8e96); font-size: var(--ssr-fs-label, 12px); font-weight: 400; }
+/* the quiet edge tag (E1, 11-13): hello / goodbye spam, ranked last */
+.ssr-edge { flex: none; color: var(--ssr-text-3, #8e8e96); font-size: var(--ssr-fs-label, 12px); white-space: nowrap; }
 .ssr-clk { color: var(--ssr-text-3); font-size: var(--ssr-fs-label); }
 .ssr-why {
   display: inline-flex; align-items: center; gap: 6px; flex: none; height: 22px; padding: 0 8px; border-radius: 11px;
@@ -209,6 +219,12 @@
 .ssr-live-dot { flex: none; width: 6px; height: 6px; margin-right: 2px; border-radius: 50%; background: #eb0400; }
 .ssr-live + .ssr-reel, .ssr-live + .ssr-row { margin-top: 6px; }
 .ssr-reel-note { margin: 0; padding: 0 2px; font-size: 11px; line-height: 15px; color: var(--ssr-text-3); }
+/* L1 (11-13, SESSION-MOMENTS-10): while the recap is out, grey cards in the reel's shape (SessionMomentsStates.tsx),
+   16:9 when the cards will carry VOD frames, else the flat cards' height; then the 5 s late line */
+.ssr-sk { aspect-ratio: 16 / 9; }
+.ssr-sk-flat .ssr-sk { aspect-ratio: auto; height: 102px; }
+.ssr-sk-flat .ssr-sk--hero { height: 116px; }
+.ssr-late { margin: 0; padding: 8px 10px 10px; font-size: var(--ssr-fs-label); line-height: 16px; color: var(--ssr-text-2); }
 .ssr-rc {
   position: relative;
   isolation: isolate;
@@ -258,7 +274,8 @@
 .ssr-rc-cap { position: absolute; left: 10px; right: 52px; bottom: 9px; display: flex; flex-direction: column; gap: 5px; min-width: 0; pointer-events: none; }
 .ssr-rc-l1, .ssr-rc-l2, .ssr-rc-l3 { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
 .ssr-rc .ssr-off { text-shadow: 0 1px 6px rgb(0 0 0 / .65); }
-.ssr-rc .ssr-clk, .ssr-rc .ssr-sc, .ssr-rc-gm, .ssr-rc .ssr-nn { color: var(--ssr-text-2); text-shadow: 0 1px 4px rgb(0 0 0 / .8); }
+.ssr-rc .ssr-clk, .ssr-rc .ssr-sc, .ssr-rc-gm, .ssr-rc .ssr-nn, .ssr-rc .ssr-ab, .ssr-rc .ssr-edge { color: var(--ssr-text-2); text-shadow: 0 1px 4px rgb(0 0 0 / .8); }
+.ssr-rc-l2 { flex-wrap: wrap; row-gap: 4px; }
 .ssr-rc-gm { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--ssr-fs-label); }
 .ssr-rc .ssr-why { background: rgb(9 9 11 / .62); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .14); }
 :is(.ssr-rc, .ssr-row) .ssr-toks { gap: 4px 10px; flex-wrap: wrap; overflow: visible; }
@@ -287,10 +304,25 @@
 .ssr-rc.lk .ssr-rk { background: var(--ssr-accent); color: #09090b; box-shadow: none; }
 /* #2 and #3: time and score, then the reason; play top right */
 .ssr-rc--sm .ssr-rc-cap { left: 8px; right: 8px; bottom: 7px; gap: 4px; }
-.ssr-rc--sm .ssr-rc-l1 { gap: 6px; }
+.ssr-rc--sm .ssr-rc-l1 { gap: 0 6px; flex-wrap: wrap; }
+/* round 2: with 'about' the clock line can outgrow a small card, so the score takes its own line, never 'sc…' */
+.ssr-rc--sm .ssr-rc-l1 .ssr-sc { flex: none; }
 .ssr-rc--sm .ssr-off { font-size: 13px; line-height: 16px; }
 .ssr-rc--sm .ssr-sc { font-size: 11px; line-height: 16px; }
 .ssr-rc--sm .ssr-why { height: 18px; padding: 0 6px; gap: 5px; font-size: 11px; }
+.ssr-rc--sm :is(.ssr-ab, .ssr-edge) { font-size: 11px; line-height: 16px; }
+/* #2 and #3: one emote line, the top emote and its count (SESSION-MOMENTS-9 C1); a long name wraps, never cut */
+.ssr-rc-l3--one { white-space: normal; }
+.ssr-rc-l3--one .ssr-toks { font-size: 11px; line-height: 16px; }
+.ssr-rc-l3--one .ssr-tok-img { width: 18px; height: 18px; }
+/* with a frame, the words sit in the card's flow so a wrapped line grows the card instead of covering the rank;
+   the frame keeps its 16:9 at the top and the shade runs on into the card's own dark */
+.ssr-rc--sm:not(.flat) { display: flex; flex-direction: column; justify-content: flex-end; }
+/* round 2 (SESSION-MOMENTS-9): 'hidden' made the card a scroll container, which keeps 16:9 and lets the words
+   ride up under the rank and Play; 'clip' still rounds the corners but lets the card grow to its words */
+.ssr .ssr-rc--sm:not(.flat) { overflow: clip; }
+.ssr-rc--sm:not(.flat) .ssr-rc-cap { position: relative; left: auto; right: auto; bottom: auto; margin: 32px 8px 7px; }
+.ssr-rc--sm .ssr-rc-pic { bottom: auto; aspect-ratio: 16 / 9; }
 .ssr-rc--sm .ssr-rc-top { left: 6px; top: 6px; }
 .ssr-rc--sm .ssr-go { top: 6px; right: 6px; bottom: auto; width: 26px; height: 26px; }
 .ssr-rc--sm .ssr-go svg { width: 11px; height: 11px; }

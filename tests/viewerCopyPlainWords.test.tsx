@@ -60,11 +60,12 @@ describe('viewer copy on the not-charting cards', () => {
     const waiting = coverageCardCopy({ coverage: lateCoverage({ state: 'waiting_for_vod' }), isLive: true })
     expect(waiting).toEqual({
       title: 'Partial coverage',
-      body: 'Live tracking from 00:12:00 → now',
-      detail: 'Chat before 00:12:00 comes from the Twitch replay once it’s linked. “From stream start” only moves the player; it doesn’t fill the chart.',
+      body: 'Live tracking from 0:12:00 → now',
+      detail: 'Chat before 0:12:00 comes from the Twitch replay once it’s linked. “From stream start” only moves the player; it doesn’t fill the chart.',
     })
     const backfill = coverageCardCopy({ coverage: lateCoverage(), vodId: '2797507897', isLive: true })
-    expect(backfill?.detail).toBe('Missing first 12:00 — loads chat from the Twitch replay.')
+    // How much is missing is a length in the extension's one length style, not a clock (K1 is for points).
+    expect(backfill?.detail).toBe('Missing first 12m — loads chat from the Twitch replay.')
     expect(`${waiting?.body} ${waiting?.detail} ${backfill?.detail}`).not.toMatch(JARGON)
   })
 })

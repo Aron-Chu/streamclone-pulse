@@ -7,17 +7,23 @@
  *
  * At every width (desktop took the phone order, B1 11-11) the first 6 show and
  * "Show all N" opens the rest in place.
+ *
+ * H01 (11-13): once its data is over 15 minutes old, when the carousel's LIVE
+ * badges go too (TOP_KEEP_MS), the old rows go: in their place it says it
+ * can't tell, with the time it last knew, and shows no count (nor "Show all N").
+ * Z06 (11-13): the × reads in pulse-core's words, "6.0× more chat".
  */
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fx } from '../../../../lib/momentsChecked'
+import { formatLiftRatio } from '@streampulse/pulse-core'
 import { HubToggletip } from '../d3/HubToggletip'
 import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
 import { GameArt } from './HubV5Rack'
 import type { TopToday } from './HubV5TopMoments'
-import { FEED_ADD_MIN, FEED_NOW_MIN, FEED_UP_MIN, feedFreshText, feedMore, feedStale, type FeedUpRow } from './hubV5FeedModel'
+import { FEED_ADD_MIN, FEED_NOW_MIN, FEED_UP_MIN, feedClockFloor, feedFreshText, feedMore, feedStale, type FeedUpRow } from './hubV5FeedModel'
 import { channelHref, hubSavedClock } from './hubV5Model'
+import { TOP_KEEP_MS } from './hubV5TopModel'
 
 const H_ID = 'hv5-up-h'
 /** Rows before "Show all N". */
@@ -31,8 +37,10 @@ export const upSavedNone = (clock: string) => `Nothing was picking up as of ${cl
 export const UP_UNAVAILABLE = 'Unavailable right now.'
 /** The chat counts behind the list did not load: never "nothing is picking up". */
 export const UP_DOWN = "Can't tell right now — chat counts didn't load."
+/** The data is older than LIVE lasts (15 min): the same line, with the time it last knew. */
+export const upOld = (clock: string) => `Can't tell right now — last known at ${clock}.`
 
-const upAria = (x: FeedUpRow) => `${x.name}, chat ${fx(x.x).replace('×', ' times')} its usual, ${feedMore(x.add)} more messages a minute${x.cat ? `, ${x.cat}` : ''}. Opens the stream page.`
+const upAria = (x: FeedUpRow) => `${x.name}, ${formatLiftRatio(x.x)} times more chat, ${feedMore(x.add)} more messages a minute${x.cat ? `, ${x.cat}` : ''}. Opens the stream page.`
 
 function UpItem({ x, art }: { x: FeedUpRow; art: string | null }) {
   return (
@@ -42,7 +50,7 @@ function UpItem({ x, art }: { x: FeedUpRow; art: string | null }) {
         <span className="hv5-fd-tx" aria-hidden="true">
           <span className="hv5-fd-l1"><span className="hv5-fd-nm">{x.name}</span></span>
           <span className="hv5-fd-l2">
-            <span className="hv5-f2-x"><b>{fx(x.x)}</b> usual</span>
+            <span className="hv5-f2-x"><b>{formatLiftRatio(x.x)}×</b> more chat</span>
             {SEP}
             <span className="hv5-up-add">+{feedMore(x.add)}/min</span>
             {x.cat ? <>{SEP}<span className="hv5-fd-g">{x.cat}</span></> : null}
@@ -61,7 +69,6 @@ export interface HubV5PickingUpProps {
 
 export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
   const { up, upAsOf, upSaved, art } = top
-  const down = top.upDown === true
   const rows = up.up
   const n = rows.length
   const [all, setAll] = useState(false)
@@ -69,6 +76,9 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
   const hidden = n - listed.length
 
   const none = top.shown?.source === 'none'
+  // older than LIVE lasts: it can't tell what is picking up now (S1, 11-13)
+  const old = upAsOf != null && nowMs - upAsOf > TOP_KEEP_MS
+  const down = top.upDown === true || old
   // it waits while Top moments today does (the hub read runs), so it never says "nothing" before the answer
   const waiting = !none && !down && (upAsOf == null || top.shown == null)
   const saved = !waiting && upSaved && upAsOf != null ? hubSavedClock(upAsOf, nowMs) : null
@@ -85,7 +95,12 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
         <h2 id={H_ID}><span className="hv5-fd-dot" aria-hidden="true" />Picking up now</h2>
         <span className="hv5-f2-fresh">{fresh}</span>
         {waiting || none ? null : <HubToggletip tip={UP_TIP} label="About Picking up now" />}
-        {n && !down ? <span className="hv5-end hv5-up-n" aria-label={`${n} ${n === 1 ? 'channel' : 'channels'}`}>{n}</span> : null}
+        {n && !down ? (
+          <span className="hv5-end hv5-up-n">
+            <span aria-hidden="true">{n}</span>
+            <span className="hv5-vh">{`${n} ${n === 1 ? 'channel' : 'channels'}`}</span>
+          </span>
+        ) : null}
       </div>
       <div className="hv5-tm-body">
         {waiting ? (
@@ -97,8 +112,8 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
           </>
         ) : down ? (
           <>
-            <p className="hv5-tm-q" data-up-down>{UP_DOWN}</p>
-            {n ? (
+            <p className="hv5-tm-q" data-up-down>{old && upAsOf != null ? upOld(saved ?? feedClockFloor(upAsOf)) : UP_DOWN}</p>
+            {n && !old ? (
               <ol className="hv5-fd-list hv5-up-old" aria-labelledby={H_ID}>
                 {listed.map((x) => <UpItem key={x.login} x={x} art={x.cat ? art.get(x.cat) ?? null : null} />)}
               </ol>
@@ -111,7 +126,7 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
         ) : (
           <p className="hv5-tm-q">{none ? UP_UNAVAILABLE : saved ? upSavedNone(saved) : UP_NONE}</p>
         )}
-        {hidden > 0 || (all && n > UP_FIRST) ? (
+        {!old && (hidden > 0 || (all && n > UP_FIRST)) ? (
           <div className="hv5-fd-more">
             <button className="hv5-qb" type="button" aria-expanded={all} onClick={() => setAll((v) => !v)}>
               {all ? 'Show fewer' : `Show all ${n}`}

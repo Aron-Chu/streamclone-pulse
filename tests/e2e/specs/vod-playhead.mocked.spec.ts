@@ -69,12 +69,12 @@ test('a replay chart follows the VOD player and its emote line is readable', asy
   // The fixture player opens paused at 2:00, so the band reads that minute.
   await expect(readout).toHaveAttribute('data-chart-readout-state', 'paused')
   await expect(readout).toContainText('Paused')
-  await expect(readout).toContainText('00:02:00')
+  await expect(readout).toContainText('0:02:00')
   const startX = Number(await playhead.getAttribute('x1'))
 
   // Seeking near the end moves the line right and the readout with it.
   await seekVideo(vod, 21_000)
-  await expect(readout).toContainText('05:50:00')
+  await expect(readout).toContainText('5:50:00')
   await expect.poll(async () => Number(await playhead.getAttribute('x1'))).toBeGreaterThan(startX + 100)
   await expect(readout).toContainText('15,')
 
@@ -85,15 +85,15 @@ test('a replay chart follows the VOD player and its emote line is readable', asy
   await expect(readout).toHaveAttribute('data-chart-readout-state', 'preview')
   await vod.mouse.move(box.x + box.width * 0.3, box.y - 120)
   await expect(readout).toHaveAttribute('data-chart-readout-state', 'paused')
-  await expect(readout).toContainText('05:50:00')
+  await expect(readout).toContainText('5:50:00')
 
   // In the replay's last minute the line stays, on the minute the band reads.
   await seekVideo(vod, MINUTES * 60 - 30)
-  await expect(readout).toContainText('05:59:00')
+  await expect(readout).toContainText('5:59:00')
   await expect(playhead).toHaveCount(1)
   // So in the first, though a long replay draws each few minutes at the busiest one.
   await seekVideo(vod, 30)
-  await expect(readout).toContainText('00:00:00')
+  await expect(readout).toContainText('0:00:00')
   await expect(playhead).toHaveCount(1)
   await seekVideo(vod, 21_000)
 

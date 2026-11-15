@@ -1,4 +1,4 @@
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 
 export const PULSE_STREAM_START_TOLERANCE_SEC = 120
 export const COVERAGE_START_SOFT_MAX_SEC = 600
@@ -42,13 +42,13 @@ export function resolveCoverageStartHint(input: CoverageStartHintInput): Coverag
     return {
       show: true,
       tone: 'soft',
-      text: `Live chat from ${formatHeatOffset(offset)} — earlier minutes need VOD replay`,
+      text: `Live chat from ${formatMomentOffset(offset)} — earlier minutes need VOD replay`,
     }
   }
 
   return {
     show: true,
     tone: 'warn',
-    text: `Rollups since ${formatHeatOffset(offset)} — tracking started after stream start`,
+    text: `Rollups since ${formatMomentOffset(offset)} — tracking started after stream start`,
   }
 }

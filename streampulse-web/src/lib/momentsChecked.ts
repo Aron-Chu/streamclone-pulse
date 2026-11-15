@@ -1,3 +1,4 @@
+import { formatAgo, formatLiftRatio, momentStreamEdge, OPENING_STREAM_EDGE, streamEdgesFor, type StreamEdgeKind } from '@streampulse/pulse-core'
 import { sanitizeEmoteImageUrl } from './emoteAssetUrl'
 import { isExactCategoryBoxArt } from './momentCategoryArtwork'
 import { newsroomProfileUrl } from './newsroomProfiles'
@@ -63,8 +64,64 @@ export interface CheckedMoment {
 
 const nf = new Intl.NumberFormat('en-US')
 export const int = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? '–' : nf.format(Math.round(n)))
-/** 4.2×, 12× */
-export const fx = (x: number) => `${x >= 10 ? Math.round(x) : x.toFixed(1)}×`
+/** pulse-core's strength figure (Z06, 11-13): 4.2×, 10×, 12×. */
+export const fx = (x: number) => `${formatLiftRatio(x)}×`
+
+/**
+ * A stream's first 20 minutes: too soon to compare with its own average, so a
+ * row there shows its rate and no × (X1, 11-13: the Hub and the Moments page
+ * share this rule).
+ */
+export const EARLY_STREAM_MIN = 20
+export const earlyInStream = (offsetSeconds: number | null | undefined) => (offsetSeconds || 0) / 60 < EARLY_STREAM_MIN
+export const EARLY_STREAM_WORDS = 'Early in the stream'
+
+/** The backend's own stream-edge flag ('opening' | 'closing'), when a payload carries one; it wins over the site's rule. */
+export const edgeFlag = (v: unknown): StreamEdgeKind | undefined => (v === 'opening' || v === 'closing' ? v : undefined)
+
+/**
+ * Where an ended stream's chat stopped, as one Moments-list moment's spark
+ * shows it: the 25 slots run -16..+8 minutes around the moment, and every
+ * minute after the stream's last measured one is null. Known only when a null
+ * follows the last measured slot (chat stopped within 8 minutes of the
+ * moment); undefined for a live stream, or one still measured 8 minutes on.
+ */
+export function sparkLastDataOffset(item: Pick<MomentsFeedItem, 'offsetSeconds' | 'streamLive' | 'spark'>): number | undefined {
+  if (item.streamLive) return undefined
+  const { chat, emotes, momentIndex } = item.spark
+  let last = -1
+  for (let i = chat.length - 1; i >= 0; i -= 1) if (chat[i] != null || emotes[i] != null) { last = i; break }
+  if (last < momentIndex || last >= chat.length - 1) return undefined
+  return item.offsetSeconds + (last - momentIndex) * 60
+}
+
+/**
+ * Each ended stream's last measured offset, from every loaded moment of it
+ * (sparkLastDataOffset): the latest that one shows, unless another moment of
+ * the stream comes later (a gap, not the end). Keyed by `login|streamId`.
+ */
+export function feedStreamEnds(items: readonly Pick<MomentsFeedItem, 'login' | 'streamId' | 'offsetSeconds' | 'streamLive' | 'spark'>[]): Map<string, number> {
+  const latest = new Map<string, number>()
+  const ends = new Map<string, number>()
+  for (const item of items) {
+    const sid = `${item.login.toLowerCase()}|${item.streamId}`
+    latest.set(sid, Math.max(latest.get(sid) ?? -1, item.offsetSeconds))
+    const end = sparkLastDataOffset(item)
+    if (end != null) ends.set(sid, Math.max(ends.get(sid) ?? -1, end))
+  }
+  for (const [sid, end] of ends) if ((latest.get(sid) ?? -1) > end) ends.delete(sid)
+  return ends
+}
+
+/**
+ * A moment's stream edge (E1, 11-13, pulse-core's rule): the backend's flag
+ * when it sends one; else a stream's first 5 minutes, or its last 10 once its
+ * chat has stopped (`lastDataOffset`, an ended stream's last measured minute).
+ */
+export function momentEdge(offsetSeconds: number, flag: unknown, lastDataOffset?: number): StreamEdgeKind | undefined {
+  const edges = lastDataOffset == null ? OPENING_STREAM_EDGE : streamEdgesFor(lastDataOffset, true)
+  return momentStreamEdge({ offsetSeconds, streamEdge: edgeFlag(flag) }, edges)
+}
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** The stream's own clock, as Twitch's player writes it: h:mm:ss, m:ss under an hour. */
@@ -87,19 +144,8 @@ export const clk = (t: number) => TF.format(t)
 export const tick = (t: number) => TS.format(t).replace(/\s?[AP]M$/, '')
 export const sameDay = (a: number, b: number) => new Date(a).toDateString() === new Date(b).toDateString()
 
-/** "just now", "N min ago", the clock time, or "Yesterday" and the clock time. */
-export function when(t: number, now: number): string {
-  const m = Math.max(0, Math.floor((now - t) / 60_000))
-  if (m < 1) return 'just now'
-  if (m < 60) return `${m} min ago`
-  return `${sameDay(t, now) ? '' : 'Yesterday '}${clk(t)}`
-}
-
-/** A phone row's time (M1, 10-22): now, 13m, 2h, 3d. */
-export function whenShort(t: number, now: number): string {
-  const m = Math.max(0, Math.floor((now - t) / 60_000))
-  return m < 1 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`
-}
+/** "just now", "N min ago", the clock time, or "Yesterday" and the clock time (pulse-core's, Z08 11-13). */
+export const when = (t: number, now: number): string => formatAgo(t, now)
 
 /** When you opened a moment, for Viewed: just now, 4 min ago, 2 h ago, yesterday, Mon, then the date. */
 export function openedWhen(t: number, now: number): string {

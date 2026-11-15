@@ -281,7 +281,9 @@ test.describe('session bar strip at 390', () => {
     expect(id.x).toBeGreaterThanOrEqual(pic.x + pic.width)
     const play = strip.getByRole('button', { name: `Play VOD from ${PLAY_AT}` })
     const pb = await box(play)
-    expect(pb.width).toBeLessThanOrEqual(40)
+    // icon-only Play, now a 44 px phone target (SESSION-MOMENTS-12, 11-13; was <= 40)
+    expect(pb.width).toBeLessThanOrEqual(44)
+    expect(pb.height).toBeGreaterThanOrEqual(44)
     // the note is read out, not shown
     expect(await strip.locator('.mpl-note').evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(1)
     // the sharp 36x48 cover stays at every width (candidate, 10-30, PIC-2)

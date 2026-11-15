@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { formatMomentClock, formatMomentOffset } from '@streampulse/pulse-core'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { AccountError, accountErrorText, accountRequest, billingRequest } from '../../lib/accountApi'
 import { AccountChecking } from './AccountChecking'
@@ -98,13 +99,12 @@ function ProfileBlock({ profile, email }: { profile: AccountProfile; email: stri
   </div>
 }
 
-/** "2:18:20": hours without padding, as the board and the extension show a moment's time. */
-function clock(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds))
-  const h = Math.floor(s / 3600)
-  const m = Math.floor(s / 60) % 60
-  return `${h}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-}
+/**
+ * Time into the stream, h:mm:ss through pulse-core (K1, 11-13). A site save
+ * knows only its minute, so it reads 'about 0:12:00'; a Chrome save keeps the second.
+ */
+const clock = (save: Pick<AccountSave, 'offsetSeconds' | 'source'>) =>
+  save.source === 'web' ? formatMomentClock({ offsetSeconds: save.offsetSeconds }) : formatMomentOffset(save.offsetSeconds)
 
 type Game = { name: string; boxArtUrl?: string }
 const games = new Map<string, Promise<Array<{ gameName: string; categoryId?: string; boxArtUrl?: string; offsetSeconds: number; durationSeconds: number }>>>()
@@ -139,7 +139,7 @@ function MomentRow({ save }: { save: AccountSave }) {
       ? <img src={game.boxArtUrl} alt="" width={27} height={36} loading="lazy" referrerPolicy="no-referrer" />
       : <span className="account-home__thumb" aria-hidden="true">{save.login.slice(0, 2).toUpperCase()}</span>}
     <div className="account-home__moment-text">
-      <span><b>{clock(save.offsetSeconds)}</b> · {game?.name ?? save.login}</span>
+      <span><b>{clock(save)}</b> · {game?.name ?? save.login}</span>
       {save.notes ? <span className="account-home__note">✎ {save.notes}</span> : null}
     </div>
     <span className="account-home__source">{save.source === 'extension' ? 'saved in Chrome' : 'saved on the site'}</span>

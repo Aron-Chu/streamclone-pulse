@@ -1,9 +1,15 @@
 import {
+  formatMomentOffset,
   heatmapEmoteToRollupHit,
+  momentClockDisplay,
+  momentStreamEdge,
   normalizeMinuteBucket,
+  OPENING_STREAM_EDGE,
+  streamEdgeLabel,
   topEmotesFromRollup,
   recapMomentAnalyticalOffset,
   type RollupEmoteHit,
+  type StreamEdges,
 } from '@streampulse/pulse-core'
 import type {
   AnalyticsMinuteRollup,
@@ -141,13 +147,32 @@ export function resolveRollupDisplayEmotes(args: {
 
 // ---- Session moment rows (d3-v2 session-original moment-rows.js, 2026-10-15) ----
 
-/** The rows' offset: H:MM:SS, no leading zero on the hour ("0:50:54"). */
+/** The rows' offset: H:MM:SS, no leading zero on the hour ("0:50:54"); pulse-core's one session clock (K1, 11-13). */
 export function momentRowHms(seconds: number): string {
-  const total = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds)) : 0
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = total % 60
-  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return formatMomentOffset(Number.isFinite(seconds) ? Math.round(seconds) : 0)
+}
+
+/**
+ * A moment's clock as the extension writes it (pulse-core `momentClockDisplay`, K1 11-13): the onset to the
+ * second when the backend refined it, else the minute's start with `approximate` set, which the row prints as a
+ * quiet "about" before the time.
+ */
+export function momentRowMomentClock(
+  moment: Pick<PulseRecapMoment, 'offsetSeconds' | 'reactionOnsetOffsetSeconds' | 'precisionSeconds'>,
+): { text: string; approximate: boolean } {
+  return momentClockDisplay(moment)
+}
+
+/**
+ * The quiet edge tag (E1, 11-13): "Stream start" / "Stream end" for hello / goodbye spam, which ranks last
+ * (pulse-core compareStreamEdgeLast). Null for every other moment.
+ */
+export function momentRowEdgeLabel(
+  moment: Pick<PulseRecapMoment, 'offsetSeconds' | 'streamEdge'>,
+  edges: StreamEdges = OPENING_STREAM_EDGE,
+): 'Stream start' | 'Stream end' | null {
+  const kind = momentStreamEdge(moment, edges)
+  return kind ? streamEdgeLabel(kind) : null
 }
 
 /**

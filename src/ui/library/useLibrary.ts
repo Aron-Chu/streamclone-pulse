@@ -58,5 +58,5 @@ export function useLibrary(repository: LibraryRepository) {
     catch { if (!controller.signal.aborted) setError('Export failed. Your Library has not been changed.'); return null }
     finally { if (!controller.signal.aborted) { locked.current = false; setBusy(false) } }
   }, [repository])
-  return { snapshot, loading, busy, error, notice, run, exportData, retry: () => setReload(v => v + 1) }
+  return { snapshot, loading, busy, error, notice, run, exportData, retry: () => setReload(v => v + 1), clearNotice: () => setNotice('') }
 }

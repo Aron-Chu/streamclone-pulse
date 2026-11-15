@@ -1,5 +1,5 @@
 /**
- * Shared action resolver for a Live Wire moment card: turn a moment row into
+ * Shared action resolver for a moment card: turn a moment row into
  * the sibling analytics / VOD launch targets, or a disabled reason when nothing
  * can be launched. Mirrors the mounted FigmaMomentInspector behavior so the
  * right-rail rail and the inspector resolve identically.

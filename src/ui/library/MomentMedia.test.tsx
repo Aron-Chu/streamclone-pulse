@@ -20,15 +20,15 @@ describe('Moment media and statistics', () => {
   it('labels approximate frames and falls back to the clock on expired artwork', async () => {
     await render(<MomentMedia moment={demoReference} presentation={{ image: { url: 'https://example.com/frame.webp', sampledOffsetSeconds: 6130 } }} />)
     const img = container.querySelector('img')!
-    expect(img.alt).toContain('near 01:42:10')
-    expect(container.querySelector('.pl-media-clock')?.textContent).toBe('01:42:18')
+    expect(img.alt).toContain('near 1:42:10')
+    expect(container.querySelector('.pl-media-clock')?.textContent).toBe('1:42:18')
     await act(async () => img.dispatchEvent(new Event('error')))
     expect(container.querySelector('figure')).toBeNull()
-    expect(container.querySelector('.pl-media-tile')?.textContent).toContain('01:42:18')
+    expect(container.querySelector('.pl-media-tile')?.textContent).toContain('1:42:18')
   })
   it('shows a list row without a frame as its clock, with no placeholder picture', async () => {
     await render(<MomentMedia moment={demoReference} />)
-    expect(container.querySelector('.pl-media-tile')?.textContent).toContain('01:42:18')
+    expect(container.querySelector('.pl-media-tile')?.textContent).toContain('1:42:18')
     expect(container.querySelector('.pl-media-frame')).toBeNull()
     expect(container.textContent).not.toContain('Preview image unavailable')
     await act(async () => root!.render(<MomentMedia moment={{ ...demoReference, availability: 'unavailable' }} />))
@@ -61,14 +61,15 @@ describe('Moment media and statistics', () => {
     await act(async () => img.dispatchEvent(new Event('error')))
     expect(container.textContent).toContain('forsenPls')
     expect(container.textContent).toContain('7TV')
-    expect(container.textContent).toContain('156 uses / min')
+    expect(container.textContent).toContain('156 uses')
+    expect(container.textContent).not.toContain('/min')
   })
   it('puts each emote on one line in Overview and leaves the measuring notes to Analysis', async () => {
     const context = demoContexts.two
     if (context.kind !== 'ready') throw new Error('Missing fixture')
     expect(emoteShare(156, 520, 0)).toBe('30%')
     await render(<><MomentStats context={context.value} compact /><MomentEmotes context={context.value} compact /></>)
-    expect(container.querySelector('.pl-emote-usage')?.textContent).toBe('156/min · 30%')
+    expect(container.querySelector('.pl-emote-usage')?.textContent).toBe('156 uses · 30%')
     for (const text of ['density', 'How these rates are measured', 'About emote usage']) expect(container.textContent).not.toContain(text)
   })
   it('keeps missing viewer counts unavailable, not zero', async () => {

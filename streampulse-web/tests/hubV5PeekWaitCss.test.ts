@@ -25,12 +25,22 @@ describe('the phone peek while it waits (U6, 10-28)', () => {
 
   it('reserves it only while waiting: on phones, and from 720 px, where the peek shows too since B1 (11-11)', () => {
     const reservations = [...css.matchAll(/([^{}\n]*\.hv5-f3-peek[^{}\n]*)\{[^}]*min-height/g)].map(m => m[1].trim())
-    expect(reservations).toEqual(['.hv5-f3-peek[data-wait]', '.hv5-f3-peek[data-wait]'])
-    expect(css.split('.hv5-f3-peek[data-wait]')).toHaveLength(3)
+    expect(reservations).toEqual(['.hv5-f3-peek[data-wait]', '.hv5-f3-peek[data-wait]', '.hv5-f3-peek[data-wait]'])
+    expect(css.split('.hv5-f3-peek[data-wait]')).toHaveLength(4)
     expect(phone).toContain('.hv5-f3-peek[data-wait]')
     // from 720 px each row is 44 px and its 1 px rule
     expect(css).toContain('@media (min-width: 720px) { .hv5-f3-peek[data-wait] { min-height: 178px; } }')
     expect(1 + 4 + 22 + 16 + 3 * (44 + 1)).toBe(178)
+  })
+
+  it('under 400 px, where the time takes a line of its own, waits in the taller rows (11-14)', () => {
+    const narrow = [...css.matchAll(/@media \(max-width: 399px\) \{([^@]*?)\n\}/g)].map(m => m[1]).join('\n')
+    expect(narrow).toMatch(/\.hub-v5 \.hv5-top \.hv5-tm-row \{ flex-wrap: wrap; row-gap: 2px; min-height: 61px; \}/)
+    expect(narrow).toMatch(/\.hub-v5 \.hv5-top \.hv5-tm-t \{ flex-basis: 100%; \}/)
+    expect(narrow).toMatch(/\.hv5-f3-peek\[data-wait\] \{ min-height: 229px; \}/)
+    // each row: 5 px padding, the 34 px name and reason lines, a 2 px gap, the 15 px time, 5 px padding; then its 1 px rule
+    expect(5 + 34 + 2 + 15 + 5).toBe(61)
+    expect(1 + 4 + 22 + 16 + 3 * (61 + 1)).toBe(229)
   })
 })
 

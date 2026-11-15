@@ -5,9 +5,10 @@ import { installNewsroomMock } from './helpers/newsroomMock'
 
 /**
  * A time followed by a named zone: "3:30 AM UTC", "8:30 PM MST", "5:30 AM GMT+2". The row's
- * text runs straight into the offset ("MST1:00 into broadcast"), so no word boundary.
+ * text runs straight into the offset ("MST0:01:00 into broadcast", or "MSTabout 0:01:00" when
+ * only the minute is known, K1 11-13), so no word boundary.
  */
-const OCCURRENCE_ZONE = /\d (AM|PM) (UTC|GMT[+-]\d{1,2}(:\d{2})?|[A-Z]{2,5})(?![A-Za-z])/
+const OCCURRENCE_ZONE = /\d (AM|PM) (UTC|GMT[+-]\d{1,2}(:\d{2})?|[A-Z]{2,5})(?=about |[^A-Za-z]|$)/
 
 function rankedHistoryResponse(url: URL) {
   const from = url.searchParams.get('from')!

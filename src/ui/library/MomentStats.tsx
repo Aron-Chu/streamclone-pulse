@@ -12,7 +12,7 @@ export function emoteShare(uses: number, total: number | null, digits = 1): stri
 /** Compact is Preview's three tiles, with no density line or how-it's-measured note. */
 export function MomentStats({ context, compact = false }: { context: MomentContext; compact?: boolean }) {
   if (compact) return <dl className="pl-moment-stats pl-around-tiles" aria-label="Selected minute statistics">
-    {([['Viewers', context.selectedViewers], ['Chat / min', context.selectedMessages], ['Emotes / min', context.selectedEmotes]] as const).map(([label, value]) =>
+    {([['Viewers', context.selectedViewers], ['Chat/min', context.selectedMessages], ['Emotes/min', context.selectedEmotes]] as const).map(([label, value]) =>
       <div key={label}><dt>{label}</dt><dd>{display(value)}</dd></div>)}
   </dl>
   const density = valid(context.selectedEmotes) && valid(context.selectedMessages) && context.selectedMessages > 0
@@ -21,11 +21,11 @@ export function MomentStats({ context, compact = false }: { context: MomentConte
     <h3>At this moment</h3>
     <dl className="pl-metrics pl-moment-stats">
       <div><dt>Viewers</dt><dd>{display(context.selectedViewers)}</dd></div>
-      <div><dt>Chat / min</dt><dd>{display(context.selectedMessages)}</dd></div>
-      <div><dt>Emotes / min</dt><dd>{display(context.selectedEmotes)}</dd></div>
+      <div><dt>Chat/min</dt><dd>{display(context.selectedMessages)}</dd></div>
+      <div><dt>Emotes/min</dt><dd>{display(context.selectedEmotes)}</dd></div>
     </dl>
     <p className="pl-muted">Emote density · <strong>{density}</strong> uses / 100 messages</p>
-    <details><summary>How these rates are measured</summary><p>Chat / min counts messages; emotes / min counts individual emote occurrences in the selected measured minute. Viewers is the audience sample associated with that minute, not unique chatters. Multiple emotes can occur in one message; density is not a percentage of viewers or messages using emotes and can exceed 100. Missing measurements remain unavailable.</p></details>
+    <details><summary>How these rates are measured</summary><p>Chat/min counts messages; emotes/min counts individual emote occurrences in the selected measured minute. Viewers is the audience sample associated with that minute, not unique chatters. Multiple emotes can occur in one message; density is not a percentage of viewers or messages using emotes and can exceed 100. Missing measurements remain unavailable.</p></details>
   </section>
 }
 
@@ -44,7 +44,7 @@ export function EmoteArtwork({ emote }: { emote: MomentContext['topEmotes'][numb
 }
 
 export function MomentEmotes({ context, compact = false }: { context: MomentContext; compact?: boolean }) {
-  // Compact is Preview's top three as bars: uses per minute and the share of the minute's emote uses.
+  // Compact is Preview's top three as bars: uses in the minute and their share of the minute's emote uses.
   if (compact) return context.topEmotes.length ? <ul className="pl-emote-mix pl-emote-mix-line" aria-label="Top emotes in this minute">{context.topEmotes.slice(0, 3).map((emote, index) => {
     const share = emoteShare(emote.count, context.selectedEmotes, 0)
     const width = share && valid(context.selectedEmotes) ? 100 * emote.count / context.selectedEmotes : 0
@@ -52,7 +52,7 @@ export function MomentEmotes({ context, compact = false }: { context: MomentCont
       <EmoteArtwork emote={emote} />
       <span className="pl-emote-name"><strong>{emote.name}</strong></span>
       <span className="pl-emote-track" aria-hidden="true"><i style={{ width: `${width}%` }} /></span>
-      <span className="pl-emote-usage">{valid(emote.count) ? `${emote.count.toLocaleString()}/min` : 'Not available'}{share ? ` · ${share}` : ''}</span>
+      <span className="pl-emote-usage">{valid(emote.count) ? `${emote.count.toLocaleString()} uses` : 'Not available'}{share ? ` · ${share}` : ''}</span>
     </li>
   })}</ul> : <p className="pl-muted">No emote breakdown is available for this minute.</p>
   return <section className="pl-stack" aria-label="Emote usage in selected minute">
@@ -62,7 +62,7 @@ export function MomentEmotes({ context, compact = false }: { context: MomentCont
       return <li key={`${emote.provider ?? 'unknown'}-${emote.name}-${index}`}>
         <EmoteArtwork emote={emote} />
         <div className="pl-emote-name"><strong>{emote.name}</strong><span className="pl-muted">{emote.provider ?? 'Provider unverified'}</span></div>
-        <div className="pl-emote-usage"><strong>{display(emote.count)} uses / min</strong><span className="pl-muted">{share ? `${share} of emote uses` : 'Usage share unavailable'}</span></div>
+        <div className="pl-emote-usage"><strong>{display(emote.count)} uses</strong><span className="pl-muted">{share ? `${share} of emote uses` : 'Usage share unavailable'}</span></div>
       </li>
     })}</ul> : <p className="pl-muted">No emote breakdown is available for this minute.</p>}
     <details><summary>About emote usage</summary><p>Usage share = this emote’s occurrences ÷ all measured emote occurrences in the same minute. Not a sentiment score. Provider and artwork come from resolved metadata, not guessed names. Missing artwork keeps its readable name.</p></details>
@@ -74,8 +74,8 @@ export function MomentGlance({ context }: { context: MomentContext }) {
   return <div className="pl-glance">
     <dl className="pl-glance-metrics" aria-label="Selected minute statistics">
       <div><dt>Viewers</dt><dd>{display(context.selectedViewers)}</dd></div>
-      <div><dt>Chat / min</dt><dd>{display(context.selectedMessages)}</dd></div>
-      <div><dt>Emotes / min</dt><dd>{display(context.selectedEmotes)}</dd></div>
+      <div><dt>Chat/min</dt><dd>{display(context.selectedMessages)}</dd></div>
+      <div><dt>Emotes/min</dt><dd>{display(context.selectedEmotes)}</dd></div>
     </dl>
     {context.topEmotes.length ? <ul className="pl-glance-emotes" aria-label="Leading emotes in this minute">{context.topEmotes.slice(0, 3).map((emote, index) => <li key={index}>
       <EmoteArtwork emote={emote} />

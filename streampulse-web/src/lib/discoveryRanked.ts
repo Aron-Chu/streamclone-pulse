@@ -202,6 +202,7 @@ export function normalizeRankedDiscovery(value: unknown, scope: RankedScope, fir
     const moment = fromHubMoment({ login: m.login, streamId: typeof m.streamId === 'string' ? m.streamId : '', offsetSeconds: m.offsetSeconds,
       at: m.at, label: m.label, displayName: typeof m.displayName === 'string' ? m.displayName.slice(0, 100) : undefined,
       category: m.categoryMissing ? undefined : m.category as string, chatPerMin: m.chatPerMin, emotesPerMin: m.emotesPerMin,
+      streamEdge: typeof m.streamEdge === 'string' ? m.streamEdge : undefined,
       topEmotes: Array.isArray(m.topEmotes) ? m.topEmotes.slice(0, 5).flatMap(v => { const e = object(v); return text(e.name, 100) && count(e.count) ? [{ name: e.name, count: e.count, provider: typeof e.provider === 'string' ? e.provider : undefined, imageUrl: typeof e.imageUrl === 'string' ? e.imageUrl : undefined }] : [] }) : [] })
     if (!moment || ids.has(m.id) || keys.has(moment.key)) return bad()
     ids.add(m.id); keys.add(moment.key)

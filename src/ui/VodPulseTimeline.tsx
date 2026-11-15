@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent } from 'react'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import type { VodTimelinePoint } from '../types/vodPulseTypes.ts'
 import { normalizeTimelineValues, seekOffsetFromGraphClick, timelineYValue } from '../vod/vodCurrentMoment.ts'
 import { theme } from './theme.ts'
@@ -92,9 +92,9 @@ export function VodPulseTimeline({
         ) : null}
       </svg>
       <div style={styles.footer}>
-        <span>{formatHeatOffset(0)}</span>
+        <span>{formatMomentOffset(0)}</span>
         <span style={styles.peakLabel}>peak {Math.round(maxY)}</span>
-        <span>{formatHeatOffset(durationSeconds)}</span>
+        <span>{formatMomentOffset(durationSeconds)}</span>
       </div>
     </div>
   )

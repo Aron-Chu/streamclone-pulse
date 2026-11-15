@@ -1,12 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
-import {
-  compareStreamEdgeLast,
-  extensionPayloadStreamEdges,
-  peaksToLiveHeatPoints,
-  withStreamEdges,
-  type LiveHeatPoint,
-} from '@streampulse/pulse-core'
+import { extensionPayloadStreamEdges, type LiveHeatPoint } from '@streampulse/pulse-core'
 import type {
   ExtensionEmote,
   ExtensionGameSegment,
@@ -18,12 +12,15 @@ import type {
 } from '../shared/messages.ts'
 import { lastStreamPeakStats } from './lastStreamSummary.ts'
 import { GamesPlayedStrip, type GamesPlayedVisibleRange } from './GamesPlayedStrip.tsx'
+import { formatSpan as formatLength } from './missedMoments.ts'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { RecapAnalyticsNav } from './RecapAnalyticsNav.tsx'
 import { RecapSkeleton } from './RecapSkeleton.tsx'
 import { RecapTimelineChart } from './RecapTimelineChart.tsx'
 import {
   mergeRecapMoments,
+  offlinePeakPoints,
+  RECAP_MOMENTS_MAX_COUNT,
   recapMomentSelectionKey,
   resolveRecapChartPeakOffsets,
   recapStreamDurationSeconds,
@@ -47,6 +44,7 @@ import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { MyMomentsLink } from './momentBookmarks.tsx'
 import { TopMomentCard, type TopMomentCardProps } from './TopMomentCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
+import type { JumpResult } from './jumpMomentAction.ts'
 import {
   MOMENT_SORT_OPTIONS,
   MOST_REACTED_VISIBLE_COUNT,
@@ -69,7 +67,7 @@ export interface StreamRecapSectionProps {
   coverage?: ExtensionCoverageResponse | null
   showEmptyState?: boolean
   pollError?: string | null
-  onJump: (point: LiveHeatPoint) => void
+  onJump: (point: LiveHeatPoint) => JumpResult
   onAnalytics: (point: LiveHeatPoint) => void
   onOpenAnalytics: (offsetSeconds?: number) => void
   onRetry?: () => void
@@ -92,13 +90,7 @@ function formatNumber(value: number): string {
 }
 
 function formatStreamDuration(durationSeconds?: number): string | null {
-  if (durationSeconds == null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return null
-  const total = Math.round(durationSeconds)
-  const hours = Math.floor(total / 3600)
-  const minutes = Math.floor((total % 3600) / 60)
-  if (hours > 0) return `${hours}h ${minutes}m`
-  if (minutes > 0) return `${minutes}m`
-  return `${total}s`
+  return Number.isFinite(durationSeconds) && durationSeconds! > 0 ? formatLength(durationSeconds!) : null
 }
 
 function formatRelativeTime(iso?: string): string | null {
@@ -146,7 +138,6 @@ function RecapGamesStrip({
   )
 }
 
-const RECAP_MOMENTS_MAX_COUNT = 20
 
 interface SummarySlot {
   ref: RefObject<HTMLDivElement>
@@ -287,12 +278,13 @@ function RecapTopMoments({
  * held for one exit window, so clearing a selection fades and collapses
  * instead of vanishing on the same frame.
  */
-function RecapChartCard({ arrivalNote, hold, backendUrl, games, onJump, onAnalytics, onClear }: {
+function RecapChartCard({ arrivalNote, hold, backendUrl, games, jumpLabel, onJump, onAnalytics, onClear }: {
   arrivalNote?: ReactNode
+  jumpLabel?: string
   hold: { point: LiveHeatPoint | null; exiting: boolean }
   backendUrl: string
   games?: ExtensionGameSegment[]
-  onJump: (point: LiveHeatPoint) => void
+  onJump: (point: LiveHeatPoint) => JumpResult
   onAnalytics: (point: LiveHeatPoint) => void
   onClear: () => void
 }) {
@@ -307,6 +299,7 @@ function RecapChartCard({ arrivalNote, hold, backendUrl, games, onJump, onAnalyt
               point={hold.point}
               backendUrl={backendUrl}
               compact
+              jumpLabel={jumpLabel}
               onJump={onJump}
               onAnalytics={onAnalytics}
               onClear={onClear}
@@ -371,10 +364,11 @@ function RecapReadyContent({
   hideHubLink?: boolean
   vodPage?: boolean
   followVod?: boolean
-  onJump: (point: LiveHeatPoint) => void
+  onJump: (point: LiveHeatPoint) => JumpResult
   onAnalytics: (point: LiveHeatPoint) => void
   onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
 }) {
+  const jumpLabel = vodPage || payload.vodId ? 'Jump in VOD' : undefined
   const mergedMoments = useMemo(
     () => mergeRecapMoments(recap, payload.peaks, RECAP_MOMENTS_MAX_COUNT, pickRecapRollups(payload), !payload.isLive),
     [recap, payload.peaks, payload.isLive],
@@ -499,6 +493,7 @@ function RecapReadyContent({
         hold={recapCardHold}
         backendUrl={backendUrl}
         games={payload.games}
+        jumpLabel={jumpLabel}
         onJump={onJump}
         onAnalytics={onAnalytics}
         onClear={clearRecapSelection}
@@ -511,6 +506,7 @@ function RecapReadyContent({
           id: cardId,
           point: selectedMoment ? selectedPoint : null,
           backendUrl,
+          jumpLabel,
           onJump,
           onAnalytics,
           onClear: clearRecapSelection,
@@ -545,6 +541,7 @@ function minutePicker(
   }
 }
 
+/** An ended stream's peaks with no recap, strongest first and its start or end spam last. */
 function offlinePointKey(point: LiveHeatPoint): string {
   return `${point.offsetSeconds}:${point.score}`
 }
@@ -575,7 +572,7 @@ function OfflineFallbackContent({
   hideHubLink?: boolean
   vodPage?: boolean
   followVod?: boolean
-  onJump: (point: LiveHeatPoint) => void
+  onJump: (point: LiveHeatPoint) => JumpResult
   onAnalytics: (point: LiveHeatPoint) => void
   onOpenAnalytics: (offsetSeconds?: number) => void
   onRequestFullRollups?: () => Promise<FullHistoryRequestResult>
@@ -586,13 +583,8 @@ function OfflineFallbackContent({
   const totalMessages = rollups.reduce((sum, rollup) => sum + (rollup.chatCount ?? 0), 0)
   const peakChat = peaks?.peakChatPerMin ?? 0
   const catalog = buildRecapEmoteCatalog(payload)
-  const peakPoints = peaksToLiveHeatPoints(
-    withStreamEdges(payload.peaks ?? [], extensionPayloadStreamEdges(payload))
-      .sort((a, b) => compareStreamEdgeLast(a, b) || b.score - a.score)
-      .slice(0, RECAP_MOMENTS_MAX_COUNT) as ExtensionPeak[],
-    payload.startedAt,
-    catalog,
-  )
+  const peakPoints = offlinePeakPoints(payload, catalog)
+  const jumpLabel = vodPage || payload.vodId ? 'Jump in VOD' : undefined
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null)
   const [hoveredGameKey, setHoveredGameKey] = useState<string | null>(null)
   // As in the recap: nothing is picked until the viewer picks it.
@@ -675,7 +667,7 @@ function OfflineFallbackContent({
       {peakPoints.length === 0 && (peakChat > 0 || totalMessages > 0) ? (
         <div className="pulse-sr-cta-row">
           <button type="button" className="pulse-recap-analytics-cta pulse-sr-cta" onClick={() => onOpenAnalytics()}>
-            Open analytics
+            Analytics
           </button>
         </div>
       ) : null}
@@ -711,6 +703,7 @@ function OfflineFallbackContent({
         hold={recapCardHold}
         backendUrl={backendUrl}
         games={payload.games}
+        jumpLabel={jumpLabel}
         onJump={onJump}
         onAnalytics={onAnalytics}
         onClear={clearOfflineSelection}
@@ -723,6 +716,7 @@ function OfflineFallbackContent({
           id: cardId,
           point: listedPoint ?? null,
           backendUrl,
+          jumpLabel,
           onJump,
           onAnalytics,
           onClear: clearOfflineSelection,
