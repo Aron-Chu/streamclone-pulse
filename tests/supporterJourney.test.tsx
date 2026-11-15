@@ -292,7 +292,7 @@ describe('pay-first settings', () => {
   it.each([
     ['active', true, 'confirming', 'Manage on Stripe ↗', 'portal'],
     ['grace', true, 'still_confirming', 'Fix payment ↗', 'portal'],
-    ['expired', true, 'idle', 'Rejoin', 'checkout'],
+    ['expired', true, 'idle', 'Become a Supporter', 'checkout'],
     ['review', true, 'fallback', 'Manage on Stripe ↗', 'portal'],
   ] as const)('keeps the ordinary %s installation action with Checkout %s and billing %s', async (status, checkoutEnabled, billingState, label, action) => {
     const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true, checkoutEnabled }), billing: () => ({ state: billingState }) })
@@ -1231,7 +1231,7 @@ describe('Your card states only the membership it knows', () => {
   })
 
   it.each<[string, SupporterEntitlement, string]>([
-    ['pending', ready('pending', { supportPeriods: 0 }), 'StreamPulse account · payment confirming'],
+    ['pending', ready('pending', { supportPeriods: 0 }), 'StreamPulse account · Payment pending'],
     ['none', ready('none'), 'StreamPulse account · not a Supporter yet'],
     ['expired', ready('expired'), 'StreamPulse account · Supporter ended'],
   ])('states a known %s membership as the server reports it', async (_status, entitlement, line) => {
@@ -1678,7 +1678,7 @@ describe('Continue with Twitch (tester and public stages)', () => {
       expect(view.text()).toContain(`Try again after ${retryWaitCopy(retryAt).at} (about 9 minutes).`)
       const again = view.host.querySelector<HTMLButtonElement>('.pulse-journey-primary')!
       expect(again.textContent).toBe(`Try again after ${retryWaitCopy(retryAt).at}`)
-      expect(again.disabled).toBe(true)
+      expect(again.getAttribute('aria-disabled')).toBe('true')
       // The page waits silently: no billing request while the window runs.
       const before = view.sendMessage.mock.calls.filter(([message]) => message.type === 'SUPPORTER_BILLING').length
       await act(async () => { await vi.advanceTimersByTimeAsync(9 * 60_000 + 1_000) })
@@ -2091,6 +2091,80 @@ describe('Link Twitch to a pay-first membership', () => {
       expect(view.text()).not.toContain(LINKED_COPY.heading)
       // The Stripe email still restores a membership where Twitch sign-in is on.
       expect(view.buttons()).toContain('Restore with Stripe email')
+    } finally { view.cleanup() }
+  })
+})
+
+describe('approved audit state and accessibility fixes', () => {
+  it('uses payment pending in the card until the worker clears the completed ended attempt', async () => {
+    let billing: SupporterBillingState = { state: 'still_confirming' }
+    const view = await mount({ account: () => linked, entitlement: () => ready('expired', { installationAccountsEnabled: true }), billing: () => billing })
+    try {
+      const line = () => view.host.querySelector('.pulse-supporter-card-who > span')?.textContent
+      expect(line()).toContain('Payment pending')
+      expect(line()).not.toContain('Supporter ended')
+      billing = { state: 'idle' }
+      await view.click('Check payment status')
+      expect(line()).toContain('Supporter ended')
+      expect(view.text()).not.toContain('Still confirming your payment')
+      expect(view.buttons()).toContain('Become a Supporter')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
+  it('keeps checkout focus while busy, blocks repeats, and announces preparation in the existing status area', async () => {
+    let finish!: (state: SupporterBillingState) => void
+    const pending = new Promise<SupporterBillingState>(resolve => { finish = resolve })
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), billing: action => action === 'checkout' ? pending : { state: 'idle' } })
+    try {
+      const button = [...view.host.querySelectorAll('button')].find(b => b.textContent === 'Become a Supporter')!
+      const status = view.host.querySelector('.pulse-journey-status')!
+      button.focus()
+      await act(async () => { button.click() })
+      expect(document.activeElement).toBe(button)
+      expect(button.disabled).toBe(false)
+      expect(button.getAttribute('aria-disabled')).toBe('true')
+      expect(button.getAttribute('aria-busy')).toBe('true')
+      expect(status.textContent).toContain('Preparing checkout…')
+      await act(async () => { button.click() })
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      await act(async () => finish({ state: 'checkout_not_opened' }))
+      expect(view.state()).toBe('checkout-not-opened')
+      expect(view.text()).toContain("Checkout didn't open. Nothing was charged.")
+      expect(view.text()).not.toContain('Do not pay again')
+      expect(view.buttons()).toContain('Try again')
+      expect(view.host.querySelector('.pulse-journey-status')).toBe(status)
+      await view.click('Try again')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(2)
+    } finally { view.cleanup() }
+  })
+  it('keeps one restore status region and preserves focus unless the form disappears', async () => {
+    let finish!: (state: SupporterRestoreState) => void
+    const pending = new Promise<SupporterRestoreState>(resolve => { finish = resolve })
+    const waiting: SupporterRestoreState = { state: 'pending', comparisonCode: 'A3B4C5', expiresAt: new Date(Date.now() + 900_000).toISOString() }
+    const view = await mount({ account: () => ({ state: 'signed_out' }), entitlement: () => ({ state: 'not_linked' }), billing: () => ({ state: 'idle' }), restore: action => action === 'start' ? pending : action === 'check' ? waiting : { state: 'idle' } })
+    try {
+      await view.click('Restore with Stripe email')
+      await view.enterRestoreEmail('payer@example.test')
+      const restore = view.host.querySelector('.pulse-journey-restore')!
+      const region = restore.querySelector<HTMLElement>('[role="status"]')!
+      expect(restore.querySelectorAll('[role="status"]')).toHaveLength(1)
+      const send = restore.querySelector<HTMLButtonElement>('button[type="submit"]')!
+      send.focus()
+      await view.submitRestore()
+      expect(document.activeElement).toBe(send)
+      expect(send.disabled).toBe(false)
+      expect(send.getAttribute('aria-busy')).toBe('true')
+      await view.submitRestore()
+      expect(view.calls('SUPPORTER_RESTORE', 'start')).toBe(1)
+      await act(async () => finish(waiting))
+      expect(restore.querySelector('[role="status"]')).toBe(region)
+      expect(region.textContent).toContain('A3B4C5')
+      expect(document.activeElement).toBe(region)
+      const check = [...restore.querySelectorAll('button')].find(b => b.textContent === 'Check restore status')!
+      check.focus()
+      await act(async () => check.click())
+      expect(document.activeElement).toBe(check)
+      expect(restore.querySelector('[role="status"]')).toBe(region)
     } finally { view.cleanup() }
   })
 })

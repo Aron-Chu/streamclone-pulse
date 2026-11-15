@@ -1,3 +1,4 @@
+import { SupporterActionButton } from './SupporterActionButton.tsx'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { BackgroundResponse } from '../shared/messages.ts'
 import type { SupporterRestoreState } from '../shared/supporterAccount.ts'
@@ -14,6 +15,19 @@ export function SupporterRestore({ onClose, onRestored, onCheckMembership }: { o
   const inFlight = useRef(false)
   const mounted = useRef(false)
   const hadWaitingRequest = useRef(false)
+  const container = useRef<HTMLDivElement>(null)
+  const status = useRef<HTMLDivElement>(null)
+  const focusResult = useRef(false)
+  const show = (next: View) => {
+    focusResult.current = Boolean(container.current?.contains(document.activeElement))
+    setView(next)
+  }
+  useEffect(() => {
+    // Announce in place. Focus moves only when the focused form/control was
+    // removed by the transition; a user who moved elsewhere stays there.
+    if (focusResult.current && !container.current?.contains(document.activeElement)) status.current?.focus()
+    focusResult.current = false
+  }, [view])
   const restored = useRef(onRestored)
   restored.current = onRestored
 
@@ -27,12 +41,12 @@ export function SupporterRestore({ onClose, onRestored, onCheckMembership }: { o
       if (!response || !('type' in response) || response.type !== 'SUPPORTER_RESTORE') throw new Error('restore unavailable')
       if (response.restore.state === 'restored') { restored.current(); return }
       if (action === 'cancel') hadWaitingRequest.current = false
-      else if (response.restore.state === 'idle' && hadWaitingRequest.current) { setView({ state: 'finished' }); return }
+      else if (response.restore.state === 'idle' && hadWaitingRequest.current) { show({ state: 'finished' }); return }
       else if (response.restore.state === 'pending' || response.restore.state === 'uncertain') hadWaitingRequest.current = true
-      setView(response.restore)
+      show(response.restore)
     } catch {
       if (action === 'start') hadWaitingRequest.current = true
-      if (mounted.current) setView(action === 'start' ? { state: 'uncertain' } : { state: 'unavailable' })
+      if (mounted.current) show(action === 'start' ? { state: 'uncertain' } : { state: 'unavailable' })
     } finally {
       inFlight.current = false
       if (mounted.current) setBusy(false)
@@ -63,37 +77,39 @@ export function SupporterRestore({ onClose, onRestored, onCheckMembership }: { o
     onClose()
   }
 
-  return <div className="pulse-journey-restore" data-restore-state={view.state}>
-    {view.state === 'loading' ? <p role="status">Checking for an existing restore request…</p> : null}
+  return <div ref={container} className="pulse-journey-restore" data-restore-state={view.state}>
     {view.state === 'idle' ? <form onSubmit={event => void submit(event)}>
       <p>Use the email your Stripe receipt went to. This won't charge you.</p>
       <label htmlFor="supporter-restore-email">Stripe email</label>
-      <input id="supporter-restore-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
+      <input id="supporter-restore-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} readOnly={busy} />
       <div className="pulse-account-link-actions pulse-journey-actions">
-        <button className="pulse-journey-primary" type="submit" disabled={busy}>{busy ? 'Preparing…' : 'Send restore link'}</button>
-        <button type="button" disabled={busy} onClick={() => void leave()}>Back</button>
+        <SupporterActionButton aria-busy={busy || undefined} className="pulse-journey-primary" type="submit" disabled={busy}>{busy ? 'Preparing…' : 'Send restore link'}</SupporterActionButton>
+        <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={() => void leave()}>Back</SupporterActionButton>
       </div>
       <p className="pulse-supporter-detail"><a href={POLICY_LINKS.supportBillingEmail} target="_blank" rel="noopener noreferrer">Can't get into that email? Support can help</a></p>
     </form> : null}
-    {view.state === 'pending' ? <div className="pulse-restore-wait" role="status" aria-live="polite">
+    <div ref={status} role="status" aria-live="polite" aria-atomic="true" tabIndex={-1}>
+    {view.state === 'loading' ? <p>Checking for an existing restore request…</p> : null}
+    {view.state === 'pending' ? <div className="pulse-restore-wait">
       <p>If that email matches a recoverable membership, a link may arrive. Check your inbox and spam folder.</p>
       <p>Compare this code with the one on the page opened from the email. Only approve it if the codes match:</p>
       <p className="pulse-account-link-code">{view.comparisonCode}</p>
       <p>This extension checks for approval automatically. The link expires at {new Date(view.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>
     </div> : null}
-    {view.state === 'uncertain' ? <p role="status">The request may have sent an email. Check this request before asking for another link.</p> : null}
-    {view.state === 'finished' ? <p role="status">This request is no longer waiting. Check the current Supporter status before trying again.</p> : null}
-    {view.state === 'expired' ? <p role="status">This link expired, or the Stripe email changed. If you changed it recently, wait a few minutes and try again. Still signed in on the browser you paid in? Manage on Stripe there shows the email it uses.</p> : null}
-    {view.state === 'conflict' || view.state === 'ineligible' ? <p role="status">This connection cannot restore another membership. Contact support for help; accounts with payment history are not combined.</p> : null}
-    {view.state === 'fallback' ? <p role="status">Restore isn't available yet. Your free tools still work.</p> : null}
-    {view.state === 'error' ? <p role="status">We couldn't send a restore link. Check the email your Stripe receipt went to and try again, or contact support.</p> : null}
-    {view.state === 'unavailable' ? <p role="status">The restore service could not be checked. Try checking again, or contact support.</p> : null}
+    {view.state === 'uncertain' ? <p>The request may have sent an email. Check this request before asking for another link.</p> : null}
+    {view.state === 'finished' ? <p>This request is no longer waiting. Check the current Supporter status before trying again.</p> : null}
+    {view.state === 'expired' ? <p>This link expired, or the Stripe email changed. If you changed it recently, wait a few minutes and try again. Still signed in on the browser you paid in? Manage on Stripe there shows the email it uses.</p> : null}
+    {view.state === 'conflict' || view.state === 'ineligible' ? <p>This connection cannot restore another membership. Contact support for help; accounts with payment history are not combined.</p> : null}
+    {view.state === 'fallback' ? <p>Restore isn't available yet. Your free tools still work.</p> : null}
+    {view.state === 'error' ? <p>We couldn't send a restore link. Check the email your Stripe receipt went to and try again, or contact support.</p> : null}
+    {view.state === 'unavailable' ? <p>The restore service could not be checked. Try checking again, or contact support.</p> : null}
+    </div>
     {view.state === 'idle' ? null : <div className="pulse-account-link-actions pulse-journey-actions">
-      {view.state === 'pending' || view.state === 'uncertain' ? <button type="button" disabled={busy} onClick={() => void request('check')}>{view.state === 'pending' ? 'Check restore status' : 'Check restore request'}</button> : null}
-      {view.state === 'finished' ? <button type="button" disabled={busy} onClick={onCheckMembership}>Check Supporter status</button> : null}
-      {view.state === 'unavailable' ? <button type="button" disabled={busy} onClick={() => void request('status')}>Check again</button> : null}
-      {view.state === 'expired' || view.state === 'error' ? <button type="button" disabled={busy} onClick={() => void request('cancel')}>Enter email again</button> : null}
-      <button type="button" disabled={busy} onClick={() => void leave()}>Back</button>
+      {view.state === 'pending' || view.state === 'uncertain' ? <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={() => void request('check')}>{view.state === 'pending' ? 'Check restore status' : 'Check restore request'}</SupporterActionButton> : null}
+      {view.state === 'finished' ? <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={onCheckMembership}>Check Supporter status</SupporterActionButton> : null}
+      {view.state === 'unavailable' ? <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={() => void request('status')}>Check again</SupporterActionButton> : null}
+      {view.state === 'expired' || view.state === 'error' ? <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={() => void request('cancel')}>Enter email again</SupporterActionButton> : null}
+      <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={() => void leave()}>Back</SupporterActionButton>
       {view.state !== 'loading' ? <a href={POLICY_LINKS.supportBillingEmail} target="_blank" rel="noopener noreferrer">Contact support</a> : null}
     </div>}
     {view.state === 'pending' || view.state === 'uncertain' ? <p className="pulse-supporter-detail">Going back stops checking this request; the email may still arrive.</p> : null}
