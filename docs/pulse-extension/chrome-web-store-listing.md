@@ -38,6 +38,11 @@ Do **not** use “Streamclone Pulse” in store-facing fields.
 
 ## Next store candidate: 0.2.6 listing fields
 
+The 0.2.7 summary, description and promo tiles are drafted in
+[`store/cws/listing-0.2.7.md`](../../store/cws/listing-0.2.7.md): the new
+summary, no pricing paragraph, and a marquee tile. Paste them with the 0.2.7
+upload; the fields below stay the 0.2.6 record.
+
 Written 2026-10-27 for extension **0.2.6** with Sign in with Twitch compiled
 **off** and Supporter sales **not open**. Every claim below matches that
 build. See
@@ -106,6 +111,7 @@ Show Twitch chat and emote activity for the stream or VOD you are watching, in a
 | Screenshots (required) | `store/cws/screenshots/` (see `manifest.json` there) | 1280×800 |
 | Store icon | `store/cws/icons/icon128.png` | 128×128 RGBA |
 | Small promo tile | `store/cws/icons/small-promo-440x280.png` | 440×280 |
+| Marquee promo tile (from 0.2.7) | `store/cws/icons/marquee-1400x560.png` | 1400×560 |
 
 The five 0.2.6 screenshots (live chart, Top Moments card, VOD recap, quick
 settings, and settings with release notes and the Community links) come from
