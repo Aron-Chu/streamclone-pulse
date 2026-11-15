@@ -27,6 +27,16 @@ Nothing here authorizes an upload. The owner uploads and submits.
 not `"released"` with a `releasedAt` date, the same as the other store targets.
 Build the upload from the release commit only.
 
+The desktop-only manifest must omit `browser_specific_settings.gecko_android`.
+Its presence explicitly enables Android and makes AMO's Android checkbox checked
+and unavailable. The package validator rejects that declaration, including an
+empty object. Keep desktop `strict_min_version` at `140.0` for Firefox 140 ESR.
+With addons-linter 10.15.0 this produces the known manifest warning
+`KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION`; it does not block desktop
+validation and is not a reason to declare unsupported Android compatibility.
+The extension build also removes React DOM's unused `dangerouslySetInnerHTML`
+writer, so its four former `UNSAFE_VAR_ASSIGNMENT` warnings should be absent.
+
 ### Firefox-specific behavior
 
 - Extension pages use `moz-extension://<per-profile UUID>/`; message sender
@@ -160,9 +170,13 @@ same SHA-256), and a second Windows build from a fresh shallow clone matched too
 - The background reads Twitch's own page state with
   `scripting.executeScript({ world: "MAIN", func })` to find the current
   stream and VOD ids; the functions are bundled, and their results are only ids.
-- The `innerHTML` warnings from AMO's linter are React DOM internals and one
-  crest SVG built from fixed constants (`src/supporter/kit.ts`); no page or
-  server text reaches `innerHTML`.
+- From 0.2.8, the build replaces React DOM's unused `dangerouslySetInnerHTML`
+  writer with a throwing stub (`scripts/lib/react-dom-inner-html.mjs`). The
+  extension does not use that prop. Package validation rejects dynamic HTML
+  assignments; the four former React `UNSAFE_VAR_ASSIGNMENT` warnings are absent.
+- The one manifest warning, `KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION`,
+  concerns Android only. This desktop-only package intentionally omits
+  `gecko_android` and retains Firefox 140 ESR support.
 - No remote code, `eval` or `new Function`. The extension's own network calls
   go to `api.streampulse.stream`; emote, avatar and game images load as plain
   `<img>` elements, so `host_permissions` lists no image CDN.

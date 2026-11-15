@@ -1,5 +1,13 @@
 # StreamPulse release status
 
+November 15 source candidate: **0.2.8**, a Firefox desktop-only correction
+that retains Firefox 140 ESR support and includes the React build hardening.
+The release notes are dated November 15 for packaging. Store approval is
+separate. Existing Chrome and Edge 0.2.7 submissions and the v0.2.7 tag
+remain unchanged; this release is intended for Firefox only.
+
+Earlier checkpoints below are historical.
+
 Source-candidate checkpoint updated: 2026-10-31 (unreleased 0.2.7 recovery/withdrawal candidate).
 Older dated hosted observations below remain historical; current production
 and store checks require their own evidence.

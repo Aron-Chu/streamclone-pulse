@@ -1,7 +1,32 @@
 {
   "schemaVersion": 1,
-  "currentVersion": "0.2.7",
+  "currentVersion": "0.2.8",
   "releases": [
+    {
+      "version": "0.2.8",
+      "status": "released",
+      "releasedAt": "2026-11-15",
+      "title": "Firefox desktop compatibility",
+      "summary": "A Firefox release for desktop browsers, including Firefox 140 ESR. Firefox for Android remains unsupported.",
+      "preview": [
+        "For Firefox on desktop, including Firefox 140 ESR.",
+        "Firefox for Android remains unsupported.",
+        "Refresh open Twitch tabs after updating."
+      ],
+      "fixed": [
+        "The Firefox package no longer declares support for Firefox for Android."
+      ],
+      "knownIssues": [
+        "Supporter isn't on sale yet, and Sign in with Twitch is not available in this release.",
+        "Bookmarks, notes and watched history stay in the browser where you saved them.",
+        "Refresh open Twitch tabs after updating.",
+        "Moments you missed get a picture only if the stream has a Twitch VOD."
+      ],
+      "links": {
+        "details": "/changelog",
+        "support": "/support"
+      }
+    },
     {
       "version": "0.2.7",
       "status": "released",

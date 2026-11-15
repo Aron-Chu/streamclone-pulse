@@ -1,5 +1,13 @@
 # Chrome Web Store review checklist (StreamPulse)
 
+November 15 source candidate: **0.2.8**, a Firefox desktop-only correction
+that retains Firefox 140 ESR support and includes the React build hardening.
+The release notes are dated November 15 for packaging. Store approval is
+separate. Existing Chrome and Edge 0.2.7 submissions and the v0.2.7 tag
+remain unchanged; this release is intended for Firefox only.
+
+Earlier checkpoints below are historical.
+
 Product name (user-facing): **StreamPulse**
 October 31 source candidate: **0.2.7**, unreleased and not submitted. The
 last recorded public Chrome version was 0.2.6 on October 29; the publisher
