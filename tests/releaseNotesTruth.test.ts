@@ -131,7 +131,7 @@ describe('0.2.7 release notes', () => {
 describe('0.2.8 Firefox release notes', () => {
   it('passes packaging with the desktop-only correction and retains 0.2.7 history', () => {
     expect(releaseNotes.currentVersion).toBe('0.2.8')
-    expect(entry('0.2.8')).toMatchObject({ status: 'released', releasedAt: '2026-11-15' })
+    expect(entry('0.2.8')).toMatchObject({ status: 'released', releasedAt: '2026-11-16' })
     expect(entry('0.2.8').summary).toContain('Firefox 140 ESR')
     expect(entry('0.2.8').summary).toContain('Firefox for Android remains unsupported')
     expect(evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.8', storeTarget: true }).failures).toEqual([])

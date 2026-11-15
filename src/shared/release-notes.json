@@ -5,7 +5,7 @@
     {
       "version": "0.2.8",
       "status": "released",
-      "releasedAt": "2026-11-15",
+      "releasedAt": "2026-11-16",
       "title": "Firefox desktop compatibility",
       "summary": "A Firefox release for desktop browsers, including Firefox 140 ESR. Firefox for Android remains unsupported.",
       "preview": [
