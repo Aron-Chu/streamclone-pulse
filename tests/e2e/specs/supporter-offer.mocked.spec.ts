@@ -141,7 +141,7 @@ test.describe('packaged supporter offer', () => {
       await twitch.screenshot({ path: join(CAPTURE_DIR, `accent-${finish}.png`), animations: 'disabled' })
     }
     await settings.reload()
-    await expect(settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true })).toBeChecked()
+    await expect(settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo · Equipped', exact: true })).toBeChecked()
     await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Default', exact: true }).check()
     await settings.getByRole('button', { name: 'Use default', exact: true }).click()
     await expect(settings.getByText('Default paint restored.', { exact: true })).toBeVisible()

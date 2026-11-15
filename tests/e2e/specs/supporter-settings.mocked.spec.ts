@@ -320,9 +320,9 @@ test('Manage on Stripe keeps keyboard focus while it opens and reports a failure
   await manage.focus()
   await page.keyboard.press('Enter')
   await expect.poll(() => portals).toBe(1)
-  // While it opens: enabled, still focused, and busy. Read at once, not retried:
-  // a button disabled for the request is enabled again once it ends.
-  expect(await manage.isEnabled()).toBe(true)
+  // ARIA communicates the busy guard while the native button retains focus.
+  expect(await manage.evaluate(button => (button as HTMLButtonElement).disabled)).toBe(false)
+  await expect(manage).toHaveAttribute('aria-disabled', 'true')
   expect(await manage.evaluate(button => button === document.activeElement)).toBe(true)
   await expect(manage).toHaveAttribute('aria-busy', 'true')
   // A second press while it opens asks nothing more.
