@@ -156,9 +156,12 @@ Readable sources: src/ (extension), packages/pulse-core and packages/pulse-chart
 The build is byte-reproducible: on 2026-10-10 a Windows build and an Ubuntu
 (WSL) build of the same commit produced identical `dist/` files (all 22 files,
 same SHA-256), and a second Windows build from a fresh shallow clone matched too.
-For each release, compare the complete entry-name set and SHA-256 of every
-rebuilt `dist/` file with the files inside the attested ZIP. ZIP timestamps can
-change the archive hash even when all packaged files are identical. Keep `.git`
+For each release, enumerate rebuilt files with `listPackableDistFiles` in
+`scripts/extension-package-lib.mjs`. Require that complete packaged file-name
+set to equal the attested ZIP's file entries, and compare each file's SHA-256.
+The local `extension-target.json` is intentionally excluded from packaging.
+ZIP timestamps can change the archive hash even when all packaged files are
+identical. Keep `.git`
 at the signed tag's commit in the source archive because the build embeds that
 commit ID. Record the exact Node.js and npm versions from the release-artifacts
 run and the verified source rebuild in the AMO reviewer notes; CI's `22` setting
