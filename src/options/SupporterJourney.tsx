@@ -1116,8 +1116,10 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     : !twitchOn && account.state === 'signed_out' ? { kind: 'none', connection: 'installation' } : { kind: 'none' }
   // Likewise the membership: before the server answers, or when it cannot, the
   // card says it is checking or unavailable, never "not a Supporter".
-  const paymentUnresolved = !isSupporter && (billing.state === 'waiting' || billing.state === 'confirming' || billing.state === 'still_confirming' || billing.state === 'reconnect_required')
-  const cardStatus: CardStatus = paymentUnresolved ? 'pending' : status ?? (identity.kind === 'none' ? 'none' : entitlement?.state === 'error' || entitlement?.state === 'unavailable' ? 'unknown' : 'checking')
+  // The resolved journey already drives the block and its action. Use that
+  // same state for the card line, including the gap while membership refreshes.
+  const paymentUnresolved = ['stripe-open', 'payment-pending', 'still-confirming', 'previous-payment-unresolved'].includes(state)
+  const cardStatus: CardStatus = paymentUnresolved ? 'pending' : state === 'membership-loading' ? 'checking' : status ?? (identity.kind === 'none' ? 'none' : entitlement?.state === 'error' || entitlement?.state === 'unavailable' ? 'unknown' : 'checking')
   // The card is display: through a failed refresh it keeps the last confirmed
   // look, as the footer says. Only paid controls pause (see onEntitlement).
   const perks = supporterPerksAllowed(entitlement)

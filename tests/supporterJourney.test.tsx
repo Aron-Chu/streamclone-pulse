@@ -2096,6 +2096,16 @@ describe('Link Twitch to a pay-first membership', () => {
 })
 
 describe('approved audit state and accessibility fixes', () => {
+  it('uses the resolved membership-loading state in both the card line and block', async () => {
+    const view = await mount({ account: () => linked, entitlement: () => ready('expired', { installationAccountsEnabled: true }), billing: () => ({ state: 'active' }) })
+    try {
+      expect(view.state()).toBe('membership-loading')
+      expect(view.host.querySelector('.pulse-supporter-card-who > span')?.textContent).toContain('checking membership…')
+      expect(view.host.querySelector('.pulse-supporter-card-who > span')?.textContent).not.toContain('Supporter ended')
+      expect(view.text()).toContain('Checking Supporter status…')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
+    } finally { view.cleanup() }
+  })
   it('uses payment pending in the card until the worker clears the completed ended attempt', async () => {
     let billing: SupporterBillingState = { state: 'still_confirming' }
     const view = await mount({ account: () => linked, entitlement: () => ready('expired', { installationAccountsEnabled: true }), billing: () => billing })
