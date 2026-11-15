@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-10-27T14:00:00.000Z",
+  "generatedAt": "2026-11-15T10:00:00.000Z",
   "dims": {
     "width": 1280,
     "height": 800
   },
   "kind": "extension_embedded_on_twitch_tv",
-  "harness": "tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts",
-  "note": "Real unpacked dist/ content script on the synthetic demo Twitch fixture (01-04) and the packaged settings page on Updates & Changelog with the Community card (05). Captures are generated from extension code and synthetic media; no real streamer footage or account data is used.",
+  "harness": "manual capture on real twitch.tv (store/cws/README.md, Screenshots)",
+  "note": "The unpacked 0.2.7 dist/ from master on real twitch.tv, Twitch dark theme, theatre view, 1280x800 CSS viewport, no text drawn on top. 01-04: xQc's live stream on 2026-11-15. 05: an xQc past broadcast, after Jump in VOD moved the player to the moment. Uses a real streamer's stream and viewers' names as captured (owner pick 2026-11-15); if anyone objects, swap to the fixture set from tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts. Not the streampulse-web landing tour.",
   "files": [
-    "01-live-pulse.png",
-    "02-top-moments.png",
-    "03-vod-replay.png",
-    "04-quick-settings.png",
-    "05-settings-updates.png"
+    "01-pulse-chart.png",
+    "02-minute-picked.png",
+    "03-top-moments.png",
+    "04-moment-card.png",
+    "05-vod-jump.png"
   ]
 }

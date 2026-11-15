@@ -1,59 +1,110 @@
 /**
  * Chrome Web Store screenshots of the *actual* MV3 extension embedded on
- * twitch.tv (content script + Pulse overlay), not the marketing landing tour.
+ * twitch.tv (content script + Pulse panel), not the marketing landing tour.
  *
  * Uses the same extension Playwright harness as the PR-gate mocked suite
- * (`launchExtensionContext` + Twitch HTML fixtures + mock API scenarios).
+ * (`launchExtensionContext` + Twitch HTML fixtures + mock API scenarios), with
+ * the browser at a device scale of ZOOM, so the panel renders natively at that
+ * size. Each frame is one part of the real panel, cut at its own section
+ * edges, beside a one-line headline: 1280x800 PNG, no resampling.
  *
- * Run: npm run capture:cws
+ * Fixture fallback only: frames go to test-results/cws-fixture-screenshots.
+ * The store set in store/cws/screenshots is a capture on a real Twitch stream
+ * (see store/cws/README.md), so this spec never writes there.
+ *
+ * Run (headless, after `npm run build`; the headless shell loads no extension):
+ * PULSE_EXTENSION_HEADLESS=1 PULSE_EXTENSION_BROWSER_CHANNEL=chromium npx playwright test tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts --project=extension-mocked
  */
-import { test, expect } from '../helpers/testFixtures.ts'
-import { waitForPulseRoot, assertPulseShadowContains, PULSE_ROOT_ID } from '../helpers/assertions.ts'
+import { test as base, expect, type ExtensionTestFixtures } from '../helpers/testFixtures.ts'
+import { waitForPulseRoot, assertPulseShadowContains, PULSE_ROOT_ID, PULSE_TABS_ID } from '../helpers/assertions.ts'
+import { closeExtensionContext, launchExtensionContext } from '../helpers/extensionContext.ts'
 import { installTwitchFixtures, openTwitchChannel, openTwitchVod, type TwitchFixtureKind } from '../helpers/mockTwitch.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { BrowserContext } from '@playwright/test'
+import type { BrowserContext, Locator, Page } from '@playwright/test'
 
 const W = 1280
 const H = 800
+/** How much larger than its default size the panel shows in a store frame. */
+const ZOOM = 1.6
+/** Space kept above and below the panel in a frame, in frame pixels. */
+const FRAME_PAD = 24
+/** The tallest part of the panel (CSS px) that fits a frame at ZOOM. */
+const MAX_CROP_CSS = Math.floor((H - 2 * FRAME_PAD) / ZOOM)
+/** Tall enough that every section below is on screen in one piece. */
+const CAPTURE_VIEWPORT = { width: 1280, height: 1100 }
 const HERE = dirname(fileURLToPath(import.meta.url))
-const OUT = join(HERE, '../../../store/cws/screenshots')
+const OUT = join(HERE, '../../../test-results/cws-fixture-screenshots')
 const FIXTURES = join(HERE, '../fixtures')
+
+/** The browser renders at ZOOM, so a clip of the panel is already store size. */
+const test = base.extend({
+  extension: async ({}, use) => {
+    const launched = await launchExtensionContext({ viewport: CAPTURE_VIEWPORT, deviceScaleFactor: ZOOM })
+    await use(launched)
+    await closeExtensionContext(launched)
+  },
+})
 
 /**
  * Store frames show a made-up channel and our own emotes
  * (tests/e2e/fixtures/store-emotes), so no real streamer, emote art or box art
- * appears in a store listing.
+ * appears in a store listing. Two of them stand in for Twitch emotes, the rest
+ * for 7TV emotes, so the emote counts cover both.
  */
 const DEMO_LOGIN = 'streampulse_demo'
 const STORE_EMOTES = ['pulseHype', 'lolWave', 'ggClap', 'wowPop', 'pulseLove', 'oofDrop'] as const
+type StoreEmote = typeof STORE_EMOTES[number]
+const TWITCH_STORE_EMOTES: ReadonlySet<StoreEmote> = new Set(['ggClap', 'pulseLove'])
 
-function storeEmote(name: typeof STORE_EMOTES[number], count: number) {
-  return { name, count, imageUrl: `https://cdn.7tv.app/emote/${name}/1x.webp`, provider: 'seventv' }
+function storeEmote(name: StoreEmote, count: number) {
+  return TWITCH_STORE_EMOTES.has(name)
+    ? { id: name, name, count, imageUrl: `https://static-cdn.jtvnw.net/emoticons/v2/${name}/default/dark/3.0`, provider: 'twitch' }
+    : { id: name, name, count, imageUrl: `https://cdn.7tv.app/emote/${name}/4x.webp`, provider: 'seventv' }
 }
 
 function readApiFixture(file: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(FIXTURES, 'api', file), 'utf8')) as Record<string, unknown>
 }
 
+function storeEmoteSvg(name: string) {
+  if (!(STORE_EMOTES as readonly string[]).includes(name)) return null
+  return readFileSync(join(FIXTURES, 'store-emotes', `${name}.svg`))
+}
+
 /**
  * Serves the store emotes and answers every other emote, avatar or box-art
- * request with 404, so the panel falls back to its own initials.
+ * request with 404, so the panel falls back to its own initials and no image
+ * shows broken. Nothing reaches a real image host.
  */
 async function routeStoreImages(context: BrowserContext) {
-  for (const host of ['static-cdn.jtvnw.net', 'cdn.betterttv.net', 'cdn.frankerfacez.com']) {
+  for (const host of ['cdn.betterttv.net', 'cdn.frankerfacez.com', 'cdn.streampulse.stream']) {
     await context.route(`https://${host}/**`, route => route.fulfill({ status: 404, body: '' }))
   }
+  await context.route('https://static-cdn.jtvnw.net/**', route => {
+    const name = /\/emoticons\/v2\/([A-Za-z]+)\//.exec(route.request().url())?.[1] ?? ''
+    const svg = TWITCH_STORE_EMOTES.has(name as StoreEmote) ? storeEmoteSvg(name) : null
+    return svg ? route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg }) : route.fulfill({ status: 404, body: '' })
+  })
   await context.route('https://cdn.7tv.app/**', route => {
     const name = /\/emote\/([A-Za-z]+)\//.exec(route.request().url())?.[1] ?? ''
-    if (!(STORE_EMOTES as readonly string[]).includes(name)) return route.fulfill({ status: 404, body: '' })
-    return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: readFileSync(join(FIXTURES, 'store-emotes', `${name}.svg`)) })
+    const svg = TWITCH_STORE_EMOTES.has(name as StoreEmote) ? null : storeEmoteSvg(name)
+    return svg ? route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg }) : route.fulfill({ status: 404, body: '' })
   })
 }
 
-/** The Twitch page, API and images of the store's demo channel; call after prepare(). */
+/**
+ * The Twitch page, API and images of the store's demo channel; call after
+ * prepare(). Twitch GQL the fixtures do not answer gets an empty answer
+ * instead of reaching Twitch.
+ */
 async function useStoreChannel(context: BrowserContext, kind: TwitchFixtureKind) {
+  await context.route('https://gql.twitch.tv/**', route => {
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' }
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    return route.fulfill({ headers: cors, contentType: 'application/json', body: JSON.stringify({ data: null }) })
+  })
   await installTwitchFixtures(context, { kind, login: DEMO_LOGIN, vodId: '2806037629' })
   await routeStoreImages(context)
 }
@@ -61,8 +112,25 @@ async function useStoreChannel(context: BrowserContext, kind: TwitchFixtureKind)
 const wave = (minute: number, period: number, phase: number) => (Math.sin((minute / period) * Math.PI * 2 + phase) + 1) / 2
 
 /**
- * Frames 01, 02 and 04's live stream: two hours twenty in, with five ranked
- * moments and the store emotes, so the chart and Top Moments are full.
+ * Each minute's emotes, split over the store emotes with shares that drift
+ * through the stream, so every emote has its own line when plotted.
+ */
+function minuteEmotes(minute: number, total: number) {
+  const weights: Record<StoreEmote, number> = {
+    pulseHype: 0.9 + 0.8 * wave(minute, 31, 0.2),
+    lolWave: 0.6 + 0.9 * wave(minute, 19, 2.4),
+    ggClap: 0.4 + 0.7 * wave(minute, 43, 4.1),
+    wowPop: 0.3 + 0.5 * wave(minute, 13, 1.1),
+    pulseLove: 0.2 + 0.4 * wave(minute, 27, 3.3),
+    oofDrop: 0.15 + 0.35 * wave(minute, 9, 5.0),
+  }
+  const sum = STORE_EMOTES.reduce((acc, name) => acc + weights[name], 0)
+  return STORE_EMOTES.map(name => storeEmote(name, Math.round((total * weights[name]) / sum)))
+}
+
+/**
+ * The live stream of frames 01, 02 and 05: two hours twenty in, with five
+ * ranked moments and the store emotes, so the chart and Top Moments are full.
  */
 const LIVE_MINUTES = 140
 const LIVE_SPIKES: ReadonlyArray<readonly [minute: number, lift: number, reason: string]> = [
@@ -85,22 +153,22 @@ function liveStorePulse(): { pulse: Record<string, unknown>; coverage: Record<st
   }
   const rollups = Array.from({ length: LIVE_MINUTES + 1 }, (_, minute) => {
     const chat = Math.round((48 + 30 * wave(minute, 26, 0.4) + 10 * wave(minute, 7, 1.3)) * lift(minute))
-    const emotes = Math.round(chat * (0.34 + 0.12 * wave(minute, 11, 2.1)))
+    const topEmotes = minuteEmotes(minute, Math.round(chat * (0.34 + 0.12 * wave(minute, 11, 2.1))))
+    const emotes = topEmotes.reduce((sum, emote) => sum + emote.count, 0)
     return {
       offsetSeconds: minute * 60,
       finalized: minute < LIVE_MINUTES,
       chatCount: chat,
       totalEmoteCount: emotes,
-      sevenTvEmoteCount: Math.round(emotes * 0.6),
+      sevenTvEmoteCount: topEmotes.filter(emote => emote.provider === 'seventv').reduce((sum, emote) => sum + emote.count, 0),
       viewerCount: Math.round(2100 + 1300 * Math.min(1, minute / 45) - 240 * wave(minute, 61, 0.2)),
       viewerSamples: 1,
-      topEmotes: [],
+      topEmotes,
     }
   })
   const max = (key: 'chatCount' | 'totalEmoteCount' | 'sevenTvEmoteCount') => Math.max(...rollups.map(r => r[key]))
   const peaks = LIVE_SPIKES.map(([minute, , reason], index) => {
     const at = rollups[minute]!
-    const names = index % 2 ? ['lolWave', 'pulseHype', 'oofDrop'] as const : ['pulseHype', 'ggClap', 'wowPop'] as const
     return {
       offsetSeconds: minute * 60,
       score: 96 - index * 7,
@@ -109,9 +177,11 @@ function liveStorePulse(): { pulse: Record<string, unknown>; coverage: Record<st
       dominantSignal: reason === 'chat_spike' ? 'chat' : 'seventv',
       chatCount: at.chatCount,
       emoteCount: at.totalEmoteCount,
-      topEmotes: names.map((name, rank) => storeEmote(name, Math.round(at.totalEmoteCount * (0.42 - rank * 0.12)))),
+      topEmotes: [...at.topEmotes].sort((a, b) => b.count - a.count).slice(0, 3),
     }
   })
+  const totals = new Map<StoreEmote, number>()
+  for (const rollup of rollups) for (const emote of rollup.topEmotes) totals.set(emote.name as StoreEmote, (totals.get(emote.name as StoreEmote) ?? 0) + emote.count)
   const base = readApiFixture('pulse-live-ready.json')
   const pulse = {
     ...base,
@@ -122,7 +192,7 @@ function liveStorePulse(): { pulse: Record<string, unknown>; coverage: Record<st
     currentOffsetSeconds: LIVE_MINUTES * 60,
     coverageStartOffsetSeconds: 0,
     coverage: { ...(base.coverage as object), coverageStartOffsetSeconds: 0, coverageEndOffsetSeconds: LIVE_MINUTES * 60 },
-    topEmotes: [storeEmote('pulseHype', 4210), storeEmote('lolWave', 3380), storeEmote('ggClap', 1960), storeEmote('wowPop', 1240), storeEmote('pulseLove', 870)],
+    topEmotes: [...totals].sort((a, b) => b[1] - a[1]).map(([name, count]) => storeEmote(name, count)),
     // The recent window; Top Moments ranks more than one moment only once it
     // holds a few completed minutes.
     rollups: rollups.slice(-30),
@@ -154,129 +224,10 @@ async function useStoreLiveStream(context: BrowserContext) {
   )
 }
 
-async function hideAllScrollbars(page: import('@playwright/test').Page) {
-  await page.addStyleTag({
-    content: `
-      html, body, * { scrollbar-width: none !important; }
-      *::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
-      html, body { overflow: hidden !important; }
-    `,
-  })
-  // Shadow-DOM Pulse panel scrollports (content script root)
-  await page.evaluate(rootId => {
-    const host = document.getElementById(rootId)
-    const root = host?.shadowRoot
-    if (!root) return
-    const style = document.createElement('style')
-    style.textContent = `
-      * { scrollbar-width: none !important; }
-      *::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
-      .pulse-panel-body, .pulse-sidebar-content, [data-pulse-scroll], .sl-ext__scrollport, .sl-ext__scroll {
-        overflow: hidden !important;
-        scrollbar-width: none !important;
-      }
-    `
-    root.appendChild(style)
-  }, PULSE_ROOT_ID)
-}
-
 /**
- * A caption on the fixture page's stand-in video area, outside the extension:
- * the panel is only the right 340 px of a 1280 px frame, so each store frame
- * says in one line what it shows. Nothing inside the extension is altered.
- */
-async function addCaption(page: import('@playwright/test').Page, title: string, body: string) {
-  await page.evaluate(({ title, body }) => {
-    const box = document.createElement('div')
-    box.setAttribute('data-cws-caption', 'true')
-    box.style.cssText = 'position:fixed;left:72px;top:50%;transform:translateY(-50%);max-width:760px;z-index:1;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#fff;pointer-events:none'
-    const mark = document.createElement('div')
-    mark.textContent = 'StreamPulse'
-    mark.style.cssText = 'font-size:20px;font-weight:700;letter-spacing:0.02em;color:#a78bfa;margin-bottom:18px'
-    const heading = document.createElement('div')
-    heading.textContent = title
-    heading.style.cssText = 'font-size:52px;line-height:1.1;font-weight:700;margin-bottom:18px;text-wrap:balance'
-    const line = document.createElement('div')
-    line.textContent = body
-    line.style.cssText = 'font-size:24px;line-height:1.4;font-weight:400;color:#d4d4d8'
-    box.append(mark, heading, line)
-    document.body.append(box)
-  }, { title, body })
-}
-
-async function writeExactStoreShot(page: import('@playwright/test').Page, filename: string) {
-  mkdirSync(OUT, { recursive: true })
-  await page.setViewportSize({ width: W, height: H })
-  await hideAllScrollbars(page)
-  await page.waitForTimeout(350)
-
-  // Capture at device pixels when available, then high-quality downsample to exact CWS size.
-  const hi = await page.screenshot({
-    type: 'png',
-    fullPage: false,
-    animations: 'disabled',
-    caret: 'hide',
-    scale: 'device',
-  })
-
-  const browser = page.context().browser()
-  let exact: Buffer
-  if (browser) {
-    const scaleCtx = await browser.newContext({
-      viewport: { width: W, height: H },
-      deviceScaleFactor: 1,
-    })
-    const scaler = await scaleCtx.newPage()
-    const dataUrl = `data:image/png;base64,${hi.toString('base64')}`
-    await scaler.setContent(
-      `<!doctype html><html><head><style>
-        html,body{margin:0;overflow:hidden;width:${W}px;height:${H}px;background:#0e0e10}
-        canvas{display:block}
-      </style></head><body><canvas id="c" width="${W}" height="${H}"></canvas>
-      <script>
-        const img = new Image();
-        img.onload = () => {
-          const c = document.getElementById('c');
-          const ctx = c.getContext('2d');
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(img, 0, 0, ${W}, ${H});
-          document.title = 'ready';
-        };
-        img.src = ${JSON.stringify(dataUrl)};
-      </script></body></html>`,
-      { waitUntil: 'load' },
-    )
-    await scaler.waitForFunction(() => document.title === 'ready')
-    exact = await scaler.screenshot({
-      type: 'png',
-      clip: { x: 0, y: 0, width: W, height: H },
-      animations: 'disabled',
-    })
-    await scaleCtx.close()
-  } else {
-    exact = await page.screenshot({
-      type: 'png',
-      fullPage: false,
-      animations: 'disabled',
-      caret: 'hide',
-      clip: { x: 0, y: 0, width: W, height: H },
-      scale: 'css',
-    })
-  }
-
-  const w = exact.readUInt32BE(16)
-  const h = exact.readUInt32BE(20)
-  expect(w, `${filename} width`).toBe(W)
-  expect(h, `${filename} height`).toBe(H)
-  writeFileSync(join(OUT, filename), exact)
-}
-
-/**
- * Frame 03's past broadcast: the vod-ready fixture stretched to a whole
- * three-hour stream, so the header's date, length and category, the recap and
- * the chart all describe the same broadcast. Synthetic data on the demo
- * channel; only this frame uses it.
+ * Frames 03 and 04's past broadcast: the vod-ready fixture stretched to a
+ * whole three-hour stream, so the header's date and length, the recap and the
+ * chart all describe the same broadcast. Synthetic data on the demo channel.
  */
 function replayStoreVod(): Record<string, unknown> {
   const base = readApiFixture('vod-ready.json')
@@ -286,12 +237,14 @@ function replayStoreVod(): Record<string, unknown> {
     const minute = index + 1
     const lift = spikes.get(minute) ?? spikes.get(minute - 1) ?? spikes.get(minute + 1) ?? 1
     const chat = Math.round((34 + 22 * wave(minute, 23, 0.4) + 8 * wave(minute, 7, 1.3)) * lift)
+    const topEmotes = minuteEmotes(minute, Math.round(chat * (0.32 + 0.12 * wave(minute, 11, 2.1))))
     return {
       offsetSeconds: minute * 60,
       chatPerMin: chat,
-      emotesPerMin: Math.round(chat * (0.32 + 0.12 * wave(minute, 11, 2.1))),
+      emotesPerMin: topEmotes.reduce((sum, emote) => sum + emote.count, 0),
       viewers: Math.round(1180 + 520 * Math.min(1, minute / 40) - 140 * wave(minute, 61, 0.2)),
       score: Math.min(100, Math.round(chat / 1.6)),
+      topEmotes,
     }
   })
   // Real reason codes: the recap names each moment from its reason.
@@ -300,6 +253,7 @@ function replayStoreVod(): Record<string, unknown> {
     return {
       offsetSeconds, label: reason === 'chat_spike' ? 'Chat spike' : 'Emote spike', reason,
       score: point.score, chatPerMin: point.chatPerMin, emotesPerMin: point.emotesPerMin,
+      topEmotes: [...point.topEmotes].sort((a, b) => b.count - a.count).slice(0, 3),
     }
   }
   return {
@@ -309,7 +263,9 @@ function replayStoreVod(): Record<string, unknown> {
     title: 'Building a castle with chat',
     durationSeconds: minutes * 60,
     timeline: { bucketSeconds: 60, points },
-    topMoments: [moment(97 * 60, 'chat_spike'), moment(38 * 60, 'seventv_spike'), moment(151 * 60, 'chat_spike')],
+    // Two ranked moments, so the picked moment's card, the list and the
+    // player's answer below them fit one frame (03).
+    topMoments: [moment(97 * 60, 'chat_spike'), moment(38 * 60, 'seventv_spike')],
     topEmotes: [storeEmote('pulseHype', 3120), storeEmote('lolWave', 2450), storeEmote('ggClap', 1380)],
     games: [
       { gameName: 'Just Chatting', offsetSeconds: 0, durationSeconds: 70 * 60 },
@@ -318,171 +274,236 @@ function replayStoreVod(): Record<string, unknown> {
   }
 }
 
-async function scrollPulsePanel(page: import('@playwright/test').Page, progress: number) {
-  await page.evaluate(
-    ({ rootId, p }) => {
-      const host = document.getElementById(rootId)
-      const body = host?.shadowRoot?.querySelector(
-        '.pulse-panel-body, .pulse-sidebar-content, [data-pulse-scroll]',
-      ) as HTMLElement | null
-      if (!body) return
-      const max = Math.max(0, body.scrollHeight - body.clientHeight)
-      body.scrollTop = Math.round(max * p)
-    },
-    { rootId: PULSE_ROOT_ID, p: progress },
-  )
-  await page.waitForTimeout(500)
+const PANEL_STORAGE = { overlayMode: 'expanded', overlayPlacement: 'sidebar', sidebarTab: 'pulse' } as const
+
+type Prepare = ExtensionTestFixtures['prepare']
+
+async function openStoreLive(page: Page, prepare: Prepare) {
+  await prepare({ scenario: 'live-ready', twitchKind: 'live', storage: PANEL_STORAGE })
+  await useStoreChannel(page.context(), 'live')
+  await useStoreLiveStream(page.context())
+  await openTwitchChannel(page, DEMO_LOGIN)
+  await waitForPulseRoot(page)
+  await assertPulseShadowContains(page, /Top moments/i)
+  await hideAllScrollbars(page)
+  return page.locator(`#${PULSE_ROOT_ID}`)
 }
+
+async function openStoreVod(page: Page, prepare: Prepare) {
+  await prepare({ scenario: 'vod-ready', twitchKind: 'vod', storage: PANEL_STORAGE })
+  const vod = replayStoreVod()
+  await useStoreChannel(page.context(), 'vod')
+  await page.context().route('https://api.streampulse.stream/v1/extension/pulse/vods/**', route => route.fulfill({ status: 200, json: vod }))
+  await openTwitchVod(page)
+  await waitForPulseRoot(page, 30_000)
+  await assertPulseShadowContains(page, /Minecraft/)
+  await hideAllScrollbars(page)
+  return page.locator(`#${PULSE_ROOT_ID}`)
+}
+
+async function hideAllScrollbars(page: Page) {
+  await page.addStyleTag({
+    content: `
+      html, body, * { scrollbar-width: none !important; }
+      *::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
+      html, body { overflow: hidden !important; }
+    `,
+  })
+  // Shadow-DOM Pulse panel scrollports (content script root)
+  await page.evaluate(rootId => {
+    const root = document.getElementById(rootId)?.shadowRoot
+    if (!root) return
+    const style = document.createElement('style')
+    style.textContent = `
+      * { scrollbar-width: none !important; }
+      *::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
+    `
+    root.appendChild(style)
+  }, PULSE_ROOT_ID)
+}
+
+/** Scrolls the panel so `element` starts `gap` CSS px below the panel's sticky top. */
+async function scrollPanelTo(element: Locator, gap = 16) {
+  await element.evaluate((node, gap) => {
+    let scroller: Element | null = node.parentElement
+    while (scroller && !(scroller.scrollHeight > scroller.clientHeight && /auto|scroll/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement
+    if (!scroller) return
+    scroller.scrollTop += node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - gap
+    // A click can scroll a row sideways into view; frames start at its left edge.
+    for (let el: Element | null = node; el; el = el.parentElement) el.scrollLeft = 0
+  }, gap)
+  await element.page().waitForTimeout(300)
+}
+
+/**
+ * One store frame: the part of the panel from the top of `from` to the bottom
+ * of `to` (CSS px, padded), at ZOOM, beside the headline. The browser already
+ * renders at ZOOM, so the clip goes into the frame pixel for pixel.
+ */
+async function writeStoreFrame(
+  page: Page,
+  filename: string,
+  part: { from: Locator; to: Locator; padTop?: number; padBottom?: number },
+  caption: { title: string; body: string },
+) {
+  const host = await page.locator(`#${PULSE_ROOT_ID}`).boundingBox()
+  const from = await part.from.boundingBox()
+  const to = await part.to.boundingBox()
+  if (!host || !from || !to) throw new Error(`${filename}: panel part not on screen`)
+  // Multiples of 5 CSS px are whole device pixels at 1.6.
+  const snap = (value: number) => Math.round(value / 5) * 5
+  const top = snap(from.y - (part.padTop ?? 12))
+  const bottom = snap(to.y + to.height + (part.padBottom ?? 12))
+  expect(bottom - top, `${filename}: panel part fits the frame`).toBeLessThanOrEqual(MAX_CROP_CSS)
+  expect(bottom, `${filename}: panel part is on screen`).toBeLessThanOrEqual(CAPTURE_VIEWPORT.height)
+  const clip = { x: snap(host.x), y: top, width: snap(host.width), height: bottom - top }
+  const panel = await page.screenshot({ type: 'png', clip, scale: 'device', animations: 'disabled', caret: 'hide' })
+  await composeStoreFrame(page.context(), filename, panel, clip.height * ZOOM, caption)
+}
+
+/**
+ * Lays the panel part and the caption out in a 1280x800 frame. The page
+ * renders at ZOOM device pixels per CSS px, so it is laid out in frame pixels
+ * under `zoom: 1/ZOOM`, and the panel image shows at its own pixel size.
+ */
+async function composeStoreFrame(
+  context: BrowserContext,
+  filename: string,
+  panel: Buffer,
+  panelHeight: number,
+  caption: { title: string; body: string },
+) {
+  const panelWidth = panel.readUInt32BE(16)
+  expect(panel.readUInt32BE(20), `${filename}: panel image height`).toBe(Math.round(panelHeight))
+  const right = 64
+  const top = Math.round((H - panelHeight) / 2)
+  const textWidth = W - panelWidth - right - 72 - 56
+  const page = await context.newPage()
+  await page.setViewportSize({ width: W / ZOOM, height: H / ZOOM })
+  const esc = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  await page.setContent(
+    `<!doctype html><html><head><style>
+      html,body{margin:0;overflow:hidden;background:#0e0e10}
+      #frame{zoom:${1 / ZOOM};position:relative;width:${W}px;height:${H}px;overflow:hidden;
+        background:radial-gradient(900px 640px at ${W - right - panelWidth / 2}px 50%, rgba(124,58,237,.20), rgba(14,14,16,0) 70%),#0e0e10}
+      #caption{position:absolute;left:72px;top:50%;transform:translateY(-50%);width:${textWidth}px;
+        font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#fff}
+      #mark{font-size:20px;font-weight:700;letter-spacing:.02em;color:#a78bfa;margin-bottom:18px}
+      #title{font-size:52px;line-height:1.1;font-weight:700;margin-bottom:18px;text-wrap:balance}
+      #body{font-size:24px;line-height:1.4;font-weight:400;color:#d4d4d8;text-wrap:pretty}
+      #panel{position:absolute;right:${right}px;top:${top}px;width:${panelWidth}px;height:${Math.round(panelHeight)}px;display:block;
+        border-radius:14px;box-shadow:0 0 0 1px rgba(255,255,255,.10),0 28px 80px rgba(0,0,0,.65)}
+    </style></head><body><div id="frame">
+      <div id="caption"><div id="mark">StreamPulse</div><div id="title">${esc(caption.title)}</div><div id="body">${esc(caption.body)}</div></div>
+      <img id="panel" alt="" src="data:image/png;base64,${panel.toString('base64')}">
+    </div></body></html>`,
+    { waitUntil: 'load' },
+  )
+  await page.locator('#panel').evaluate(img => (img as HTMLImageElement).decode())
+  const frame = await page.screenshot({ type: 'png', scale: 'device', animations: 'disabled', caret: 'hide' })
+  await page.close()
+  expect(frame.readUInt32BE(16), `${filename} width`).toBe(W)
+  expect(frame.readUInt32BE(20), `${filename} height`).toBe(H)
+  mkdirSync(OUT, { recursive: true })
+  writeFileSync(join(OUT, filename), frame)
+}
+
+const FILES = [
+  '01-pulse-chart.png',
+  '02-top-moments.png',
+  '03-vod-jump.png',
+  '04-stream-recap.png',
+  '05-emotes.png',
+] as const
 
 test.describe('CWS extension-on-Twitch screenshots', () => {
   test.describe.configure({ timeout: 90_000 })
 
-  test('01 live pulse docked beside chat', async ({ extension, prepare }) => {
-    await extension.page.setViewportSize({ width: W, height: H })
-    await prepare({
-      scenario: 'live-ready',
-      twitchKind: 'live',
-      storage: {
-        overlayMode: 'expanded',
-        overlayPlacement: 'sidebar',
-        sidebarTab: 'pulse',
-        autoUpdateEnabled: true,
-      },
-    })
-    await useStoreChannel(extension.page.context(), 'live')
-    await useStoreLiveStream(extension.page.context())
-    await openTwitchChannel(extension.page, DEMO_LOGIN)
-    await waitForPulseRoot(extension.page)
-    await assertPulseShadowContains(extension.page, /Viewers|Chat \/ min|Collecting|1,180|Just Chatting/i)
-    // Bring the chart into view and point at a minute, so the readout shows.
-    const chart = extension.page.locator(`#${PULSE_ROOT_ID} svg[data-testid="pulse-overview-chart"]`)
-    await chart.evaluate(element => {
-      element.scrollIntoView({ block: 'end' })
-      // 'end' leaves the stream-analytics row half under the CHAT/PULSE tabs;
-      // scroll a little further so the frame starts cleanly at the stats.
-      let node: Element | null = element.parentElement
-      while (node && !(node.scrollHeight > node.clientHeight && /auto|scroll/.test(getComputedStyle(node).overflowY))) node = node.parentElement
-      node?.scrollBy(0, 20)
-    })
-    await extension.page.waitForTimeout(300)
-    const box = await chart.boundingBox()
-    if (box) await extension.page.mouse.move(box.x + box.width * 0.94, box.y + box.height * 0.6)
-    await extension.page.waitForTimeout(400)
-    await addCaption(extension.page, 'See what Twitch chat reacted to', 'A live Pulse chart of chat, emote and viewer activity, right beside Twitch chat.')
-    await writeExactStoreShot(extension.page, '01-live-pulse.png')
-  })
-
-  test('02 top moments with a picked moment card', async ({ extension, prepare }) => {
-    await extension.page.setViewportSize({ width: W, height: H })
-    await prepare({
-      scenario: 'live-ready',
-      twitchKind: 'live',
-      storage: {
-        overlayMode: 'expanded',
-        overlayPlacement: 'sidebar',
-        sidebarTab: 'pulse',
-      },
-    })
-    await useStoreChannel(extension.page.context(), 'live')
-    await useStoreLiveStream(extension.page.context())
-    await openTwitchChannel(extension.page, DEMO_LOGIN)
-    await waitForPulseRoot(extension.page)
-    const root = extension.page.locator(`#${PULSE_ROOT_ID}`)
-    // Top Moments opens a card only after a pick, and the row stays put.
-    const heading = root.getByText(/^Top moments$/i).first()
-    await heading.scrollIntoViewIfNeeded()
-    const row = root.locator('.pulse-moment-row-button').first()
-    await row.scrollIntoViewIfNeeded()
-    await row.click()
-    await extension.page.waitForTimeout(400)
-    await heading.evaluate(element => element.scrollIntoView({ block: 'start' }))
-    await extension.page.waitForTimeout(300)
-    await addCaption(extension.page, 'Jump to the moments that mattered', 'Top Moments ranks the strongest reactions. Pick one to open its card and jump in the player.')
-    await writeExactStoreShot(extension.page, '02-top-moments.png')
-  })
-
-  test('03 vod replay pulse', async ({ extension, prepare }) => {
-    await extension.page.setViewportSize({ width: W, height: H })
-    await prepare({
-      scenario: 'vod-ready',
-      twitchKind: 'vod',
-      storage: {
-        overlayMode: 'expanded',
-        overlayPlacement: 'sidebar',
-        sidebarTab: 'pulse',
-      },
-    })
-    const vod = replayStoreVod()
-    await useStoreChannel(extension.page.context(), 'vod')
-    await extension.page.context().route('https://api.streampulse.stream/v1/extension/pulse/vods/**', route => route.fulfill({ status: 200, json: vod }))
-    await openTwitchVod(extension.page)
-    await waitForPulseRoot(extension.page, 30_000)
-    await assertPulseShadowContains(extension.page, /Minecraft/)
-    // Start the frame at the recap, so its summary line, the ranked moments
-    // and the top of the chart all show; point at the biggest spike, so the
-    // chart's readout shows that minute.
-    const root = extension.page.locator(`#${PULSE_ROOT_ID}`)
-    await root.getByText(/^Stream recap$/i).first().evaluate(element => element.scrollIntoView({ block: 'start' }))
-    await extension.page.waitForTimeout(300)
-    const chart = root.locator('svg[data-testid="pulse-overview-chart"]').first()
-    const box = await chart.boundingBox()
-    if (box) await extension.page.mouse.move(box.x + box.width * 0.54, Math.min(box.y + box.height * 0.5, H - 130))
-    await extension.page.waitForTimeout(400)
-    await addCaption(extension.page, 'Recaps for past streams', 'Replay Pulse charts the chat and emotes of a broadcast StreamPulse tracked.')
-    await writeExactStoreShot(extension.page, '03-vod-replay.png')
-  })
-
-  test('04 quick settings with the Supporter card', async ({ extension, prepare }) => {
-    await extension.page.setViewportSize({ width: W, height: H })
-    await prepare({
-      scenario: 'live-ready',
-      twitchKind: 'live',
-      storage: {
-        overlayMode: 'expanded',
-        overlayPlacement: 'sidebar',
-        sidebarTab: 'pulse',
-      },
-    })
-    await useStoreChannel(extension.page.context(), 'live')
-    await useStoreLiveStream(extension.page.context())
-    // A still frame: the Supporter card's chat preview holds whole lines
-    // instead of being caught mid-message.
-    await extension.page.emulateMedia({ reducedMotion: 'reduce' })
-    await openTwitchChannel(extension.page, DEMO_LOGIN)
-    await waitForPulseRoot(extension.page)
-    const root = extension.page.locator(`#${PULSE_ROOT_ID}`)
-    await root.getByRole('button', { name: 'Open settings', exact: true }).click()
-    await expect(root.getByRole('heading', { name: 'Quick settings' })).toBeVisible()
-    const card = root.locator('[data-settings-host-cta="supporter"]')
-    await expect(card).toBeVisible()
-    // The Supporter card's stage is scripted motion: wait until the crest has
-    // landed (.spk-you, the Crown pile; .spk-sup on builds before it), then
-    // let it settle.
-    await expect(card.locator('.spk-you, .spk-sup').first()).toBeVisible({ timeout: 30_000 })
-    await extension.page.waitForTimeout(900)
-    await addCaption(extension.page, 'Settings one click away', 'See what Pulse is charting, and preview Supporter cosmetics only you see, never in chat. Sign-ups are not open yet.')
-    await writeExactStoreShot(extension.page, '04-quick-settings.png')
-  })
-
-  test('05 settings: release notes and community links', async ({ extension, prepare }) => {
-    await prepare({ scenario: 'live-ready', twitchKind: 'live' })
+  test('01 live Pulse chart', async ({ extension, prepare }) => {
     const page = extension.page
-    await page.setViewportSize({ width: W, height: H })
-    // A still frame: the Supporter banner's emotes hold their resting pose
-    // instead of being caught mid-fall.
-    await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#updates`)
-    // Settings has had no Help & Feedback section since 2026-10-11. Updates &
-    // Changelog leads with the What's new card, and the Community card under the
-    // section list holds Join the Discord and Send feedback on every section.
-    await expect(page.getByRole('heading', { name: 'Updates & Changelog', exact: true })).toBeVisible()
-    await expect(page.locator('[data-whatsnew="true"]')).toBeVisible()
-    const community = page.getByRole('complementary', { name: 'Community' })
-    await expect(community.getByRole('link', { name: 'Join the Discord (opens in a new tab)', exact: true })).toBeVisible()
-    await expect(community.getByRole('link', { name: 'Send feedback (opens in a new tab)', exact: true })).toBeVisible()
-    await expect(page.locator('.pulse-supporter-pile').first()).toBeVisible()
-    await page.waitForTimeout(1200)
-    await writeExactStoreShot(page, '05-settings-updates.png')
+    const root = await openStoreLive(page, prepare)
+    // From the chart's legend to its time axis.
+    const legend = root.locator('.pulse-ch-legend').first()
+    const chart = root.locator('svg[data-testid="pulse-overview-chart"]').first()
+    await scrollPanelTo(legend)
+    // Point at the biggest spike, so the readout shows that minute.
+    const box = await chart.boundingBox()
+    if (box) await page.mouse.move(box.x + box.width * (57 / LIVE_MINUTES), box.y + box.height * 0.55)
+    await page.waitForTimeout(400)
+    await writeStoreFrame(page, FILES[0], { from: legend, to: chart, padBottom: 4 }, {
+      title: 'Twitch chat stats, live',
+      body: 'Chat, emotes and viewers per minute, charted while you watch.',
+    })
+  })
+
+  test('02 top moments', async ({ extension, prepare }) => {
+    const page = extension.page
+    const root = await openStoreLive(page, prepare)
+    const heading = root.getByText(/^Top moments$/i).first()
+    const rows = root.locator('.pulse-moment-row-button')
+    await expect(rows).toHaveCount(LIVE_SPIKES.length)
+    await scrollPanelTo(heading)
+    await writeStoreFrame(page, FILES[1], { from: heading, to: rows.last() }, {
+      title: 'Jump to the moments chat reacted to',
+      body: 'Top Moments ranks the biggest chat and emote spikes of the stream.',
+    })
+  })
+
+  test('03 jump to a moment on the VOD', async ({ extension, prepare }) => {
+    const page = extension.page
+    const root = await openStoreVod(page, prepare)
+    await scrollPanelTo(root.getByText(/^Top moments$/i).first())
+    await root.locator('.pulse-moment-row-button').first().click()
+    const card = root.locator('.pulse-moment-selection-card').first()
+    const jump = card.locator('[data-moment-inspector-action="jump"]')
+    await expect(jump).toContainText('Jump')
+    await jump.click()
+    // The player's answer, in the card under its buttons.
+    const notice = card.locator('.pulse-sel-note')
+    await expect(notice).toContainText(/Jumped to .* in the VOD/)
+    await page.mouse.move(0, 0)
+    // From the card's details down to its answer: the picture above is a
+    // stand-in on this fixture (no Twitch VOD frames).
+    const details = card.getByText('Selected moment', { exact: true })
+    await scrollPanelTo(details)
+    await writeStoreFrame(page, FILES[2], { from: details, to: notice }, {
+      title: 'Watch the moment again on the VOD',
+      body: 'Pick a moment of a past stream, press Jump, and the VOD plays from there.',
+    })
+  })
+
+  test('04 stream recap', async ({ extension, prepare }) => {
+    const page = extension.page
+    const root = await openStoreVod(page, prepare)
+    await expect(root.getByText(/^Stream recap$/i).first()).toBeVisible()
+    // The top of the panel: its tabs beside Twitch chat, the replay's header,
+    // the recap's summary and the games played. The chart below does not fit.
+    const tabs = page.locator(`#${PULSE_TABS_ID}`)
+    const games = root.locator('[data-games-played]').first()
+    await writeStoreFrame(page, FILES[3], { from: tabs, to: games, padTop: 0 }, {
+      title: 'A recap of every stream',
+      body: 'Length, messages, games played and the chat peak of a past stream.',
+    })
+  })
+
+  test('05 emotes', async ({ extension, prepare }) => {
+    const page = extension.page
+    const root = await openStoreLive(page, prepare)
+    // The expanded chart gives plotted emotes a taller lane of their own.
+    await root.getByRole('button', { name: 'Expand stream activity chart' }).click()
+    const picker = root.locator('.pulse-seven-tv-panel').first()
+    await picker.locator('.pulse-seven-tv-toggle').click()
+    for (const name of ['pulseHype', 'lolWave', 'ggClap']) {
+      await picker.getByRole('option', { name: new RegExp(`^${name},`) }).click()
+    }
+    await page.mouse.move(0, 0)
+    await page.waitForTimeout(600)
+    const chart = root.locator('svg[data-testid="pulse-overview-chart"]').first()
+    await scrollPanelTo(chart, 40)
+    await writeStoreFrame(page, FILES[4], { from: chart, to: picker, padTop: -2, padBottom: 8 }, {
+      title: 'See which 7TV and Twitch emotes chat is using',
+      body: 'Top emotes with their use counts. Plot any of them on the chart.',
+    })
 
     writeFileSync(
       join(OUT, 'manifest.json'),
@@ -492,14 +513,8 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
           dims: { width: W, height: H },
           kind: 'extension_embedded_on_twitch_tv',
           harness: 'tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts',
-          note: 'Real unpacked dist/ content script on *.twitch.tv fixture documents (01-04) and the packaged settings page on Updates & Changelog with the Community card (05). Synthetic fixture channel; mocked captures are not live evidence. Not the streampulse-web landing tour.',
-          files: [
-            '01-live-pulse.png',
-            '02-top-moments.png',
-            '03-vod-replay.png',
-            '04-quick-settings.png',
-            '05-settings-updates.png',
-          ],
+          note: `Real unpacked dist/ content script on synthetic *.twitch.tv fixture documents, rendered at ${ZOOM}x: each frame is one part of the Pulse panel beside a headline. Live channel (01, 02, 05) and past broadcast (03, 04) are synthetic fixture data on a made-up channel with our own emote art; no real streamer, footage or account data. Mocked captures are not live evidence. Not the streampulse-web landing tour.`,
+          files: [...FILES],
         },
         null,
         2,

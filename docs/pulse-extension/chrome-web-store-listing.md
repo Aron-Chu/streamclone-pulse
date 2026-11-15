@@ -38,6 +38,11 @@ Do **not** use “Streamclone Pulse” in store-facing fields.
 
 ## Next store candidate: 0.2.6 listing fields
 
+The 0.2.7 summary, description and promo tiles are drafted in
+[`store/cws/listing-0.2.7.md`](../../store/cws/listing-0.2.7.md): the new
+summary, no pricing paragraph, and a marquee tile. Paste them with the 0.2.7
+upload; the fields below stay the 0.2.6 record.
+
 Written 2026-10-27 for extension **0.2.6** with Sign in with Twitch compiled
 **off** and Supporter sales **not open**. Every claim below matches that
 build. See
@@ -106,16 +111,17 @@ Show Twitch chat and emote activity for the stream or VOD you are watching, in a
 | Screenshots (required) | `store/cws/screenshots/` (see `manifest.json` there) | 1280×800 |
 | Store icon | `store/cws/icons/icon128.png` | 128×128 RGBA |
 | Small promo tile | `store/cws/icons/small-promo-440x280.png` | 440×280 |
+| Marquee promo tile (from 0.2.7) | `store/cws/icons/marquee-1400x560.png` | 1400×560 |
 
-The five 0.2.6 screenshots (live chart, Top Moments card, VOD recap, quick
-settings, and settings with release notes and the Community links) come from
-the mocked Twitch fixture (synthetic channel, no real streamer or email) by
-`tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`; see
-`store/cws/README.md` for which build each frame used. Mocked captures are not
-live evidence. Frame 5 was retaken on 2026-10-12 because settings no longer
-has a Help & Feedback section and the Supporter banner is back to master's
-chips; frames 1-4 predate the 2026-10-11 polish, so
-recapture all five from the package `dist/` before the 0.2.2 upload.
+From 0.2.7 the five screenshots are captured on real twitch.tv: the 0.2.7
+`dist/` on xQc's live stream (chart hover, a picked minute, Top Moments, an
+opened moment) and on one of his past broadcasts (Jump in VOD), in Twitch's
+dark theme and theatre view, with nothing drawn on top. They show a real
+streamer and his viewers' names as captured, by the owner's pick of
+2026-11-15; `store/cws/README.md` has the frame list and the same-day swap to
+the fixture set from
+`tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts`. The 0.2.6 set
+came from that mocked fixture.
 
 ---
 

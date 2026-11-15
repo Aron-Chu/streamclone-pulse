@@ -9,7 +9,7 @@ import perks from '../src/shared/supporter-perks.json'
  */
 const listing = readFileSync('docs/pulse-extension/chrome-web-store-listing.md', 'utf8')
 const readme = readFileSync('store/cws/README.md', 'utf8')
-const manifest = JSON.parse(readFileSync('manifests/cws.json', 'utf8')) as { version: string; permissions: string[]; host_permissions: string[] }
+const manifest = JSON.parse(readFileSync('manifests/cws.json', 'utf8')) as { version: string; description: string; permissions: string[]; host_permissions: string[] }
 const screenshots = JSON.parse(readFileSync('store/cws/screenshots/manifest.json', 'utf8')) as { files: string[]; dims: { width: number; height: number } }
 const section = (heading: string) => {
   const start = listing.indexOf(heading)
@@ -85,5 +85,53 @@ describe('Chrome Web Store listing copy (0.2.6)', () => {
     expect(scripting).toContain('content/catch-me-up.js')
     expect(scripting).toContain('channel avatar')
     expect(scripting).toContain('does not need this permission')
+  })
+})
+
+/**
+ * The 0.2.7 draft (store/cws/listing-0.2.7.md): its summary is the manifest's,
+ * and its description makes no Supporter or pricing claim and keeps the
+ * coverage line above the list.
+ */
+describe('Chrome Web Store listing draft (0.2.7)', () => {
+  const draft = readFileSync('store/cws/listing-0.2.7.md', 'utf8')
+  const field = (heading: string) => {
+    const start = draft.indexOf(heading)
+    expect(start, heading).toBeGreaterThan(-1)
+    return /```\n([\s\S]*?)\n```/.exec(draft.slice(start))![1]
+  }
+
+  it('uses the manifest summary, within the store limit', () => {
+    const summary = field('### Summary')
+    const shipped = JSON.parse(readFileSync('manifest.json', 'utf8')) as { description: string }
+    expect(summary).toBe(shipped.description)
+    expect(summary).toBe(manifest.description)
+    expect(summary.length).toBeLessThanOrEqual(132)
+    expect(summary).toMatch(/stats/i)
+    expect(summary).toContain('7TV')
+  })
+
+  it('drops the Supporter and pricing paragraph and says the features are free', () => {
+    const description = field('### Detailed description')
+    expect(description).not.toMatch(/Supporter|US\$|\/month|on sale/i)
+    expect(description).toContain('• Free, with no account needed.')
+    expect(description).not.toMatch(/Protect|beta access key|Twitch OAuth|free Pulse account/i)
+  })
+
+  it("keeps the busiest-channels line above the 'What you get' list", () => {
+    const description = field('### Detailed description')
+    const line = "Live charts cover Twitch's busiest channels; other channels show past data or nothing."
+    expect(description.indexOf(line)).toBeGreaterThan(-1)
+    expect(description.indexOf(line)).toBeLessThan(description.indexOf('What you get:'))
+    expect(description.indexOf('What you get:')).toBeLessThan(description.indexOf('• '))
+  })
+
+  it('names both promo tiles, which exist at their store sizes', () => {
+    for (const [file, width, height] of [['small-promo-440x280.png', 440, 280], ['marquee-1400x560.png', 1400, 560]] as const) {
+      expect(draft).toContain(`store/cws/icons/${file}`)
+      const png = readFileSync(`store/cws/icons/${file}`)
+      expect(png.readUInt32BE(16)).toBe(width)
+      expect(png.readUInt32BE(20)).toBe(height)
+    }
   })
 })
