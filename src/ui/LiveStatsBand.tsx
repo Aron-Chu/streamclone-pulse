@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
   deriveLiveStats,
-  formatHeatOffset,
+  formatMomentOffset,
   reactionAnalyticalOffset,
   toLiveStatsInputFromExtension,
   trendArrowGlyph,
@@ -24,6 +24,7 @@ import { GamesPlayedStrip } from './GamesPlayedStrip.tsx'
 import { PulseOverviewChart } from './PulseOverviewChart.tsx'
 import { ChartReadoutBand, type ChartReadoutMode } from './ChartReadoutBand.tsx'
 import { ChartMinuteInspectCard } from './ChartMinuteInspectCard.tsx'
+import type { JumpResult } from './jumpMomentAction.ts'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
 import { MomentCardSlot } from './MomentCardSlot.tsx'
 import { resolvePinnedMomentPoint } from './chartSelectedMoment.ts'
@@ -103,7 +104,7 @@ export interface LiveStatsBandProps {
   showLoadFromStart?: boolean
   loadFromStartBusy?: boolean
   onLoadFromStart?: () => void
-  onJumpToOffset?: (offsetSeconds: number) => void
+  onJumpToOffset?: (offsetSeconds: number) => JumpResult
   onOpenAnalytics?: (offsetSeconds: number) => void
   onRequestFullTimeline?: () => Promise<FullHistoryRequestResult>
   onChartWindowChange?: (window: ChartTimelineWindow) => void
@@ -1112,13 +1113,13 @@ export function LiveStatsBand({
   const showConfidenceBadge = stats.confidence !== 'Synced'
   const viewerTimelineHint = viewerSamplesAvailable && viewerEndOffsetSeconds != null
     ? isLive
-      ? `Viewer data from ${formatHeatOffset(viewerStartOffsetSeconds)} · ${!autoUpdate || viewerPaused ? 'latest sample ' + formatHeatOffset(viewerEndOffsetSeconds) : 'sampling now'}`
-      : `Viewer data ${formatHeatOffset(viewerStartOffsetSeconds)}–${formatHeatOffset(viewerEndOffsetSeconds)}`
+      ? `Viewer data from ${formatMomentOffset(viewerStartOffsetSeconds)} · ${!autoUpdate || viewerPaused ? 'latest sample ' + formatMomentOffset(viewerEndOffsetSeconds) : 'sampling now'}`
+      : `Viewer data ${formatMomentOffset(viewerStartOffsetSeconds)}–${formatMomentOffset(viewerEndOffsetSeconds)}`
     : null
   const viewerUnavailableDetail = viewerSamplesAvailable && viewerEndOffsetSeconds != null
     ? isLive
-      ? `Viewer tracking began at ${formatHeatOffset(viewerStartOffsetSeconds)}. This minute is outside the sampled viewer data.`
-      : `Viewer tracking ran from ${formatHeatOffset(viewerStartOffsetSeconds)} to ${formatHeatOffset(viewerEndOffsetSeconds)} for this stream.`
+      ? `Viewer tracking began at ${formatMomentOffset(viewerStartOffsetSeconds)}. This minute is outside the sampled viewer data.`
+      : `Viewer tracking ran from ${formatMomentOffset(viewerStartOffsetSeconds)} to ${formatMomentOffset(viewerEndOffsetSeconds)} for this stream.`
     : 'Viewer count was not sampled for this minute.'
   const viewerStatusText = !autoUpdate && isLive
     ? 'Viewer updates paused'
@@ -1164,8 +1165,8 @@ export function LiveStatsBand({
   const chartRangeStatus = chartIsFullRange
     ? 'Full stream'
     : chartAtAvailableRange
-      ? `Available coverage · ${formatHeatOffset(chartCoverageStartSeconds)}–${formatHeatOffset(chartRailDurationSeconds)}`
-      : `Viewing ${formatHeatOffset(chartViewportForRender.startSeconds)} – ${formatHeatOffset(chartViewportForRender.endSeconds)}`
+      ? `Available coverage · ${formatMomentOffset(chartCoverageStartSeconds)}–${formatMomentOffset(chartRailDurationSeconds)}`
+      : `Viewing ${formatMomentOffset(chartViewportForRender.startSeconds)} – ${formatMomentOffset(chartViewportForRender.endSeconds)}`
   const chartStatusText = [
     emoteSyncLabel,
     viewerStatusText,
@@ -1218,7 +1219,7 @@ export function LiveStatsBand({
           </span>
         </div>
         <div style={styles.metric}>
-          <span style={styles.metricLabel}>Chat / min</span>
+          <span style={styles.metricLabel}>Chat/min</span>
           <span style={styles.metricValueRow}>
             <LiveMetricIcon kind="chat" />
             <AnimatedMetric value={stats.chatPerMin1m} format={formatNumber} valueStyle={sidebarFill ? styles.metricValueSidebar : undefined} />
@@ -1229,7 +1230,7 @@ export function LiveStatsBand({
           </span>
         </div>
         <div style={styles.metric}>
-          <span style={styles.metricLabel}>Emotes / min</span>
+          <span style={styles.metricLabel}>Emotes/min</span>
           <span style={styles.metricValueRow}>
             <LiveMetricIcon kind="emotes" />
             <AnimatedMetric value={stats.totalEmotePerMin} format={formatNumber} valueStyle={sidebarFill ? styles.metricValueSidebar : undefined} />
@@ -1475,7 +1476,7 @@ export function LiveStatsBand({
                   point={inspectorHold.point.moment}
                   backendUrl={backendUrl}
                   compact
-                  jumpLabel={hasVodContext || payload.vodId ? 'Jump in VOD' : 'Jump in player'}
+                  jumpLabel={hasVodContext || payload.vodId ? 'Jump in VOD' : undefined}
                   onJump={point => onJumpToOffset?.(reactionAnalyticalOffset(point))}
                   onAnalytics={point => onOpenAnalytics?.(reactionAnalyticalOffset(point))}
                   onClear={handleClearChartSelection}
@@ -1534,7 +1535,7 @@ export function LiveStatsBand({
                   ) : null}
                   {showCoverageStartHint && sparseActivityWarmup ? <span style={styles.timelineHintSep}> · </span> : null}
                   {sparseActivityWarmup && firstActivityOffsetSeconds != null ? (
-                    <span>Activity chart from {formatHeatOffset(firstActivityOffsetSeconds)}</span>
+                    <span>Activity chart from {formatMomentOffset(firstActivityOffsetSeconds)}</span>
                   ) : null}
                   {(showCoverageStartHint || sparseActivityWarmup) && viewerTimelineHint ? (
                     <span style={styles.timelineHintSep}> · </span>

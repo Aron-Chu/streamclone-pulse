@@ -9,7 +9,8 @@
  * it), and it follows every frame with transform writes only.
  */
 import { useLayoutEffect, useMemo, useRef } from 'react'
-import { recapMomentAnalyticalOffset, type StreamEdges } from '@streampulse/pulse-core'
+import { formatMomentClock, formatMomentOffset, recapMomentAnalyticalOffset, type StreamEdges } from '@streampulse/pulse-core'
+import { momentRowEdgeLabel } from '../../utils/momentRowDisplay.ts'
 import { clusterPins, pinClusterSpan, type SpLayer, type SpLayerContext, type SpViewportSource } from '@streampulse/pulse-charts/spchart'
 import { spMark } from '@streampulse/pulse-charts/perfMarks'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseStreamRecap } from '../../api.ts'
@@ -23,7 +24,6 @@ import {
 } from '../../utils/sessionStripMoments.ts'
 import { getEmoteImageUrl } from '../../utils/consoleFormat.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
-import { hms } from './sessionSpChartModel.ts'
 
 /** What the console passes when the Pulse Moments strip renders (AnalyticsConsole.tsx:1613). */
 export interface SessionStripPinsSource {
@@ -50,6 +50,10 @@ export interface SessionPin {
   emote: { name: string; count: number; src?: string } | null
   /** The strip row's top three emotes (the readout shows them with counts while the pin is selected). */
   tokens: { key: string; name: string; count: number; src?: string }[]
+  /** The strip row's clock (formatMomentClock): h:mm:ss, 'about 0:16:00' when only the minute is known. */
+  clockLabel?: string
+  /** The list's edge tag, 'Stream start' / 'Stream end' (E1): in the pin's tooltip and name, no text on the pin. */
+  edgeLabel?: string | null
 }
 
 export function buildSessionPins(source: SessionStripPinsSource | null | undefined): SessionPin[] {
@@ -85,6 +89,8 @@ export function buildSessionPins(source: SessionStripPinsSource | null | undefin
       pinMs: startMs + (offsetSeconds + 30) * 1000,
       emote: top ? { name: top.name, count: top.count, src: top.src } : null,
       tokens,
+      clockLabel: formatMomentClock(moment),
+      edgeLabel: momentRowEdgeLabel(moment, source.streamEdges),
     }
   })
 }
@@ -158,7 +164,12 @@ function PinRail({ ctx, pins, selectedIndex, onSelect, onClear, store }: RailPro
         const pressed = cluster.members.includes(selectedIndex)
         const label = many
           ? `Moments ${cluster.label.replace(/·/g, ' and ')}, zoom in to separate them`
-          : `Moment ${lead.rank} at ${hms(lead.offsetSeconds)}${lead.emote ? `, top emote ${lead.emote.name}` : ''}`
+          : `Moment ${lead.rank} at ${lead.clockLabel ?? formatMomentOffset(Math.round(lead.offsetSeconds))}${lead.edgeLabel ? `, ${lead.edgeLabel}` : ''}${lead.emote ? `, top emote ${lead.emote.name}` : ''}`
+        // the edge tag rides in the tooltip too; a cluster's tooltip names each member's tag (E1, round 2)
+        const edgeTags = many
+          ? cluster.members.map(i => pins[i]!).filter(p => p.edgeLabel).map(p => `${p.rank}: ${p.edgeLabel}`)
+          : []
+        const tip = many && edgeTags.length ? `${label} (${edgeTags.join(', ')})` : label
         return (
           <button
             key={cluster.members.join('-')}
@@ -166,8 +177,10 @@ function PinRail({ ctx, pins, selectedIndex, onSelect, onClear, store }: RailPro
             type="button"
             className="ssc-pin spc-pe"
             aria-pressed={pressed}
-            aria-label={label}
+            aria-label={many && edgeTags.length ? tip : label}
+            title={tip}
             data-session-pin={many ? undefined : lead.rank}
+            data-session-pin-edge={!many && lead.edgeLabel ? lead.edgeLabel : undefined}
             data-session-pin-cluster={many ? cluster.members.map(i => i + 1).join(',') : undefined}
             onPointerEnter={() => !many && setStripPinHover(lead.offsetSeconds)}
             onPointerLeave={() => !many && setStripPinHover(null)}

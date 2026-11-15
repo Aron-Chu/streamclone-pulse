@@ -117,7 +117,7 @@ describe('Open card pictures from this tab’s captures', () => {
     capture(3049)
     expect(shown(host)).not.toBe(first)
     expect(shown(card)).toBe(first)
-    expect(card.querySelector('.pmf-time')?.textContent).toBe('00:50:20')
+    expect(card.querySelector('.pmf-time')?.textContent).toBe('0:50:20')
     expect(card.querySelector<HTMLElement>('.pmf-peak')?.hidden).toBe(false)
     // Stopping the last capture source is not a stream change or a picture reset.
     stops.pop()!()
@@ -143,12 +143,12 @@ describe('Open card pictures from this tab’s captures', () => {
     capture(3049)
     expect(shown(card)).toBe(scrubbed)
     expect(document.activeElement).toBe(figure)
-    expect(card.querySelector('.pmf-time')?.textContent).toBe('00:51:20')
+    expect(card.querySelector('.pmf-time')?.textContent).toBe('0:51:20')
     figure.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))
-    expect(card.querySelector('.pmf-time')?.textContent).toBe('00:50:49')
+    expect(card.querySelector('.pmf-time')?.textContent).toBe('0:50:49')
     figure.dispatchEvent(new Event('pointerleave'))
     expect(shown(card)).toBe(peak)
-    expect(card.querySelector('.pmf-time')?.textContent).toBe('00:50:40')
+    expect(card.querySelector('.pmf-time')?.textContent).toBe('0:50:40')
   })
 
   it('retains only the card’s peak and chosen frame through eviction, releasing them when no card needs them', () => {

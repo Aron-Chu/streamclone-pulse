@@ -1,3 +1,4 @@
+import { formatSavedAt } from '@streampulse/pulse-core'
 import { PulseThemedSelect } from '../PulseThemedSelect.tsx'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { LibraryCollection, LibraryMoment, LibrarySnapshot, MomentReference } from './model.ts'
@@ -117,7 +118,7 @@ export function MomentListItem({ moment, personalWorkspace = false, analyticsOri
     <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong>
       {recent && saved ? <span className="pl-tag">Saved</span> : null}</div>
       <p className="pl-moment-identity">{moment.channel}{presentation?.gameAtMoment ? ` · ${presentation.gameAtMoment}` : ''}</p>
-      <p className="pl-muted">{recent ? personalWorkspace ? 'Watched' : 'Jumped' : 'Saved'} {date === undefined ? '—' : <time dateTime={new Date(date).toISOString()}>{new Date(date).toLocaleString()}</time>}</p>
+      <p className="pl-muted">{recent ? personalWorkspace ? 'Watched' : 'Jumped' : 'Saved'} {date === undefined ? '—' : <time dateTime={new Date(date).toISOString()}>{formatSavedAt(date)}</time>}</p>
       {moment.note ? <p className="pl-note">{moment.note}</p> : null}
       {presentation?.signal ? <span className="pl-inline-signal" title={presentation.signal.basis}>{presentation.signal.illustrative ? 'Example · ' : ''}{presentation.signal.label}</span> : null}
       {context?.kind === 'ready' ? <MomentGlance context={context.value} /> : context?.kind === 'loading' ? <p className="pl-muted">Moment stats loading…</p> : null}
@@ -158,7 +159,7 @@ export function DeviceSaveItem({ moment, analyticsOrigin = DEFAULT_WEB_ANALYTICS
   return <li className="pl-moment pl-moment-device" data-moment-id={moment.id} data-device-save="true" data-replay={replay.tone}>
     <div className="pl-moment-body"><div className="pl-row"><strong>{moment.title}</strong><span className="pl-tag">On this device</span></div>
       <p className="pl-moment-identity">{moment.channel} · {timestamp(moment.offsetSeconds)}</p>
-      <p className="pl-muted">Saved {moment.savedAt === undefined ? '—' : <time dateTime={new Date(moment.savedAt).toISOString()}>{new Date(moment.savedAt).toLocaleString()}</time>}</p>
+      <p className="pl-muted">Saved {moment.savedAt === undefined ? '—' : <time dateTime={new Date(moment.savedAt).toISOString()}>{formatSavedAt(moment.savedAt)}</time>}</p>
       {moment.note ? <p className="pl-note">{moment.note}</p> : null}
       <span className={`pl-chip pl-chip-${replay.tone}`}>{replay.chip}</span>
       <div className="pl-row pl-actions" role="group" aria-label={`Actions for ${moment.title}`}>

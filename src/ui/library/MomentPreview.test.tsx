@@ -41,11 +41,16 @@ const press = async (dialog: Element, text: string) => {
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals() })
 
 describe('Moment preview, around the moment', () => {
+  it('opens with focus on its title, not on Remove bookmark (J1)', async () => {
+    const dialog = await render({ presentation: frame })
+    expect(document.activeElement).toBe(dialog.querySelector('h2'))
+    expect(document.activeElement?.textContent).toBe('Saved comeback')
+  })
   it('shows the saved frame with its pill and the top emote over it', async () => {
     const dialog = await render({ presentation: frame })
     expect(dialog.getAttribute('aria-label')).toBe('Moment preview')
-    expect(dialog.querySelector('.pl-around-pill')?.textContent).toBe('Saved frame · 00:30:10')
-    expect(dialog.querySelector('.pl-around-over')?.textContent).toBe('BAND ×44700:30:12')
+    expect(dialog.querySelector('.pl-around-pill')?.textContent).toBe('Saved frame · 0:30:10')
+    expect(dialog.querySelector('.pl-around-over')?.textContent).toBe('BAND ×4470:30:12')
     expect(dialog.querySelector('.pl-around-frame img')?.getAttribute('src')).toBe('https://example.com/frame.webp')
     expect(dialog.textContent).not.toContain('not an archived copy')
     // With the frame showing the top emote, the chart's corner stays empty.
@@ -64,7 +69,7 @@ describe('Moment preview, around the moment', () => {
   })
   it('heads with channel, stream date and time, and a gold bookmark', async () => {
     const dialog = await render()
-    expect(dialog.querySelector('.pl-around-head small')?.textContent).toBe(`fixturechan · ${new Date(Date.UTC(2026, 9, 14, 19, 32, 12)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(new Date().getFullYear() === 2026 ? {} : { year: 'numeric' }) })} · 00:30:12`)
+    expect(dialog.querySelector('.pl-around-head small')?.textContent).toBe(`fixturechan · ${new Date(Date.UTC(2026, 9, 14, 19, 32, 12)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(new Date().getFullYear() === 2026 ? {} : { year: 'numeric' }) })} · 0:30:12`)
     expect(dialog.querySelector('h2')?.textContent).toBe('Saved comeback')
     expect(dialog.querySelector('button.pl-on')?.getAttribute('aria-label')).toBe('Remove bookmark: Saved comeback')
     expect(dialog.querySelector('button[aria-label="Close Moment preview"]')).toBeTruthy()
@@ -81,14 +86,14 @@ describe('Moment preview, around the moment', () => {
     const svg = dialog.querySelector('.pl-around-chart svg')!
     svg.getBoundingClientRect = () => ({ left: 0, width: 480, top: 0, height: 94, right: 480, bottom: 94, x: 0, y: 0, toJSON: () => ({}) })
     await act(async () => { svg.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 9.5 * 480 / 21 })) })
-    expect(dialog.querySelector('.pl-around-read span')?.textContent).toBe('00:29 · 420 chat')
+    expect(dialog.querySelector('.pl-around-read span')?.textContent).toBe('0:29:00 · 420 chat')
     await act(async () => { svg.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 14.5 * 480 / 21 })) })
-    expect(dialog.querySelector('.pl-around-read span')?.textContent).toBe('00:34 · not measured')
+    expect(dialog.querySelector('.pl-around-read span')?.textContent).toBe('0:34:00 · not measured')
   })
   it('shows the three tiles and the top three emotes as bars', async () => {
     const dialog = await render()
-    expect([...dialog.querySelectorAll('.pl-around-tiles dt')].map(label => label.textContent)).toEqual(['Viewers', 'Chat / min', 'Emotes / min'])
-    expect([...dialog.querySelectorAll('.pl-emote-usage')].map(usage => usage.textContent)).toEqual(['447/min · 30%', '268/min · 18%', '121/min · 8%'])
+    expect([...dialog.querySelectorAll('.pl-around-tiles dt')].map(label => label.textContent)).toEqual(['Viewers', 'Chat/min', 'Emotes/min'])
+    expect([...dialog.querySelectorAll('.pl-emote-usage')].map(usage => usage.textContent)).toEqual(['447 uses · 30%', '268 uses · 18%', '121 uses · 8%'])
     expect((dialog.querySelector('.pl-emote-track i') as HTMLElement).style.width).toBe('30%')
     for (const text of ['Emote density', 'How these rates are measured', 'About emote usage']) expect(dialog.textContent).not.toContain(text)
   })
@@ -114,7 +119,7 @@ describe('Moment preview, around the moment', () => {
     expect(link().href).toBe('https://www.twitch.tv/videos/2806037629?t=0h29m42s')
     expect(link().target).toBe('_blank')
     expect(document.activeElement).toBe(link())
-    expect(dialog.querySelector('.pl-around-start')?.textContent).toBe('00:29:4260 s')
+    expect(dialog.querySelector('.pl-around-start')?.textContent).toBe('0:29:4260 s')
     expect(dialog.textContent).toContain('Twitch makes the clip, up to 60 s.')
     // The tiles and emotes give way to the window's controls.
     expect(dialog.querySelector('.pl-around-tiles')).toBeNull()
@@ -123,7 +128,7 @@ describe('Moment preview, around the moment', () => {
     expect(link().href).toBe('https://www.twitch.tv/videos/2806037629?t=0h29m57s')
     await press(dialog, '30 s')
     expect(dialog.querySelector('button[aria-pressed="true"]')?.textContent).toBe('30 s')
-    expect(dialog.querySelector('.pl-around-read')?.textContent).toBe('00:29:57 → 00:30:27 · click to move')
+    expect(dialog.querySelector('.pl-around-read')?.textContent).toBe('0:29:57 → 0:30:27 · click to move')
     // A chart click centres the window there, snapped to 5 s: 00:31:02 → starts 00:30:45.
     const svg = dialog.querySelector('.pl-around-chart svg')!
     svg.getBoundingClientRect = () => ({ left: 0, width: 480, top: 0, height: 94, right: 480, bottom: 94, x: 0, y: 0, toJSON: () => ({}) })

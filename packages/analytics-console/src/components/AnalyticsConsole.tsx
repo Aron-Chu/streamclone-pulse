@@ -101,6 +101,9 @@ import { SessionSignalTape } from './signals/SessionSignalTape.tsx'
 import { AnalyticsConsoleDataSkeleton, StreamRecapSkeleton } from './AnalyticsConsoleDataSkeleton.tsx'
 import { SessionInfoToggletip } from './analytics/SessionInfoToggletip.tsx'
 import { useSessionColumnFill } from '../hooks/useSessionColumnFill.ts'
+import { useOneColumnLayout } from '../hooks/useOneColumnLayout.ts'
+import { minuteDataRecap } from '../utils/minuteDataMoments.ts'
+import { SessionMomentsFallbackNotice, SessionMomentsLoading } from './analytics/SessionMomentsStates.tsx'
 import { sessionStreamEdges, sessionStripMoments, stripHasReactionCoverage } from '../utils/sessionStripMoments.ts'
 import { bestMomentInSpan, momentsInBar } from '../utils/sessionBarStrip.ts'
 import { SESSION_OWNER_SWITCHES } from '../sessionOwnerSwitches.ts'
@@ -218,6 +221,10 @@ export function AnalyticsConsole({
   const [emotePlotSelection, setEmotePlotSelection] = useState<EmotePlotSelection>('auto')
   const [selectedRollup, setSelectedRollup] = useState<AnalyticsMinuteRollup | null>(null)
   const [selectedAnchorOffsetSeconds, setSelectedAnchorOffsetSeconds] = useState<number | null>(null)
+  // G1 (11-13): a moment card's Play; the details player starts at the moment's lead-in (a new token per press)
+  const [playRequest, setPlayRequest] = useState<{ offsetSeconds: number; token: number } | null>(null)
+  // R1 (11-13): the Moments tab's Try again for a failed or empty recap
+  const [recapRetry, setRecapRetry] = useState<'idle' | 'retrying' | 'failed'>('idle')
   const [previewRollup, setPreviewRollup] = useState<AnalyticsMinuteRollup | null>(null)
   const [previewOffsetSeconds, setPreviewOffsetSeconds] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<AnalyticsViewMode>('overview')
@@ -235,8 +242,10 @@ export function AnalyticsConsole({
   const [liveSyncStatus, setLiveSyncStatus] = useState<SyncStatus | null>(null)
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null)
   const appliedDeepLinkKey = useRef<string | null>(null)
+  const momentsPanelRef = useRef<HTMLDivElement | null>(null)
 
   const handleSelectRollup = useCallback((rollup: AnalyticsMinuteRollup | null) => {
+    setPlayRequest(null)
     if (rollup && selectedRollup?.minuteTs === rollup.minuteTs) {
       setSelectedRollup(null)
       setSelectedAnchorOffsetSeconds(null)
@@ -253,6 +262,8 @@ export function AnalyticsConsole({
   useEffect(() => {
     setSelectedRollup(null)
     setSelectedAnchorOffsetSeconds(null)
+    setPlayRequest(null)
+    setRecapRetry('idle')
     setPreviewRollup(null)
     setPreviewOffsetSeconds(null)
     setLastRefreshedAt(null)
@@ -886,6 +897,10 @@ export function AnalyticsConsole({
     [detail?.momentRollups, detail?.rollups, detail?.stream?.startedAt],
   )
 
+  const handlePlayRecapOffset = useCallback((offsetSeconds: number) => {
+    setPlayRequest((current) => ({ offsetSeconds, token: (current?.token ?? 0) + 1 }))
+  }, [])
+
   const handleSelectReactionMoment = useCallback(
     (moment: {
       offsetSeconds: number
@@ -1338,14 +1353,46 @@ export function AnalyticsConsole({
     return rollupOffsetSeconds(selectedRollup, detail.stream.startedAt)
   }, [selectedAnchorOffsetSeconds, selectedRollup, detail?.stream?.startedAt])
 
+  // R1 (11-13, SESSION-MOMENTS-4): a recap that failed (or ran past the client's timeout) leaves the Moments tab
+  // to rows ranked from minute data, in today's row design, under one plain line with Try again. A recap that
+  // loaded with no moments is not a failure: the tab keeps its normal empty state, with no notice (round 2).
+  // Round 4: a Try again puts the query back to pending (it has no data), so while it runs the notice, its busy
+  // button and the ranked rows stay in place instead of the skeletons; a failed retry keeps focus on the button.
+  const recapRetrying = layer2Enabled && recapRetry === 'retrying' && !recapMomentsAvailable
+  const recapUnavailable = layer2Enabled && !recapMomentsAvailable && (recapQuery.isError || recapRetrying)
+  const minuteRecap = useMemo(
+    () => (recapUnavailable
+      ? minuteDataRecap({
+        streamId: canonicalStreamId || targetQueryStreamId,
+        rollups: detail?.momentRollups ?? detail?.rollups ?? [],
+        heatmapPoints,
+        streamStartedAt: detail?.stream?.startedAt,
+        topEmotesCatalog: detailForRender?.topEmotes,
+      })
+      : null),
+    [recapUnavailable, canonicalStreamId, targetQueryStreamId, detail?.momentRollups, detail?.rollups,
+      heatmapPoints, detail?.stream?.startedAt, detailForRender?.topEmotes],
+  )
+  const handleRetryRecap = useCallback(() => {
+    setRecapRetry('retrying')
+    void recapQuery.refetch().then((result) => {
+      // a recap that loads, even an empty one, ends the fallback
+      const ok = !result.isError
+      setRecapRetry(ok ? 'idle' : 'failed')
+      // J1: the notice and its button go away, so focus moves to the list that replaced them
+      if (ok) requestAnimationFrame(() => momentsPanelRef.current?.focus({ preventScroll: true }))
+    })
+  }, [recapQuery])
+
   const matchedRecapMoment = useMemo(() => {
-    if (selectedOffsetSeconds == null || !recapForStream) return null
+    const source = recapForStream ?? minuteRecap
+    if (selectedOffsetSeconds == null || !source) return null
     const moments = [
-      ...(recapForStream.topMoments ?? []),
-      ...(recapForStream.clipCandidates ?? []),
+      ...(source.topMoments ?? []),
+      ...(source.clipCandidates ?? []),
     ]
     return findNearestRecapMoment(moments, selectedOffsetSeconds)
-  }, [recapForStream, selectedOffsetSeconds])
+  }, [minuteRecap, recapForStream, selectedOffsetSeconds])
 
   const matchedHeatmapPoint = useMemo(() => {
     if (selectedOffsetSeconds == null) return null
@@ -1404,7 +1451,6 @@ export function AnalyticsConsole({
   // The list shows the top three (Aron 2026-10-15), so it never adds rows.
   const centerColumnRef = useRef<HTMLElement | null>(null)
   const rightColumnRef = useRef<HTMLElement | null>(null)
-  const momentsPanelRef = useRef<HTMLDivElement | null>(null)
   // The Moments list's ranking (pin N is row N): also what a chart bar locks (F23).
   const stripMoments = useMemo(() => {
     if (!recapMomentsAvailable || !recapForStream) return []
@@ -1420,6 +1466,7 @@ export function AnalyticsConsole({
   const stripMomentCount = stripMoments.length
   // Expand (B2, 2026-10-21) moves the side columns under the chart, so there is no column to fill: off while it is on.
   const [chartExpanded, setChartExpanded] = useState(false)
+  const oneColumnLayout = useOneColumnLayout()
   const columnFill = useSessionColumnFill(
     { center: centerColumnRef, right: rightColumnRef, momentsPanel: momentsPanelRef },
     {
@@ -1494,7 +1541,7 @@ export function AnalyticsConsole({
   // (fix, 10-30) VOD-4: it waits on the list only until some rows (or the live read's own stream)
   // name the session, not on the 100-row read.
   const recapSlotPending = !effectiveSessionNotFound && (layer2Enabled
-    ? recapQuery.isLoading || (recapQuery.isPending && !detail)
+    ? !recapRetrying && (recapQuery.isLoading || (recapQuery.isPending && !detail))
     : detailQuery.isLoading || (sidebarListLoading && !liveRouteSessionTarget) || shouldRedirectLiveRouteToSession)
 
   // A status heading (never recorded, an unknown date, not found, a failed read) says so in
@@ -1528,6 +1575,8 @@ export function AnalyticsConsole({
   const streamStatePill = sessionIsLive ? 'live' : sessionEnded ? 'ended' : null
   // Expand folds the existing side columns exactly as Focus chart, without changing the channel headline.
   const focusLayout = chartFocused || chartExpanded
+  // Z01 (11-13, SESSION-MOMENTS-11): one column (under 1280 px) puts the Moments tabs right after the chart
+  const momentsUnderChart = oneColumnLayout && !focusLayout
   const consoleGridClassName = focusLayout
     ? 'grid grid-cols-1 gap-4'
     : streamsVisible
@@ -1544,6 +1593,191 @@ export function AnalyticsConsole({
     : 'order-2 flex w-full min-w-0 flex-col gap-3 xl:order-3 xl:w-auto xl:self-stretch'
   const StreamColumn = focusLayout ? 'details' : 'aside'
   const RightColumn = focusLayout ? 'details' : 'aside'
+
+  // L1: the Moments tab's placeholders stand while the recap answer is out (the recap slot's own rule)
+  const momentsRecapPending = !recapRetrying && (recapQuery.isLoading || (recapQuery.isPending && !detail))
+  const momentsFramed = Boolean(streamVodId) && typeof detail?.vodAlignSeconds === 'number'
+    && Number.isFinite(detail.vodAlignSeconds)
+  // d3-v2 session-original: "Watch VOD" sits in the meta line; only a missing VOD still says why under the chart.
+  const noVodNote = !streamVodId ? (
+    <p className={`text-xs font-semibold ${noVodLine.failed ? 'text-amber-200' : 'text-zinc-400'}`} data-session-vod-line data-vod-status={vodLinkState.status}>
+      {noVodLine.text}
+    </p>
+  ) : null
+  const sessionDetailsTabs = (
+    <div
+      className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/[0.07] bg-white/[0.025]"
+      data-session-details-tabs
+    >
+      <div className="ssp-tl-w flex shrink-0 border-b border-white/[0.07] bg-white/[0.012]">
+        <div role="tablist" aria-label="Session details" className="ssp-tl flex min-w-0 flex-1 text-xs font-semibold">
+          {RIGHT_PANEL_TABS.map((tab, tabIndex, tabs) => (
+            <button
+              key={tab}
+              id={`session-tab-${tab}`}
+              type="button"
+              role="tab"
+              aria-selected={rightPanelTab === tab}
+              aria-controls={`session-panel-${tab}`}
+              tabIndex={rightPanelTab === tab ? 0 : -1}
+              onClick={() => handleRightPanelTab(tab)}
+              onKeyDown={(event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                event.preventDefault()
+                const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (tabIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+                const next = tabs[nextIndex]!
+                handleRightPanelTab(next)
+                document.getElementById(`session-tab-${next}`)?.focus()
+              }}
+              className={`ssp-tab min-h-11 flex-1 px-2 py-2 text-center transition border-r border-white/[0.07] last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-300 ${
+                rightPanelTab === tab ? 'bg-white/[0.028] text-zinc-200' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {tab === 'moments' ? 'Moments' : tab === 'emotes' ? 'Emotes' : 'Status'}
+            </button>
+          ))}
+        </div>
+        {/* The Moments explainer's (i): beside the tabs, outside the tablist, while Moments is open. */}
+        <span className="ssp-tl-i" data-off={rightPanelTab !== 'moments' ? 'true' : undefined}>
+          <SessionInfoToggletip tip={MOMENTS_TIP} label="About Pulse Moments" />
+        </span>
+      </div>
+      {/* Every panel stays in the page (inactive ones hidden), so a control
+          pointing at a panel always resolves; only the open one renders its content. */}
+      <div
+        ref={momentsPanelRef}
+        id="session-panel-moments"
+        role="tabpanel"
+        aria-labelledby="session-tab-moments"
+        tabIndex={0}
+        hidden={rightPanelTab !== 'moments'}
+        className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'moments' ? 'flex' : 'hidden'}`}
+      >
+        {rightPanelTab === 'moments' ? (
+          // While the recap answer is out: the reel's shape in grey (L1), not a stand-in list; scoring one
+          // cost ~100 ms of the session's first render on a phone (PR #122 bench).
+          recapMomentsAvailable && recapForStream ? (
+            <SessionRecapMomentsStrip
+              recap={recapForStream}
+              streamStartedAt={stream?.startedAt}
+              selectedOffsetSeconds={selectedOffsetSeconds}
+              onSelectOffset={handleJumpToRecapOffset}
+              onReleaseOffset={() => handleSelectRollup(null)}
+              onPreviewOffset={handlePreviewRecapOffset}
+              layout="rightRail"
+              rollups={detail?.momentRollups ?? detail?.rollups ?? []}
+              heatmapPoints={heatmapPoints}
+              topEmotesCatalog={detailForRender?.topEmotes}
+              games={chartGames}
+              vodId={streamVodId}
+              vodAlignSeconds={detail?.vodAlignSeconds}
+              vodDurationSeconds={detail?.vodDurationSeconds}
+              reel={SESSION_OWNER_SWITCHES.momentsReel}
+              streamEdges={sessionEdges}
+              recording={vodRecording}
+              liveNowLogin={liveNowLogin}
+              liveNowMinuteMs={liveNowMinuteMs}
+              onPlayOffset={handlePlayRecapOffset}
+            />
+          ) : layer2Enabled && momentsRecapPending ? (
+            <SessionMomentsLoading framed={momentsFramed} />
+          ) : recapUnavailable ? (
+            <>
+              <SessionMomentsFallbackNotice
+                ranked={Boolean(minuteRecap)}
+                retrying={recapRetry === 'retrying'}
+                failedAgain={recapRetry === 'failed'}
+                onRetry={handleRetryRecap}
+              />
+              {minuteRecap ? (
+                <SessionRecapMomentsStrip
+                  recap={minuteRecap}
+                  streamStartedAt={stream?.startedAt}
+                  selectedOffsetSeconds={selectedOffsetSeconds}
+                  onSelectOffset={handleJumpToRecapOffset}
+                  onReleaseOffset={() => handleSelectRollup(null)}
+                  onPreviewOffset={handlePreviewRecapOffset}
+                  layout="rightRail"
+                  rollups={detail?.momentRollups ?? detail?.rollups ?? []}
+                  topEmotesCatalog={detailForRender?.topEmotes}
+                  games={chartGames}
+                  vodId={streamVodId}
+                  vodAlignSeconds={detail?.vodAlignSeconds}
+                  vodDurationSeconds={detail?.vodDurationSeconds}
+                  reel={SESSION_OWNER_SWITCHES.momentsReel}
+                  streamEdges={sessionEdges}
+                  recording={vodRecording}
+                  liveNowLogin={liveNowLogin}
+                  liveNowMinuteMs={liveNowMinuteMs}
+                  onPlayOffset={handlePlayRecapOffset}
+                />
+              ) : (
+                <MomentReviewPanel
+                  rollups={detail?.momentRollups ?? detail?.rollups ?? []}
+                  selectedRollup={selectedRollup}
+                  previewRollup={previewRollup}
+                  onSelectRollup={handleSelectRollup}
+                  onPreviewRollup={setPreviewRollup}
+                  topEmotesCatalog={detailForRender?.topEmotes}
+                  heatmapPoints={heatmapPoints}
+                  streamStartedAt={stream?.startedAt}
+                  streamEdges={sessionEdges}
+                  embedded
+                />
+              )}
+            </>
+          ) : (
+            <MomentReviewPanel
+              rollups={detail?.momentRollups ?? detail?.rollups ?? []}
+              selectedRollup={selectedRollup}
+              previewRollup={previewRollup}
+              onSelectRollup={handleSelectRollup}
+              onPreviewRollup={setPreviewRollup}
+              topEmotesCatalog={detailForRender?.topEmotes}
+              heatmapPoints={layer2Enabled ? heatmapPoints : undefined}
+              streamStartedAt={stream?.startedAt}
+              streamEdges={sessionEdges}
+              embedded
+            />
+          )
+        ) : null}
+      </div>
+      <div
+        id="session-panel-emotes"
+        role="tabpanel"
+        aria-labelledby="session-tab-emotes"
+        tabIndex={0}
+        hidden={rightPanelTab !== 'emotes'}
+        className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'emotes' ? 'flex' : 'hidden'}`}
+      >
+        {rightPanelTab === 'emotes' ? (
+          <TopEmoteTable
+            emotes={detailForRender?.topEmotes ?? []}
+            selected={chartEmoteKeys}
+            plottedKeys={chartEmoteKeysOrdered}
+            onSelect={toggleSelected}
+            embedded
+          />
+        ) : null}
+      </div>
+      <div
+        id="session-panel-status"
+        role="tabpanel"
+        aria-labelledby="session-tab-status"
+        tabIndex={0}
+        hidden={rightPanelTab !== 'status'}
+        className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'status' ? 'flex' : 'hidden'}`}
+      >
+        {rightPanelTab === 'status' && layer2Enabled ? (
+          <SyncStatusPanel detail={detail} syncStatus={activeSyncStatus} summaryMetrics={summaryQuery.data?.metrics} />
+        ) : rightPanelTab === 'status' ? (
+          <p className="p-4 text-xs font-semibold text-zinc-400">
+            Open a session from the sidebar for sync status and Layer 2 detail.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  )
 
   return (
     <section
@@ -1724,7 +1958,7 @@ export function AnalyticsConsole({
             style={columnFill.padPx ? ({ '--ssp-cpad': `${columnFill.padPx}px` } as CSSProperties) : undefined}
           >
             {sessionReadPending ? (
-              <AnalyticsConsoleDataSkeleton />
+              <AnalyticsConsoleDataSkeleton minuteTableOutside={momentsUnderChart} />
             ) : null}
             {effectiveSessionNotFound ? (
               <div role="alert" className="rounded border border-amber-500/20 bg-amber-500/[0.06] px-4 py-8 text-center text-sm font-semibold text-amber-100/90">
@@ -1802,6 +2036,10 @@ export function AnalyticsConsole({
                 viewerCaption={{ peak: headerStats.peak ?? null, avg: headerStats.avg ?? null }}
                 stripPins={recapMomentsAvailable && recapForStream ? { recap: recapForStream, streamStartedAt: stream?.startedAt, heatmapPoints, topEmotesCatalog: detailForRender?.topEmotes, rollups: detail?.momentRollups ?? detail?.rollups ?? [], streamEdges: sessionEdges, onSelectOffset: handleJumpToRecapOffset } : null}
                 extraPlotPx={columnFill.extraPlotPx}
+                // Z01 (round 2): under 1280 px the Moments tabs sit between the plot and the "Minute-by-minute
+                // table" line, both outside the chart region, so the region stays the chart and its loading reserve
+                minuteTableOutside={momentsUnderChart}
+                afterRegion={momentsUnderChart ? <>{noVodNote}<div data-session-moments-under-chart>{sessionDetailsTabs}</div></> : null}
                 momentOffsetInBar={momentOffsetInBar}
                 selectionIsMoment={selectionIsMoment}
                 onExpandedChange={setChartExpanded}
@@ -1810,6 +2048,8 @@ export function AnalyticsConsole({
                   barMoments={bar && Number.isFinite(streamStartMs) ? momentsInBar(stripMoments, barSecondsSpan(bar)) : null}
                   lockedMomentOffsetSeconds={bar ? selectedOffsetSeconds : null}
                   onLockMoment={handleJumpToRecapOffset}
+                  playRequest={playRequest}
+                  streamEdges={sessionEdges}
                   onZoomToBar={bar?.zoom}
                   onShowMoreMoments={stripMoments.length ? handleShowMoreMoments : undefined}
                   vodRecording={vodRecording}
@@ -1832,13 +2072,7 @@ export function AnalyticsConsole({
                     emotesPerMin: selectedRollup.totalEmoteCount, category: selectedGameName || undefined,
                     label: matchedHeatmapPoint?.reason ? momentScoreReasonLabel(matchedHeatmapPoint.reason) : undefined }) : null}</> : null}
               />
-              {/* d3-v2 session-original: "Watch VOD" sits in the meta line; only a
-                  missing VOD still says why under the chart. */}
-              {!streamVodId ? (
-                <p className={`text-xs font-semibold ${noVodLine.failed ? 'text-amber-200' : 'text-zinc-400'}`} data-session-vod-line data-vod-status={vodLinkState.status}>
-                  {noVodLine.text}
-                </p>
-              ) : null}
+              {momentsUnderChart ? null : noVodNote}
             </div>
             ) : null}
           </section>
@@ -1918,133 +2152,12 @@ export function AnalyticsConsole({
                 vodDurationSeconds={detail?.vodDurationSeconds}
                 onJumpToOffset={handleJumpToRecapOffset}
                 onPreviewOffset={handlePreviewRecapOffset}
+                streamEdges={sessionEdges}
               />
             ) : recapSlotPending ? (
               <StreamRecapSkeleton />
             ) : null}
-            <div
-              className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/[0.07] bg-white/[0.025]"
-              data-session-details-tabs
-            >
-              <div className="ssp-tl-w flex shrink-0 border-b border-white/[0.07] bg-white/[0.012]">
-                <div role="tablist" aria-label="Session details" className="ssp-tl flex min-w-0 flex-1 text-xs font-semibold">
-                  {RIGHT_PANEL_TABS.map((tab, tabIndex, tabs) => (
-                    <button
-                      key={tab}
-                      id={`session-tab-${tab}`}
-                      type="button"
-                      role="tab"
-                      aria-selected={rightPanelTab === tab}
-                      aria-controls={`session-panel-${tab}`}
-                      tabIndex={rightPanelTab === tab ? 0 : -1}
-                      onClick={() => handleRightPanelTab(tab)}
-                      onKeyDown={(event) => {
-                        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                        event.preventDefault()
-                        const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (tabIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
-                        const next = tabs[nextIndex]!
-                        handleRightPanelTab(next)
-                        document.getElementById(`session-tab-${next}`)?.focus()
-                      }}
-                      className={`ssp-tab min-h-11 flex-1 px-2 py-2 text-center transition border-r border-white/[0.07] last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-300 ${
-                        rightPanelTab === tab ? 'bg-white/[0.028] text-zinc-200' : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      {tab === 'moments' ? 'Moments' : tab === 'emotes' ? 'Emotes' : 'Status'}
-                    </button>
-                  ))}
-                </div>
-                {/* The Moments explainer's (i): beside the tabs, outside the tablist, while Moments is open. */}
-                <span className="ssp-tl-i" data-off={rightPanelTab !== 'moments' ? 'true' : undefined}>
-                  <SessionInfoToggletip tip={MOMENTS_TIP} label="About Pulse Moments" />
-                </span>
-              </div>
-              {/* Every panel stays in the page (inactive ones hidden), so a control
-                  pointing at a panel always resolves; only the open one renders its content. */}
-              <div
-                ref={momentsPanelRef}
-                id="session-panel-moments"
-                role="tabpanel"
-                aria-labelledby="session-tab-moments"
-                tabIndex={0}
-                hidden={rightPanelTab !== 'moments'}
-                className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'moments' ? 'flex' : 'hidden'}`}
-              >
-                {rightPanelTab === 'moments' ? (
-                  // While the recap answer is out, no stand-in list: the strip replaces it moments later, and
-                  // scoring it cost ~100 ms of the session's first render on a phone (PR #122 bench).
-                  recapQuery.isLoading ? null : recapMomentsAvailable && recapForStream ? (
-                    <SessionRecapMomentsStrip
-                      recap={recapForStream}
-                      streamStartedAt={stream?.startedAt}
-                      selectedOffsetSeconds={selectedOffsetSeconds}
-                      onSelectOffset={handleJumpToRecapOffset}
-                      onReleaseOffset={() => handleSelectRollup(null)}
-                      onPreviewOffset={handlePreviewRecapOffset}
-                      layout="rightRail"
-                      rollups={detail?.momentRollups ?? detail?.rollups ?? []}
-                      heatmapPoints={heatmapPoints}
-                      topEmotesCatalog={detailForRender?.topEmotes}
-                      games={chartGames}
-                      vodId={streamVodId}
-                      vodAlignSeconds={detail?.vodAlignSeconds}
-                      vodDurationSeconds={detail?.vodDurationSeconds}
-                      reel={SESSION_OWNER_SWITCHES.momentsReel}
-                      streamEdges={sessionEdges}
-                      recording={vodRecording}
-                      liveNowLogin={liveNowLogin}
-                      liveNowMinuteMs={liveNowMinuteMs}
-                    />
-                  ) : (
-                    <MomentReviewPanel
-                      rollups={detail?.momentRollups ?? detail?.rollups ?? []}
-                      selectedRollup={selectedRollup}
-                      previewRollup={previewRollup}
-                      onSelectRollup={handleSelectRollup}
-                      onPreviewRollup={setPreviewRollup}
-                      topEmotesCatalog={detailForRender?.topEmotes}
-                      heatmapPoints={layer2Enabled ? heatmapPoints : undefined}
-                      streamStartedAt={stream?.startedAt}
-                      embedded
-                    />
-                  )
-                ) : null}
-              </div>
-              <div
-                id="session-panel-emotes"
-                role="tabpanel"
-                aria-labelledby="session-tab-emotes"
-                tabIndex={0}
-                hidden={rightPanelTab !== 'emotes'}
-                className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'emotes' ? 'flex' : 'hidden'}`}
-              >
-                {rightPanelTab === 'emotes' ? (
-                  <TopEmoteTable
-                    emotes={detailForRender?.topEmotes ?? []}
-                    selected={chartEmoteKeys}
-                    plottedKeys={chartEmoteKeysOrdered}
-                    onSelect={toggleSelected}
-                    embedded
-                  />
-                ) : null}
-              </div>
-              <div
-                id="session-panel-status"
-                role="tabpanel"
-                aria-labelledby="session-tab-status"
-                tabIndex={0}
-                hidden={rightPanelTab !== 'status'}
-                className={`ssp-tp min-h-0 flex-1 flex-col p-0 ${rightPanelTab === 'status' ? 'flex' : 'hidden'}`}
-              >
-                {rightPanelTab === 'status' && layer2Enabled ? (
-                  <SyncStatusPanel detail={detail} syncStatus={activeSyncStatus} summaryMetrics={summaryQuery.data?.metrics} />
-                ) : rightPanelTab === 'status' ? (
-                  <p className="p-4 text-xs font-semibold text-zinc-400">
-                    Open a session from the sidebar for sync status and Layer 2 detail.
-                  </p>
-                ) : null}
-              </div>
-            </div>
+            {momentsUnderChart ? null : sessionDetailsTabs}
             </div>
           </RightColumn>
         </div>

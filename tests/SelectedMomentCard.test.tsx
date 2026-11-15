@@ -63,7 +63,9 @@ describe('SelectedMomentCard', () => {
 
     expect(container.textContent).toContain('Selected moment')
     expect(container.textContent).toContain('Emote spike')
-    expect(container.textContent).toContain('10.8K viewers · 794 chat · 709 emotes')
+    expect(container.textContent).toContain('10.8K viewers · 794 chat/min · 709 emotes/min')
+    // Nothing to say until Jump answers.
+    expect(container.querySelector('.pulse-sel-note[role="status"]')?.textContent).toBe('')
     expect(container.querySelectorAll('[data-moment-inspector-emote-row="true"]')).toHaveLength(3)
     expect(container.textContent).not.toContain('Fourth emote')
     expect(container.textContent).not.toContain('Bookmark')
@@ -110,5 +112,56 @@ describe('SelectedMomentCard', () => {
     // The details keep their nodes, so a focused action keeps focus.
     expect(jump()).toBe(firstJump)
     expect(document.activeElement).toBe(firstJump)
+  })
+
+  it('says what Jump did on the Analytics line under the buttons, for this moment only (U)', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const text = 'The VOD didn’t hold about 0:00:00'
+    const onAnalytics = vi.fn()
+    const render = (value: LiveHeatPoint) => act(() => {
+      root?.render(<SelectedMomentCard point={value} backendUrl="https://api.streampulse.stream" jumpLabel="Jump in VOD"
+        onJump={() => Promise.resolve({ ok: false, text })} onAnalytics={onAnalytics} />)
+    })
+    render(point)
+    const note = () => container?.querySelector('.pulse-sel-note[role="status"]')
+    const analytics = () => container?.querySelectorAll<HTMLButtonElement>('[data-moment-inspector-action="analytics"]')
+    const before = analytics()![0]
+    expect(before.textContent).toBe('Analytics↗')
+    await act(async () => { container?.querySelector<HTMLButtonElement>('[data-moment-inspector-action="jump"]')!.click() })
+    expect(note()?.textContent).toBe(text)
+    expect(note()?.classList.contains('pulse-note-warn')).toBe(true)
+    // The Analytics control never moves or changes: the note wraps in the band under the buttons beside it.
+    expect(analytics()).toHaveLength(1)
+    expect(analytics()![0]).toBe(before)
+    expect(note()?.contains(before)).toBe(false)
+    expect(before.textContent).toBe('Analytics↗')
+    act(() => analytics()![0].click())
+    expect(onAnalytics).toHaveBeenCalledTimes(1)
+    expect(panelRule('pulse-sel-note')).toContain(' position: absolute;')
+    expect(panelRule('pulse-sel-note')).not.toContain('nowrap')
+    expect(panelRule('pulse-sel-actions')).toContain(' container-type: inline-size;')
+    // Another moment in the card does not carry the last one's answer.
+    render({ ...point, offsetSeconds: 150, minuteTs: '2026-08-29T12:02:00.000Z' })
+    expect(note()?.textContent).toBe('')
+    expect(analytics()).toHaveLength(1)
+    expect(analytics()![0].textContent).toBe('Analytics↗')
+  })
+
+  it('tags a hello or goodbye spike Stream start or Stream end after its reason (E1)', () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    act(() => {
+      root?.render(<SelectedMomentCard point={{ ...point, streamEdge: 'opening' }} backendUrl="https://api.streampulse.stream" onJump={() => {}} />)
+    })
+    expect(container.textContent).toContain('Emote spike')
+    expect(container.querySelector('.pulse-edge-tag')?.textContent).toBe('Stream start')
+    // A quiet tag: plain muted 11 px text, as the site, the Hub and the session write it.
+    const tag = panelRule('pulse-edge-tag')
+    expect(tag).toContain(' font-size: 11px;')
+    expect(tag).toContain(' font-weight: 400;')
+    for (const loud of ['border', 'background', 'padding']) expect(tag).not.toContain(loud)
   })
 })

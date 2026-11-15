@@ -3,9 +3,10 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AccountMoments from '../src/routes/account/AccountMoments'
 import { AccountError, accountRequest } from '../src/lib/accountApi'
-import { listHistory, listSaves, momentAnalyticsHref, replayHref } from '../src/lib/accountMoments'
+import { listHistory, listSaves, momentAnalyticsHref, momentTimestamp, replayHref } from '../src/lib/accountMoments'
 import { resetAccountSessionForTests } from '../src/lib/accountSession'
 import { rememberStepUp } from '../src/lib/accountStepUp'
+import { formatSavedAt } from '@streampulse/pulse-core'
 vi.mock('../src/lib/accountApi', async importOriginal => ({ ...await importOriginal<typeof import('../src/lib/accountApi')>(), accountRequest: vi.fn() }))
 vi.mock('../src/ui/components/PublicLayout', () => ({ PublicLayout: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
 
@@ -38,6 +39,12 @@ describe('account moments API', () => {
     expect(replayHref({ offsetSeconds: 1 })).toBeNull()
     expect(momentAnalyticsHref({ login: 'xqc', streamId: '123456', offsetSeconds: 754 })).toBe('/analytics/xqc/123456#t=754')
   })
+  it('says about for a save made on the site, which knows only its minute (K1)', async () => {
+    vi.mocked(accountRequest).mockResolvedValue({ saves: [{ ...save, offsetSeconds: 720, source: 'web' }, { ...save, id: 'b2', source: 'extension' }, { ...save, id: 'b3', source: 'other' }] })
+    const saves = (await listSaves()).saves
+    expect(saves.map(s => s.source)).toEqual(['web', 'extension', undefined])
+    expect(saves.map(momentTimestamp)).toEqual(['about 0:12:00', '0:12:34', '0:12:34'])
+  })
 })
 
 const page = () => render(<MemoryRouter><AccountMoments /></MemoryRouter>)
@@ -55,8 +62,13 @@ describe('My Moments page', () => {
     page()
     const row = (await screen.findByText('xqc Chat erupts')).closest('li')!
     expect(within(row).getByText('the clutch')).toBeTruthy()
-    expect(within(row).getByRole('link', { name: 'Replay on Twitch' }).getAttribute('href')).toBe('https://www.twitch.tv/videos/1234567890?t=754s')
-    expect(within(row).getByRole('link', { name: 'Open in Pulse' }).getAttribute('href')).toBe('/analytics/xqc/123456#t=754')
+    // each link names its moment, and the Twitch one says it opens a new tab (MY-MOMENTS-8); 'Analytics' as elsewhere (Z07)
+    expect(within(row).getByRole('link', { name: 'Replay on Twitch: xqc Chat erupts (opens in a new tab)' }).getAttribute('href')).toBe('https://www.twitch.tv/videos/1234567890?t=754s')
+    expect(within(row).getByRole('link', { name: 'Analytics: xqc Chat erupts' }).getAttribute('href')).toBe('/analytics/xqc/123456#t=754')
+    expect(within(row).getByText('Analytics')).toBeTruthy()
+    // h:mm:ss through pulse-core (K1), the saved date without seconds (Z08)
+    expect(within(row).getByText(/^0:12:34 · Saved /).textContent).toBe(`0:12:34 · Saved ${formatSavedAt(Date.parse(save.createdAt))}`)
+    expect(screen.getByText('Notes, removing and search live in the extension’s My Moments.')).toBeTruthy()
     fireEvent.click(screen.getByRole('tab', { name: 'History' }))
     expect(await screen.findByText('xqc Opening')).toBeTruthy()
     expect(screen.getByText(/Kept for 30 days/)).toBeTruthy()
@@ -123,5 +135,64 @@ describe('My Moments page', () => {
     expect(await screen.findByRole('group', { name: 'Confirm forgetting history' })).toBeTruthy()
     expect(screen.getByRole('tab', { name: 'History' }).getAttribute('aria-selected')).toBe('true')
     expect(accountRequest).not.toHaveBeenCalledWith('/history/forget', expect.anything())
+  })
+})
+
+describe('My Moments page: keeping your place (11-13)', () => {
+  const twenty = Array.from({ length: 20 }, (_, i) => ({ ...save, id: `b${i}`, label: `Moment ${i}`, offsetSeconds: 60 * i }))
+
+  it('keeps the rows when More saves fails, says so by the button, and keeps focus there (MY-MOMENTS-2)', async () => {
+    vi.mocked(accountRequest).mockImplementation(async (path, body) => {
+      if (path === '/me') return { accountId: 'a' }
+      if (path === '/saves/list' && body?.before === 'n1') throw new AccountError(503)
+      return path === '/saves/list' ? { saves: twenty, next: 'n1' } : { settings: on, entries: [] }
+    })
+    page()
+    const more = await screen.findByRole('button', { name: 'More saves' })
+    more.focus()
+    fireEvent.click(more)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.getAllByText(/^xqc Moment \d+$/)).toHaveLength(20)
+    expect(screen.getByRole('button', { name: 'More saves' })).toBe(document.activeElement)
+  })
+
+  it('moves focus to the first new row when the last page arrives, and says how many (J1)', async () => {
+    vi.mocked(accountRequest).mockImplementation(async (path, body) => {
+      if (path === '/me') return { accountId: 'a' }
+      if (path === '/saves/list') return body?.before === 'n1' ? { saves: [{ ...save, id: 'b99', label: 'Last one' }] } : { saves: twenty, next: 'n1' }
+      return { settings: on, entries: [] }
+    })
+    page()
+    const more = await screen.findByRole('button', { name: 'More saves' })
+    more.focus()
+    fireEvent.click(more)
+    expect(await screen.findByText('1 more save loaded.')).toBeTruthy()
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Replay on Twitch: xqc Last one (opens in a new tab)'))
+  })
+
+  it('offers Sign in again with Retry when the session expired, and focuses it (MY-MOMENTS-3)', async () => {
+    vi.mocked(accountRequest).mockImplementation(async path => { if (path === '/me') return { accountId: 'a' }; throw new AccountError(401) })
+    page()
+    const link = await screen.findByRole('link', { name: 'Sign in again' })
+    expect(link.getAttribute('href')).toBe('/account/sign-in')
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    await waitFor(() => expect(document.activeElement).toBe(link))
+  })
+
+  it('keeps each tab’s list when switching back, rather than loading page one again (MY-MOMENTS-9)', async () => {
+    vi.mocked(accountRequest).mockImplementation(async path => path === '/me' ? { accountId: 'a' }
+      : path === '/saves/list' ? { saves: [save] } : { settings: on, entries: [watched] })
+    page()
+    await screen.findByText('xqc Chat erupts')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Saved' }), { key: 'ArrowRight' })
+    expect(await screen.findByText('xqc Opening')).toBeTruthy()
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'History' }), { key: 'ArrowLeft' })
+    expect(screen.getByText('xqc Chat erupts')).toBeTruthy()
+    expect(screen.queryByText('Loading your saves…')).toBeNull()
+    expect(vi.mocked(accountRequest).mock.calls.filter(([path]) => path === '/saves/list')).toHaveLength(1)
+    // the other panel stays mounted and hidden
+    const panels = [...document.querySelectorAll<HTMLElement>('[role="tabpanel"]')]
+    expect(panels).toHaveLength(2)
+    expect(panels.map(panel => panel.hidden)).toEqual([false, true])
   })
 })

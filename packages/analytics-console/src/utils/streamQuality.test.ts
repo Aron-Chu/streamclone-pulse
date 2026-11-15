@@ -64,7 +64,7 @@ describe('deriveAnalyticsQualityLabel', () => {
     ], true, '2026-08-17T23:42:30Z')
 
     expect(diagnosis?.message).toBe(
-      'Viewer samples started at 00:06:30; chat may begin earlier.',
+      'Viewer samples started at 0:06:30; chat may begin earlier.',
     )
   })
 })

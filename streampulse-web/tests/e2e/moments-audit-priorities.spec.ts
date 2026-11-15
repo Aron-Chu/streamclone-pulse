@@ -30,9 +30,9 @@ test('single-result review prioritizes its exact external replay', async ({ page
   await page.route(/\/v1\/portal\/analytics\/streams\/s1(?:\?.*)?$/, route => route.fulfill({ json: {
     channel: 'xqc', stream: { streamId: 's1', vodId: '123456' }, vodTiming: { state: 'verified' }, vodAlignSeconds: 0, vodDurationSeconds: 18000,
   } }))
-  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=120&q=xqc')
-  const watch = page.getByRole('link', { name: 'Watch on Twitch at 2:00' })
-  await expect(watch).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=120s')
+  await page.goto('/analytics/moments?login=xqc&stream=s1&offset=420&q=xqc')
+  const watch = page.getByRole('link', { name: 'Watch on Twitch at 0:07:00' })
+  await expect(watch).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=420s')
   // Chromium can round a CSS 48px minimum to 47.99997px at this viewport.
   expect((await watch.boundingBox())!.height).toBeGreaterThanOrEqual(47.99)
   await expect(page.getByRole('navigation', { name: 'Review loaded moments' })).toHaveCount(0)

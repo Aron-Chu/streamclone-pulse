@@ -83,10 +83,10 @@ it('shows the minute’s viewers, chat and emotes in Preview, most used emotes f
 
     const dialog = await page.preview('Chat spike')
     const stats = [...dialog.querySelectorAll('.pl-moment-stats > div')].map(item => [item.querySelector('dt')?.textContent, item.querySelector('dd')?.textContent])
-    expect(stats).toEqual([['Viewers', (29412).toLocaleString()], ['Chat / min', '817'], ['Emotes / min', '604']])
+    expect(stats).toEqual([['Viewers', (29412).toLocaleString()], ['Chat/min', '817'], ['Emotes/min', '604']])
     expect([...dialog.querySelectorAll('.pl-emote-name strong')].map(name => name.textContent)).toEqual(['LOL', 'LO', 'forsenCD'])
     // One bar per emote (uses per minute · share of the minute's emote uses); the measuring notes have left Preview.
-    expect([...dialog.querySelectorAll('.pl-emote-usage')].map(usage => usage.textContent)).toEqual([`${(224).toLocaleString()}/min · 37%`, '113/min · 19%', '47/min · 8%'])
+    expect([...dialog.querySelectorAll('.pl-emote-usage')].map(usage => usage.textContent)).toEqual([`${(224).toLocaleString()} uses · 37%`, '113 uses · 19%', '47 uses · 8%'])
     for (const text of ['Emote density', 'How these rates are measured', 'About emote usage']) expect(dialog.textContent).not.toContain(text)
     expect(dialog.textContent).not.toContain('Moment stats are unavailable')
     // No hedge lines: no snapshot label, coverage note, missing-comparison line, header tag or History footnote.

@@ -420,7 +420,7 @@ test.describe('extension mocked states', () => {
     await openTwitchChannel(extension.page)
     await waitForPulseRoot(extension.page)
 
-    const trigger = extension.page.getByRole('combobox', { name: 'Sort most reacted moments' })
+    const trigger = extension.page.getByRole('combobox', { name: 'Sort top moments' })
     await trigger.scrollIntoViewIfNeeded()
     await expect(trigger).toBeVisible()
     await trigger.click()

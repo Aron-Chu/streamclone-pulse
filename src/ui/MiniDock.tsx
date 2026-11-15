@@ -1,10 +1,12 @@
-import type { CSSProperties } from 'react'
-import { displayMomentReasonLabel, momentClockDisplay, type LiveHeatPoint } from '@streampulse/pulse-core'
+import { useEffect, useRef, useState } from 'react'
+import { displayMomentReasonLabel, formatMomentClock, momentClockDisplay, type LiveHeatPoint } from '@streampulse/pulse-core'
 import { chatSeriesFromRollups, chartRollupSeries } from './chatActivityEmotes.ts'
 import type { PulsePayload } from '../shared/messages.ts'
 import { momentReasonLabelStyle } from './momentReasonStyles.ts'
 import { theme } from './theme.ts'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
+import { MomentTime } from './MomentTime.tsx'
+import type { JumpNote, JumpPromise, JumpResult } from './jumpMomentAction.ts'
 
 const MINI_HEAT_BARS = 12
 
@@ -21,8 +23,12 @@ export interface MiniDockProps {
   onTrack?: () => void
   /** The first row of the panel's Top moments list, when the panel would show it. */
   topMoment?: LiveHeatPoint | null
-  /** Does what the Top moments card's Jump does. */
-  onJumpTopMoment?: (point: LiveHeatPoint) => void
+  /** Does what the Top moments card's Jump does, and answers with what happened. */
+  onJumpTopMoment?: (point: LiveHeatPoint) => JumpResult
+  /** Opens Analytics at the top moment: the note's button after a Jump that failed (U1). */
+  onAnalyticsTopMoment?: (point: LiveHeatPoint) => void
+  /** Where Jump goes, as the card's Jump says it: 'Jump in player' or 'Jump in VOD'. */
+  jumpLabel?: string
 }
 
 export function MiniDock({
@@ -38,7 +44,21 @@ export function MiniDock({
   onTrack,
   topMoment = null,
   onJumpTopMoment,
+  onAnalyticsTopMoment,
+  jumpLabel = 'Jump in player',
 }: MiniDockProps) {
+  // What Jump did, read on the second line for a few seconds (U).
+  const [note, setNote] = useState<JumpNote | null>(null)
+  const dockRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!note) return
+    const timer = setTimeout(() => {
+      // Open Analytics goes with the note: focus on it moves to Jump, the control that stays.
+      if (dockRef.current!.querySelector('.pulse-mini-note-link:focus')) dockRef.current!.querySelector<HTMLElement>('.pulse-mini-jump')?.focus()
+      setNote(null)
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [note])
   const rollups = payload ? chartRollupSeries(payload) : []
   const heatValues = chatSeriesFromRollups(rollups).slice(-MINI_HEAT_BARS)
   // The dock sits on the channel's own page, so the name only goes in the tooltip.
@@ -46,10 +66,14 @@ export function MiniDock({
   const statusTitle = tracking ? `Tracking ${login}` : `Not tracking ${login}`
   // The list row's reason line; a row without one shows none here either.
   const topDetail = topMoment ? displayMomentReasonLabel(topMoment.reason, topMoment.reasonLabel) : ''
+  const clock = topMoment && momentClockDisplay(topMoment)
+  const jumpName = topMoment ? `${jumpLabel} to the top moment at ${formatMomentClock(topMoment)}` : ''
+  const shownNote = topMoment && note
 
   return (
     <section
-      className={sidebarFill ? 'pulse-mini-dock pulse-mini-dock-sidebar' : 'pulse-mini-dock'}
+      ref={dockRef}
+      className={`pulse-mini-dock${sidebarFill ? ' pulse-mini-dock-sidebar' : ''}${shownNote ? ' pulse-mini-dock-noted' : ''}`}
       aria-label="StreamPulse mini dock"
     >
       <button
@@ -57,6 +81,7 @@ export function MiniDock({
         className="pulse-mini-dock-main"
         onClick={onExpand}
         title="Expand Pulse panel"
+        aria-label="Expand Pulse panel"
       >
         <BrandMark compact />
         {topMoment ? (
@@ -64,7 +89,7 @@ export function MiniDock({
           <span className="pulse-mini-moment" data-mini-top-moment="true">
             <span className="pulse-mini-moment-label">Top moment</span>
             <span className="pulse-mini-moment-detail">
-              <span className="pulse-mini-moment-time">{momentClockDisplay(topMoment).text}</span>
+              <span className="pulse-mini-moment-time"><MomentTime text={clock!.text} about={clock!.approximate} /></span>
               {topDetail ? (
                 <>
                   {' · '}
@@ -88,17 +113,20 @@ export function MiniDock({
         )}
       </button>
 
+      {/* Outside the buttons, whose text is not read out; always present, so a new note is announced in full. */}
+      <span className="pulse-sr-only" role="status">{shownNote?.text}</span>
       <div className="pulse-mini-dock-actions" aria-label="Mini dock controls">
         {topMoment && onJumpTopMoment ? (
           <button
             type="button"
-            style={JUMP_BUTTON_STYLE}
+            className="pulse-mini-chip pulse-mini-jump"
             data-mini-top-moment-jump="true"
             onClick={event => {
               event.stopPropagation()
-              onJumpTopMoment(topMoment)
+              void (onJumpTopMoment(topMoment) as JumpPromise)?.then(next => next && setNote(next))
             }}
-            title="Jump to the top moment"
+            title={jumpName}
+            aria-label={jumpName}
           >
             <PlayIcon />
             Jump
@@ -107,7 +135,7 @@ export function MiniDock({
         {!tracking && onTrack ? (
           <button
             type="button"
-            style={styles.chipButton}
+            className="pulse-mini-chip"
             disabled={trackBusy}
             onClick={event => {
               event.stopPropagation()
@@ -120,8 +148,7 @@ export function MiniDock({
         ) : null}
         <button
           type="button"
-          className="pulse-settings-gear-btn"
-          style={styles.iconButton}
+          className="pulse-settings-gear-btn pulse-mini-icon"
           onClick={event => {
             event.stopPropagation()
             onSettings()
@@ -133,7 +160,7 @@ export function MiniDock({
         </button>
         <button
           type="button"
-          style={styles.iconButton}
+          className="pulse-mini-icon"
           onClick={event => {
             event.stopPropagation()
             onExpand()
@@ -145,7 +172,7 @@ export function MiniDock({
         </button>
         <button
           type="button"
-          style={styles.iconButton}
+          className="pulse-mini-icon"
           onClick={event => {
             event.stopPropagation()
             onHide()
@@ -156,6 +183,15 @@ export function MiniDock({
           <HideIcon />
         </button>
       </div>
+      {shownNote ? (
+        // What Jump did, across the dock's whole second line for a few seconds (U1); a '·' joins it to Open Analytics.
+        <div className="pulse-mini-note-row">
+          <span className={`pulse-mini-note${shownNote.ok ? '' : ' pulse-note-warn'}`} aria-hidden="true">{shownNote.text}</span>
+          {!shownNote.ok && onAnalyticsTopMoment ? (
+            <button type="button" className="pulse-mini-note-link" onClick={() => onAnalyticsTopMoment(topMoment)}>Open Analytics</button>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -233,35 +269,3 @@ function HideIcon() {
     </svg>
   )
 }
-
-// Inline on purpose: as classes, the `.pulse-mini-dock button[title]` hover
-// rule would start tinting these buttons.
-const styles: Record<string, CSSProperties> = {
-  chipButton: {
-    background: 'rgba(139, 92, 246, 0.16)',
-    border: `1px solid ${theme.borderAccent}`,
-    borderRadius: theme.radiusButton,
-    color: theme.accentSoft,
-    cursor: 'pointer',
-    fontSize: 12,
-    fontWeight: 800,
-    padding: '6px 8px',
-    whiteSpace: 'nowrap',
-  },
-  iconButton: {
-    alignItems: 'center',
-    background: 'transparent',
-    border: 0,
-    borderRadius: 7,
-    color: theme.textMuted,
-    cursor: 'pointer',
-    display: 'inline-flex',
-    height: 28,
-    justifyContent: 'center',
-    padding: 0,
-    width: 28,
-  },
-}
-
-// The chip look, with room for the play icon beside the label.
-const JUMP_BUTTON_STYLE: CSSProperties = { ...styles.chipButton, alignItems: 'center', display: 'inline-flex', gap: 5 }

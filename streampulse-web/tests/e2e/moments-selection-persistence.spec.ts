@@ -10,7 +10,7 @@ test('the next selected moment retains its evidence after the collection is repl
   const detail = page.getByRole('region', { name: /^Selected moment: / })
   await expect(detail.locator('.moments-detail-head')).toContainText('1 of 2 loaded moments')
   await detail.getByRole('button', { name: 'Next moment', exact: true }).click()
-  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=240/)
+  await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   // Next moves the detail in line, under the second row.
   await expect(detail.locator('.moments-detail-head')).toContainText('2 of 2 loaded moments')
   await expect.poll(() => page.locator('.moments-result').nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
@@ -31,7 +31,8 @@ test('the next selected moment retains its evidence after the collection is repl
   await expect(measurement.locator('dd').nth(0)).toHaveText('280')
   await expect(measurement.locator('dd').nth(1)).toHaveText('95')
   await expect(detail.getByText('OMEGALUL', { exact: true })).toBeVisible()
-  await expect(detail.getByText('Selection outside loaded matches', { exact: true })).toBeVisible()
+  // Z05 (11-13): 'Shared moment, not in Latest right now', or 'Not in Latest right now' for one the list dropped
+  await expect(detail.getByText(/^(Shared moment, not|Not) in Latest right now$/)).toBeVisible()
   await detail.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page).toHaveURL(/\/analytics\/moments\?view=recent$/)
   await expect(detail).toHaveCount(0)

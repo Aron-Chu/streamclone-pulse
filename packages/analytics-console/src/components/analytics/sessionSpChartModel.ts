@@ -14,6 +14,7 @@ import {
   rollupHasMinuteData,
   viewerReadoutValue,
 } from '@streampulse/pulse-charts'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import { overviewPath, type SpCaption, type SpChartData, type SpOverview, type SpSpanMs } from '@streampulse/pulse-charts/spchart'
 import type { AnalyticsMinuteRollup, AnalyticsStreamDetail } from '../../api.ts'
 
@@ -189,17 +190,15 @@ export function ratesCaption(
 // ---- display formats (the d3 design's session.js / shared.js) ----
 
 const integer = new Intl.NumberFormat('en-US')
-const pad2 = (v: number) => String(v).padStart(2, '0')
 
 /** Full integer with grouping, or an em dash. */
 export function fullInt(value: number | null | undefined): string {
   return value == null || !fin(value) ? '—' : integer.format(Math.round(value))
 }
 
-/** Unpadded h:mm:ss. */
+/** Unpadded h:mm:ss: pulse-core's one session clock (K1, 11-13). */
 export function hms(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds))
-  return Math.floor(s / 3600) + ':' + pad2(Math.floor((s % 3600) / 60)) + ':' + pad2(s % 60)
+  return formatMomentOffset(Math.round(seconds))
 }
 
 /** Local clock "2:27 PM". */

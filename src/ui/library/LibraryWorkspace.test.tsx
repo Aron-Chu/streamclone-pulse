@@ -32,8 +32,8 @@ describe('My Moments frontend', () => {
     expect(container.querySelector('dialog')).toBeNull()
     const card = container.querySelector('.pl-moment')!
     expect(card.textContent).toContain('18,500')
-    expect(card.textContent).toContain('Chat / min')
-    expect(card.textContent).toContain('Emotes / min')
+    expect(card.textContent).toContain('Chat/min')
+    expect(card.textContent).toContain('Emotes/min')
     expect(card.textContent).toContain('416')
     expect(card.textContent).toContain('520')
     expect(card.textContent).toContain('7TV')
@@ -75,7 +75,7 @@ describe('My Moments frontend', () => {
     // Two of the seven sampled minutes are gaps: no bar, never a zero.
     expect(dialog().querySelectorAll('.pl-around-chart rect[data-minute]')).toHaveLength(5)
     expect(dialog().querySelector('.pl-around-tiles dd')?.textContent).toBe((18500).toLocaleString())
-    expect(dialog().textContent).toContain('156/min · 30%')
+    expect(dialog().textContent).toContain('156 uses · 30%')
     const bookmark = dialog().querySelector<HTMLButtonElement>('button[aria-label^="Bookmark:"]')!
     expect(bookmark.classList.contains('pl-on')).toBe(false)
     await act(async () => { bookmark.click(); await new Promise(r => setTimeout(r, 5)) })
@@ -93,8 +93,14 @@ describe('My Moments frontend', () => {
     expect(dialog()?.querySelector('[role="status"]')?.textContent).toBe('Bookmark removed.')
     expect(dialog()?.querySelector('h2')?.textContent).toBe('Halloween: The Game · emote reaction')
     expect(dialog()?.querySelector('button[aria-label^="Bookmark:"]')).toBeTruthy()
+    // J1: Remove hands focus to Undo.
+    expect(document.activeElement?.textContent).toBe('Undo')
     await click('Undo')
     await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    // Undo, and the note it puts back after, end on the bookmark button, which stays focusable while busy.
+    const mark = dialog()?.querySelector('button[aria-label^="Remove bookmark:"]')
+    expect(document.activeElement).toBe(mark)
+    expect(mark?.hasAttribute('disabled')).toBe(false)
     const back = (await repo.load(new AbortController().signal)).moments.find(m => m.id === 'one')
     expect(back?.savedAt).toBeTypeOf('number')
     expect(back?.note).toBe('Come back to this part of the Halloween stream.')
@@ -152,6 +158,26 @@ describe('My Moments frontend', () => {
     await act(async () => { await new Promise(r => setTimeout(r, 20)) })
     expect((container.querySelector('input[type="search"]') as HTMLInputElement).value).toBe('')
     expect(container.textContent).toContain('Halloween: The Game')
+  })
+  it('J1: Clear filters puts focus on the moments it brought back', async () => {
+    await render(createDemoRepository('ready', 0))
+    const search = container.querySelector('input[type="search"]') as HTMLInputElement
+    // Through the native setter, so React sees the typing.
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'no such moment')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+      await new Promise(r => setTimeout(r, 5))
+    })
+    await click('Clear filters')
+    expect(document.activeElement).toBe(container.querySelector('.pl-count[role="status"]'))
+    expect(document.activeElement?.textContent).toMatch(/^\d+ moments?/)
+  })
+  it('MY-MOMENTS-5: a message from one tab does not follow you to the next', async () => {
+    await render(createDemoRepository('ready', 0))
+    await press(container.querySelector('button[aria-label="Remove: Halloween: The Game · emote reaction"]'))
+    expect(status()).toBe('Removed from Saved.')
+    await click('History')
+    expect(status()).toBe('')
   })
   it('shows retry on load failure', async () => {
     await render(createDemoRepository('load-error', 0))
@@ -240,7 +266,7 @@ describe('My Moments frontend', () => {
     expect(analyticsHref(rows[0])).toBe('http://localhost:5173/analytics/xqc/123456#t=754')
     expect(analyticsHref(rows[1])).toBe('http://localhost:5173/analytics/xqc/123456#t=754')
     expect(rows[1].textContent).toContain('Chat spike')
-    expect(rows[1].textContent).toContain('xqc · 00:12:34')
+    expect(rows[1].textContent).toContain('xqc · 0:12:34')
     expect(rows[1].textContent).toContain('kept here')
     expect(rows[1].querySelector('a')?.getAttribute('href')).toBe('https://www.twitch.tv/videos/1234567890?t=754s')
     // Read-only: no edit or preview, only remove.
@@ -400,8 +426,12 @@ describe('My Moments picks (H1–H4)', () => {
     expect(container.querySelector('dialog')).toBeNull()
     expect(status()).toBe('Removed from Saved.')
     expect(container.textContent).not.toContain('Halloween: The Game')
+    // J1: the row is gone, so its Undo takes focus, not the page.
+    expect(document.activeElement?.textContent).toBe('Undo')
     await click('Undo')
     await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    // Undo leaves too; the message saying what came back holds focus.
+    expect(document.activeElement).toBe(container.querySelector('.pl-feedback'))
     const back = (await repo.load(new AbortController().signal)).moments.find(m => m.id === 'one')
     expect(back?.savedAt).toBeTypeOf('number')
     expect(back?.note).toBe('Come back to this part of the Halloween stream.')
@@ -421,6 +451,7 @@ describe('My Moments picks (H1–H4)', () => {
     expect((commands[0] as { reference: { id: string } }).reference.id).toBe('two')
     expect(status()).toBe('Removed from History.')
     expect(container.textContent).not.toContain('Chat spike after the reveal')
+    expect(document.activeElement?.textContent).toBe('Undo')
     await click('Undo')
     expect(commands[1]).toMatchObject({ kind: 'restore-visit', reference: { id: 'two' }, jumpedAt })
     expect(status()).toBe('Back in History.')

@@ -85,7 +85,13 @@ button { font: inherit; color: inherit; }
   animation: pp-rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.pp-chan { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.pp-chan { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 0 10px; align-items: center; }
+/* The name sits beside the badge; the line under it also runs under the badge, so 'Last live Yesterday 12:00 PM' fits the popup (Z08). */
+.pp-who { display: contents; }
+.pp-chan > .pp-avatar { grid-row: span 2; }
+.pp-chan .pp-name { grid-column: 2; }
+.pp-chan .pp-meta { grid-column: 2 / 4; }
+.pp-chan > .pp-badge { grid-column: 3; grid-row: 1; }
 .pp-avatar {
   width: 40px; height: 40px; border-radius: 50%;
   display: grid; place-items: center;
@@ -97,6 +103,8 @@ button { font: inherit; color: inherit; }
 .pp-avatar[data-live] { box-shadow: 0 0 0 2px var(--pp-card), 0 0 0 4px var(--pp-live); }
 .pp-name { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -0.015em; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-meta { margin: 1px 0 0; font-size: 12px; color: var(--pp-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A label before its value: 'Last live' Yesterday 12:00 PM (Z08). */
+.pp-k { color: var(--pp-text-3); font-weight: 600; }
 .pp-badge {
   align-self: start;
   padding: 4px 6px; border-radius: 4px;
@@ -135,7 +143,7 @@ button { font: inherit; color: inherit; }
 .pp-emote { width: 22px; height: 22px; flex: none; object-fit: contain; }
 
 .pp-moment {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px;
   margin-top: 8px; padding-top: 8px;
   border-top: 1px solid var(--pp-line);
   font-size: 12px; color: var(--pp-text-2);
@@ -145,6 +153,11 @@ button { font: inherit; color: inherit; }
 .pp-moment span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-moment b { color: var(--pp-text); font-weight: 650; }
 .pp-moment time { margin-left: auto; flex: none; color: var(--pp-text-3); font-variant-numeric: tabular-nums; }
+/* The reason and its tag share one line, and the reason wins it: a tag that can't fit whole wraps onto a second line the box hides. It stays in the text, so it is still read out.
+   The box starts at the reason's own width (min-content) and grows into the line, so where a wide fallback font leaves no room for the reason beside the time, the time moves to its own line instead of the reason being cut. */
+.pp-moment .pp-moment-what { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; max-height: 1lh; flex: 1 1 auto; width: min-content; }
+/* 'Stream start' / 'Stream end' after the reason (E1): a quiet tag, plain muted text as in the panel. */
+.pp-moment .pp-edge { flex: none; color: var(--pp-text-3); font-size: 11px; font-weight: 400; }
 
 .pp-note { margin: 12px 0 0; font-size: 12px; color: var(--pp-text-2); }
 .pp-note strong { display: block; color: var(--pp-text); font-size: 13px; font-weight: 650; }

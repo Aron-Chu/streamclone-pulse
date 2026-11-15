@@ -146,7 +146,7 @@ describe('long stream with validated Full history', () => {
     expect(visible).toHaveLength(60)
     expect(visible.filter(minute => minute.missing).map(minute => minute.offsetSeconds))
       .toEqual(Array.from({ length: 30 }, (_, index) => holeFrom + index * 60))
-    expect(describeRollupGap(sixty, true)).toBe('Missing chat data from 05:10:00 to 05:40:00')
+    expect(describeRollupGap(sixty, true)).toBe('Missing chat data from 5:10:00 to 5:40:00')
 
     const markup = renderToStaticMarkup(
       <PulseOverviewChart rollups={sixty} durationSeconds={CURRENT_OFFSET_SECONDS} viewport={viewport} isLive />,
@@ -185,7 +185,7 @@ describe('describeRollupGap', () => {
 
   it('reports a run of missing buckets between covered buckets', () => {
     expect(describeRollupGap([covered(0), covered(254), missing(508), missing(762), covered(1016)], true))
-      .toBe('Missing chat data from 00:08:28 to 00:16:56')
+      .toBe('Missing chat data from 0:08:28 to 0:16:56')
   })
 
   it('leaves a missing opening to the coverage-start hint', () => {
@@ -223,11 +223,11 @@ describe('describeRollupGap', () => {
       currentOffsetSeconds: 660,
       activation: makeFullHistoryActivation(payload),
     })
-    expect(describeRollupGap(full, true)).toBe('Missing chat data from 00:02:00 to 00:10:00')
+    expect(describeRollupGap(full, true)).toBe('Missing chat data from 0:02:00 to 0:10:00')
   })
 
   it('still reads spacing between raw minute rollups as a hole', () => {
-    expect(describeRollupGap([0, 60, 240, 300].map(covered))).toBe('Missing chat data from 00:02:00 to 00:04:00')
+    expect(describeRollupGap([0, 60, 240, 300].map(covered))).toBe('Missing chat data from 0:02:00 to 0:04:00')
     expect(describeRollupGap([0, 60, 120, 180].map(covered))).toBeNull()
   })
 })
@@ -310,7 +310,7 @@ describe('overview chart over missing buckets', () => {
       // Bucket 100 real and quiet, 101-103 missing.
       const rollups = stream(index => index === 100 ? real(index, 0) : index > 100 && index < 104 ? hole(index) : null)
       expect(viewportBuckets(rollups, null, EXTENSION_CHART_MAX_POINTS)[25]).toBe(rollups[100])
-      expect(describeRollupGap(rollups, true)).toBe('Missing chat data from 07:07:34 to 07:20:16')
+      expect(describeRollupGap(rollups, true)).toBe('Missing chat data from 7:07:34 to 7:20:16')
       expect(bands(rollups)).toEqual([{ point: 25, opacity: 0.375 }])
     })
 
@@ -389,7 +389,7 @@ describe('gaps on every zoomed range (Codex audit: 15m to 4h, missing tail)', ()
     // hole, so it starts 5 minutes before it to keep real data on its left.
     const startSeconds = span <= holeTo - holeFrom ? holeFrom - 5 * 60 : Math.round((holeFrom + holeTo) / 2 - span / 2)
     const viewport = { startSeconds, endSeconds: startSeconds + span }
-    expect(describeRollupGap(rollups, true)).toBe('Missing chat data from 05:10:00 to 05:40:00')
+    expect(describeRollupGap(rollups, true)).toBe('Missing chat data from 5:10:00 to 5:40:00')
     const { bands, path } = drawn(rollups, viewport)
     expect(bands.length, chartWindow).toBeGreaterThan(0)
     // Fully missing points are drawn at the full no-data shade; nothing of the

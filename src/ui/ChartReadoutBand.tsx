@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import type { ExtensionEmote } from '../shared/messages.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 
@@ -53,7 +53,7 @@ export function ChartReadoutBand({
   const title = mode[0]!.toUpperCase() + mode.slice(1)
   const following = mode === 'playing' || mode === 'paused'
   const time = typeof offsetSeconds === 'number' && Number.isFinite(offsetSeconds)
-    ? formatHeatOffset(offsetSeconds)
+    ? formatMomentOffset(offsetSeconds)
     : '—'
   const viewer = !viewerVisible
     ? '—'

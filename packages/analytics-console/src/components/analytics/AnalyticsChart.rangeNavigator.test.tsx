@@ -239,8 +239,8 @@ describe('AnalyticsChart range controls and navigator', () => {
     expect(navigator.getAttribute('aria-label')).toBe('Chart navigator')
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:90')
     const start = screen.getByRole('slider', { name: 'Chart view start' })
-    // The plot ends on its last minute (01:30:00).
-    expect(start.getAttribute('aria-valuetext')).toBe('Start 00:00:00; showing 00:00:00 to 01:30:00')
+    // The plot ends on its last minute (1:30:00).
+    expect(start.getAttribute('aria-valuetext')).toBe('Start 0:00:00; showing 0:00:00 to 1:30:00')
     expect(screen.getByRole('slider', { name: 'Chart view end' })).not.toBeNull()
     expect(navigator.querySelector('strong')?.textContent).toBe('Full stream')
     expect(navigator.querySelector('.hx-chart-navigator__bucket-count')?.textContent).toBe(', 91 of 91 minutes')

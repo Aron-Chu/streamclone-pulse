@@ -45,6 +45,8 @@ export interface MomentsFeedItem {
   /** Epoch ms of the detector's minute. */
   minuteStart: number
   streamLive: boolean
+  /** The backend's stream-edge flag ('opening' | 'closing'), once a release sends one here; it wins over the site's rule (E1). */
+  streamEdge?: string
   liveFrameUrl?: string
   tier: string
   verdict: MomentVerdict

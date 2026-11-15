@@ -181,7 +181,7 @@ describe('SessionRecapMomentsStrip reel', () => {
     const fr = card(1).querySelector<HTMLElement>('[data-moment-card-frame]')!
     expect(fr.style.backgroundImage).toContain(SHEET(0))
     expect(fr.style.backgroundPosition).toBe('50% 0%') // tile 2: column 3 of 5, row 1 of 10
-    expect(card(1).querySelector('.ssr-rc-at')!.textContent).toBe('≈ 0:08:23') // tile 2 starts 498 s on the VOD
+    expect(card(1).querySelector('.ssr-rc-at')!.textContent).toBe('about 0:08:23') // tile 2 starts 498 s on the VOD
     expect(card(1).textContent).toContain('Preview frame from about 97 s before the moment.')
     expect(screen.getByText(/one every 4 min 9 s/)).toBeTruthy()
   })
@@ -241,11 +241,11 @@ describe('SessionRecapMomentsStrip reel', () => {
     await waitFor(() => expect(get).toHaveBeenCalledWith(VOD, 625 + 3 * 249))
     expect(get).toHaveBeenCalledWith(VOD, 625 - 2 * 249)
     fireEvent.pointerMove(hero, { clientX: 300 })
-    await waitFor(() => expect(hero.querySelector('.ssr-rc-at')!.textContent).toBe('≈ 0:20:50')) // tile 5 starts 1245 s on the VOD
+    await waitFor(() => expect(hero.querySelector('.ssr-rc-at')!.textContent).toBe('about 0:20:50')) // tile 5 starts 1245 s on the VOD
     expect(hero.classList.contains('scrubbing')).toBe(true)
     expect(hero.querySelector<HTMLElement>('.ssr-rc-bar i')!.style.left).toBe('100%')
     fireEvent.pointerLeave(hero)
-    expect(hero.querySelector('.ssr-rc-at')!.textContent).toBe('≈ 0:08:23')
+    expect(hero.querySelector('.ssr-rc-at')!.textContent).toBe('about 0:08:23')
     expect(hero.classList.contains('scrubbing')).toBe(false)
   })
 

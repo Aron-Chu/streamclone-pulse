@@ -9,7 +9,8 @@
  * a plain dark card with the game's cover whole and sharp in its corner, never a stand-in or a live frame
  * (candidate, 10-30, PIC-2; until 10-30 the box art filled the card, zoomed and blurred).
  *
- * Evidence follows F8: the backend reason label and reaction score, no client "× usual".
+ * Evidence follows F8: the backend reason label and reaction score, no client "× usual". #2 and #3 carry one emote
+ * line, the top emote and its count, under the reason (SESSION-MOMENTS-9 C1, 11-13); #1 keeps three.
  * A card is the row's toggle (`aria-pressed`, `data-moment-row`): a click locks the moment on the chart, the
  * same card again releases it, and the round play button locks it and asks the page to play.
  * Styles: WEB/src/ui/charts/sp-session-rows.css (`.ssr-reel`, `.ssr-rc*`).
@@ -30,7 +31,13 @@ import {
   type VodFrame,
 } from '../../utils/vodFrames.ts'
 import { previewMissLine } from './MomentPreviewTile.tsx'
-import { MomentPlayIcon, SessionMomentToken, type SessionMomentRowModel } from './MomentRow.tsx'
+import {
+  MomentPlayIcon,
+  SessionMomentClock,
+  SessionMomentEdgeTag,
+  SessionMomentToken,
+  type SessionMomentRowModel,
+} from './MomentRow.tsx'
 
 /** How many tiles a scrub reaches either side of the moment's own. */
 export const REEL_SCRUB_TILES = 3
@@ -135,6 +142,9 @@ export function MomentReelCard({
   const [scrub, setScrub] = useState<{ position: number; frame: VodFrame } | null>(null)
   const want = useRef<number | null>(null)
   const [popDone, setPopDone] = useState(0)
+  // A top-emote picture that fails to load is dropped (SESSION-MOMENTS-6): the card falls back to the cover or
+  // the plain card, never a broken-image icon.
+  const [failedEmoteSrc, setFailedEmoteSrc] = useState<string | null>(null)
 
   // A new moment (or VOD) under this card drops a scrub in progress.
   useEffect(() => {
@@ -144,7 +154,7 @@ export function MomentReelCard({
 
   const shown = scrub?.frame ?? frame
   const chip = shown && shown.fromSec != null && alignSeconds != null
-    ? `≈ ${momentRowHms(Math.max(0, shown.fromSec - alignSeconds))}`
+    ? `about ${momentRowHms(Math.max(0, shown.fromSec - alignSeconds))}`
     : null
   const frameNote = frame ? frameTimingPhrase(frame, momentVodStart, 'moment') : null
   const showPop = pop > 0 && pop !== popDone && locked && !prefersReducedMotion()
@@ -169,7 +179,8 @@ export function MomentReelCard({
     })
   }
 
-  const bigEmote = shown ? null : reelCardEmote(model)
+  const emotePick = shown ? null : reelCardEmote(model)
+  const bigEmote = emotePick && emotePick.src !== failedEmoteSrc ? emotePick : null
   // No frame means no box: a compact card (rank, cover or top emote, words), never an empty 16:9 box.
   // The 16:9 picture comes back on its own once a frame loads.
   const flat = !sessionHasFrame(shown)
@@ -233,7 +244,9 @@ export function MomentReelCard({
           aria-hidden="true"
           decoding="async"
           loading="lazy"
+          referrerPolicy="no-referrer"
           data-moment-card-emote={bigEmote.emote.name}
+          onError={() => setFailedEmoteSrc(bigEmote.src)}
         />
       ) : null}
       {!shown && !bigEmote && artUrl ? (
@@ -259,7 +272,7 @@ export function MomentReelCard({
       </span>{' '}
       <span className="ssr-rc-cap">
         <span className="ssr-rc-l1">
-          <span className="ssr-off">{model.offsetLabel}</span>{' '}
+          <SessionMomentClock model={model} />{' '}
           {hero && model.clockLabel ? <><span className="ssr-clk">{model.clockLabel}</span>{' '}</> : null}
           {hero && model.game ? <><span className="ssr-rc-gm">{model.game.name}</span>{' '}</> : null}
           {hero ? null : score}
@@ -269,8 +282,19 @@ export function MomentReelCard({
             <i aria-hidden="true" />
             {model.reasonLabel}
           </span>{' '}
+          <SessionMomentEdgeTag label={model.edgeLabel} />
           {hero ? score : null}
         </span>
+        {!hero && !model.namesNotCaptured && model.emotes[0] ? (
+          <>
+            {' '}
+            <span className="ssr-rc-l3 ssr-rc-l3--one" data-moment-card-top-emote>
+              <span className="ssr-toks">
+                <SessionMomentToken emote={model.emotes[0]} />
+              </span>
+            </span>
+          </>
+        ) : null}
         {hero ? (
           <>
             {' '}

@@ -9,8 +9,16 @@
  * stream or one not compared shows its rate, and a "Busiest minute" fills in.
  * Pure functions; HubV5BigMoments draws them.
  */
+import { formatLiftRatio } from '@streampulse/pulse-core'
+import { momentRowClock } from '../../../../lib/formatStreamOffset'
 import { fx, int, sameDay, when } from '../../../../lib/momentsChecked'
-import { topPlainLabel, type TopRowData } from './hubV5TopModel'
+import { topEdgeTag, topRowWhy, type TopRowData } from './hubV5TopModel'
+
+/**
+ * The carousel's front card per history entry (location.key), so Back from a card's link
+ * lands on the same card (HUB-LIVE-3). It lives for the page load; tests clear it.
+ */
+export const bigFrontByEntry = new Map<string, string>()
 
 /** Cards at most: ten dots fit a phone's nav, and one loop stays about a minute. */
 export const BIG_CARDS = 10
@@ -71,13 +79,18 @@ export function bigCardPos(k: number, at: number, n: number): BigCardPos {
 
 export const bigSpike = (kind: TopRowData['kind']) => (kind === 'emotes' ? 'Emote spike' : 'Chat spike')
 
-/** A card's label: its spike, or why it shows no × ("Busiest minute", "Early in the stream", "Chat spike · not compared"). */
-export function bigLabel(row: Pick<TopRowData, 'kind' | 'plain'>): string {
+/**
+ * A card's label: its spike, or why it shows no × ("Busiest minute", "Early in
+ * the stream", "Stream start", "Chat spike · not compared"); a spike in an
+ * ended stream's last 10 minutes says so ("Emote spike · Stream end", E1).
+ */
+export function bigLabel(row: Pick<TopRowData, 'kind' | 'plain'> & Partial<Pick<TopRowData, 'offsetSeconds' | 'x' | 'edge'>>): string {
   if (row.plain === 'unmatched') return `${bigSpike(row.kind)} · not compared`
-  return row.plain ? topPlainLabel(row.plain) : bigSpike(row.kind)
+  const tag = row.x != null ? topEdgeTag({ x: row.x, offsetSeconds: row.offsetSeconds, edge: row.edge }) : null
+  return topRowWhy(row) ?? (tag ? `${bigSpike(row.kind)} · ${tag}` : bigSpike(row.kind))
 }
 
-/** A card's figure: "2.4×", else its rate ("1,204"; the card adds "chat/min"). */
+/** A card's figure: "2.4×", else its rate ("1,204"; the card adds "chat/min"). With a ×, the card adds "more chat" (Z06, 11-13). */
 export const bigFigure = (row: Pick<TopRowData, 'x' | 'rate'>) => (row.x != null ? fx(row.x) : int(row.rate))
 
 /** A moment this young (ms) may show its stream's live picture; an older one never does (HUB-6). */
@@ -95,12 +108,14 @@ export function bigWhen(t: number, nowMs: number): string {
   return `${Math.max(1, Math.floor((nowMs - t) / 3_600_000))} h ago`
 }
 
-/** "42 min into the stream", "2 h 5 min into the stream"; null without a minute in. */
-export function bigIntoStream(offsetSeconds: number | null | undefined): string | null {
-  if (offsetSeconds == null || !Number.isFinite(offsetSeconds)) return null
-  const m = Math.round(offsetSeconds / 60)
-  if (m < 1) return null
-  return m < 60 ? `${m} min into the stream` : `${Math.floor(m / 60)} h ${m % 60} min into the stream`
+/**
+ * The card's time into the stream, read "about 0:42:00 into broadcast" (K1, 11-13: the shared clock, in the
+ * Moments rows' words since round 2; the card knows only the minute); null without a minute in. The card
+ * draws 'about' in its own quiet span beside the time (11-14), so this is the clock, not the words.
+ */
+export function bigIntoStream(offsetSeconds: number | null | undefined): ReturnType<typeof momentRowClock> | null {
+  if (offsetSeconds == null || !Number.isFinite(offsetSeconds) || offsetSeconds < 60) return null
+  return momentRowClock(offsetSeconds)
 }
 
 export interface BigMeter {
@@ -138,10 +153,10 @@ const COMPACT = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
 export const bigViewers = (n: number) => COMPACT.format(n)
 
 /** A slide's label: its place, who and what rose. */
-export function bigSlideLabel(row: Pick<TopRowData, 'name' | 'kind' | 'x'> & Partial<Pick<TopRowData, 'plain' | 'rate'>>, i: number, n: number): string {
+export function bigSlideLabel(row: Pick<TopRowData, 'name' | 'kind' | 'x'> & Partial<Pick<TopRowData, 'plain' | 'rate' | 'offsetSeconds' | 'edge'>>, i: number, n: number): string {
   // says what the card says ("Chat spike · not compared"), then the rate
-  if (row.x == null) return `${i + 1} of ${n}: ${row.name}, ${bigLabel({ kind: row.kind, plain: row.plain ?? null })}, ${int(row.rate)} ${row.kind} a minute`
-  return `${i + 1} of ${n}: ${row.name}, ${bigSpike(row.kind).toLowerCase()}, ${fx(row.x).replace('×', ' times')} usual ${row.kind}`
+  if (row.x == null) return `${i + 1} of ${n}: ${row.name}, ${bigLabel({ kind: row.kind, plain: row.plain ?? null, offsetSeconds: row.offsetSeconds })}, ${int(row.rate)} ${row.kind} a minute`
+  return `${i + 1} of ${n}: ${row.name}, ${bigLabel({ ...row, plain: row.plain ?? null }).toLowerCase().replace(' · ', ', ')}, ${formatLiftRatio(row.x)} times more ${row.kind}`
 }
 
 /** The channel on Twitch, for a stream still live. */

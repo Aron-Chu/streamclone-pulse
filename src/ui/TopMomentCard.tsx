@@ -7,6 +7,7 @@ import { MOMENT_CARD_GAME_LINE_HEIGHT, MOMENT_CARD_HEIGHT } from './momentCardLa
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
 import { usePinnedCardHold } from './pinnedCardExit.ts'
 import { SelectedMomentCard } from './SelectedMomentCard.tsx'
+import type { JumpResult } from './jumpMomentAction.ts'
 
 export interface TopMomentCardProps {
   /** The rows point their aria-controls here while it shows. */
@@ -15,7 +16,7 @@ export interface TopMomentCardProps {
   point: LiveHeatPoint | null
   backendUrl: string
   jumpLabel?: string
-  onJump: (point: LiveHeatPoint) => void
+  onJump: (point: LiveHeatPoint) => JumpResult
   onAnalytics: (point: LiveHeatPoint) => void
   onClear: () => void
   /** The stream's games, to name the one on screen at the picked moment. */

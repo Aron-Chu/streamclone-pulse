@@ -108,8 +108,8 @@ describe('board E: a Watch link lands on its moment', () => {
     await open()
 
     expect(chip()?.dataset.momentArrival).toBe('library')
-    expect(chip()?.textContent).toContain('From My Moments · 01:06:40')
-    expect(card()?.getAttribute('aria-label')).toMatch(/^Selected moment at 01:06\b/)
+    expect(chip()?.textContent).toContain('From My Moments · 1:06:40')
+    expect(card()?.getAttribute('aria-label')).toMatch(/^Selected moment at (about )?1:06:/)
     // Read once: a reload of this tab does not land here again.
     expect(local.has(MOMENT_ARRIVAL_STORAGE_KEY)).toBe(false)
   })
@@ -145,10 +145,10 @@ describe('board E: a Watch link lands on its moment', () => {
     resetMomentArrivalPage(`https://www.twitch.tv/videos/${VOD_ID}?t=1h6m40s`)
     await open()
 
-    expect(chip()?.textContent).toContain('From link · 01:06:40')
-    expect(card()?.getAttribute('aria-label')).toMatch(/^Selected moment at 01:06\b/)
+    expect(chip()?.textContent).toContain('From link · 1:06:40')
+    expect(card()?.getAttribute('aria-label')).toMatch(/^Selected moment at (about )?1:06:/)
     const readout = node.querySelector<HTMLElement>('[data-chart-readout-state="selected"]')
-    expect(readout?.textContent).toContain('01:06:00')
+    expect(readout?.textContent).toContain('1:06:00')
   })
 
   it('takes the nearest minute when the note falls in a gap', async () => {
@@ -156,7 +156,7 @@ describe('board E: a Watch link lands on its moment', () => {
     await open()
 
     // Data starts at 0:50; 0:10 is 40 s before it.
-    expect(chip()?.textContent).toContain('From Pulse · 00:00:10')
+    expect(chip()?.textContent).toContain('From Pulse · 0:00:10')
     expect(card()).not.toBeNull()
   })
 
@@ -164,7 +164,7 @@ describe('board E: a Watch link lands on its moment', () => {
     local.set(MOMENT_ARRIVAL_STORAGE_KEY, { vodId: VOD_ID, offsetSeconds: 1_230, clock: 'stream', source: 'library', savedAtMs: Date.now() })
     await open(liveReplay())
 
-    expect(chip()?.textContent).toContain('From My Moments · 00:20:30')
+    expect(chip()?.textContent).toContain('From My Moments · 0:20:30')
     // The live chart's own minute card, right after the chip.
     expect(chip()?.nextElementSibling?.getAttribute('data-chart-inspector-kind')).toBe('minute')
     expect(node.querySelector('[aria-label^="Selected minute at"]')).not.toBeNull()

@@ -14,7 +14,7 @@ import {
 } from 'react'
 
 import type { AnalyticsMinuteRollup, AnalyticsStreamDetail, GameSegment } from '../../api.ts'
-import { formatHeatOffset, reactionAnalyticalOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset, reactionAnalyticalOffset } from '@streampulse/pulse-core'
 import {
   MAX_PLOTTED_EMOTES,
   MIN_CHART_VIEWPORT_SECONDS,
@@ -28,8 +28,9 @@ import {
   rollupsHaveViewerData,
   viewerSourceLabel,
   viewerReadoutValue,
-  vodClock,
 } from '@streampulse/pulse-charts'
+// K1 (11-13): the console's own vodClock writes h:mm:ss (pulse-charts' still pads to 00:00:00)
+import { vodClock } from './chartRollupUtils.ts'
 import type { ChartReactionPoint } from '@streampulse/pulse-charts'
 import {
   barAt,
@@ -114,7 +115,7 @@ function selectedMinuteRangeLabel(
     return vodClock(minuteTs, streamStartedAt)
   }
   const startOffsetSeconds = Math.max(0, Math.round((minuteMs - streamMs) / 1000))
-  return `${formatHeatOffset(startOffsetSeconds)}–${formatHeatOffset(startOffsetSeconds + 60)}`
+  return `${formatMomentOffset(startOffsetSeconds)}–${formatMomentOffset(startOffsetSeconds + 60)}`
 }
 
 export type AnalyticsViewMode =
@@ -154,10 +155,10 @@ export interface SessionViewerCaption {
 
 const noop = () => {}
 
-/** Stream-relative label of a sample index ("00:19:00"). */
+/** Stream-relative label of a sample index ("0:19:00"). */
 function sampleLabel(model: SessionChartModel, index: number): string {
   const ms = model.data.startMs + index * model.data.stepMs
-  return formatHeatOffset(Math.max(0, Math.round((ms - model.originMs) / 1000)))
+  return formatMomentOffset(Math.max(0, Math.round((ms - model.originMs) / 1000)))
 }
 
 interface SessionNavigatorProps {
@@ -345,6 +346,8 @@ function AnalyticsChart({
   viewerCaption = null,
   stripPins = null,
   extraPlotPx = 0,
+  minuteTableOutside = false,
+  afterRegion = null,
   momentOffsetInBar,
   selectionIsMoment = false,
   onExpandedChange,
@@ -396,6 +399,13 @@ function AnalyticsChart({
   stripPins?: SessionStripPinsSource | null
   /** Px the plot grows so the side column's moment rows end level with it (session-original fillH). */
   extraPlotPx?: number
+  /**
+   * Z01 (round 2): one column (under 1280 px) puts the "Minute-by-minute table" line after the chart region, with
+   * `afterRegion` (the Moments tabs) between them, so the tabs sit right under the plot and outside the region.
+   */
+  minuteTableOutside?: boolean
+  /** Rendered between the region and the minute table while `minuteTableOutside`. */
+  afterRegion?: ReactNode
   /**
    * F23: the moment a bar click locks with the bar, as an analytical offset
    * (the best ranked in the Moments list), or null for none. Without it the
@@ -579,13 +589,15 @@ function AnalyticsChart({
     if (!isLive || !firstViewerRollup || viewerCoverageStartSeconds <= 5 * 60) return null
     const sampledMinutes = rollups.filter(rollup => viewerReadoutValue(rollup) !== null).length
     if (sampledMinutes <= 0) return null
-    const offsetLabel = formatHeatOffset(viewerCoverageStartSeconds)
+    const offsetLabel = formatMomentOffset(viewerCoverageStartSeconds)
     return `Only ${sampledMinutes} viewer-sampled minute${sampledMinutes === 1 ? '' : 's'} are available from ${offsetLabel}; earlier minutes contain chat/emote data but no viewer samples.`
   }, [firstViewerRollup, isLive, rollups, viewerCoverageStartSeconds])
   // Shared with the hub and remembered in this browser: on by default, so a
   // plain wheel over the plot zooms.
   const [scrollZoomEnabled, setScrollZoomEnabled] = useChartScrollZoom()
   const [dataPage, setDataPage] = useState(0)
+  // Z01 (round 2): the table line moves in and out of the region at 1280 px, so its open state lives here
+  const [minuteTableOpen, setMinuteTableOpen] = useState(false)
   const selectedChartOffsetSeconds = useMemo(() => {
     const explicitOffset = typeof selectedOffsetSeconds === 'number' && Number.isFinite(selectedOffsetSeconds)
       ? selectedOffsetSeconds
@@ -824,7 +836,7 @@ function AnalyticsChart({
         lastMinute: plotLastMinute,
         measuredThroughMs: liveMeasuredThroughMs,
         streamStartedAt,
-        formatOffset: formatHeatOffset,
+        formatOffset: formatMomentOffset,
         mode: liveEdgeMode,
       }),
       tone: liveEdgeMode === 'unconfirmed' ? 'unconfirmed' : 'live',
@@ -1248,7 +1260,87 @@ function AnalyticsChart({
     </button>
   ) : null
 
+  const minuteTable = (
+    <>
+      {/* d3-v2 session-original .po-md: no box, and no counts in the summary
+          ("120 of 205" disagreed with the navigator and the duration stat); the
+          pager inside names the page's time span. */}
+      <details className="ssc-md" data-chart-data-alternative data-chart-action="true" open={minuteTableOpen}
+        onToggle={event => setMinuteTableOpen(event.currentTarget.open)}>
+        <summary>
+          {/* The portal lays the summary out as flex, which drops the native marker. */}
+          <span aria-hidden="true" className="ssc-md-tw">▸</span>
+          Minute-by-minute table
+        </summary>
+        {tableRollups.length > 120 ? (
+          <div className="ssc-md-pg" data-chart-data-pager>
+            <button
+              type="button"
+              disabled={boundedDataPage >= dataPageCount - 1}
+              onClick={() => setDataPage(page => Math.min(dataPageCount - 1, page + 1))}
+            >
+              Earlier minutes
+            </button>
+            {/* Pages count from the stream start, so the newest page is "N of N". */}
+            <span data-chart-data-page-label>
+              <span data-chart-data-page-range>
+              {pagedDataRows.length > 0
+                ? `${vodClock(pagedDataRows[0]!.minuteTs, streamStartedAt)}–${vodClock(pagedDataRows[pagedDataRows.length - 1]!.minuteTs, streamStartedAt)} · `
+                : ''}
+              </span>
+              <span data-chart-data-page-count>{dataPageCount - boundedDataPage} of {dataPageCount}</span>
+            </span>
+            <button
+              type="button"
+              disabled={boundedDataPage === 0}
+              onClick={() => setDataPage(page => Math.max(0, page - 1))}
+            >
+              Later minutes
+            </button>
+          </div>
+        ) : null}
+        <div className="ssc-md-sc">
+          <table>
+            <caption className="sr-only">Measured session minutes corresponding to the activity chart, 120 rows per page.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Stream time</th><th scope="col">Viewers</th><th scope="col">Chat/min</th><th scope="col">Emotes/min</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedOutsideDataPage ? (
+                <tr aria-current="true" data-chart-selected-data-row>
+                  <th scope="row">{vodClock(selectedRollup.minuteTs, streamStartedAt)} (pinned)</th>
+                  <td>{count(viewerReadoutValue(selectedRollup))}</td><td>{count(selectedRollup.chatCount)}</td><td>{count(minuteEmoteTotal(selectedRollup))}</td>
+                </tr>
+              ) : null}
+              {pagedDataRows.map((rollup) => (
+                <tr key={rollup.minuteTs} aria-current={selectedRollup?.minuteTs === rollup.minuteTs ? 'true' : undefined}>
+                  <th scope="row">
+                    {vodClock(rollup.minuteTs, streamStartedAt)}
+                    {/* Partial (still being measured, or the minute collection stopped in); the plot leaves it off. */}
+                    {leftOffMinute && rollup.minuteTs === leftOffMinute.minuteTs
+                      ? (
+                        <span className="font-normal text-zinc-400" data-chart-data-updating={leftOffMinute.reason}>
+                          {leftOffMinute.reason === 'updating' ? ' (updating)' : ' (partial)'}
+                        </span>
+                      )
+                      : null}
+                  </th>
+                  <td>{count(viewerReadoutValue(rollup))}</td>
+                  <td>{count(rollup.chatCount)}</td>
+                  <td>{count(minuteEmoteTotal(rollup))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </>
+  )
+
   return (
+    <>
     <div
       className="sc-chart-root rounded border border-white/10 bg-[#0d0d12] p-3"
       role="region"
@@ -1430,80 +1522,10 @@ function AnalyticsChart({
         {detailOpen ? <div data-chart-selected-detail data-chart-action="true">{selectedDetailNode}</div> : null}
       </div>
 
-      {/* d3-v2 session-original .po-md: no box, and no counts in the summary
-          ("120 of 205" disagreed with the navigator and the duration stat); the
-          pager inside names the page's time span. */}
-      <details className="ssc-md" data-chart-data-alternative data-chart-action="true">
-        <summary>
-          {/* The portal lays the summary out as flex, which drops the native marker. */}
-          <span aria-hidden="true" className="ssc-md-tw">▸</span>
-          Minute-by-minute table
-        </summary>
-        {tableRollups.length > 120 ? (
-          <div className="ssc-md-pg" data-chart-data-pager>
-            <button
-              type="button"
-              disabled={boundedDataPage >= dataPageCount - 1}
-              onClick={() => setDataPage(page => Math.min(dataPageCount - 1, page + 1))}
-            >
-              Earlier minutes
-            </button>
-            {/* Pages count from the stream start, so the newest page is "N of N". */}
-            <span data-chart-data-page-label>
-              <span data-chart-data-page-range>
-              {pagedDataRows.length > 0
-                ? `${vodClock(pagedDataRows[0]!.minuteTs, streamStartedAt)}–${vodClock(pagedDataRows[pagedDataRows.length - 1]!.minuteTs, streamStartedAt)} · `
-                : ''}
-              </span>
-              <span data-chart-data-page-count>{dataPageCount - boundedDataPage} of {dataPageCount}</span>
-            </span>
-            <button
-              type="button"
-              disabled={boundedDataPage === 0}
-              onClick={() => setDataPage(page => Math.max(0, page - 1))}
-            >
-              Later minutes
-            </button>
-          </div>
-        ) : null}
-        <div className="ssc-md-sc">
-          <table>
-            <caption className="sr-only">Measured session minutes corresponding to the activity chart, 120 rows per page.</caption>
-            <thead>
-              <tr>
-                <th scope="col">Stream time</th><th scope="col">Viewers</th><th scope="col">Chat/min</th><th scope="col">Emotes/min</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selectedOutsideDataPage ? (
-                <tr aria-current="true" data-chart-selected-data-row>
-                  <th scope="row">{vodClock(selectedRollup.minuteTs, streamStartedAt)} (pinned)</th>
-                  <td>{count(viewerReadoutValue(selectedRollup))}</td><td>{count(selectedRollup.chatCount)}</td><td>{count(minuteEmoteTotal(selectedRollup))}</td>
-                </tr>
-              ) : null}
-              {pagedDataRows.map((rollup) => (
-                <tr key={rollup.minuteTs} aria-current={selectedRollup?.minuteTs === rollup.minuteTs ? 'true' : undefined}>
-                  <th scope="row">
-                    {vodClock(rollup.minuteTs, streamStartedAt)}
-                    {/* Partial (still being measured, or the minute collection stopped in); the plot leaves it off. */}
-                    {leftOffMinute && rollup.minuteTs === leftOffMinute.minuteTs
-                      ? (
-                        <span className="font-normal text-zinc-400" data-chart-data-updating={leftOffMinute.reason}>
-                          {leftOffMinute.reason === 'updating' ? ' (updating)' : ' (partial)'}
-                        </span>
-                      )
-                      : null}
-                  </th>
-                  <td>{count(viewerReadoutValue(rollup))}</td>
-                  <td>{count(rollup.chatCount)}</td>
-                  <td>{count(minuteEmoteTotal(rollup))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      {minuteTableOutside ? null : minuteTable}
     </div>
+    {minuteTableOutside ? <>{afterRegion}{minuteTable}</> : null}
+    </>
   )
 }
 

@@ -110,7 +110,7 @@ test('narrow selected actions retain full names and keep the moment list steady'
   // no chart coordinates or application placement attributes are rewritten.
   await page.locator('.channel-root__right-column').evaluate(el => { (el as HTMLElement).style.cssText = 'width:260px;min-width:260px;position:fixed;right:0;top:0;height:100vh' })
   await page.locator('[data-test-selector="chat-room-component-layout"]').evaluate(el => { (el as HTMLElement).style.minWidth = '0' })
-  const link = card.getByRole('button', { name: 'Open Analytics' })
+  const link = card.getByRole('button', { name: 'Analytics', exact: true })
   await expect.poll(() => link.evaluate(el => {
     const text = el.querySelector<HTMLElement>('.pulse-sel-link-text')!
     const range = document.createRange()
@@ -185,7 +185,7 @@ for (const width of [260, 218]) for (const images of ['loaded', 'refused'] as co
     await expect.poll(() => card.evaluate(el => el.getAnimations({ subtree: true }).every(animation => animation.playState !== 'running'))).toBe(true)
     const layouts: unknown[] = []
     const recordLayout = async (count: number) => {
-      for (const label of ['Jump in player', 'Save', 'Open Analytics']) {
+      for (const label of ['Jump in player', 'Save', 'Analytics']) {
         const action = card.getByRole('button', { name: label, exact: label !== 'Save' })
         await expect(action).toBeVisible()
         expect(await action.evaluate(button => {

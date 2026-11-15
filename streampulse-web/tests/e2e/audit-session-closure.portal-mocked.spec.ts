@@ -285,7 +285,7 @@ test.describe('portal session closure acceptance (mocked)', () => {
     const pinnedDataRow = dataAlternative.locator('[data-chart-selected-data-row]')
     await expect(pinnedDataRow).toHaveCount(0)
     await dataAlternative.getByRole('button', { name: 'Earlier minutes' }).click()
-    await expect(pageLabel).toHaveText(/^00:00:00–00:29:00 · 1 of 2$/)
+    await expect(pageLabel).toHaveText(/^0:00:00–0:29:00 · 1 of 2$/)
     await expect(dataAlternative.locator('tbody tr')).toHaveCount(30)
     await expect(dataAlternative.locator('tbody tr').first()).toContainText('0:00')
     await expect(dataAlternative.locator('tbody tr').last()).toContainText('29:00')

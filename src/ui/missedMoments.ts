@@ -1,7 +1,22 @@
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import type { PulseBackfillJob, PulseCoverage } from '../shared/messages.ts'
 
 const LATE_START_SEC = 120
+
+/**
+ * A length of time, not a point on the stream's clock (K1 is for points), in
+ * the extension's one length style: '3h 12m', '45m', '30s' (the recap header,
+ * Catch me up beside it, coverage). Games played writes the same with its own
+ * formatStreamDuration.
+ */
+export function formatSpan(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m`
+  return `${total}s`
+}
 const GAP_TAIL_SEC = 60
 
 /** Pulse payload fields used to derive backfill / load-from-start UI. */
@@ -95,10 +110,10 @@ export function resolvePulseCoverage(source: PulseCoverageSource): PulseCoverage
     canBackfill: hasVod && start > LATE_START_SEC,
     backfillReason: hasVod ? 'vod_available' : source.isLive ? 'waiting_vod' : undefined,
     message: hasVod
-      ? `Chat activity starts at ${formatHeatOffset(start)} — load earlier minutes to fill the graph.`
+      ? `Chat activity starts at ${formatMomentOffset(start)} — load earlier minutes to fill the graph.`
       : source.isLive
         ? 'VOD chat not available yet — load after Twitch publishes the archive.'
-        : `Showing chat from ${formatHeatOffset(start)}`,
+        : `Showing chat from ${formatMomentOffset(start)}`,
   }
 }
 
@@ -246,20 +261,21 @@ export function coverageCardCopy(source: PulseCoverageSource): CoverageCardCopy 
     }
   }
 
-  const start = formatHeatOffset(coverage.coverageStartOffsetSeconds)
+  const start = formatMomentOffset(coverage.coverageStartOffsetSeconds)
   const missingEnd = coverage.missingRanges?.[0]?.toOffsetSeconds
-  const missingMinutes = missingEnd != null ? formatHeatOffset(missingEnd) : null
+  // How much is missing from the start: a length, so '12m', never a clock.
+  const missing = formatSpan(missingEnd ?? coverage.coverageStartOffsetSeconds)
 
   if (coverage.hasFullStreamCoverage || coverage.coverageStartOffsetSeconds <= LATE_START_SEC) {
     return {
       title: 'Full stream tracked',
-      body: 'Moments from 00:00 → live',
+      body: 'Moments from 0:00:00 → live',
     }
   }
 
   if (coverage.state === 'waiting_for_vod' && source.isLive) {
     const missingEnd = coverage.missingRanges?.[0]?.toOffsetSeconds
-    const missingLabel = missingEnd != null ? formatHeatOffset(missingEnd) : start
+    const missingLabel = missingEnd != null ? formatMomentOffset(missingEnd) : start
     return {
       title: 'Partial coverage',
       body: `Live tracking from ${start} → now`,
@@ -271,18 +287,14 @@ export function coverageCardCopy(source: PulseCoverageSource): CoverageCardCopy 
     return {
       title: 'Partial coverage',
       body: 'Fill missing start from Twitch VOD',
-      detail: missingMinutes
-        ? `Missing first ${missingMinutes.replace(/^00:/, '')} — loads chat from the Twitch replay.`
-        : `Missing first ${start.replace(/^00:/, '')} — loads chat from the Twitch replay.`,
+      detail: `Missing first ${missing} — loads chat from the Twitch replay.`,
     }
   }
 
   return {
     title: 'Partial coverage',
     body: `Showing moments from ${start} → live`,
-    detail: missingMinutes
-      ? `Missing first ${missingMinutes.replace(/^00:/, '')}`
-      : `Missing first ${start.replace(/^00:/, '')}`,
+    detail: `Missing first ${missing}`,
   }
 }
 

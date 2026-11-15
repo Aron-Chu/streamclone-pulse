@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
-import { formatHeatOffset } from '@streampulse/pulse-core'
+import { formatMomentOffset } from '@streampulse/pulse-core'
 import {
   CHART_DRAG_INTENT_PX,
   FOLLOW_LIVE_EPSILON_SECONDS,
@@ -505,9 +505,9 @@ export const ChartPositionRail = memo(function ChartPositionRail({
 
   if (!showRail) return <div style={{ display: 'none' }} aria-hidden />
 
-  const startLabel = formatHeatOffset(normalizedViewport.startSeconds)
-  const endLabel = formatHeatOffset(normalizedViewport.endSeconds)
-  const totalLabel = formatHeatOffset(durationSeconds)
+  const startLabel = formatMomentOffset(normalizedViewport.startSeconds)
+  const endLabel = formatMomentOffset(normalizedViewport.endSeconds)
+  const totalLabel = formatMomentOffset(durationSeconds)
   // Animate thumb movement for wheel/keyboard/click jumps; skip during active
   // pointer drags and for reduced-motion users so tracking stays immediate.
   const thumbTransition = !prefersReducedMotion() && !interacting
@@ -516,7 +516,7 @@ export const ChartPositionRail = memo(function ChartPositionRail({
   const atAvailableRange = following && normalizedViewport.startSeconds <= coverageStart + FOLLOW_LIVE_EPSILON_SECONDS
   const rangeText = atAvailableRange
     ? coverageStart > FOLLOW_LIVE_EPSILON_SECONDS
-      ? `Available coverage · from ${formatHeatOffset(coverageStart)}`
+      ? `Available coverage · from ${formatMomentOffset(coverageStart)}`
       : 'Full stream'
     : `Viewing ${startLabel} – ${endLabel} of ${totalLabel}`
 

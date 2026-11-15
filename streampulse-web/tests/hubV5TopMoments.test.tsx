@@ -24,8 +24,10 @@ vi.mock('../src/lib/momentsFeedVod', async (importOriginal) => ({
   momentVods: { peek: () => undefined, read: feed.vod },
 }))
 
+import { formatLiftRatio, formatLiftWords } from '@streampulse/pulse-core'
 import { HubV5BigMoments } from '../src/ui/components/hub/v5/HubV5BigMoments'
-import { HubV5PickingUp, UP_DOWN, UP_FIRST } from '../src/ui/components/hub/v5/HubV5PickingUp'
+import { HubV5PickingUp, UP_DOWN, UP_FIRST, upOld } from '../src/ui/components/hub/v5/HubV5PickingUp'
+import { feedClockFloor } from '../src/ui/components/hub/v5/hubV5FeedModel'
 import { HubV5TopPeek, TOP_DAY_KEY, useTopToday } from '../src/ui/components/hub/v5/HubV5TopMoments'
 import { hubTopRows, topFeedRows } from '../src/ui/components/hub/v5/hubV5TopModel'
 
@@ -174,14 +176,24 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     expect(within(rail()).getByRole('heading', { name: 'Picking up now' })).toBeTruthy()
     const links = upRows().map((li) => li.querySelector('a')!)
     expect(links.map((a) => a.getAttribute('aria-label'))).toEqual([
-      'BRAVO, chat 3.0 times its usual, 30 more messages a minute, Overwatch 2. Opens the stream page.',
-      'ALPHA, chat 2.0 times its usual, 60 more messages a minute, Overwatch 2. Opens the stream page.',
-      'CHARLIE, chat 1.6 times its usual, 90 more messages a minute, Overwatch 2. Opens the stream page.',
+      'BRAVO, 3.0 times more chat, 30 more messages a minute, Overwatch 2. Opens the stream page.',
+      'ALPHA, 2.0 times more chat, 60 more messages a minute, Overwatch 2. Opens the stream page.',
+      'CHARLIE, 1.6 times more chat, 90 more messages a minute, Overwatch 2. Opens the stream page.',
     ])
     expect(links[0]!.querySelector('.hv5-up-add')!.textContent).toBe('+30/min')
-    expect(rail().querySelector('.hv5-up-n')!.textContent).toBe('3')
+    // the count shows as a number and reads as '3 channels' (a span's aria-label is not read, HUB-LIVE-9)
+    expect(rail().querySelector('.hv5-up-n > [aria-hidden]')!.textContent).toBe('3')
+    expect(rail().querySelector('.hv5-up-n .hv5-vh')!.textContent).toBe('3 channels')
     // no day's moments in the rail
     expect(within(rail()).queryByText('Top moments today')).toBeNull()
+  })
+
+  it('writes each row’s strength in pulse-core’s words, the figure still bold (Z06)', () => {
+    vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
+    render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60), hot('bravo', 3, 45, 15), hot('charlie', 1.6, 240, 150)]), nowMs: at }))
+    const strength = upRows().map((li) => li.querySelector('.hv5-f2-x')!)
+    expect(strength.map((el) => el.textContent)).toEqual([3, 2, 1.6].map((x) => formatLiftWords(x, 'chat')))
+    expect(strength.map((el) => el.querySelector('b')!.textContent)).toEqual([3, 2, 1.6].map((x) => `${formatLiftRatio(x)}×`))
   })
 
   it('shows the first 6 and Show all in place at every width (desktop took the phone order, B1 11-11)', () => {
@@ -438,3 +450,37 @@ function screener(over: Record<string, number> = {}): HubChannelScreenerV1 {
     },
   } as unknown as HubChannelScreenerV1
 }
+
+describe('Picking up now on an old answer (H01, 11-13)', () => {
+  it('says when it last knew, rather than listing channels from a stale read', () => {
+    const asOf = NOW - 20 * MIN
+    render(<MemoryRouter><HubV5PickingUp nowMs={NOW} top={{ shown: null, up: { up: [], upWindow: '' }, upAsOf: asOf, upSaved: false, art: new Map() }} /></MemoryRouter>)
+    expect(rail().querySelector('[data-up-down]')!.textContent).toBe(upOld(feedClockFloor(asOf)))
+    expect(upOld('12:40 AM')).toBe("Can't tell right now — last known at 12:40 AM.")
+    expect(within(rail()).queryByText('Loading channels picking up')).toBeNull()
+  })
+  it('drops the old rows, the count and "Show all N" in place of the line (round 2)', () => {
+    const asOf = NOW - 16 * MIN
+    const up = Array.from({ length: 8 }, (_, i) => ({ login: `c${i}`, name: `C${i}`, cat: null, streamId: `s${i}`, avatar: null, x: 6, add: 300 }))
+    render(<MemoryRouter><HubV5PickingUp nowMs={NOW} top={{ shown: null, up: { up, upWindow: '' }, upAsOf: asOf, upSaved: false, art: new Map() }} /></MemoryRouter>)
+    expect(rail().querySelector('[data-up-down]')!.textContent).toBe(upOld(feedClockFloor(asOf)))
+    expect(rail().querySelectorAll('li')).toHaveLength(0)
+    expect(within(rail()).queryByRole('button', { name: /Show all/ })).toBeNull()
+    expect(rail().querySelector('.hv5-up-n')).toBeNull()
+  })
+})
+
+describe('Top today’s strength in pulse-core’s words (Z06)', () => {
+  it('writes each row’s “6.2× more emotes” as formatLiftWords does, the figure still bold', async () => {
+    render(view({ attempt: 1 }))
+    await waitFor(() => expect(peekRows()).toHaveLength(3))
+    const rows = topFeedRows(answer(items, reads()[0]!)).slice(0, 3)
+    const strong = rows.flatMap((row, i) => (row.x != null ? [[row.x, row.kind, peekRows()[i]!] as const] : []))
+    expect(strong.length).toBeGreaterThan(0)
+    for (const [x, kind, li] of strong) {
+      const phrase = li.querySelector('.hv5-f2-x:not(.hv5-f2-plain)')!
+      expect(phrase.textContent).toBe(formatLiftWords(x, kind))
+      expect(phrase.querySelector('b')!.textContent).toBe(`${formatLiftRatio(x)}×`)
+    }
+  })
+})

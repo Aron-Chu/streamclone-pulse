@@ -17,6 +17,7 @@
  * a load, a grey block holds the card's (pick K1, 10-30); otherwise nothing.
  */
 import { Link } from 'react-router-dom'
+import { momentClockDisplay } from '@streampulse/pulse-core'
 import type { HubFeaturedSession, HubLiveChannel } from '../../../../lib/publicHub'
 import { HubV5Avatar } from './HubV5Avatar'
 import { channelHref, formatHubInt, formatHubRate } from './hubV5Model'
@@ -29,17 +30,12 @@ export const MOST_CHAT_MOMENTS = 3
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 
-/** "0:13:54": a moment's offset into the stream, always h:mm:ss (pick I1, 10-30). */
-export function mostChatOffset(seconds: number): string {
-  const total = Math.max(0, Math.floor(finite(seconds) ? seconds : 0))
-  const two = (n: number) => String(n).padStart(2, '0')
-  return `${Math.floor(total / 3600)}:${two(Math.floor((total % 3600) / 60))}:${two(total % 60)}`
-}
-
 export interface MostChatMoment {
   key: string
-  /** "0:13:54" */
+  /** "0:13:00": the moment's time into the stream through pulse-core's clock, the one every other clock uses (K1, 11-14). */
   at: string
+  /** Only the minute is known, so the time reads 'about 0:13:00'. */
+  about: boolean
   /** The moment's top emote and its count, when the reply names one. */
   emote: string | null
   count: number | null
@@ -80,9 +76,11 @@ export function mostChatModel(
       const top = Array.isArray(m.topEmotes) ? m.topEmotes[0] : undefined
       const named = text(top?.name)
       const count = top?.count
+      const clock = momentClockDisplay({ offsetSeconds: m.offsetSeconds })
       return {
         key: `${i}:${m.offsetSeconds}`,
-        at: mostChatOffset(m.offsetSeconds),
+        at: clock.text,
+        about: clock.approximate,
         // a bare topEmoteCode names the emote without a count
         emote: named || text(m.topEmoteCode) || null,
         count: named && finite(count) ? count : null,
@@ -152,7 +150,8 @@ export function HubV5MostChat({ featured, showRate, live, avatars, waiting = fal
             <span key={m.key}>
               {i ? ' · ' : null}
               <span className="hv5-mst-mo">
-                {m.at}
+                {/* the whole note is already muted and normal weight, so 'about' needs no span of its own */}
+                {m.about ? 'about ' : ''}{m.at}
                 {m.emote ? ` ${m.emote}` : ''}
                 {m.count != null ? ` ${formatHubInt(m.count)}` : ''}
               </span>

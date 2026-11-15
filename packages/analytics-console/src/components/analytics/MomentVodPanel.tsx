@@ -44,6 +44,11 @@ export interface MomentVodPanelProps extends Omit<MomentPreviewTileProps, 'playe
   leadCaption?: { leadSeconds: number; alignSeconds: number } | null
   /** Test hook: the page's hostname. */
   hostname?: () => string
+  /**
+   * G1 (11-13): a new token starts the player as Play would (a moment card's Play). The same token on a new
+   * VOD time plays again, so a lock that settles a moment later still lands on the moment's lead-in.
+   */
+  autoPlayToken?: number | null
 }
 
 export function MomentVodPanel({
@@ -52,6 +57,7 @@ export function MomentVodPanel({
   playVerb,
   leadCaption,
   hostname = () => (typeof window === 'undefined' ? '' : window.location.hostname),
+  autoPlayToken,
   ...tile
 }: MomentVodPanelProps) {
   const validVod = vodId && VOD_ID.test(vodId) ? vodId : null
@@ -85,6 +91,16 @@ export function MomentVodPanel({
     focusOnPlay.current = true
     setPlayingKey(key)
   }
+
+  // After the reset above, so a card's Play on a fresh lock still starts the player.
+  const autoPlay = autoPlayToken != null && key ? `${autoPlayToken}:${key}` : null
+  const autoPlayed = useRef<string | null>(null)
+  useEffect(() => {
+    if (!autoPlay || autoPlayed.current === autoPlay) return
+    autoPlayed.current = autoPlay
+    onPlay()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlay])
 
   const player = playing && validVod && at != null ? (
     <iframe

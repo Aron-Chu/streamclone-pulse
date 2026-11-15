@@ -13,9 +13,10 @@ import { resolve } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { momentClockDisplay } from '@streampulse/pulse-core'
 import { normalizePublicHub, type HubFeaturedSession, type HubLiveChannel, type PublicHub } from '../src/lib/publicHub'
 import AnalyticsHubV5Page from '../src/routes/analytics/AnalyticsHubV5Page'
-import { HubV5MostChat, mostChatModel, mostChatOffset } from '../src/ui/components/hub/v5/HubV5MostChat'
+import { HubV5MostChat, mostChatModel } from '../src/ui/components/hub/v5/HubV5MostChat'
 import { hubChatBasis, screenerDown } from '../src/ui/components/hub/v5/hubV5Model'
 
 const raw = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/hub_featured_session_20261030.json'), 'utf8'))
@@ -78,7 +79,7 @@ const card = (featured: HubFeaturedSession | null, avatars?: ReadonlyMap<string,
 const section = () => document.querySelector<HTMLElement>('.hv5-most')
 const moments = () => [...document.querySelectorAll('.hv5-mst-mo')].map((el) => el.textContent)
 const rate = () => section()?.querySelector('.hv5-mst-x')?.textContent ?? null
-const MOMENTS_0719 = ['0:13:54 YappingDuck 930', '1:35:54 NotLikeThis 1,286', '0:41:54 YappingDuck 319']
+const MOMENTS_0719 = ['about 0:13:00 YappingDuck 930', 'about 1:35:00 NotLikeThis 1,286', 'about 0:41:00 YappingDuck 319']
 const page = (search = '') => <MemoryRouter initialEntries={[`/analytics${search}`]}><AnalyticsHubV5Page /></MemoryRouter>
 
 beforeEach(() => {
@@ -104,8 +105,8 @@ describe('Featured stream (picks I1 and I1b, 10-30)', () => {
     expect(el.querySelector('.hv5-mst-l1')!.textContent).toBe('ゆゆうた押忍 · Just Chatting · 10,682 watching')
     // 372.5 rounds as every hub rate does
     expect(el.querySelector('.hv5-mst-l2')!.textContent).toBe('373 chat/min · recent average')
-    expect(moments()).toEqual(['0:13:54 YappingDuck 930', '1:35:54 NotLikeThis 1,286', '0:41:54 YappingDuck 319'])
-    expect(el.querySelector('.hv5-mst-note')!.textContent).toBe('Top moments: 0:13:54 YappingDuck 930 · 1:35:54 NotLikeThis 1,286 · 0:41:54 YappingDuck 319')
+    expect(moments()).toEqual(['about 0:13:00 YappingDuck 930', 'about 1:35:00 NotLikeThis 1,286', 'about 0:41:00 YappingDuck 319'])
+    expect(el.querySelector('.hv5-mst-note')!.textContent).toBe('Top moments: about 0:13:00 YappingDuck 930 · about 1:35:00 NotLikeThis 1,286 · about 0:41:00 YappingDuck 319')
   })
 
   it('names no chat/min unless the page asks for it, and keeps the rest (I1b)', () => {
@@ -179,7 +180,7 @@ describe('Featured stream (picks I1 and I1b, 10-30)', () => {
     expect(odd.name).toBe('yuyuta0702')
     expect(odd.meta).toBe('10,682 watching')
     expect(odd.href).toBe('/analytics/yuyuta0702')
-    expect(odd.moments.map((m) => [m.at, m.emote, m.count])).toEqual([['0:00:59', null, null], ['10:00:00', 'KEKW', null]])
+    expect(odd.moments.map((m) => [m.at, m.about, m.emote, m.count])).toEqual([['0:00:00', true, null, null], ['10:00:00', true, 'KEKW', null]])
     expect(mostChatModel({ ...ready, login: { x: 1 } as unknown as string })).toBeNull()
   })
 
@@ -230,12 +231,15 @@ describe('Featured stream (picks I1 and I1b, 10-30)', () => {
     expect(wait({ state: 'empty', reason: 'no_qualifying_session' }, false).container.innerHTML).toBe('')
   })
 
-  it('writes every offset as h:mm:ss', () => {
-    expect(mostChatOffset(834)).toBe('0:13:54')
-    expect(mostChatOffset(5754)).toBe('1:35:54')
-    expect(mostChatOffset(2514.9)).toBe('0:41:54')
-    expect(mostChatOffset(0)).toBe('0:00:00')
-    expect(mostChatOffset(-5)).toBe('0:00:00')
+  it("writes every offset with pulse-core's clock, the one every other clock uses (K1)", () => {
+    const at = (offsetSeconds: number) => mostChatModel({ state: 'ready', login: 'a', topMoments: [{ offsetSeconds, score: 1, label: 'Chat spike' }] })!.moments[0]
+    for (const offsetSeconds of [834, 5754, 2514.9, 0, -5]) {
+      const clock = momentClockDisplay({ offsetSeconds })
+      expect([at(offsetSeconds).at, at(offsetSeconds).about]).toEqual([clock.text, clock.approximate])
+    }
+    // the site's moments know only their minute: its start, read 'about'
+    expect([at(834).at, at(834).about]).toEqual(['0:13:00', true])
+    expect(at(-5).at).toBe('0:00:00')
   })
 })
 
@@ -250,7 +254,7 @@ describe('Featured stream on the hub page (picks I1 and I1b, 10-30)', () => {
     // its own grid row, right under Busiest now
     expect(container.querySelector('#busiest')!.nextElementSibling).toBe(el)
     expect(el.querySelector('.hv5-mst-nm')!.textContent).toBe('ゆゆうた押忍')
-    expect(moments()).toEqual(['0:13:54 YappingDuck 930', '1:35:54 NotLikeThis 1,286', '0:41:54 YappingDuck 319'])
+    expect(moments()).toEqual(['about 0:13:00 YappingDuck 930', 'about 1:35:00 NotLikeThis 1,286', 'about 0:41:00 YappingDuck 319'])
     // Busiest now ranks the same stream first at the same rate
     expect(container.querySelector('#busiest')!.textContent).toMatch(/recent average/)
     const first = container.querySelector('#busiest li[data-rank="1"]')!

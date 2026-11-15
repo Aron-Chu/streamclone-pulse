@@ -43,7 +43,7 @@ describe('ChartReadoutBand following the video', () => {
     )
     expect(markup).toContain('data-chart-readout-state="playing"')
     expect(markup).toContain('>Playing<')
-    expect(markup).toContain('05:50:00')
+    expect(markup).toContain('5:50:00')
     expect(markup).toContain('15,769')
     expect(markup).toContain('aria-live="off"')
     expect(markup).not.toContain('pulse-rb-picked')
