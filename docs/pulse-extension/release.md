@@ -137,9 +137,12 @@ metadata for operator verification, but do **not** claim self-generated
 checksums or local build metadata as cryptographic provenance.
 
 CWS screenshot evidence in this repository remains the historical v0.1.2 set;
-this release policy does not claim regenerated v0.2.1 screenshots. The tracked
-CWS screenshots under `store/cws/screenshots/` are regenerated as a side effect of
-the mocked Playwright suite and must be reviewed before they are committed.
+this release policy does not claim regenerated v0.2.1 screenshots. From 0.2.7
+the tracked CWS screenshots under `store/cws/screenshots/` are a manual capture
+on real twitch.tv (see `store/cws/README.md`). The mocked Playwright suite no
+longer writes there: its fixture frames go to
+`test-results/cws-fixture-screenshots/`. Store pictures are listing assets,
+not package evidence.
 
 ---
 

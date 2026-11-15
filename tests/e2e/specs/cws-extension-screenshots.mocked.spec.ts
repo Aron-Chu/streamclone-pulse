@@ -8,6 +8,10 @@
  * size. Each frame is one part of the real panel, cut at its own section
  * edges, beside a one-line headline: 1280x800 PNG, no resampling.
  *
+ * Fixture fallback only: frames go to test-results/cws-fixture-screenshots.
+ * The store set in store/cws/screenshots is a capture on a real Twitch stream
+ * (see store/cws/README.md), so this spec never writes there.
+ *
  * Run (headless, after `npm run build`; the headless shell loads no extension):
  * PULSE_EXTENSION_HEADLESS=1 PULSE_EXTENSION_BROWSER_CHANNEL=chromium npx playwright test tests/e2e/specs/cws-extension-screenshots.mocked.spec.ts --project=extension-mocked
  */
@@ -31,7 +35,7 @@ const MAX_CROP_CSS = Math.floor((H - 2 * FRAME_PAD) / ZOOM)
 /** Tall enough that every section below is on screen in one piece. */
 const CAPTURE_VIEWPORT = { width: 1280, height: 1100 }
 const HERE = dirname(fileURLToPath(import.meta.url))
-const OUT = join(HERE, '../../../store/cws/screenshots')
+const OUT = join(HERE, '../../../test-results/cws-fixture-screenshots')
 const FIXTURES = join(HERE, '../fixtures')
 
 /** The browser renders at ZOOM, so a clip of the panel is already store size. */
@@ -454,12 +458,12 @@ test.describe('CWS extension-on-Twitch screenshots', () => {
     const jump = card.locator('[data-moment-inspector-action="jump"]')
     await expect(jump).toContainText('Jump')
     await jump.click()
-    // The player's answer under the list.
-    const notice = root.locator('.pulse-notice').first()
-    await expect(notice).toContainText(/Jumped to .* in the VOD player/)
+    // The player's answer, in the card under its buttons.
+    const notice = card.locator('.pulse-sel-note')
+    await expect(notice).toContainText(/Jumped to .* in the VOD/)
     await page.mouse.move(0, 0)
-    // From the card's details down: its picture is a stand-in on this fixture
-    // (no Twitch VOD frames), and the whole card does not fit with the answer.
+    // From the card's details down to its answer: the picture above is a
+    // stand-in on this fixture (no Twitch VOD frames).
     const details = card.getByText('Selected moment', { exact: true })
     await scrollPanelTo(details)
     await writeStoreFrame(page, FILES[2], { from: details, to: notice }, {
