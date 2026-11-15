@@ -1044,7 +1044,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
       state = 'checkout-not-opened'
       title = 'Checkout didn\'t open. Nothing was charged.'
       body = null
-      primary = <SupporterActionButton className="pulse-journey-primary" type="button" disabled={payBusy || accountBusy} aria-busy={payBusy || accountBusy || undefined} onClick={() => void (linked ? purchase() : becomeSupporter())}>Try again</SupporterActionButton>
+      primary = <SupporterActionButton className="pulse-journey-primary" type="button" disabled={payBusy || accountBusy || checking} aria-busy={payBusy || accountBusy || checking || undefined} onClick={() => void (!linked ? becomeSupporter() : checkoutOpen && workerCheckout ? purchase() : checkAgain().then(readBilling))}>Try again</SupporterActionButton>
     }
     else if (billing.state === 'confirming' || billing.state === 'still_confirming') {
       state = billing.state === 'confirming' ? 'payment-pending' : 'still-confirming'

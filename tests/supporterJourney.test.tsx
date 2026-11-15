@@ -2147,6 +2147,23 @@ describe('approved audit state and accessibility fixes', () => {
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(2)
     } finally { view.cleanup() }
   })
+  it.each([true, false])('refreshes unavailable checkout before retrying when sales reopen: %s', async checkoutEnabled => {
+    let entitlement: SupporterEntitlement = ready('none', { installationAccountsEnabled: true })
+    const view = await mount({ account: () => linked, entitlement: () => entitlement, billing: () => ({ state: 'checkout_not_opened' }) })
+    try {
+      entitlement = { state: 'error' }
+      await view.click('Try again')
+      expect(view.state()).toBe('checkout-not-opened')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      const reads = view.calls('SUPPORTER_ENTITLEMENT')
+      entitlement = ready('none', { installationAccountsEnabled: true, checkoutEnabled })
+      await view.click('Try again')
+      expect(view.calls('SUPPORTER_ENTITLEMENT')).toBe(reads + 1)
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
+      await view.click('Try again')
+      expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(checkoutEnabled ? 2 : 1)
+    } finally { view.cleanup() }
+  })
   it('keeps one restore status region and preserves focus unless the form disappears', async () => {
     let finish!: (state: SupporterRestoreState) => void
     const pending = new Promise<SupporterRestoreState>(resolve => { finish = resolve })
