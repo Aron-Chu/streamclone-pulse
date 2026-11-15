@@ -13,11 +13,11 @@ const POLL_MS = 5_000
 const LATE_POLL_MS = 10 * 60_000
 const ATTEMPT_MAX_MS = 24 * 60 * 60_000
 const RETRY_MAX_MS = 24 * 60 * 60_000
-type Billing = { accountId: string; attemptId?: string; phase: 'waiting' | 'confirming'; until: number; watchUntil: number; nextPoll: number; url?: string }
+type Billing = { accountId: string; attemptId?: string; phase: 'waiting' | 'confirming'; until: number; watchUntil: number; nextPoll: number; url?: string; checkoutReceived?: true; notOpened?: true }
 type UnresolvedAccount = { hash: string; until: number }
 type Restore = { accountId: string; restoreId: string; secret: string; key?: string; expiresAt: string; comparisonCode: string; nextPoll: number; interval: number }
 type RestoreStart = { accountId: string; key: string; until: number; nextRetry: number }
-type PrivateJourney = { billing?: Billing; billingRetryUntil?: number; restoreRetryUntil?: number; restore?: Restore; restoreStart?: RestoreStart; unresolvedAccounts?: UnresolvedAccount[]; restoreResult?: 'restored' | 'expired' | 'conflict' }
+type PrivateJourney = { billing?: Billing; checkoutNotOpened?: string; billingRetryUntil?: number; restoreRetryUntil?: number; restore?: Restore; restoreStart?: RestoreStart; unresolvedAccounts?: UnresolvedAccount[]; restoreResult?: 'restored' | 'expired' | 'conflict' }
 type Result = { status: number; body: unknown; retryAfterMs?: number }
 type BillingAction = 'status' | 'check' | 'connect' | 'checkout' | 'resume' | 'portal' | 'portal_confirm'
 type Ports = {
@@ -83,12 +83,19 @@ export class SupporterPayFirstCoordinator {
     if (typeof raw.billingRetryUntil === 'number' && Number.isFinite(raw.billingRetryUntil) && raw.billingRetryUntil > this.now() && raw.billingRetryUntil <= this.now() + RETRY_MAX_MS) value.billingRetryUntil = raw.billingRetryUntil
     if (typeof raw.restoreRetryUntil === 'number' && Number.isFinite(raw.restoreRetryUntil) && raw.restoreRetryUntil > this.now() && raw.restoreRetryUntil <= this.now() + RETRY_MAX_MS) value.restoreRetryUntil = raw.restoreRetryUntil
     if (raw.restoreResult === 'restored' || raw.restoreResult === 'expired' || raw.restoreResult === 'conflict') value.restoreResult = raw.restoreResult
+    if (id(raw.checkoutNotOpened)) value.checkoutNotOpened = raw.checkoutNotOpened
+    if (value.billing) {
+      if (value.billing.url || value.billing.phase === 'waiting' || b.checkoutReceived === true) value.billing.checkoutReceived = true
+      else delete value.billing.checkoutReceived
+      if (b.notOpened !== true || value.billing.checkoutReceived) delete value.billing.notOpened
+    }
     return value
   }
   /** Called after a worker-owned identity mutation, before its public revision signal. */
   async reconcileIdentity(): Promise<void> {
     const value = await this.read()
     const current = await this.ports.account.localAccountId()
+    if (value.checkoutNotOpened !== current) delete value.checkoutNotOpened
     if (value.billing && value.billing.accountId !== current) {
       const hash = await accountHash(value.billing.accountId)
       value.unresolvedAccounts = [...(value.unresolvedAccounts ?? []).filter(item => item.hash !== hash), { hash, until: value.billing.until }]
@@ -170,6 +177,7 @@ export class SupporterPayFirstCoordinator {
         return { state: 'waiting', ...(value.billing.attemptId ? { attemptId: value.billing.attemptId } : {}) }
       }
       if (!portal) {
+        if (action === 'checkout' && value.billing.notOpened) return this.createOrRecoverCheckout(value, value.billing.accountId, true)
         if (action === 'check' && !value.billing.url) {
           const recovered = await this.createOrRecoverCheckout(value, value.billing.accountId, false)
           // A named expired/pending result also has an owned read that may
@@ -179,6 +187,7 @@ export class SupporterPayFirstCoordinator {
         return this.pollBilling(value, action === 'check')
       }
     }
+    if ((action === 'status' || action === 'check') && value.checkoutNotOpened && !value.billing && !value.unresolvedAccounts?.length) return { state: 'checkout_not_opened' }
     if (action === 'status' && !value.unresolvedAccounts?.length) return { state: 'idle' }
     if (action === 'resume') return { state: value.unresolvedAccounts?.length ? 'reconnect_required' : 'idle' }
     if (value.unresolvedAccounts?.length) {
@@ -228,6 +237,7 @@ export class SupporterPayFirstCoordinator {
     if (capability.status === 'pending') return { state: 'confirming' }
     if (!capability.checkoutEnabled) return { state: 'closed' }
     delete value.restoreResult
+    delete value.checkoutNotOpened
     value.billing = { accountId: installation.accountId, phase: 'confirming', until: this.now() + ATTEMPT_MAX_MS, watchUntil: this.now() + PAY_FIRST_WATCH_MS, nextPoll: this.now() + POLL_MS }
     await this.ports.write(value)
     return this.createOrRecoverCheckout(value, installation.accountId, true)
@@ -288,6 +298,7 @@ export class SupporterPayFirstCoordinator {
     return { state: 'idle' }
   }
   private async resolveBilling(value: PrivateJourney, accountId: string): Promise<void> {
+    delete value.checkoutNotOpened
     delete value.billing
     const hash = await accountHash(accountId)
     value.unresolvedAccounts = value.unresolvedAccounts?.filter(item => item.hash !== hash)
@@ -295,6 +306,7 @@ export class SupporterPayFirstCoordinator {
     await this.ports.write(value)
   }
   private async createOrRecoverCheckout(value: PrivateJourney, accountId: string, navigate: boolean): Promise<SupporterBillingState> {
+    if (value.billing?.notOpened) { delete value.billing.notOpened; await this.ports.write(value) }
     let result: Result
     try { result = await this.ports.account.withCredential(token => this.ports.request('/v1/billing/checkout', {}, token), accountId) }
     catch { return { state: 'confirming' } }
@@ -324,11 +336,13 @@ export class SupporterPayFirstCoordinator {
     if (result.status !== 200 && result.status !== 201) {
       if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); pending.nextPoll = value.billingRetryUntil; await this.ports.write(value) }
       if (navigate && (result.status === 400 || result.status === 403 || result.status === 429)) { await this.resolveBilling(value, accountId); return result.status === 429 ? { state: 'try_later', retryAt: value.billingRetryUntil! } : { state: 'error' } }
-      return { state: 'confirming', ...(pending.attemptId ? { attemptId: pending.attemptId } : {}) }
+      return pending.attemptId ? this.pollBilling(value, true) : { state: 'confirming' }
     }
     const url = validatedStripeUrl(body.url, 'checkout')
     if (!id(body.attemptId) || !url || typeof body.expiresAt !== 'string' || !Number.isFinite(Date.parse(body.expiresAt))) return { state: 'still_confirming', ...(pending.attemptId ? { attemptId: pending.attemptId } : {}) }
-    pending.attemptId = body.attemptId; pending.phase = 'waiting'; pending.url = url
+    pending.attemptId = body.attemptId; pending.phase = 'waiting'; pending.url = url; pending.checkoutReceived = true
+    delete pending.notOpened
+    delete value.checkoutNotOpened
     await this.ports.write(value)
     if (navigate) await this.ports.open(url)
     return { state: 'waiting', attemptId: body.attemptId }
@@ -342,9 +356,12 @@ export class SupporterPayFirstCoordinator {
   private async pollBilling(value: PrivateJourney, explicit = false): Promise<SupporterBillingState> {
     const pending = value.billing!
     let ownedCompletedAttempt = false
-    const projection = (): SupporterBillingState => ({ state: this.now() >= pending.until || !pending.attemptId || this.now() >= pending.watchUntil && pending.phase === 'confirming' ? 'still_confirming' : pending.phase, ...(pending.attemptId ? { attemptId: pending.attemptId } : {}), ...(this.now() >= pending.watchUntil ? { automaticPolling: false } : {}) })
+    const projection = (): SupporterBillingState => pending.notOpened && !pending.url && !pending.checkoutReceived ? { state: 'checkout_not_opened' } : ({ state: this.now() >= pending.until || !pending.attemptId || this.now() >= pending.watchUntil && pending.phase === 'confirming' ? 'still_confirming' : pending.phase, ...(pending.attemptId ? { attemptId: pending.attemptId } : {}), ...(this.now() >= pending.watchUntil ? { automaticPolling: false } : {}) })
     const late = !explicit && pending.watchUntil <= this.now()
-    if (value.billingRetryUntil && value.billingRetryUntil > this.now() || !explicit && (pending.nextPoll > this.now() || late && pending.until <= this.now())) return projection()
+    // Even a weeks-old local deadline says nothing about the server outcome.
+    // Settings reads reconcile at the bounded late cadence; no timer is kept
+    // alive after the fast watch ends.
+    if (value.billingRetryUntil && value.billingRetryUntil > this.now() || !explicit && pending.nextPoll > this.now()) return projection()
     pending.nextPoll = this.now() + (late ? LATE_POLL_MS : POLL_MS)
     await this.ports.write(value)
     if (pending.attemptId) {
@@ -353,6 +370,14 @@ export class SupporterPayFirstCoordinator {
       if (result.status === 429) { value.billingRetryUntil = this.now() + retryMs(result); pending.nextPoll = value.billingRetryUntil; await this.ports.write(value); return projection() }
       if (result.status === 200 && body.attemptId === pending.attemptId) {
         this.updateExpiry(pending, body)
+        const neverOpened = !pending.url && !pending.checkoutReceived && pending.phase !== 'waiting'
+        if (body.state === 'failed') {
+          await this.resolveBilling(value, pending.accountId)
+          if (neverOpened) { value.checkoutNotOpened = pending.accountId; await this.ports.write(value) }
+          return { state: neverOpened ? 'checkout_not_opened' : 'expired' }
+        }
+        if (body.state === 'created' && neverOpened) pending.notOpened = true
+        else delete pending.notOpened
         if (body.state === 'expired' || body.state === 'unpaid' || body.state === 'review') { await this.resolveBilling(value, pending.accountId); return { state: body.state === 'review' ? 'review' : 'expired' } }
         // `active` is an owned, historical completion of this exact attempt,
         // not evidence that the subscription is still active today.

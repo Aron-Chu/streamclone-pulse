@@ -65,7 +65,7 @@ const STATUS_LINE: Record<Exclude<CardStatus, 'active' | 'grace'>, string> = {
   checking: 'checking membership…',
   unknown: 'membership status unavailable',
   none: 'not a Supporter yet',
-  pending: 'payment confirming',
+  pending: 'payment pending',
   review: 'membership needs review',
   expired: 'Supporter ended',
 }
@@ -124,7 +124,7 @@ export function SupporterCard({ identity, membership, look, children, preview }:
       </div>
       {children}
       <details className="pulse-supporter-preview-disclosure" data-supporter-preview-disclosure>
-        <summary>Preview Supporter looks</summary>
+        <summary>{isSupporter(status) ? 'Your crest' : 'Preview Supporter looks'}</summary>
         <div className="pulse-supporter-preview-content">
           <div className="pulse-supporter-card-ladder">
             <ol className="pulse-supporter-ladder" aria-label="Crest ladder" style={{ '--fill': current > 0 ? current / (LADDER.length - 1) : 0 } as CSSProperties}>

@@ -141,7 +141,7 @@ test.describe('packaged supporter offer', () => {
       await twitch.screenshot({ path: join(CAPTURE_DIR, `accent-${finish}.png`), animations: 'disabled' })
     }
     await settings.reload()
-    await expect(settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true })).toBeChecked()
+    await expect(settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo · Equipped', exact: true })).toBeChecked()
     await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Default', exact: true }).check()
     await settings.getByRole('button', { name: 'Use default', exact: true }).click()
     await expect(settings.getByText('Default paint restored.', { exact: true })).toBeVisible()
@@ -154,7 +154,8 @@ test.describe('packaged supporter offer', () => {
     await settings.reload()
     await expect(settings.locator('[data-supporter-preview-disclosure]')).toHaveJSProperty('open', false)
     await settings.getByText('Preview Supporter looks', { exact: true }).click()
-    await expect(settings.getByRole('button', { name: 'Default active', exact: true })).toBeDisabled()
+    await expect(settings.getByRole('button', { name: 'Default active', exact: true })).toHaveCount(0)
+    await expect(settings.locator('.pulse-supporter-studio .pulse-account-link-actions')).toContainText('Default active')
     await twitch.reload()
     await expectBannerFinish(cdp, null)
     expect(cosmetics).toEqual({ enabled: true, finish: 'halo' })

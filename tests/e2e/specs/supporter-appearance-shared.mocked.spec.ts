@@ -77,5 +77,6 @@ test('Twitch tabs share one Supporter read; settings still reads fresh', async (
   await expect(studio.getByRole('group', { name: 'Wave', exact: true })).toBeVisible()
   await expect(studio.getByRole('group', { name: 'Sheen', exact: true })).toBeVisible()
   await expect(studio.locator('.pulse-supporter-wave-disclosure')).toHaveCount(0)
-  await expect(studio.getByRole('button', { name: 'Equipped', exact: true })).toBeDisabled()
+  await expect(studio.getByRole('button', { name: 'Equipped', exact: true })).toHaveCount(0)
+  await expect(studio.locator('.pulse-account-link-actions')).toContainText('Equipped')
 })
