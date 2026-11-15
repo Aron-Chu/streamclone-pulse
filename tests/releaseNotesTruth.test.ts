@@ -109,20 +109,22 @@ describe('changelog labels', () => {
     expect(releaseLifecycleLabel({ status: 'released' }, true)).toBe('Installed')
     expect(releaseLifecycleLabel({ status: 'released' }, false)).toBe('Released')
     expect(releaseLifecycleLabel({ status: 'unreleased' }, false)).toBe('Not published')
-    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.2.7', '0.1.0'])
+    expect(releases.filter(release => release.status !== 'released').map(release => release.version)).toEqual(['0.1.0'])
   })
 })
 
-describe('0.2.7 release candidate', () => {
-  it('remains unavailable for store upload until the real submission date is recorded', () => {
-    expect(entry('0.2.7')).toMatchObject({ status: 'unreleased', releasedAt: null })
+describe('0.2.7 release notes', () => {
+  it('are released, dated no later than today, and pass the store packaging gate', () => {
+    expect(entry('0.2.7')).toMatchObject({ status: 'released', releasedAt: '2026-11-15' })
+    expect(entry('0.2.7').releasedAt! <= new Date().toISOString().slice(0, 10)).toBe(true)
     const gate = evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.7', storeTarget: true })
-    expect(gate.uploadable).toBe(false)
-    expect(gate.failures).toEqual(expect.arrayContaining([expect.stringContaining('unreleased')]))
+    expect(gate.uploadable).toBe(true)
+    expect(gate.publishable).toBe(true)
+    expect(gate.failures).toEqual([])
   })
 
   it('does not say Supporter sales are open', () => {
-    expect(text(entry('0.2.7'))).toContain('Supporter sales remain closed until launch.')
+    expect(entry('0.2.7').knownIssues).toContain("Supporter isn't on sale yet, and Sign in with Twitch is not available in this release.")
   })
 
   it('renders the installed candidate and preserves the published history', () => {
