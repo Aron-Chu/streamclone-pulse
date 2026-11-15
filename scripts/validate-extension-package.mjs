@@ -39,6 +39,7 @@ import { checkDeviceLinkBundles } from './lib/device-link-package.mjs'
 import { findStoreDeveloperMarkers } from './store-artifact-policy.mjs'
 import { evaluateReleaseNotesGate, resolveCiPackageProbe } from './lib/release-notes-gate.mjs'
 import { describeStoreDevHosts } from './lib/dev-host-scan.mjs'
+import { findDynamicHtmlAssignments } from './lib/react-dom-inner-html.mjs'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
@@ -301,6 +302,10 @@ function validateDistContents(store, target) {
       if (store) {
         for (const marker of findStoreDeveloperMarkers(contents)) {
           fail(`store artifact contains developer tooling marker in ${rel}: ${marker}`)
+        }
+        // Firefox's add-on linter warns on these (UNSAFE_VAR_ASSIGNMENT); keep store bundles at zero.
+        for (const offset of findDynamicHtmlAssignments(contents)) {
+          fail(`store artifact assigns innerHTML/outerHTML from a non-string value in ${rel} at offset ${offset}`)
         }
       }
       for (const match of contents.matchAll(/streampulse-extension-runtime-target:[a-z]+/g)) {
