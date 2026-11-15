@@ -4,24 +4,44 @@
   "releases": [
     {
       "version": "0.2.7",
-      "status": "unreleased",
-      "releasedAt": null,
-      "title": "Supporter recovery and account fixes",
-      "summary": "This update prepares email recovery for Supporters and improves the way a browser handles an ended subscription. Supporter sales remain closed until launch.",
+      "status": "released",
+      "releasedAt": "2026-11-15",
+      "title": "Clearer moments and smoother replay charts",
+      "summary": "The panel leads with Top moments, moment rows show pictures, and replay charts follow the player. Charts appear sooner, labels are easier to read, and saved moments open at the right time. Supporter isn't on sale yet.",
       "preview": [
-        "Restore an existing Supporter subscription with your billing email when accounts are available.",
-        "An ended subscription can be rejoined without a stale checkout warning.",
-        "Supporter sales remain closed until launch."
+        "Top moments comes first, with pictures on every moment row.",
+        "Replay charts follow the player, and live charts appear sooner.",
+        "Clearer times and labels; saved links open at the right second."
       ],
       "new": [
-        "When available, restore Supporter on another browser using a verification link sent to your current billing email."
+        "The panel opens on Top moments, putting the stream's strongest reactions first.",
+        "Every moment row has a picture, with a clear placeholder while its Twitch frame is loading or unavailable.",
+        "Replay charts follow the VOD player, so the readout stays with what you are watching.",
+        "The Community button switches to Chat and shows the community list.",
+        "After useful saves, the extension may ask once for a store review where a review link is available."
+      ],
+      "changed": [
+        "Pages with nothing to chart stay on Chat instead of opening an empty Pulse panel."
+      ],
+      "improved": [
+        "The chart appears sooner on load, and hovering it does less work.",
+        "Chart headings, viewer labels and status messages are easier to read and fit inside the panel.",
+        "Smaller 7TV emote images reduce the amount downloaded for the panel.",
+        "Account & Supporter screens explain the current connection and checkout state more clearly. Supporter isn't on sale yet."
       ],
       "fixed": [
-        "After a subscription ends and a refund is processed, the rejoin flow can clear an outdated checkout warning."
+        "Moment times and chart labels use the same clock, including moments near the edge of a stream.",
+        "A moment's picture stays put while its VOD id arrives or its rank changes.",
+        "Saved-moment links open the VOD at the right second.",
+        "The replay emote line no longer looks flat when activity changes.",
+        "When StreamPulse cannot be reached, Back to chat lets you return to Twitch chat.",
+        "Panel spacing, scrolling and keyboard focus behave more consistently."
       ],
       "knownIssues": [
-        "Supporter sales remain closed until StreamPulse opens them.",
-        "Bookmarks, notes and watched history stay in the browser where you saved them."
+        "Supporter isn't on sale yet, and Sign in with Twitch is not available in this release.",
+        "Bookmarks, notes and watched history stay in the browser where you saved them.",
+        "Refresh open Twitch tabs after updating.",
+        "Moments you missed get a picture only if the stream has a Twitch VOD."
       ],
       "links": {
         "details": "/changelog",
