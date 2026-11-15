@@ -283,13 +283,20 @@ test.describe('toolbar popup', () => {
     setPulse({ ...rich, peaks: [{ offsetSeconds: 60, score: 99, reasons: ['emote_spike'], reasonLabel: 'Emote spike', dominantSignal: 'seventv', emoteCount: 300 }] })
     await pretendActiveTab(page, { id: 4242, url: 'https://www.twitch.tv/FixtureChan' })
     const measure = () => page.locator('.pp-moment').evaluate(moment => {
+      const line = moment.getBoundingClientRect()
       const what = moment.querySelector('.pp-moment-what')!.getBoundingClientRect()
       const reason = moment.querySelector<HTMLElement>('.pp-moment-what > span:first-child')!
-      const edge = moment.querySelector('.pp-edge')!.getBoundingClientRect()
+      const tag = moment.querySelector<HTMLElement>('.pp-edge')!
+      const edge = tag.getBoundingClientRect()
+      const time = moment.querySelector('time')!.getBoundingClientRect()
+      const edgeShown = edge.width > 0 && edge.top >= what.top - 1 && edge.bottom <= what.bottom + 1
       return {
         reasonWhole: reason.scrollWidth <= reason.clientWidth,
-        edgeShown: edge.top >= what.top - 1 && edge.bottom <= what.bottom + 1 && edge.width > 0,
+        edgeShown,
+        // Never cut: wholly on the reason's line, or wholly on the second line the box hides.
+        edgeWholeOrGone: edgeShown ? edge.right <= what.right + 1 && tag.scrollWidth <= tag.clientWidth : edge.top >= what.bottom - 1,
         oneLine: Math.round(what.height) <= Math.round(reason.getBoundingClientRect().height) + 1,
+        timeWhole: time.width > 0 && time.left >= line.left - 1 && time.right <= line.right + 1,
       }
     })
     await page.setViewportSize({ width: 320, height: 600 })
@@ -297,12 +304,17 @@ test.describe('toolbar popup', () => {
     const moment = page.locator('section.pp-card .pp-moment')
     await expect(moment).toContainText('Top moment · Emote spike')
     await expect(moment.locator('time')).toHaveText('at about 0:01:00')
-    // The popup is 320 px wide; a wider body shows the tag comes back where it fits.
-    for (const [width, edgeShown] of [[320, false], [420, true]] as const) {
+    // The popup is 320 px wide; a wider body shows the tag comes back where it fits. Where the tag
+    // fits at 320 and 420 depends on the font (CI has no Inter, and a wide fallback font moves the
+    // time to its own line rather than cut the reason), so those widths check the rule, and a
+    // roomy body shows the tag under any font.
+    for (const [width, edgeShown] of [[320, null], [420, null], [560, true]] as const) {
       await page.addStyleTag({ content: `body { width: ${width}px; }` })
       await page.setViewportSize({ width, height: 600 })
       await settle(page)
-      expect(await measure()).toEqual({ reasonWhole: true, edgeShown, oneLine: true })
+      const measured = await measure()
+      expect(measured).toMatchObject({ reasonWhole: true, edgeWholeOrGone: true, oneLine: true, timeWhole: true })
+      if (edgeShown != null) expect(measured.edgeShown).toBe(edgeShown)
       // Dropped from view or not, the tag stays in what a screen reader reads.
       expect(await moment.ariaSnapshot()).toContain('Stream start')
       await moment.screenshot({ path: info.outputPath(`popup-edge-${width}.png`) })

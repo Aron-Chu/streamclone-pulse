@@ -143,7 +143,7 @@ button { font: inherit; color: inherit; }
 .pp-emote { width: 22px; height: 22px; flex: none; object-fit: contain; }
 
 .pp-moment {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px;
   margin-top: 8px; padding-top: 8px;
   border-top: 1px solid var(--pp-line);
   font-size: 12px; color: var(--pp-text-2);
@@ -153,8 +153,9 @@ button { font: inherit; color: inherit; }
 .pp-moment span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-moment b { color: var(--pp-text); font-weight: 650; }
 .pp-moment time { margin-left: auto; flex: none; color: var(--pp-text-3); font-variant-numeric: tabular-nums; }
-/* The reason and its tag share one line, and the reason wins it: a tag that can't fit whole wraps onto a second line the box hides. It stays in the text, so it is still read out. */
-.pp-moment .pp-moment-what { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; max-height: 1lh; }
+/* The reason and its tag share one line, and the reason wins it: a tag that can't fit whole wraps onto a second line the box hides. It stays in the text, so it is still read out.
+   The box starts at the reason's own width (min-content) and grows into the line, so where a wide fallback font leaves no room for the reason beside the time, the time moves to its own line instead of the reason being cut. */
+.pp-moment .pp-moment-what { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; max-height: 1lh; flex: 1 1 auto; width: min-content; }
 /* 'Stream start' / 'Stream end' after the reason (E1): a quiet tag, plain muted text as in the panel. */
 .pp-moment .pp-edge { flex: none; color: var(--pp-text-3); font-size: 11px; font-weight: 400; }
 

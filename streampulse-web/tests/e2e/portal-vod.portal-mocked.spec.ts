@@ -165,7 +165,8 @@ test.describe('portal VOD correctness (mocked)', () => {
     await expect(fullVod).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}`)
     await expect(page.locator(`a[href*="/videos/${OTHER_VOD_ID}"]`)).toHaveCount(0)
 
-    const moment = page.getByRole('region', { name: 'Pulse moments recap' }).getByRole('button', { name: /^Moment 1 0:04:00/ })
+    // A recap moment is minute-only, so its clock reads "about" (K1, shared momentClockDisplay).
+    const moment = page.getByRole('region', { name: 'Pulse moments recap' }).getByRole('button', { name: /^Moment 1 about 0:04:00/ })
     await expect(moment).toBeVisible()
     await moment.click()
     const jump = page.getByRole('link', { name: /^Open VOD at / }).first()
