@@ -36,7 +36,11 @@ vi.mock('./analytics/ConsoleBits.tsx', () => ({
   ),
   CoverageStartMetaItem: () => null,
 }))
-vi.mock('./analytics/MomentReviewPanel.tsx', () => ({ MomentReviewPanel: () => null }))
+vi.mock('./analytics/MomentReviewPanel.tsx', () => ({
+  MomentReviewPanel: ({ loadFailed }: { loadFailed?: boolean }) => (
+    <div data-testid="moment-review-panel" data-load-failed={loadFailed ? 'true' : 'false'} />
+  ),
+}))
 vi.mock('./analytics/PastBroadcastBanner.tsx', () => ({ SessionLifecycleMeta: () => null }))
 vi.mock('./analytics/StreamQualityBanner.tsx', () => ({ StreamQualityBanner: () => null }))
 vi.mock('./analytics/TopEmoteTable.tsx', () => ({ TopEmoteTable: () => null }))
@@ -238,6 +242,26 @@ describe('AnalyticsConsole data quality chip without data', () => {
 
     await screen.findByText(/Unable to load session data for/)
     expect(screen.getByTestId('data-quality').textContent).toBe('Data quality: —')
+  })
+
+  // OP3-DES-011: the Moments tab says the read failed, not "moments appear once minutes land".
+  it('tells the Moments panel the session read failed', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'xqc', items, sources: [], updatedAt: 0 })
+    api.getAnalyticsStream.mockRejectedValue(serverError)
+    renderConsole('/analytics/xqc/320567744986')
+
+    await screen.findByText(/Unable to load session data for/)
+    await waitFor(() => expect(screen.getByTestId('moment-review-panel').getAttribute('data-load-failed')).toBe('true'))
+  })
+
+  it('does not tell the Moments panel a loaded session failed', async () => {
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'xqc', items, sources: [], updatedAt: 0 })
+    api.getAnalyticsStream.mockResolvedValue({
+      channel: 'xqc', state: 'historical', stream: items[0], rollups: [], topEmotes: [], sources: [], updatedAt: 0,
+    })
+    renderConsole('/analytics/xqc/320567744986')
+
+    await waitFor(() => expect(screen.getByTestId('moment-review-panel').getAttribute('data-load-failed')).toBe('false'))
   })
 
   it('gives the verdict once the session has loaded', async () => {
