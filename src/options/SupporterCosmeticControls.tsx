@@ -166,7 +166,7 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
     : null
   /** The swatch's state, as a chip on it: the paint you are trying, and the one in use. */
   const chip = (id: SupporterCosmetics['finish'] | null) => tryOnly || unknown ? null : <>
-    {id === appliedFinish ? <span data-chip="equipped"> · Equipped</span> : null}
+    {id === appliedFinish ? <small data-chip="equipped"> · Equipped</small> : null}
     {id === finish && !unchanged ? <span className="pulse-supporter-tile-chip" data-chip="previewing">Previewing</span> : null}
   </>
 

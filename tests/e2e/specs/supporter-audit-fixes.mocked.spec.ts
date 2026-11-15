@@ -50,7 +50,7 @@ for (const explicit of [false, true]) test(`a weeks-old completed checkout clear
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
   if (explicit) {
-    await expect(page.locator('.pulse-supporter-card-who')).toContainText('Payment pending')
+    await expect(page.locator('.pulse-supporter-card-who')).toContainText('payment pending')
     await page.getByRole('button', { name: 'Check payment status', exact: true }).click()
   }
   await expect(page.locator('.pulse-supporter-card-who')).toContainText('Supporter ended')

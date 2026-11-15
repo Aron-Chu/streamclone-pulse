@@ -65,7 +65,7 @@ const STATUS_LINE: Record<Exclude<CardStatus, 'active' | 'grace'>, string> = {
   checking: 'checking membership…',
   unknown: 'membership status unavailable',
   none: 'not a Supporter yet',
-  pending: 'Payment pending',
+  pending: 'payment pending',
   review: 'membership needs review',
   expired: 'Supporter ended',
 }

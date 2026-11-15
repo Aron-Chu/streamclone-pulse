@@ -84,7 +84,7 @@ export function SupporterRestore({ onClose, onRestored, onCheckMembership }: { o
       <input id="supporter-restore-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} readOnly={busy} />
       <div className="pulse-account-link-actions pulse-journey-actions">
         <SupporterActionButton aria-busy={busy || undefined} className="pulse-journey-primary" type="submit" disabled={busy}>{busy ? 'Preparing…' : 'Send restore link'}</SupporterActionButton>
-        <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={() => void leave()}>Back</SupporterActionButton>
+        <SupporterActionButton type="button" disabled={busy} onClick={() => void leave()}>Back</SupporterActionButton>
       </div>
       <p className="pulse-supporter-detail"><a href={POLICY_LINKS.supportBillingEmail} target="_blank" rel="noopener noreferrer">Can't get into that email? Support can help</a></p>
     </form> : null}
@@ -109,7 +109,7 @@ export function SupporterRestore({ onClose, onRestored, onCheckMembership }: { o
       {view.state === 'finished' ? <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={onCheckMembership}>Check Supporter status</SupporterActionButton> : null}
       {view.state === 'unavailable' ? <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={() => void request('status')}>Check again</SupporterActionButton> : null}
       {view.state === 'expired' || view.state === 'error' ? <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={() => void request('cancel')}>Enter email again</SupporterActionButton> : null}
-      <SupporterActionButton aria-busy={busy || undefined} type="button" disabled={busy} onClick={() => void leave()}>Back</SupporterActionButton>
+      <SupporterActionButton type="button" disabled={busy} onClick={() => void leave()}>Back</SupporterActionButton>
       {view.state !== 'loading' ? <a href={POLICY_LINKS.supportBillingEmail} target="_blank" rel="noopener noreferrer">Contact support</a> : null}
     </div>}
     {view.state === 'pending' || view.state === 'uncertain' ? <p className="pulse-supporter-detail">Going back stops checking this request; the email may still arrive.</p> : null}

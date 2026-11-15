@@ -708,7 +708,7 @@ describe('Twitch sign-in off (stage A): signed out', () => {
       expect(view.link()?.href).toBe('https://streampulse.stream/account/billing')
       expect(view.text()).toContain(accountReference(ACCOUNT_ID))
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(0)
-      // Payment pending, then confirmed: the card follows on its own backoff.
+      // payment pending, then confirmed: the card follows on its own backoff.
       membership = ready('pending')
       await act(async () => { await vi.advanceTimersByTimeAsync(MEMBERSHIP_WATCH_DELAYS_MS[0]) })
       expect(view.state()).toBe('payment-pending')
@@ -1231,7 +1231,7 @@ describe('Your card states only the membership it knows', () => {
   })
 
   it.each<[string, SupporterEntitlement, string]>([
-    ['pending', ready('pending', { supportPeriods: 0 }), 'StreamPulse account · Payment pending'],
+    ['pending', ready('pending', { supportPeriods: 0 }), 'StreamPulse account · payment pending'],
     ['none', ready('none'), 'StreamPulse account · not a Supporter yet'],
     ['expired', ready('expired'), 'StreamPulse account · Supporter ended'],
   ])('states a known %s membership as the server reports it', async (_status, entitlement, line) => {
@@ -2111,7 +2111,7 @@ describe('approved audit state and accessibility fixes', () => {
     const view = await mount({ account: () => linked, entitlement: () => ready('expired', { installationAccountsEnabled: true }), billing: () => billing })
     try {
       const line = () => view.host.querySelector('.pulse-supporter-card-who > span')?.textContent
-      expect(line()).toContain('Payment pending')
+      expect(line()).toContain('payment pending')
       expect(line()).not.toContain('Supporter ended')
       billing = { state: 'idle' }
       await view.click('Check payment status')
@@ -2134,6 +2134,7 @@ describe('approved audit state and accessibility fixes', () => {
       expect(button.disabled).toBe(false)
       expect(button.getAttribute('aria-disabled')).toBe('true')
       expect(button.getAttribute('aria-busy')).toBe('true')
+      expect([...view.host.querySelectorAll('button')].find(button => button.textContent === 'Sign out')?.hasAttribute('aria-busy')).toBe(false)
       expect(status.textContent).toContain('Preparing checkout…')
       await act(async () => { button.click() })
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(1)
@@ -2145,6 +2146,42 @@ describe('approved audit state and accessibility fixes', () => {
       expect(view.host.querySelector('.pulse-journey-status')).toBe(status)
       await view.click('Try again')
       expect(view.calls('SUPPORTER_BILLING', 'checkout')).toBe(2)
+    } finally { view.cleanup() }
+  })
+  it.each(['none', 'expired'])('uses the resolved review state in the card over server status %s', async status => {
+    const view = await mount({ account: () => linked, entitlement: () => ready(status, { installationAccountsEnabled: true }), billing: () => ({ state: 'review' }) })
+    try {
+      expect(view.state()).toBe('review')
+      expect(view.host.querySelector('.pulse-supporter-card-who > span')?.textContent).toContain('membership needs review')
+      expect(view.buttons()).not.toContain('Become a Supporter')
+    } finally { view.cleanup() }
+  })
+  it.each(['check', 'resume'])('marks only the acting %s button busy without announcing checkout preparation', async action => {
+    let finish!: (state: SupporterBillingState) => void
+    const pending = new Promise<SupporterBillingState>(resolve => { finish = resolve })
+    let payment: SupporterBillingState = { state: 'idle' }
+    const view = await mount({ account: () => linked, entitlement: () => ready('none', { installationAccountsEnabled: true }), billing: current => {
+      if (current === 'checkout') payment = { state: 'waiting', automaticPolling: false }
+      return current === action ? pending : payment
+    } })
+    try {
+      await view.click('Become a Supporter')
+      const controls = [...view.host.querySelectorAll('button')]
+      const check = controls.find(button => button.textContent === 'Check payment status')!
+      const resume = controls.find(button => button.textContent === 'Return to Stripe checkout')!
+      const acting = action === 'check' ? check : resume
+      const blocked = action === 'check' ? resume : check
+      acting.focus()
+      await act(async () => acting.click())
+      expect(document.activeElement).toBe(acting)
+      expect(acting.getAttribute('aria-busy')).toBe('true')
+      expect(blocked.hasAttribute('aria-busy')).toBe(false)
+      expect(blocked.getAttribute('aria-disabled')).toBe('true')
+      expect(view.host.querySelector('.pulse-journey-status')?.textContent).not.toContain('Preparing checkout…')
+      await act(async () => acting.click())
+      expect(view.calls('SUPPORTER_BILLING', action)).toBe(1)
+      await act(async () => finish(payment))
+      expect(acting.hasAttribute('aria-busy')).toBe(false)
     } finally { view.cleanup() }
   })
   it.each([true, false])('refreshes unavailable checkout before retrying when sales reopen: %s', async checkoutEnabled => {
@@ -2181,6 +2218,7 @@ describe('approved audit state and accessibility fixes', () => {
       expect(document.activeElement).toBe(send)
       expect(send.disabled).toBe(false)
       expect(send.getAttribute('aria-busy')).toBe('true')
+      expect([...restore.querySelectorAll('button')].find(button => button.textContent === 'Back')?.hasAttribute('aria-busy')).toBe(false)
       await view.submitRestore()
       expect(view.calls('SUPPORTER_RESTORE', 'start')).toBe(1)
       await act(async () => finish(waiting))

@@ -73,16 +73,16 @@ const hostStyles = `
   }
   .pulse-account-link-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   .pulse-account-link-actions button, .pulse-account-link-actions a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px; border: 1px solid ${theme.border}; border-radius: 9px; background: ${theme.panel}; color: ${theme.textPrimary}; font: inherit; font-weight: 700; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease; }
-  .pulse-account-link-actions button:hover:not(:disabled), .pulse-account-link-actions a:hover { border-color: ${theme.accentSoft}; background: ${theme.panelElevated}; color: ${theme.textPrimary}; transform: translateY(-1px); }
-  .pulse-account-link-actions button:active:not(:disabled), .pulse-account-link-actions a:active { transform: translateY(0); }
-  .pulse-account-link-actions button:disabled { opacity: .6; cursor: not-allowed; }
+  .pulse-account-link-actions button:hover:not(:disabled, [aria-disabled="true"]), .pulse-account-link-actions a:hover { border-color: ${theme.accentSoft}; background: ${theme.panelElevated}; color: ${theme.textPrimary}; transform: translateY(-1px); }
+  .pulse-account-link-actions button:active:not(:disabled, [aria-disabled="true"]), .pulse-account-link-actions a:active { transform: translateY(0); }
+  .pulse-account-link-actions button:is(:disabled, [aria-disabled="true"]) { opacity: .6; cursor: not-allowed; }
   .pulse-account-link-actions button[aria-busy="true"] { cursor: wait; }
   .pulse-supporter-remove-intent { display: inline-flex; align-items: center; min-height: 44px; margin-left: 4px; padding: 6px 12px; border: 1px solid ${theme.border}; border-radius: 9px; background: ${theme.panel}; color: ${theme.textPrimary}; font: inherit; font-weight: 700; cursor: pointer; }
-  .pulse-supporter-remove-intent:hover:not(:disabled) { border-color: ${theme.accentSoft}; background: ${theme.panelElevated}; }
-  .pulse-supporter-remove-intent:disabled { opacity: .6; cursor: not-allowed; }
+  .pulse-supporter-remove-intent:hover:not(:disabled, [aria-disabled="true"]) { border-color: ${theme.accentSoft}; background: ${theme.panelElevated}; }
+  .pulse-supporter-remove-intent:is(:disabled, [aria-disabled="true"]) { opacity: .6; cursor: not-allowed; }
   /* Sign in with Twitch: Twitch brand purple with the white glitch mark. */
   .pulse-account-link-actions .pulse-twitch-signin { gap: 8px; border-color: #9146FF; background: #9146FF; color: #FFFFFF; }
-  .pulse-account-link-actions .pulse-twitch-signin:hover:not(:disabled) { border-color: #772CE8; background: #772CE8; color: #FFFFFF; }
+  .pulse-account-link-actions .pulse-twitch-signin:hover:not(:disabled, [aria-disabled="true"]) { border-color: #772CE8; background: #772CE8; color: #FFFFFF; }
   .pulse-twitch-glitch { flex: none; }
   .pulse-account-link-actions .pulse-account-quiet-button { border-color: transparent; background: transparent; color: ${theme.textSecondary}; font-weight: 600; }
   .pulse-account-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -136,7 +136,7 @@ const hostStyles = `
   .pulse-journey-facts dt { color: ${theme.textMuted}; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
   .pulse-journey-facts dd { margin: 0; color: ${theme.textPrimary}; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .pulse-account-link-actions .pulse-journey-primary { border-color: var(--pulse-accent-strong, #7c3aed); background: var(--pulse-accent-strong, #7c3aed); color: var(--pulse-on-accent, #fff); text-decoration: none; }
-  .pulse-account-link-actions .pulse-journey-primary:hover:not(:disabled) { border-color: var(--pulse-accent-strong, #7c3aed); background: var(--pulse-accent-strong, #7c3aed); color: var(--pulse-on-accent, #fff); filter: brightness(0.9); }
+  .pulse-account-link-actions .pulse-journey-primary:hover:not(:disabled, [aria-disabled="true"]) { border-color: var(--pulse-accent-strong, #7c3aed); background: var(--pulse-accent-strong, #7c3aed); color: var(--pulse-on-accent, #fff); filter: brightness(0.9); }
   .pulse-account-link-actions .pulse-journey-secondary-link { text-decoration: none; }
   .pulse-account-link-code { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: .08em; color: ${theme.textPrimary}; user-select: all; }
   .pulse-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -187,8 +187,8 @@ const hostStyles = `
   .pulse-supporter-policies a, .pulse-supporter-withdrawal-link { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0 4px; color: ${theme.textSecondary}; font-weight: 600; }
   .pulse-supporter-policies a:hover, .pulse-supporter-withdrawal-link:hover { color: var(--pulse-accent-soft, #c4b5fd); }
   .pulse-journey-inline-link { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px; padding: 0 4px; border: 0; background: transparent; color: ${theme.textPrimary}; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-  .pulse-journey-inline-link:hover:not(:disabled) { color: var(--pulse-accent-soft, #c4b5fd); }
-  .pulse-journey-inline-link:disabled { opacity: .6; cursor: not-allowed; }
+  .pulse-journey-inline-link:hover:not(:disabled, [aria-disabled="true"]) { color: var(--pulse-accent-soft, #c4b5fd); }
+  .pulse-journey-inline-link:is(:disabled, [aria-disabled="true"]) { opacity: .6; cursor: not-allowed; }
   .pulse-supporter-save-status { min-height: 20px; }
 
   /* ---------- Account & Supporter, direction B "Your card" (2026-10-07) ----------
@@ -291,14 +291,13 @@ const hostStyles = `
   .pulse-supporter-swatch { background: var(--spk-fin, ${theme.accentSoft}); border-radius: 50%; box-shadow: 0 0 8px rgba(var(--spk-fin-rgb, 167, 139, 250), 0.55); flex: none; height: 10px; width: 10px; }
   .pulse-supporter-tile small { font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-supporter-tile-chip { background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 999px; box-sizing: border-box; color: ${theme.textPrimary}; font-size: 12px; font-weight: 700; line-height: 16px; max-width: 100%; overflow: hidden; padding: 0 6px; pointer-events: none; text-overflow: ellipsis; white-space: nowrap; }
-  .pulse-supporter-tile-chip[data-chip="equipped"] { border-color: rgba(45, 212, 191, 0.7); }
   .pulse-supporter-tile-chip[data-chip="previewing"] { border-color: ${theme.accentSoft}; border-style: dashed; }
   .pulse-supporter-look-row:disabled .pulse-supporter-tile { cursor: wait; }
   .pulse-supporter-seg { background: ${theme.bgCanvas}; border: 1px solid ${theme.border}; border-radius: 10px; display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; }
   .pulse-supporter-seg button { background: transparent; border: 0; border-radius: 7px; color: ${theme.textSecondary}; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; min-height: 30px; padding: 5px 11px; }
   .pulse-supporter-seg button[aria-pressed="true"] { background: rgba(var(--pulse-accent-rgb, 139, 92, 246), 0.2); outline: 2px solid ${theme.textPrimary}; outline-offset: -2px; color: ${theme.accentInk}; }
   .pulse-supporter-seg button:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
-  .pulse-supporter-seg button:disabled { cursor: not-allowed; opacity: 0.6; }
+  .pulse-supporter-seg button:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; opacity: 0.6; }
   .pulse-supporter-look-row [data-supporter-perk] { margin-top: 6px; }
   @media (max-width: 620px) {
     .pulse-supporter-look-row { grid-template-columns: minmax(0, 1fr); }
@@ -874,7 +873,7 @@ const hostStyles = `
     font-weight: 700;
     padding: 6px 10px;
   }
-  .pulse-segment-btn:hover:not(:disabled) {
+  .pulse-segment-btn:hover:not(:disabled, [aria-disabled="true"]) {
     background: rgba(255, 255, 255, 0.075);
     color: ${theme.textPrimary};
   }
