@@ -50,15 +50,14 @@ describe('Updates & Changelog layout', () => {
     act(() => root.unmount())
   })
 
-  it('omits empty categories for the unreleased candidate and keeps its limitations open', async () => {
+  it('omits empty categories for an earlier release and keeps its limitations open', async () => {
+    vi.stubGlobal('chrome', { runtime: { getManifest: () => ({ version: '0.1.1' }) } })
     document.body.append(host)
     const root = createRoot(host)
     await act(async () => root.render(<ChangelogCard variant="history" />))
     const release = host.querySelector('.pulse-changelog-release[data-changelog-open="true"]')!
     const groups = [...release.querySelectorAll<HTMLDetailsElement>('details.pulse-changelog-category')]
     expect(groups.map(group => ({ key: group.dataset.releaseCategory, open: group.open }))).toEqual([
-      { key: 'new', open: false },
-      { key: 'fixed', open: false },
       { key: 'knownIssues', open: true },
     ])
     act(() => root.unmount())

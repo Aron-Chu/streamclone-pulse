@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation, useParams } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@streampulse/analytics-console', () => ({
   configureAnalyticsApi: vi.fn(),
@@ -25,6 +25,18 @@ vi.mock('@streampulse/analytics-console', () => ({
 }))
 
 import { AppRoutes } from '../src/routes/index'
+
+// These checks cover route selection and public console props. Warm the real
+// lazy modules before rendering so a cold Vite transform is not measured by
+// Testing Library's DOM-appearance deadline. Route components and assertions
+// still run unchanged through AppRoutes and its Suspense boundaries.
+beforeAll(async () => {
+  await Promise.all([
+    import('../src/routes/analytics/ChannelAnalyticsPage'),
+    import('../src/routes/analytics/ConsoleChannelView'),
+    import('../src/ui/components/analytics/AnalyticsFigmaShell'),
+  ])
+})
 
 function LocationProbe() {
   const { pathname } = useLocation()
