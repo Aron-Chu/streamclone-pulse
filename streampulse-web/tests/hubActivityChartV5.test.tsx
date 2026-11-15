@@ -169,12 +169,13 @@ describe('HubActivityChart: the d3 activity card on SpChart', () => {
     expect(navigator.compareDocumentPosition(lanes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('hosts the d3 navigator with an overview and the bucket readout', () => {
+  it('hosts the d3 navigator as the extension rail (no overview) with the bucket readout', () => {
     const { container } = render(<HubActivityChart points={day()} windowMinutes={1440} channelCount={100} bucketMinutes={6} />)
     const navigator = container.querySelector('[data-hub-chart-navigator]')!
     expect(navigator.className).toContain('spc-nav')
     expect(navigator.getAttribute('data-hub-chart-navigator-window')).toBe('0:239')
-    expect(navigator.querySelector('.hx-chart-navigator__overview')).toBeTruthy()
+    // the extension rail: the chart above shows the activity, so the track draws no silhouette (Z1, 11-02)
+    expect(navigator.querySelector('.hx-chart-navigator__overview')).toBeNull()
     expect(navigator.querySelector('.hx-chart-navigator__bucket-count')!.textContent).toBe('240 of 240 6-min buckets · bars 6-min')
     expect(navigator.querySelector('.hx-chart-navigator__readout strong')!.textContent).toBe('Full 24 h')
     // the box-only plot hook (wheel anchor, bridge bounds) has the exact plot box
