@@ -24,6 +24,73 @@ function fixture(twitchSignIn = false) {
   return { supporter, pay, recreate, request, open, identityChanged, stored: () => ({ account, key: key && typeof key === 'object' ? (key as { key: string }).key : key, bootstrap: key, journey }), advance: (ms: number) => { clock += ms }, setMembership: (changes: Record<string, unknown>) => { membership = { ...membership, ...changes } }, seed: (value: { account?: unknown; journey?: unknown }) => { if ('account' in value) account = value.account; if ('journey' in value) journey = value.journey } }
 }
 
+describe('historical checkout reconciliation', () => {
+  it.each(['created', 'failed'] as const)('offers an honest retry after an owned %s read without a checkout URL', async state => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials })
+      .mockResolvedValueOnce({ status: 503, body: { error: 'billing_unavailable', attemptId, expiresAt: iso(23 * 3_600_000) } })
+      .mockResolvedValueOnce({ status: 200, body: { attemptId, state } })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'checkout_not_opened' })
+    expect(f.open).not.toHaveBeenCalled()
+    expect(Boolean((f.stored().journey as { billing?: unknown }).billing)).toBe(state === 'created')
+    expect(await f.recreate().billing('status')).toEqual({ state: 'checkout_not_opened' })
+    const next = state === 'created' ? attemptId : '55555555-5555-4555-8555-555555555555'
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId: next, url: 'https://checkout.stripe.com/c/pay/retry', expiresAt: iso(23 * 3_600_000) } })
+    expect(await f.pay.billing('checkout')).toEqual({ state: 'waiting', attemptId: next })
+    expect(f.open).toHaveBeenCalledTimes(1)
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(2)
+  })
+  it.each(['open', 'pending'] as const)('keeps confirming when the owned %s session exists even without its URL', async state => {
+    const f = fixture()
+    f.request.mockResolvedValueOnce({ status: 201, body: credentials })
+      .mockResolvedValueOnce({ status: 503, body: { error: 'billing_unavailable', attemptId } })
+      .mockResolvedValueOnce({ status: 200, body: { attemptId, state } })
+    expect(await f.pay.billing('checkout')).toMatchObject({ state: 'confirming', attemptId })
+    expect(f.stored().journey).toHaveProperty('billing')
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
+  })
+  it('never claims nothing was charged after this browser received a URL', async () => {
+    const f = fixture()
+    f.seed({ account: { kind: 'linked', ...credentials }, journey: { billing: {
+      accountId: credentials.accountId, attemptId, phase: 'waiting', until: now + 3_600_000,
+      watchUntil: now + 60_000, nextPoll: now, url: 'https://checkout.stripe.com/c/pay/received',
+    } } })
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'failed' } })
+    expect(await f.pay.billing('check')).toEqual({ state: 'expired' })
+    expect(f.stored().journey).not.toHaveProperty('billing')
+  })
+  it('keeps a bounded late cadence and blocks another payment when the old attempt is unresolved', async () => {
+    const f = fixture()
+    f.seed({ account: { kind: 'linked', ...credentials }, journey: { billing: {
+      accountId: credentials.accountId, attemptId, phase: 'confirming', until: now - 86_400_000,
+      watchUntil: now - 86_400_000, nextPoll: now, url: 'https://checkout.stripe.com/c/pay/unresolved',
+    } } })
+    f.setMembership({ status: 'expired' })
+    f.request.mockResolvedValue({ status: 200, body: { attemptId, state: 'pending' } })
+    expect(await f.pay.billing('status')).toMatchObject({ state: 'still_confirming' })
+    await f.pay.billing('checkout'); await f.pay.billing('status')
+    expect(f.request).toHaveBeenCalledTimes(1)
+    expect(f.stored().journey).toHaveProperty('billing')
+    f.advance(10 * 60_000)
+    await f.pay.billing('status')
+    expect(f.request).toHaveBeenCalledTimes(2)
+    expect(f.request.mock.calls.every(([path]) => path === `/v1/billing/checkout/${attemptId}`)).toBe(true)
+  })
+  it.each(['status', 'check'] as const)('clears a weeks-old completed attempt on %s with an ended membership', async action => {
+    const f = fixture()
+    f.seed({ account: { kind: 'linked', ...credentials, installation: true }, journey: { billing: {
+      accountId: credentials.accountId, attemptId, phase: 'confirming',
+      until: now - 17 * 86_400_000, watchUntil: now - 18 * 86_400_000,
+      nextPoll: now - 60_000, url: 'https://checkout.stripe.com/c/pay/historical',
+    } } })
+    f.setMembership({ status: 'expired', restoreEligible: false, accessUntil: undefined })
+    f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'active', expiresAt: iso(-17 * 86_400_000) } })
+    expect(await f.recreate().billing(action)).toEqual({ state: 'idle' })
+    expect(f.stored().journey).not.toHaveProperty('billing')
+    expect(f.request.mock.calls.map(([path]) => path)).toEqual([`/v1/billing/checkout/${attemptId}`])
+  })
+})
+
 describe('explicit nonpaid installation connection', () => {
   it('does not enroll on reads; concurrent explicit connections enroll once without starting payment', async () => {
     const f = fixture()
@@ -379,13 +446,14 @@ describe('worker-private pay-first journey', () => {
     expect(await f.pay.billing('status')).toEqual({ state: 'expired' })
     expect(f.request).toHaveBeenLastCalledWith(`/v1/billing/checkout/${attemptId}`, undefined, credentials.token)
   })
-  it('does not reinterpret an unproven failed attempt as permission to pay again', async () => {
+  it('clears an owned failed attempt and waits for a deliberate retry', async () => {
     const f = fixture()
     f.request.mockResolvedValueOnce({ status: 201, body: credentials }).mockResolvedValueOnce({ status: 409, body: { error: 'checkout_pending', attemptId } })
     await f.pay.billing('checkout'); f.advance(5000)
     f.request.mockResolvedValueOnce({ status: 200, body: { attemptId, state: 'failed' } })
-    expect(await f.pay.billing('status')).toMatchObject({ state: 'confirming', attemptId })
-    expect(await f.pay.billing('checkout')).toMatchObject({ state: 'confirming', attemptId })
+    expect(await f.pay.billing('status')).toEqual({ state: 'checkout_not_opened' })
+    expect(await f.pay.billing('status')).toEqual({ state: 'checkout_not_opened' })
+    expect(f.stored().journey).not.toHaveProperty('billing')
     expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/checkout')).toHaveLength(1)
   })
   it('restores with private polling secret, requires target credentials, and wakes without a settings page', async () => {
