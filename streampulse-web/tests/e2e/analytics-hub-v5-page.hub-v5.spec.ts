@@ -331,10 +331,10 @@ test('Busiest now shows Twitch’s live picture while Live and keeps the face fo
   await expect(tiles.first()).toHaveAttribute('data-login', 'xqc')
   await expect(tiles.first().locator('img.hv5-bzv-prev[data-shown]')).toBeVisible()
   await expect(tiles.first().locator('img.hv5-bzv-prev')).toHaveAttribute('src', /\/previews-ttv\/live_user_xqc-440x248\.jpg\?t=\d+$/)
-  await expect(tiles.first().locator('a')).toHaveAttribute('aria-label', /\. Twitch’s live picture, can be a few minutes old\.$/)
+  await expect(tiles.first().locator('a')).toHaveAccessibleName(/\. Twitch’s live picture, can be a few minutes old\.$/)
   // the second channel's picture is Twitch's offline one: its face stays
   await expect(tiles.nth(1).locator('img.hv5-bzv-prev')).toHaveCount(0)
-  await expect(tiles.nth(1).locator('a')).toHaveAttribute('aria-label', /\. Profile picture\.$/)
+  await expect(tiles.nth(1).locator('a')).toHaveAccessibleName(/\. Profile picture\.$/)
   await noSideScroll(page)
 })
 
@@ -375,6 +375,8 @@ test('Channels sorts, filters, shows more and marks what is not measured', async
   await expect(rows).toHaveCount(10)
 
   const vs = channels.locator('[data-sort="vs"]')
+  // Its name starts with the words it shows, then says what "avg" is.
+  await expect(vs).toHaveAccessibleName('vs avg (the channel’s own average)')
   await vs.click()
   await expect(vs).toBeFocused()
   await expect(channels.locator('th.c-vs')).toHaveAttribute('aria-sort', 'descending')

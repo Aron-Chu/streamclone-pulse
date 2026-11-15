@@ -152,6 +152,8 @@ export interface AnalyticsConsoleProps {
   layer2LoadMode?: 'eager' | 'staged'
   /** When true, use lg breakpoint for 3-col layout (portal Figma shell already consumes sidebar width). */
   shellNested?: boolean
+  /** 2 when the host page already has its own h1 above the console (a reviewed recap's summary). */
+  headingLevel?: 1 | 2
   /** Enable sync / re-sync CTAs (local dev portal; hosted waits for API-008 rate limits). */
   enableSyncActions?: boolean
   buildSessionPath?: (login: string, streamId: string) => string
@@ -203,12 +205,15 @@ export function AnalyticsConsole({
   enableLayoutControls = false,
   layer2LoadMode = 'eager',
   shellNested = false,
+  headingLevel = 1,
   enableSyncActions = false,
   buildSessionPath = defaultSessionPath,
   buildChannelPath = defaultChannelPath,
   suggestChannel,
   renderSelectedMomentActions,
 }: AnalyticsConsoleProps = {}) {
+  // One h1 per page: under a reviewed recap's summary the session heading is a level below it.
+  const SessionHeading = headingLevel === 2 ? 'h2' : 'h1'
   const navigate = useNavigate()
   const location = useLocation()
   const { login = '', streamId = '' } = useParams<{ login: string; streamId?: string }>()
@@ -1797,13 +1802,13 @@ export function AnalyticsConsole({
             {statusHeading == null ? (
               <SessionChannelAvatar name={channelName} src={twitchChannel?.avatar} live={sessionIsLive} />
             ) : null}
-            <h1
+            <SessionHeading
               className="ssp-h1 line-clamp-2 text-2xl font-black leading-[1.08] text-white [overflow-wrap:anywhere] lg:text-[32px]"
               title={headerTitle}
               data-channel-name={statusHeading == null || undefined}
             >
               {headerTitle}
-            </h1>
+            </SessionHeading>
             {channelNotRecorded ? null : (
               <div className="ssp-meta-w" data-session-meta data-session-meta-pending={sessionReadPending || undefined}>
                 <div className="ssp-meta">

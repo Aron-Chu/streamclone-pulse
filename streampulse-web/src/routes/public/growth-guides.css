@@ -2,6 +2,9 @@
 .growth-guide__related { display: flex; flex-direction: column; gap: .8rem; margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid #3f3f46; }
 .growth-guide__related a { display: flex; align-items: center; min-height: 44px; color: #c4b5fd; text-decoration: underline; text-underline-offset: 3px; }
 .growth-guide__source { font-size: .875rem; }
+.recap-index { padding-left: 1.2rem; }
+.recap-index li + li { margin-top: 1rem; }
+.recap-index p { margin: .25rem 0 0; }
 .timestamp-form { display: grid; gap: 1.25rem; margin: 2rem 0; }
 .timestamp-form label, .timestamp-result label { display: block; color: #f4f4f5; font-weight: 700; margin-bottom: .5rem; }
 .timestamp-form input, .timestamp-result input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: .75rem; border: 1px solid #71717a; border-radius: .5rem; background: #18181b; color: #fafafa; font: inherit; }

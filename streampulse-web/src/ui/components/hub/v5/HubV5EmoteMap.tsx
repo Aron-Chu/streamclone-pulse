@@ -158,8 +158,8 @@ function animatedFlags(top: readonly HubEmote[] | undefined): ReadonlySet<string
   return out
 }
 
-function Chg({ c }: { c: EmoteChange }) {
-  return <span className="hv5-chg" data-dir={c.dir} title={c.words}>{c.text}</span>
+function Chg({ c, hidden }: { c: EmoteChange; hidden?: boolean }) {
+  return <span className="hv5-chg" data-dir={c.dir} title={c.words} aria-hidden={hidden || undefined}>{c.text}</span>
 }
 
 /** The picture at its size; a sharper file is loaded before it replaces the one on show, so nothing blinks. */
@@ -508,12 +508,14 @@ function EmoteDrivers({ a, peakT, bucketMinutes, intervalWindow, behind, avatars
         <ol className="hv5-el-cols hv5-es-rows" key={key}>
           {drivers.map((d, i) => (
             <li key={momentRowKey(d.m)} style={{ animationDelay: `${i * 18}ms` }}>
-              <Link to={momentHref(d.m)} className="hv5-el-r" aria-label={driverAria(d, a.e.name)}>
-                <span className="hv5-el-i">{i + 1}</span>
+              <Link to={momentHref(d.m)} className="hv5-el-r">
+                <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
                 <HubV5Avatar login={d.m.login!} name={d.m.displayName || d.m.login!} src={d.m.profileImageUrl || avatars?.get(d.m.login!)} size={24} />
-                <span className="hv5-el-n">{d.m.displayName || d.m.login}<small>{d.m.category || 'No category'}</small></span>
-                <span className="hv5-el-v hv5-es-uses">{formatHubInt(d.uses)} uses</span>
-                <span className="hv5-el-v hv5-es-at">{d.m.at != null ? `▶ ${hubClock(d.m.at)}` : ''}</span>
+                <span className="hv5-el-n" aria-hidden="true">{d.m.displayName || d.m.login}<small>{d.m.category || 'No category'}</small></span>
+                <span className="hv5-el-v hv5-es-uses" aria-hidden="true">{formatHubInt(d.uses)} uses</span>
+                <span className="hv5-el-v hv5-es-at" aria-hidden="true">{d.m.at != null ? `▶ ${hubClock(d.m.at)}` : ''}</span>
+                {/* What screen readers hear: the visible parts are hidden from them, so the name never disagrees with them (WCAG 2.5.3). */}
+                <span className="hv5-vh">{driverAria(d, a.e.name)}</span>
               </Link>
             </li>
           ))}
@@ -1251,7 +1253,7 @@ export function HubV5EmoteMap({
                 aria-label={`Zoom into ${f.name}, ${f.share} of uses`}
                 onClick={() => flyTo(f)}
               >
-                {heat ? null : <i aria-hidden="true" />}<span>{f.name}</span><b>{f.share}</b>
+                {heat ? null : <i aria-hidden="true" />}<span>{f.name}</span>{' '}<b>{f.share}</b>
               </button>
             ))}
             <div ref={vpRef} className="hv5-em-vp" style={{ top: LABEL_TOP }}>
@@ -1301,7 +1303,7 @@ export function HubV5EmoteMap({
             <span className="hv5-em-lg">
               {layout?.fields.map((f) => (
                 <button key={f.field} type="button" data-field={f.field} aria-label={`Zoom into ${f.name}, ${f.share} of uses`} onClick={() => flyTo(f)}>
-                  {heat ? null : <i aria-hidden="true" />}{f.name}<b>{f.share}</b>
+                  {heat ? null : <i aria-hidden="true" />}{f.name}{' '}<b>{f.share}</b>
                 </button>
               ))}
             </span>
@@ -1363,12 +1365,14 @@ export function HubV5EmoteMap({
                     <ol className="hv5-el-cols" key={`m|${selected.id}`}>
                       {spammed.map((r, i) => (
                         <li key={r.key} style={{ animationDelay: `${i * 18}ms` }}>
-                          <Link to={r.href} className="hv5-el-r" aria-label={momentRowAria(r)}>
-                            <span className="hv5-el-i">{i + 1}</span>
+                          <Link to={r.href} className="hv5-el-r">
+                            <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
                             <HubV5Avatar login={r.login} name={r.displayName} src={r.moment.profileImageUrl || avatars?.get(r.login)} size={24} />
-                            <span className="hv5-el-n">{r.displayName}<small>{r.moment.category || 'No category'}</small></span>
-                            {'x' in r.cmp ? <span className="hv5-el-v hv5-el-x">{formatHubMultiplier(r.cmp.x)}</span> : <span className="hv5-el-v" title={r.cmp.long}>{r.cmp.why}</span>}
-                            <span className="hv5-el-v">{r.at != null ? feedAgo(r.at, nowMs) : ''}</span>
+                            <span className="hv5-el-n" aria-hidden="true">{r.displayName}<small>{r.moment.category || 'No category'}</small></span>
+                            {'x' in r.cmp ? <span className="hv5-el-v hv5-el-x" aria-hidden="true">{formatHubMultiplier(r.cmp.x)}</span> : <span className="hv5-el-v" title={r.cmp.long} aria-hidden="true">{r.cmp.why}</span>}
+                            <span className="hv5-el-v" aria-hidden="true">{r.at != null ? feedAgo(r.at, nowMs) : ''}</span>
+                            {/* What screen readers hear: the visible parts are hidden from them, so the name never disagrees with them (WCAG 2.5.3). */}
+                            <span className="hv5-vh">{momentRowAria(r)}</span>
                           </Link>
                         </li>
                       ))}
@@ -1389,14 +1393,15 @@ export function HubV5EmoteMap({
                       <button
                         type="button"
                         className="hv5-el-r"
-                        aria-label={`#${i + 1} ${x.a.e.name}, ${providerName(x.a.prov)}, ${shareOf(x.v)} of uses${hourOk ? `, ${emoteChange(x.a, data.windowLabel).words}` : ''}. Shows its busiest interval and the streams behind it.`}
                         onClick={() => select(x.a.id)}
                       >
-                        <span className="hv5-el-i">{i + 1}</span>
-                        <span className="hv5-el-im"><EmotePic a={x.a} size={24} /></span>
-                        <span className="hv5-el-n">{x.a.e.name}<small>{providerName(x.a.prov)}</small></span>
-                        <span className="hv5-el-v">{shareOf(x.v)}</span>
-                        {hourOk ? <Chg c={emoteChange(x.a, data.windowLabel)} /> : <span />}
+                        <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
+                        <span className="hv5-el-im" aria-hidden="true"><EmotePic a={x.a} size={24} /></span>
+                        <span className="hv5-el-n" aria-hidden="true">{x.a.e.name}<small>{providerName(x.a.prov)}</small></span>
+                        <span className="hv5-el-v" aria-hidden="true">{shareOf(x.v)}</span>
+                        {hourOk ? <Chg c={emoteChange(x.a, data.windowLabel)} hidden /> : <span />}
+                        {/* What screen readers hear: the visible parts are hidden from them, so the name never disagrees with them (WCAG 2.5.3). */}
+                        <span className="hv5-vh">{`#${i + 1} ${x.a.e.name}, ${providerName(x.a.prov)}, ${shareOf(x.v)} of uses${hourOk ? `, ${emoteChange(x.a, data.windowLabel).words}` : ''}. Shows its busiest interval and the streams behind it.`}</span>
                       </button>
                     </li>
                   ))}

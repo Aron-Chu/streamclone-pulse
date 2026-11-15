@@ -68,9 +68,9 @@ describe('public timestamp tool', () => {
 })
 
 describe('public growth page content and metadata', () => {
-  it('gives the three real pages unique indexable self-canonicals', () => {
+  it('gives the real pages unique indexable self-canonicals', () => {
     for (const page of GROWTH_PAGES) expect(resolvePageMetadata(page.canonicalPath)).toMatchObject({ title: page.title, canonicalPath: page.canonicalPath, robots: 'index,follow' })
-    expect(new Set(GROWTH_PAGES.map(page => page.title)).size).toBe(3)
+    expect(new Set(GROWTH_PAGES.map(page => page.title)).size).toBe(GROWTH_PAGES.length)
     expect(resolvePageMetadata('/tools/nonexistent').robots).toBe('noindex,nofollow')
   })
   it('keeps the tracked-stream and local-bookmark limitations visible in the workflow guide', () => {

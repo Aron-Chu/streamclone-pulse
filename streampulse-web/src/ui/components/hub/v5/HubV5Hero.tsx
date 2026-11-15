@@ -117,10 +117,11 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emo
               key={c.login}
               className="hv5-hero-chip"
               to={channelHref(c)}
-              aria-label={`${c.displayName || c.login}, live, ${formatHubInt(c.viewers || 0)} viewers`}
             >
               <HubV5Avatar login={c.login} name={c.displayName} src={c.profileImageUrl} size={24} />
+              {/* The name is the visible name, then what is only seen in the picture: label in name (WCAG 2.5.3). */}
               <span>{c.displayName || c.login}</span>
+              <span className="hv5-vh">, live, {formatHubInt(c.viewers || 0)} viewers</span>
             </Link>
           ))}
         </p>

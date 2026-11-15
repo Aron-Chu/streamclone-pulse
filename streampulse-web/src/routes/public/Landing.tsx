@@ -233,6 +233,8 @@ function Footer({ discord }: { discord: string | null }) {
             <Link to="/docs">Extension guide</Link>
             <Link to="/tools/twitch-vod-timestamp-link">Twitch timestamp tool</Link>
             <Link to="/guides/find-twitch-moments">Find Twitch moments</Link>
+            <Link to="/guides/twitch-vod-timestamps">Twitch VOD timestamps</Link>
+            <Link to="/recaps">Stream recaps</Link>
             <Link to="/status">Status</Link>
             <Link to="/changelog">Changelog</Link>
           </div>
