@@ -779,22 +779,58 @@
 }
 .hv5-hero-install :is(.chrome-mark, .edge-mark, .firefox-mark) { width: 20px; height: 20px; }
 .hv5-hero-install .chrome-mark::after { inset: 5.6px; }
-/* B1 (11-11): above 719 px the promo is one slim line, its title and "Free · no account", with the same Add to Chrome
-   button at its end; the sample stage and the paragraph stay on the phone card's "See how it works" only */
+/* O1 (11-16): above 719 px the original card is back (C1 10-21, P2 10-22), in place of B1's slim line (11-11): the
+   panel's three pictures crossfading beside the title, the line and the same Add to Chrome. The sample stage stays on
+   the phone card's "See how it works" only. */
+.hv5-pr-frames {
+  position: relative;
+  width: 338px;
+  max-width: 100%;
+  aspect-ratio: 338 / 188;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #0e0e11;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+.hub-v5 .hv5-mast .hv5-pr-frames img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left top;
+  opacity: 0;
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.hub-v5 .hv5-mast .hv5-pr-frames img.on { opacity: 1; }
+.hv5-pr-frame-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7px;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+.hv5-pr-frame-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgb(255 255 255 / 0.28); transition: background-color 0.3s; }
+.hv5-pr-frame-dots i.on { background: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-mast .hv5-pr-frames img { transition: none; }
+}
 @media (min-width: 720px) {
   .hub-v5 .hv5-mast .hv5-promo {
-    display: flex;
-    align-items: center;
-    width: min(980px, 100%);
-    padding: 8px 8px 8px 20px;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 18px;
+    width: min(760px, 100%);
+    padding: 12px;
     border-radius: 14px;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
   }
-  .hub-v5 .hv5-mast :is(.hv5-pr-stage, .hv5-pr-p) { display: none; }
-  .hv5-pr-copy { flex: 1 1 auto; flex-flow: row wrap; align-items: center; gap: 4px 12px; }
-  .hub-v5 .hv5-mast .hv5-pr-h { font: 700 16px/22px var(--sp-font); letter-spacing: 0; }
-  .hub-v5 .hv5-mast .hv5-pr-free { margin-top: 0; }
-  .hub-v5 .hv5-mast .hv5-promo a.hv5-hero-install { order: 1; margin-left: auto; }
+  .hub-v5 .hv5-mast .hv5-pr-stage { display: none; }
+  .hv5-pr-copy { flex-flow: row wrap; align-items: center; gap: 6px 12px; }
+  .hub-v5 .hv5-mast :is(.hv5-pr-h, .hv5-pr-p) { flex-basis: 100%; }
+  .hub-v5 .hv5-mast .hv5-pr-h { font: 700 17px/22px var(--sp-font); letter-spacing: 0; }
+  .hub-v5 .hv5-mast .hv5-pr-p { margin: 0; font: 500 13px/18px var(--sp-font); }
+  .hub-v5 .hv5-mast :is(.hv5-promo a.hv5-hero-install, .hv5-pr-free) { margin-top: 4px; }
 }
 .hv5-hero-try {
   display: flex;
