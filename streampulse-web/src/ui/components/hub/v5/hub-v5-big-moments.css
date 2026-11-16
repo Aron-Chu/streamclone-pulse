@@ -27,13 +27,25 @@
   }
 }
 /* A1 (11-12): the two lists that follow each other, Picking up now and Top moments today, sit side by side; the order does not change.
-   From 1200 px since W1 (11-13), as at 1440. */
+   From 1200 px since W1 (11-13), as at 1440; up to 1535 px since L1 (11-16, below). */
 @media (min-width: 1200px) {
   .hub-v5.hub-d3:has(> .hv5-big) {
     grid-template-areas: "mast mast" "fol fol" "peek busy" "act act" "intv intv" "rail big" "emo games" "chan chan" "meas meas";
   }
   .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
     grid-template-areas: "mast mast" "fol fol" "peek busy" "most most" "act act" "intv intv" "rail big" "emo games" "chan chan" "meas meas";
+  }
+  /* beside Top moments today, Picking up now fills its column (11-16) */
+  .hub-v5.hub-d3:has(> .hv5-big) > .hv5-latest { max-width: none; }
+}
+/* L1 (11-16): from 1536 px Picking up now is the column on the right (hub-v5.css), so Top moments today spans the main
+   column on its own */
+@media (min-width: 1536px) {
+  .hub-v5.hub-d3:has(> .hv5-big) {
+    grid-template-areas: "mast mast mast" "fol fol fol" "peek busy rail" "act act rail" "intv intv rail" "big big rail" "emo games rail" "chan chan rail" "meas meas rail";
+  }
+  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
+    grid-template-areas: "mast mast mast" "fol fol fol" "peek busy rail" "most most rail" "act act rail" "intv intv rail" "big big rail" "emo games rail" "chan chan rail" "meas meas rail";
   }
 }
 
