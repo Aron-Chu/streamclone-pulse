@@ -138,6 +138,75 @@
       "replay": {
         "state": "unavailable"
       }
+    },
+    {
+      "kind": "stream",
+      "login": "caedrel",
+      "streamId": "316184301521",
+      "displayName": "Caedrel",
+      "game": "League of Legends, World of Warcraft",
+      "title": "Caedrel Twitch chat recap, Nov 8, 2026 — StreamPulse",
+      "description": "Caedrel's Nov 8 Twitch chat recap: 199,662 measured messages, a 1,284-message minute, and the stream's top three reactions with LO, LOL and HOLY emote totals.",
+      "summary": "Caedrel's November 8, 2026 broadcast was titled T1 vs BLG Worlds Semifinals and covered League of Legends and World of Warcraft. The recorded broadcast lasted 8 hours 52 minutes, starting at 17:03 UTC. Across 533 measured minute rollups, StreamPulse counted 199,662 messages and 257,044 emote uses, including 241,008 from 7TV. LO led the measured emotes with 16,292 uses, followed by LOL (15,558) and HOLY (8,713). The highest-ranked interior reaction was at 5:03:03 (score 41): that minute had 745 messages and 2,114 emote uses, with WalterVibe leading the moment's emotes. The next reactions were at 8:31:03 (38), which also had the measured chat peak of 1,284 messages, and 5:34:03 (37). Scores rank reactions within this broadcast; they do not identify what happened in the video. Replay alignment and availability have not been verified, so this page provides an aggregate archive summary with replay actions disabled.",
+      "startedAt": "2026-11-08T17:03:57Z",
+      "durationSeconds": 31964,
+      "nonMissingRollupMinutes": 533,
+      "coverage": {
+        "state": "complete",
+        "description": "The portal reports full Pulse coverage: 533 measured rollups across the 533 minute buckets spanned by the recorded broadcast. The final measured bucket is 19 seconds after the recorded end. The recorded duration is retained unchanged; minute-bucket coverage is not a guarantee that every chat message was captured."
+      },
+      "moments": [
+        {
+          "offsetSeconds": 18183,
+          "score": 41,
+          "chatCount": 745,
+          "emoteCount": 2114
+        },
+        {
+          "offsetSeconds": 30663,
+          "score": 38,
+          "chatCount": 1284,
+          "emoteCount": 1661
+        },
+        {
+          "offsetSeconds": 20043,
+          "score": 37,
+          "chatCount": 752,
+          "emoteCount": 1184
+        }
+      ],
+      "topEmotes": [
+        {
+          "code": "LO",
+          "count": 16292
+        },
+        {
+          "code": "LOL",
+          "count": 15558
+        },
+        {
+          "code": "HOLY",
+          "count": 8713
+        },
+        {
+          "code": "HAH",
+          "count": 8287
+        },
+        {
+          "code": "gg",
+          "count": 7630
+        }
+      ],
+      "review": {
+        "approved": true,
+        "reviewedAt": "2026-11-16T20:41:34.472Z",
+        "expiresAt": "2026-11-23T20:41:34.472Z",
+        "sourceUrl": "https://api.streampulse.stream/v1/portal/analytics/streams/316184301521/recap",
+        "notes": "Codex manually reviewed this aggregate snapshot on 2026-11-16 UTC from sanitized public portal GETs: stream history, recap, summary and minutes. Identity and recorded duration agree. The final measured bucket is 19 seconds after the recorded end, within the existing 30-minute rule; no duration was shortened. The portal reports full_pulse and 100% measured-minute coverage. The top three use pulse-core mergeRecapMoments with the measured end's closing edge, excluding opening/closing moments. 7TV contributes 241,008 measured emote uses. Caedrel is classified English by the public TwitchTracker profile (https://twitchtracker.com/caedrel); the English stream title was reviewed, but the portal exposes no historical per-stream language field. The VOD ID in metadata alone is insufficient verification: replay stays unavailable. Aron's PR review is the publication gate. Review expires in seven days."
+      },
+      "replay": {
+        "state": "unavailable"
+      }
     }
   ]
 }
