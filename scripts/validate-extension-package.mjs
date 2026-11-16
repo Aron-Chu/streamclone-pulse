@@ -18,6 +18,7 @@ import {
 import {
   assertExactStringList,
   firefoxDataCollectionErrors,
+  firefoxDesktopCompatibilityErrors,
   permissionAllowlistForTarget,
   readExportedBooleanFlag,
 } from './extension-permission-allowlists.mjs'
@@ -144,15 +145,9 @@ function validateManifest(manifest, target) {
     if (manifest.background?.type !== 'module') {
       fail('Firefox background module must declare background.type=module')
     }
-    if (manifest.browser_specific_settings?.gecko?.id !== 'streampulse@streampulse.stream') {
-      fail('Firefox manifest requires stable browser_specific_settings.gecko.id')
-    } else if (manifest.browser_specific_settings?.gecko?.strict_min_version !== '140.0') {
-      fail('Firefox desktop manifest requires strict_min_version=140.0 for built-in consent')
-    } else if (manifest.browser_specific_settings?.gecko_android?.strict_min_version !== '142.0') {
-      // Firefox for Android reads data_collection_permissions from 142 on;
-      // without this, web-ext lint warns KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION.
-      fail('Firefox manifest requires gecko_android.strict_min_version=142.0 for data_collection_permissions')
-    } else {
+    const compatibilityErrors = firefoxDesktopCompatibilityErrors(manifest.browser_specific_settings)
+    for (const err of compatibilityErrors) fail(err)
+    if (compatibilityErrors.length === 0) {
       try {
         const analyticsEnabled = readExportedBooleanFlag(
           readFileSync(join(root, 'src/shared/extensionAnalytics.ts'), 'utf8'),

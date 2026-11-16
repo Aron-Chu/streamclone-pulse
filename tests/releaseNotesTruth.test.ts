@@ -117,7 +117,7 @@ describe('0.2.7 release notes', () => {
   it('are released, dated no later than today, and pass the store packaging gate', () => {
     expect(entry('0.2.7')).toMatchObject({ status: 'released', releasedAt: '2026-11-15' })
     expect(entry('0.2.7').releasedAt! <= new Date().toISOString().slice(0, 10)).toBe(true)
-    const gate = evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.7', storeTarget: true })
+    const gate = evaluateReleaseNotesGate({ notes: { ...releaseNotes, currentVersion: '0.2.7' }, version: '0.2.7', storeTarget: true })
     expect(gate.uploadable).toBe(true)
     expect(gate.publishable).toBe(true)
     expect(gate.failures).toEqual([])
@@ -126,14 +126,25 @@ describe('0.2.7 release notes', () => {
   it('does not say Supporter sales are open', () => {
     expect(entry('0.2.7').knownIssues).toContain("Supporter isn't on sale yet, and Sign in with Twitch is not available in this release.")
   })
+})
+
+describe('0.2.8 Firefox release notes', () => {
+  it('passes packaging with the desktop-only correction and retains 0.2.7 history', () => {
+    expect(releaseNotes.currentVersion).toBe('0.2.8')
+    expect(entry('0.2.8')).toMatchObject({ status: 'released', releasedAt: '2026-11-16' })
+    expect(entry('0.2.8').summary).toContain('Firefox 140 ESR')
+    expect(entry('0.2.8').summary).toContain('Firefox for Android remains unsupported')
+    expect(evaluateReleaseNotesGate({ notes: releaseNotes, version: '0.2.8', storeTarget: true }).failures).toEqual([])
+    expect(entry('0.2.7').title).toBe('Clearer moments and smoother replay charts')
+  })
 
   it('renders the installed candidate and preserves the published history', () => {
     const rendered = renderToStaticMarkup(createElement(ChangelogCard, { variant: 'history', startCollapsed: true }))
     const document = new JSDOM(rendered).window.document
     expect([...document.querySelectorAll('.pulse-changelog-release .pulse-changelog-version')].map(node => node.textContent))
-      .toEqual(['v0.2.7', 'v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
+      .toEqual(['v0.2.8', 'v0.2.7', 'v0.2.6', 'v0.2.1', 'v0.1.1', 'v0.1.0'])
     expect(document.querySelector('.pulse-changelog-lifecycle')?.textContent).toBe('Installed')
     const whatsNew = renderToStaticMarkup(createElement(WhatsNewCard, { onSeeAll: () => {} }))
-    expect(new JSDOM(whatsNew).window.document.querySelector('[data-whatsnew] .pulse-changelog-version')?.textContent).toBe('v0.2.7')
+    expect(new JSDOM(whatsNew).window.document.querySelector('[data-whatsnew] .pulse-changelog-version')?.textContent).toBe('v0.2.8')
   })
 })
