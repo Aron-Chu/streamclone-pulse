@@ -49,15 +49,16 @@
   width: 100%;
   min-width: 0;
 }
-/* 26px: the 14px rail with the extension's 6px above and below, all of it a hit area. */
+/* 30px, the old bar's height, so the chart's loading space still fits and the page does not
+   jump when the chart arrives: the 14px rail with 8px above and below, all of it a hit area. */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track-shell {
   position: relative;
-  height: 26px;
+  height: 30px;
   min-width: 0;
 }
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track {
   position: relative;
-  height: 26px;
+  height: 30px;
   overflow: visible;
   border: 0;
   border-radius: 0;
@@ -69,13 +70,13 @@
   content: none;
   display: none;
 }
-/* The rail: a 14px box at y 6-20 (extension .pulse-chart-rail-track). Its 1px border
+/* The rail: a 14px box at y 8-22 (extension .pulse-chart-rail-track). Its 1px border
    sits just outside the window's 0-100% span, so the pill stays inside it, as the
    extension's thumb does. */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track-fill {
   position: absolute;
   inset-inline: -1px;
-  top: 6px;
+  top: 8px;
   height: 14px;
   box-sizing: border-box;
   border: 1px solid var(--spc-nav-rail-border);
@@ -96,7 +97,7 @@
 /* The window: the solid pill inside the rail's border (extension .pulse-chart-rail-thumb). */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__window {
   position: absolute;
-  top: 7px;
+  top: 9px;
   height: 12px;
   min-width: 2px;
   border: 0;
@@ -124,7 +125,7 @@
 /* The edges: a 1px line just inside each end of the pill (extension resize handles). */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .spc-nav__grip {
   position: absolute;
-  top: 7px;
+  top: 9px;
   width: 1px;
   height: 12px;
   background: var(--spc-nav-edge);
@@ -137,7 +138,7 @@
   background: var(--spc-nav-edge-active);
 }
 
-/* Handles: 44x44 hit areas centred on the track (y -9 to 35) over each edge of the pill. */
+/* Handles: 44x44 hit areas centred on the track (y -7 to 37) over each edge of the pill. */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__handles {
   position: absolute;
   inset: 0;
