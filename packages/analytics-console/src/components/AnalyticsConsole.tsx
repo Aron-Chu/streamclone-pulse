@@ -1595,7 +1595,9 @@ export function AnalyticsConsole({
   const RightColumn = focusLayout ? 'details' : 'aside'
 
   // L1: the Moments tab's placeholders stand while the recap answer is out (the recap slot's own rule)
-  const momentsRecapPending = !recapRetrying && (recapQuery.isLoading || (recapQuery.isPending && !detail))
+  // A failed session read never starts the recap request (it waits on the chart detail), so it is not
+  // pending: the Moments panel says the read failed instead of loading forever (OP3-DES-011).
+  const momentsRecapPending = !sessionLoadFailed && !recapRetrying && (recapQuery.isLoading || (recapQuery.isPending && !detail))
   const momentsFramed = Boolean(streamVodId) && typeof detail?.vodAlignSeconds === 'number'
     && Number.isFinite(detail.vodAlignSeconds)
   // d3-v2 session-original: "Watch VOD" sits in the meta line; only a missing VOD still says why under the chart.
@@ -1722,6 +1724,7 @@ export function AnalyticsConsole({
                   heatmapPoints={heatmapPoints}
                   streamStartedAt={stream?.startedAt}
                   streamEdges={sessionEdges}
+                  loadFailed={sessionLoadFailed}
                   embedded
                 />
               )}
@@ -1737,6 +1740,7 @@ export function AnalyticsConsole({
               heatmapPoints={layer2Enabled ? heatmapPoints : undefined}
               streamStartedAt={stream?.startedAt}
               streamEdges={sessionEdges}
+              loadFailed={sessionLoadFailed}
               embedded
             />
           )

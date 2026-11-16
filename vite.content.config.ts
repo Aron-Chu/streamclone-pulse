@@ -6,6 +6,7 @@ import { transform as transformCss } from 'lightningcss'
 import { shadowStyles } from './src/ui/theme.ts'
 import { overlayBaseStyles } from './src/ui/overlayStyles.ts'
 import { resolveTwitchSignInStage } from './scripts/extension-target.mjs'
+import { reactDomNoInnerHtml } from './scripts/lib/react-dom-inner-html.mjs'
 import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionTarget, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
@@ -39,6 +40,8 @@ const minifiedShadowStyles = transformCss({
 export default defineConfig({
   root,
   plugins: [
+    // content/twitch.js bundles its own React DOM (Firefox add-on lint).
+    reactDomNoInnerHtml(),
     react(),
     {
       name: 'minify-extension-shadow-theme-css',

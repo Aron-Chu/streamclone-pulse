@@ -135,3 +135,18 @@ export function firefoxDataCollectionErrors(actual, source, analyticsEnabled, di
   }
   return errors
 }
+
+/** Declaring gecko_android opts into Android and locks AMO's compatibility checkbox. */
+export function firefoxDesktopCompatibilityErrors(settings) {
+  const errors = []
+  if (settings?.gecko?.id !== 'streampulse@streampulse.stream') {
+    errors.push('Firefox manifest requires stable browser_specific_settings.gecko.id')
+  }
+  if (settings?.gecko?.strict_min_version !== '140.0') {
+    errors.push('Firefox desktop manifest requires strict_min_version=140.0 for built-in consent')
+  }
+  if (Object.hasOwn(settings ?? {}, 'gecko_android')) {
+    errors.push('Firefox is desktop-only: omit browser_specific_settings.gecko_android')
+  }
+  return errors
+}

@@ -1,5 +1,13 @@
 # StreamPulse extension — Release policy
 
+November 16 source candidate: **0.2.8**, a Firefox desktop-only correction
+that retains Firefox 140 ESR support and includes the React build hardening.
+The release notes are dated November 16 for packaging. Store approval is
+separate. Existing Chrome and Edge 0.2.7 submissions and the v0.2.7 tag
+remain unchanged; this release is intended for Firefox only.
+
+Earlier checkpoints below are historical.
+
 Canonical release process for store packages and the public portal. Companion:
 [`reliability-public-release-plan.md`](./reliability-public-release-plan.md),
 [`chrome-web-store-review-checklist.md`](./chrome-web-store-review-checklist.md).

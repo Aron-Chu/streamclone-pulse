@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import perks from '../src/shared/supporter-perks.json'
 
 /**
- * The Chrome Web Store listing copy in the repo matches the 0.2.6 store
- * package: every requested host is justified, the Supporter sentence names the
- * one perk list, and the Support URL is the site's support page.
+ * The Chrome Web Store listing copy matches the approved 0.2.7 text and store
+ * package: every requested host is justified, the free features are described,
+ * and the Support URL is the site's support page.
  */
 const listing = readFileSync('docs/pulse-extension/chrome-web-store-listing.md', 'utf8')
 const readme = readFileSync('store/cws/README.md', 'utf8')
@@ -18,9 +17,9 @@ const section = (heading: string) => {
   return listing.slice(start, next === -1 ? undefined : next)
 }
 
-describe('Chrome Web Store listing copy (0.2.6)', () => {
+describe('Chrome Web Store listing copy (0.2.7)', () => {
   it('justifies every permission and host the store manifest requests, and nothing more', () => {
-    const justifications = section('## Permission justifications (0.2.6 store package)')
+    const justifications = section('## Permission justifications (0.2.7 store package)')
     for (const permission of manifest.permissions) expect(justifications).toContain(`### ${permission}`)
     for (const host of manifest.host_permissions) expect(justifications).toContain(host)
     expect(justifications).not.toMatch(/localhost|127\.0\.0\.1/)
@@ -30,13 +29,15 @@ describe('Chrome Web Store listing copy (0.2.6)', () => {
     expect(manifest.permissions).toEqual(['storage', 'scripting'])
   })
 
-  it('names the Supporter perks from the one perk list, in order, and says sign-ups are not open', () => {
-    const description = section('### Detailed description')
-    const at = perks.names.map(name => description.toLowerCase().indexOf(name.toLowerCase()))
-    expect(at.every(index => index > -1)).toBe(true)
-    expect([...at].sort((a, b) => a - b)).toEqual(at)
-    expect(description).toContain("Supporter isn't on sale yet")
-    expect(description).toContain('the 7TV header backdrop')
+  it('uses the approved summary and free-feature description without a pricing promise', () => {
+    const approved = readFileSync('store/cws/listing-0.2.7.md', 'utf8')
+    for (const heading of ['### Summary', '### Detailed description']) {
+      const extract = (doc: string) => /```\n([\s\S]*?)\n```/.exec(doc.slice(doc.indexOf(heading)))![1]
+      expect(extract(listing)).toBe(extract(approved))
+    }
+    const description = /```\n([\s\S]*?)\n```/.exec(section('### Detailed description'))![1]
+    expect(description).toContain('Free, with no account needed.')
+    expect(description).not.toMatch(/Supporter|US\$|\/month|on sale/i)
   })
 
   it("says near the top that live charts cover only Twitch's busiest channels", () => {
@@ -47,7 +48,7 @@ describe('Chrome Web Store listing copy (0.2.6)', () => {
   })
 
   it('describes no account, Protect enrollment or sign-in this build does not offer', () => {
-    const fields = section('## Next store candidate: 0.2.6 listing fields') + section('## Permission justifications (0.2.6 store package)')
+    const fields = section('## Next store candidate: 0.2.7 listing fields') + section('## Permission justifications (0.2.7 store package)')
     expect(fields).not.toMatch(/Protect|beta access key|Twitch OAuth|Email address for optional sign-in|free Pulse account/i)
   })
 
@@ -70,7 +71,7 @@ describe('Chrome Web Store listing copy (0.2.6)', () => {
   it('answers privacy practices for the linked-account path the package contains', () => {
     // A linked (invited-tester) account saves bookmarks to /v1/pulse/bookmarks and,
     // with sync on, watched history to the account; linking needs no extension update.
-    const privacy = section('## Privacy practices (dashboard) for 0.2.6')
+    const privacy = section('## Privacy practices (dashboard) for 0.2.7')
     expect(privacy).toMatch(/\| User activity \| \*\*Yes\*\* \(only with a linked account\) \|/)
     const storage = section('### storage')
     expect(storage).not.toContain('Nothing in local storage is synced or uploaded')
