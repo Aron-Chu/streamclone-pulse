@@ -9,7 +9,10 @@
  *
  * Phones (A, 11-02, a named change from 11-01's "panel alone" there only) get no install button but a compact card:
  * the title, that it is a free desktop extension, and "See how it works", which opens the panel and the line under it
- * in place and plays it once. Desktop and tablet are unchanged.
+ * in place and plays it once.
+ *
+ * Desktop and tablet show the original card again (O1, 11-16; it was C1 10-21 + P2 10-22): the panel's three pictures
+ * crossfading beside the title, the line and the button. The stage is the phone card's only.
  */
 import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { formatMomentOffset } from '@streampulse/pulse-core'
@@ -18,6 +21,9 @@ import blocksDay from '../../../../demo/pictures/blocks-day.svg'
 import sceneCard from '../../../../demo/pictures/panel-scene-card-2x.webp'
 import sceneChart from '../../../../demo/pictures/panel-scene-chart-2x.webp'
 import sceneMoments from '../../../../demo/pictures/panel-scene-moments-2x.webp'
+import panelChart from '../../../../demo/pictures/panel-chart-2x.webp'
+import panelCard from '../../../../demo/pictures/panel-moment-card-2x.webp'
+import panelMoments from '../../../../demo/pictures/panel-top-moments-2x.webp'
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { InstallCta } from '../../InstallCta'
 import { HubV5Icon } from './HubV5Icon'
@@ -51,6 +57,38 @@ const JUMP = { x: 58, y: 385 }
 
 /** The pictured player's clock, h:mm:ss through pulse-core (K1, 11-13). */
 const clock = (s: number) => formatMomentOffset(s)
+
+/** The original card's pictures (P2, 10-22): Top moments first, as reduced motion keeps it. */
+const PANEL_FRAMES = [panelMoments, panelChart, panelCard] as const
+const PANEL_FRAME_MS = 4000
+
+/** Desktop and tablet (O1, 11-16): the panel's three states crossfading every 4 s; hover holds the one on show. Phones
+ * render none of it, so their card loads no picture and runs no timer. */
+function PanelFrames() {
+  const wide = useMatchMedia('(min-width: 720px)')
+  const reduce = useMatchMedia('(prefers-reduced-motion: reduce)')
+  const [at, setAt] = useState(0)
+  const [held, setHeld] = useState(false)
+  useEffect(() => {
+    if (!wide || reduce || held) return undefined
+    const id = window.setInterval(() => setAt((n) => (n + 1) % PANEL_FRAMES.length), PANEL_FRAME_MS)
+    return () => window.clearInterval(id)
+  }, [wide, reduce, held])
+  if (!wide) return null
+  const on = reduce ? 0 : at
+  return (
+    <div className="hv5-pr-frames" aria-hidden="true" onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)}>
+      {PANEL_FRAMES.map((src, i) => (
+        <img key={src} src={src} alt="" width={338} height={188} decoding="async" className={i === on ? 'on' : undefined} />
+      ))}
+      {reduce ? null : (
+        <span className="hv5-pr-frame-dots">
+          {PANEL_FRAMES.map((src, i) => <i key={src} className={i === on ? 'on' : undefined} />)}
+        </span>
+      )}
+    </div>
+  )
+}
 
 function chatLine([color, name, says]: readonly [string, string, string | readonly Emote[]]): HTMLElement {
   const line = document.createElement('div')
@@ -246,6 +284,7 @@ export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props,
 
   return (
     <div className="hv5-promo" ref={ref} data-open={open ? '' : undefined}>
+      <PanelFrames />
       <div className="hv5-pr-stage" id={stageId} ref={stageRef} data-beat={LAST} aria-hidden="true">
         <div className="hv5-pr-player">
           <img className="hv5-pr-scene" src={blocksDay} alt="" width={320} height={180} loading="lazy" decoding="async" />
