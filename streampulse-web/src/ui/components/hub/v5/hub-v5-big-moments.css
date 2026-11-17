@@ -166,6 +166,8 @@
 /* the front dot widens as it takes the lead (2026-11-02); --sp-dur-move is 0 under reduced motion (hub-d3-tokens.css) */
 .hub-v5 .hv5-bm-dots button { position: relative; width: 22px; height: 24px; flex: none; transition: width var(--sp-dur-move) var(--sp-ease), scale 260ms cubic-bezier(.34, 1.56, .64, 1); }
 .hub-v5 .hv5-bm-dots button[aria-current="true"] { width: 40px; }
+/* a bigger tap area that looks the same, as .hv5-seg's: 42 px tall, to the middle of each gap */
+.hub-v5 .hv5-bm-dots button::after { content: ""; position: absolute; left: -3px; right: -3px; top: -9px; bottom: -9px; }
 .hv5-bm-dot { position: absolute; top: 9px; left: 0; right: 0; height: 6px; overflow: hidden; border-radius: 3px; background: var(--sp-step-2); }
 .hv5-bm-fill { position: absolute; inset: 0; background: var(--hv5-accent); transform: scaleX(0); transform-origin: 0 50%; }
 /* longhands: the shorthand resets the play state, and its selector outranks the hold under it */

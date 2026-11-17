@@ -48,7 +48,7 @@ const upAria = (x: FeedUpRow) => `${x.name}, ${formatLiftRatio(x.x)} times more 
 function UpItem({ x, art }: { x: FeedUpRow; art: string | null }) {
   return (
     <li>
-      <Link className="hv5-fd" to={channelHref({ login: x.login, streamId: x.streamId })} aria-label={upAria(x)}>
+      <Link className="hv5-fd" to={channelHref({ login: x.login, streamId: x.streamId })}>
         <span className="hv5-fd-av"><HubV5Avatar login={x.login} name={x.name} src={x.avatar} size={28} /></span>
         <span className="hv5-fd-tx" aria-hidden="true">
           <span className="hv5-fd-l1"><span className="hv5-fd-nm">{x.name}</span></span>
@@ -60,6 +60,8 @@ function UpItem({ x, art }: { x: FeedUpRow; art: string | null }) {
           </span>
         </span>
         {x.cat ? <span className="hv5-up-gm" aria-hidden="true"><GameArt url={art ?? undefined} name={x.cat} w={18} h={24} streamIds={[x.streamId]} /></span> : <span />}
+        {/* Its words for screen readers; an aria-label would not match the row's own text (WCAG 2.5.3). */}
+        <span className="hv5-vh">{upAria(x)}</span>
       </Link>
     </li>
   )

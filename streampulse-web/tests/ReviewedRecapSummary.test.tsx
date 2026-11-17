@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 vi.mock('../src/generated/recap-page-metadata.json', () => ({ default: {
   '/analytics/fixturechan/123': { title: 'Fixture recap', description: 'Synthetic reviewed summary metadata.', canonicalPath: '/analytics/fixturechan/123', robots: 'index,follow' },
 } }))
-import { ReviewedRecapSummary } from '../src/ui/ReviewedRecapSummary'
+import { ReviewedRecapSummary, useReviewedRecapShown } from '../src/ui/ReviewedRecapSummary'
 
 afterEach(() => { cleanup(); document.getElementById('reviewed-recap-summary')?.remove() })
 function template(path = '/analytics/fixturechan/123') {
@@ -25,6 +25,16 @@ describe('reviewed summary after app boot', () => {
     template('/analytics/someoneelse/123')
     render(<MemoryRouter initialEntries={['/analytics/fixturechan/123']}><ReviewedRecapSummary /></MemoryRouter>)
     expect(screen.queryByRole('heading')).toBeNull()
+  })
+  it('tells the session page when the summary owns the h1, and only then', () => {
+    function Probe() { return <p>{useReviewedRecapShown() ? 'shown' : 'absent'}</p> }
+    render(<MemoryRouter initialEntries={['/analytics/fixturechan/123']}><Probe /></MemoryRouter>)
+    // An in-app visit carries no template, so the session heading stays the page's h1.
+    expect(screen.getByText('absent')).toBeTruthy()
+    cleanup()
+    template()
+    render(<MemoryRouter initialEntries={['/analytics/fixturechan/123']}><Probe /></MemoryRouter>)
+    expect(screen.getByText('shown')).toBeTruthy()
   })
   it('does not show reviewed content on an unknown page', () => {
     template()

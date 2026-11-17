@@ -60,7 +60,8 @@ import { TOP_KEEP_MS, topMomentsHref } from './hubV5TopModel'
 import './hub-v5-big-moments.css'
 
 const H_ID = 'hv5-bm-h'
-const calm = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+// The public prerender renders the hub with no window.
+const calm = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 const keyboardFocus = (el: Element) => {
   try {
     return el.matches(':focus-visible')
@@ -121,7 +122,8 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still, fresh }: 
   const into = bigIntoStream(row.offsetSeconds)
   const tab = front ? undefined : -1
   return (
-    <article
+    // A div: role="group" (the APG carousel slide) is not allowed on an article.
+    <div
       className="hv5-bm-card"
       data-i={i}
       data-pos={String(pos)}
@@ -196,7 +198,7 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still, fresh }: 
           </span>
         </div>
       </div>
-    </article>
+    </div>
   )
 }
 

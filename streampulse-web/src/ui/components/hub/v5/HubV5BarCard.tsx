@@ -183,14 +183,14 @@ function ChatRow({ m, i, top, avatars }: { m: HubLivePulseMoment; i: number; top
   const teSrc = te ? emoteDisplaySrc(te.imageUrl ?? undefined, 20) : null
   return (
     <li style={{ animationDelay: `${i * 18}ms` }}>
-      <Link to={momentHref(m)} className="hbk-r" aria-label={chatAria(m, top)}>
-        <span className="hbk-i">{i + 1}</span>
+      <Link to={momentHref(m)} className="hbk-r">
+        <span className="hbk-i" aria-hidden="true">{i + 1}</span>
         <HubV5Avatar login={login} name={name} src={m.profileImageUrl || avatars?.get(login) || avatars?.get(login.toLowerCase())} size={24} />
-        <span className="hbk-n">
+        <span className="hbk-n" aria-hidden="true">
           <span>{name}</span>
           <small>{m.category || 'No category'}{top ? <> · <span className="hbk-mo">Top moment</span></> : null}</small>
         </span>
-        <span className="hbk-te">
+        <span className="hbk-te" aria-hidden="true">
           {te && typeof te.name === 'string' ? (
             <>
               {teSrc
@@ -200,8 +200,10 @@ function ChatRow({ m, i, top, avatars }: { m: HubLivePulseMoment; i: number; top
             </>
           ) : null}
         </span>
-        <span className="hbk-v">{formatHubInt(m.chatPerMin)}/min</span>
-        <span className="hbk-at">{m.at != null ? `▶ ${hubV5BarClock(m.at)}` : ''}</span>
+        <span className="hbk-v" aria-hidden="true">{formatHubInt(m.chatPerMin)}/min</span>
+        <span className="hbk-at" aria-hidden="true">{m.at != null ? `▶ ${hubV5BarClock(m.at)}` : ''}</span>
+        {/* What screen readers hear: the visible parts are hidden from them, so the name never disagrees with them (WCAG 2.5.3). */}
+        <span className="hv5-vh">{chatAria(m, top)}</span>
       </Link>
     </li>
   )

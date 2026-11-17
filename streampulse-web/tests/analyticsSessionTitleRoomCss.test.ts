@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const css = readFileSync(resolve(process.cwd(), 'src/ui/charts/sp-session-page.css'), 'utf8')
-const H1 = '.analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1'
+const H1 = '.analytics-console[data-analytics-console-shell] header[data-session-header] :is(h1, h2).ssp-h1'
 const STATUS = `${H1}:not([data-channel-name])`
 const NAME = `${H1}[data-channel-name]`
 
@@ -25,7 +25,7 @@ describe('session heading on phones', () => {
   })
 
   it('reserves it for the status headings only (not recorded, not found, an error), and only on phones', () => {
-    const reservations = [...css.matchAll(/([^{}\n]*h1\.ssp-h1[^{}\n]*)\{[^}]*min-height/g)].map(m => m[1].trim())
+    const reservations = [...css.matchAll(/([^{}\n]*\.ssp-h1[^{}\n]*)\{[^}]*min-height/g)].map(m => m[1].trim())
     expect(reservations).toEqual([STATUS])
     expect(css).not.toContain('data-session-title')
   })

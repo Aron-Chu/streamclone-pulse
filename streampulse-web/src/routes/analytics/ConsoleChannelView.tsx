@@ -11,6 +11,7 @@ import { setupStreamcloneAnalyticsApi, usesLocalAnalyticsBackend } from '../../l
 import { HubBackendSourceBanner } from '../../ui/components/analytics/HubBackendSourceBanner'
 import { ChannelHubStatusShell } from '../../ui/components/analytics/ChannelHubStatusShell'
 import { settleThemeFade, useAnalyticsMotionEnabled } from '../../ui/motion/motionEnabled'
+import { useReviewedRecapShown } from '../../ui/ReviewedRecapSummary'
 import '../../ui/analytics-tailwind.css'
 import '../../ui/components/analytics/analytics-console.css'
 import '../../ui/components/analytics/figma-analytics.css'
@@ -39,6 +40,7 @@ export default function ConsoleChannelView() {
   const returnView = returnTo ? new URL(returnTo, 'https://portal.invalid').searchParams.get('view') : null
   const consoleRef = useRef<HTMLDivElement>(null)
   const motionEnabled = useAnalyticsMotionEnabled()
+  const reviewedRecapShown = useReviewedRecapShown()
   const displayChannel = login.trim() || 'channel'
   // Without a return path (e.g. a shared link) go to this creator's broadcasts,
   // not global History, which may not be available on this server.
@@ -68,6 +70,7 @@ export default function ConsoleChannelView() {
         <AnalyticsConsole
           mode="public"
           shellNested
+          headingLevel={reviewedRecapShown ? 2 : 1}
           showGameSegments
           enableLayoutControls
           layer2LoadMode="staged"

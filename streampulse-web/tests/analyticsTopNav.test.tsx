@@ -16,7 +16,7 @@ describe('AnalyticsTopNav', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByLabelText('StreamPulse analytics home').getAttribute('href')).toBe('/analytics')
+    expect(screen.getByRole('link', { name: 'StreamPulse Analytics Hub' }).getAttribute('href')).toBe('/analytics')
     expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Skip to analytics content' }).getAttribute('href')).toBe('#analytics-main')
     expect(screen.getByRole('link', { name: 'Streams' }).getAttribute('aria-current')).toBe('page')
@@ -41,7 +41,7 @@ describe('AnalyticsTopNav', () => {
     )
 
     expect(screen.queryByRole('navigation', { name: 'Analytics navigation' })).toBeNull()
-    expect(screen.getByLabelText('StreamPulse analytics home')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'StreamPulse Analytics Hub' })).toBeTruthy()
   })
 
   it('opens, dismisses on outside click, and restores focus on Escape', () => {

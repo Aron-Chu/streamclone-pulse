@@ -120,7 +120,8 @@ describe('a clicked emote (C1, 10-30)', () => {
     expect(links.map((a) => a.querySelector('.hv5-es-uses')!.textContent)).toEqual(['41 uses', '12 uses'])
     expect(links[0]!.getAttribute('href')).toContain('login=xqc')
     expect(links[0]!.querySelector('.hv5-es-at')!.textContent).toBe(`▶ ${hubClock(SPIKE + 2 * MIN)}`)
-    expect(links[0]!.getAttribute('aria-label')).toBe(`XQC, Just Chatting, 41 Pog uses in its busiest minute at ${hubClock(SPIKE + 2 * MIN)}. Opens that minute in Moments.`)
+    // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
+    expect(screen.getByRole('link', { name: `XQC, Just Chatting, 41 Pog uses in its busiest minute at ${hubClock(SPIKE + 2 * MIN)}. Opens that minute in Moments.` })).toBe(links[0])
     expect(links[1]!.textContent).toContain('No category')
   })
 

@@ -15,7 +15,8 @@ import { retiredExplorerPath } from '../lib/momentsNavigation'
 import { twitchSignInEnabled } from '../lib/twitchSignInFlag'
 import { accountMomentsEnabled } from '../lib/accountMoments'
 
-const AnalyticsHubV5Page = lazy(() => import('./analytics/AnalyticsHubV5Page'))
+// On demand like the public pages: /analytics is prerendered as the hub's first render, which main.tsx loads before its own.
+const AnalyticsHubV5Page = onDemandPage(() => import('./analytics/AnalyticsHubV5Page'))
 const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage'))
 // A clip's own page exists only in a build with the Clips tab; read inline so a build without it folds the route away.
 const clipsBuildFlag = import.meta.env.VITE_PUBLIC_NATIVE_CLIPS
@@ -59,6 +60,7 @@ function onDemandPage(load: () => Promise<{ default: ComponentType }>) {
 const TwitchTimestampTool = onDemandPage(() => import('./public/TwitchTimestampTool'))
 const FindTwitchMomentsGuide = onDemandPage(() => import('./public/FindTwitchMomentsGuide'))
 const TwitchVodTimestampsGuide = onDemandPage(() => import('./public/TwitchVodTimestampsGuide'))
+const Recaps = onDemandPage(() => import('./public/Recaps'))
 
 const Docs = onDemandPage(() => import('./public/Docs'))
 const Status = onDemandPage(() => import('./public/Status'))
@@ -74,9 +76,11 @@ const Discord = onDemandPage(() => import('./public/Discord'))
 const Changelog = onDemandPage(() => import('./public/Changelog'))
 
 const OPENING_PAGES: Record<string, { preload: () => Promise<void> }> = {
+  '/analytics': AnalyticsHubV5Page,
   '/tools/twitch-vod-timestamp-link': TwitchTimestampTool,
   '/guides/find-twitch-moments': FindTwitchMomentsGuide,
   '/guides/twitch-vod-timestamps': TwitchVodTimestampsGuide,
+  '/recaps': Recaps,
   '/docs': Docs,
   '/status': Status,
   '/privacy': Privacy,
@@ -180,6 +184,7 @@ function PortalRoutes() {
         <Route path="/tools/twitch-vod-timestamp-link" element={<TwitchTimestampTool />} />
         <Route path="/guides/find-twitch-moments" element={<FindTwitchMomentsGuide />} />
         <Route path="/guides/twitch-vod-timestamps" element={<TwitchVodTimestampsGuide />} />
+        <Route path="/recaps" element={<Recaps />} />
         <Route path="/docs" element={<Docs />} />
         <Route path="/install" element={<InstallRedirect />} />
         <Route path="/docs/getting-started" element={<Navigate to="/docs#extension" replace />} />

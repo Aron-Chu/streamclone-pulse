@@ -108,7 +108,8 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     expect(ids().length).toBeLessThanOrEqual(20)
     expect(within(big()!).getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments')
     const chips = within(within(big()!).getByRole('group', { name: 'Show one game' })).getAllByRole('button').slice(1)
-    expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(snap.categories!.map((g) => `${g.name}, ${g.moments} ${g.moments === 1 ? 'moment' : 'moments'} that hold up today`))
+    // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
+    expect(snap.categories!.map((g) => within(big()!).getByRole('button', { name: `${g.name}, ${g.moments} ${g.moments === 1 ? 'moment' : 'moments'} that hold up today` }))).toEqual(chips)
     // the list's (i): ended streams drop out of the list too, until B1
     fireEvent.click(screen.getByRole('button', { name: 'About Top moments today' }))
     const tip = document.querySelector('[data-hub-toggletip-pop]')!.textContent!
@@ -116,7 +117,7 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     expect(tip).toContain('Streams that have ended drop out.')
     fireEvent.click(screen.getByRole('button', { name: 'About Top moments today' }))
     expect(peekRows()).toHaveLength(3)
-    expect(peekRows()[0]!.querySelector('button')!.getAttribute('aria-label')).toMatch(/^1\. .+ Open it in Top moments below\.$/)
+    expect(within(peekRows()[0]!).getByRole('button', { name: /^1\. .+ Open it in Top moments below\.$/ })).toBeTruthy()
     // Picking up has none of the day's rows
     expect(rail().querySelector('.hv5-tm-it')).toBeNull()
   })
@@ -125,7 +126,7 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     render(view({ attempt: 1 }))
     await waitFor(() => expect(peekRows()).toHaveLength(3))
     const third = peekRows()[2]!.querySelector('button')!
-    const name = third.getAttribute('aria-label')!.match(/^3\. ([^,]+),/)![1]
+    const name = third.querySelector(':scope > .hv5-vh')!.textContent!.match(/^3\. ([^,]+),/)![1]
     fireEvent.click(third)
     await waitFor(() => expect(front().querySelector('strong')!.textContent).toBe(name))
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
@@ -179,11 +180,12 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60), hot('bravo', 3, 45, 15), hot('charlie', 1.6, 240, 150)]), nowMs: at }))
     expect(within(rail()).getByRole('heading', { name: 'Picking up now' })).toBeTruthy()
     const links = upRows().map((li) => li.querySelector('a')!)
-    expect(links.map((a) => a.getAttribute('aria-label'))).toEqual([
+    // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
+    expect([
       'BRAVO, 3.0 times more chat, 30 more messages a minute, Overwatch 2. Opens the stream page.',
       'ALPHA, 2.0 times more chat, 60 more messages a minute, Overwatch 2. Opens the stream page.',
       'CHARLIE, 1.6 times more chat, 90 more messages a minute, Overwatch 2. Opens the stream page.',
-    ])
+    ].map((name) => within(rail()).getByRole('link', { name }))).toEqual(links)
     expect(links[0]!.querySelector('.hv5-up-add')!.textContent).toBe('+30/min')
     // the count shows as a number and reads as '3 channels' (a span's aria-label is not read, HUB-LIVE-9)
     expect(rail().querySelector('.hv5-up-n > [aria-hidden]')!.textContent).toBe('3')

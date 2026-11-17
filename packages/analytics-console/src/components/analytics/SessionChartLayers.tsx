@@ -107,7 +107,8 @@ function BandSegments({ ctx, segments, highlightedKey, onHoverKey, onZoom }: Ban
           onBlur={() => onHoverKey(null)}
         >
           <span className="ssc-band-label" aria-hidden="true">{segment.label}</span>
-          {segment.openEnd ? <span className="ssc-band-end" aria-hidden="true" data-session-band-end>Data ends</span> : null}
+          {/* A word break between the two labels, so the visible words read as the name says them. */}
+          {segment.openEnd ? <>{' '}<span className="ssc-band-end" aria-hidden="true" data-session-band-end>Data ends</span></> : null}
         </button>
       ))}
     </>

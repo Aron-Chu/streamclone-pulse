@@ -61,7 +61,7 @@ export function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusi
   const checking = src != null && src !== shown && src !== failed ? src : null
   const smallFace = visible != null && !!row.avatar && failedSmallFace !== row.avatar
   return (
-    <Link className="hv5-bzt-t hv5-bzc-c" to={row.href} aria-label={busiestAria(row, total, !!visible)} tabIndex={tab ? 0 : -1}>
+    <Link className="hv5-bzt-t hv5-bzc-c" to={row.href} tabIndex={tab ? 0 : -1}>
       <span className="hv5-bzv-face" style={{ background: `radial-gradient(120% 90% at 50% 40%, ${hubAvatarTone(row.login)} 0%, #101012 100%)` }}>
         <ResilientImage
           className="hv5-bzv-fa"
@@ -98,8 +98,8 @@ export function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusi
           onError={() => settle(pic, false)}
         />
       ))}
-      <span className="hv5-bzt-fig"><b>{row.fig}</b> {row.viewersOnly ? (row.viewers === 1 ? 'viewer' : 'viewers') : 'chat/min'}</span>
-      <span className={`hv5-bzt-cap${smallFace ? ' hf' : ''}`}>
+      <span className="hv5-bzt-fig" aria-hidden="true"><b>{row.fig}</b> {row.viewersOnly ? (row.viewers === 1 ? 'viewer' : 'viewers') : 'chat/min'}</span>
+      <span className={`hv5-bzt-cap${smallFace ? ' hf' : ''}`} aria-hidden="true">
         {smallFace ? (
           <ResilientImage
             className="hv5-bzv-av"
@@ -117,6 +117,8 @@ export function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusi
         <span className="hv5-bzt-nm">{row.displayName}</span>
         <span className="hv5-bzt-cat">{row.category || 'No category'}</span>
       </span>
+      {/* Its words for screen readers, in place of an aria-label the tile's own text would not match (WCAG 2.5.3). */}
+      <span className="hv5-vh">{busiestAria(row, total, !!visible)}</span>
     </Link>
   )
 }

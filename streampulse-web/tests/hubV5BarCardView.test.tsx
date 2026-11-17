@@ -132,7 +132,8 @@ describe('HubV5BarCard (L1, bar-lock board 11-01)', () => {
     expect(xqc!.querySelector('.hbk-te')!.textContent).toBe('DinoDance ×45')
     expect(xqc!.querySelector('.hbk-v')!.textContent).toBe('220/min')
     expect(xqc!.querySelector('.hbk-at')!.textContent).toMatch(/^▶ \d/)
-    expect(xqc!.getAttribute('aria-label')).toMatch(/^xQc, Just Chatting, 220 chat a minute at .+, one of the hub’s top moments\. Opens that minute in Moments\.$/)
+    // The name screen readers hear, from the row's hidden text rather than an aria-label (WCAG 2.5.3).
+    expect(screen.getByRole('link', { name: /^xQc, Just Chatting, 220 chat a minute at .+, one of the hub’s top moments\. Opens that minute in Moments\.$/ })).toBe(xqc)
     // The top emotes come from the hub's own data.
     expect(region.querySelector('.hbk-emo .hbk-sub')!.textContent).toBe('Top emotes · a minute')
     expect([...region.querySelectorAll('.hbk-e')].map((e) => [e.querySelector('.hbk-en')!.textContent, e.querySelector('.hbk-v')!.textContent])).toEqual([['KEKW', '5']])
