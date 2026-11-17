@@ -238,10 +238,10 @@ export function StreamSidebar({
     <div className="ssp-sl flex min-h-0 w-full flex-col overflow-hidden rounded border border-white/10 bg-white/[0.035]" data-stream-list>
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
         <span className="text-xs font-black uppercase tracking-wide text-zinc-400">Streams</span>
-        {/* Hidden, not removed, while the first list request is in flight: "0" would
-            read as an empty channel, and the header keeps its height. */}
+        {/* Hidden, not removed, while the first list request is in flight or after it
+            failed: "0" would read as an empty channel, and the header keeps its height. */}
         <span
-          className={`rounded bg-white/10 px-1.5 py-0.5 text-xs font-black text-zinc-400${streams.length === 0 && loading ? ' invisible' : ''}`}
+          className={`rounded bg-white/10 px-1.5 py-0.5 text-xs font-black text-zinc-400${streams.length === 0 && (loading || loadFailed) ? ' invisible' : ''}`}
           data-stream-count
           title={countIsPartial ? `At least ${streams.length} streams` : undefined}
         >

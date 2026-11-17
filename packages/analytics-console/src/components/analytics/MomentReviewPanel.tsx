@@ -54,6 +54,7 @@ export function MomentReviewPanel({
   heatmapPoints,
   streamStartedAt,
   streamEdges,
+  loadFailed = false,
   embedded = false,
 }: {
   rollups: AnalyticsMinuteRollup[]
@@ -66,6 +67,8 @@ export function MomentReviewPanel({
   streamStartedAt?: string
   /** The page's stream edges, so a row at either end carries the list's edge tag. */
   streamEdges?: StreamEdges
+  /** The session read failed: say so, rather than drawing it as a stream with no moments yet. */
+  loadFailed?: boolean
   embedded?: boolean
 }) {
   const { motionEnabled } = useConsoleMotion()
@@ -190,7 +193,9 @@ export function MomentReviewPanel({
           embedded ? 'px-3 py-4' : 'rounded border border-white/[0.07] bg-[#0d0d12] p-3'
         } text-center text-xs font-semibold text-zinc-400`}
       >
-        {rollups.some(rollupHasMinuteData)
+        {loadFailed
+          ? "Moments couldn't load. Refresh to try again."
+          : rollups.some(rollupHasMinuteData)
           ? 'Not enough peaks yet — wait for more minutes.'
           : 'Ranked moments appear once live minute buckets land.'}
       </div>

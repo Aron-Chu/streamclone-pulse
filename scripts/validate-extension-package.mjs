@@ -18,6 +18,7 @@ import {
 import {
   assertExactStringList,
   firefoxDataCollectionErrors,
+  firefoxDesktopCompatibilityErrors,
   permissionAllowlistForTarget,
   readExportedBooleanFlag,
 } from './extension-permission-allowlists.mjs'
@@ -39,6 +40,7 @@ import { checkDeviceLinkBundles } from './lib/device-link-package.mjs'
 import { findStoreDeveloperMarkers } from './store-artifact-policy.mjs'
 import { evaluateReleaseNotesGate, resolveCiPackageProbe } from './lib/release-notes-gate.mjs'
 import { describeStoreDevHosts } from './lib/dev-host-scan.mjs'
+import { findDynamicHtmlAssignments } from './lib/react-dom-inner-html.mjs'
 
 const root = process.cwd()
 const dist = join(root, 'dist')
@@ -143,15 +145,9 @@ function validateManifest(manifest, target) {
     if (manifest.background?.type !== 'module') {
       fail('Firefox background module must declare background.type=module')
     }
-    if (manifest.browser_specific_settings?.gecko?.id !== 'streampulse@streampulse.stream') {
-      fail('Firefox manifest requires stable browser_specific_settings.gecko.id')
-    } else if (manifest.browser_specific_settings?.gecko?.strict_min_version !== '140.0') {
-      fail('Firefox desktop manifest requires strict_min_version=140.0 for built-in consent')
-    } else if (manifest.browser_specific_settings?.gecko_android?.strict_min_version !== '142.0') {
-      // Firefox for Android reads data_collection_permissions from 142 on;
-      // without this, web-ext lint warns KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION.
-      fail('Firefox manifest requires gecko_android.strict_min_version=142.0 for data_collection_permissions')
-    } else {
+    const compatibilityErrors = firefoxDesktopCompatibilityErrors(manifest.browser_specific_settings)
+    for (const err of compatibilityErrors) fail(err)
+    if (compatibilityErrors.length === 0) {
       try {
         const analyticsEnabled = readExportedBooleanFlag(
           readFileSync(join(root, 'src/shared/extensionAnalytics.ts'), 'utf8'),
@@ -301,6 +297,10 @@ function validateDistContents(store, target) {
       if (store) {
         for (const marker of findStoreDeveloperMarkers(contents)) {
           fail(`store artifact contains developer tooling marker in ${rel}: ${marker}`)
+        }
+        // Firefox's add-on linter warns on these (UNSAFE_VAR_ASSIGNMENT); keep store bundles at zero.
+        for (const offset of findDynamicHtmlAssignments(contents)) {
+          fail(`store artifact assigns innerHTML/outerHTML from a non-string value in ${rel} at offset ${offset}`)
         }
       }
       for (const match of contents.matchAll(/streampulse-extension-runtime-target:[a-z]+/g)) {

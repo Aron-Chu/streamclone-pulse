@@ -20,7 +20,6 @@ import {
   buildSpLevels,
   createSpHoverStore,
   createSpViewportStore,
-  overviewPath,
   type SpChartHandle,
   type SpHit,
   type SpHoverStore,
@@ -375,14 +374,12 @@ function HubActivityNavigator({ model, store, windowMinutes, levelMinutes, minVi
   const startLabel = navigatorTimeLabel(startMs + target.startIndex * model.bucketMs, windowMinutes)
   const endLabel = navigatorTimeLabel(startMs + (target.endIndex + 1) * model.bucketMs, windowMinutes)
   const visibleMinutes = (target.endIndex - target.startIndex + 1) * model.bucketMinutes
-  const overview = useMemo(() => overviewPath(model.data.chat, 1000, { coverage: model.data.coverage }), [model])
   const presets = useMemo(() => presetsForBucket(windowMinutes, model.count, model.bucketMinutes), [windowMinutes, model.count, model.bucketMinutes])
   const onReset = useCallback(() => store.setTarget({ startIndex: 0, endIndex: store.getCount() - 1 }, { animate: true }), [store])
   return (
     <HubChartNavigator
       variant="d3"
       viewportSource={store}
-      overview={overview}
       pointCount={model.count}
       startIndex={target.startIndex}
       endIndex={target.endIndex}

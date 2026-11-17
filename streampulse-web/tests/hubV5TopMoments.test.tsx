@@ -170,6 +170,10 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     screenerV1: screener({ multiplier: x, currentPerMin: now, baselinePerMin: usual, absoluteDeltaPerMin: now - usual }),
   }) as unknown as HubLiveChannel
   const hubWith = (channels: HubLiveChannel[]) => ({ ...capture, liveChannels: channels })
+  const wide = (on: boolean) => vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+    matches: on && query.includes('1536px'), media: query, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  }) as MediaQueryList)
 
   it('lists only what is heating up now, strongest × first, with how many more a minute beside it', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
@@ -198,17 +202,28 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     expect(strength.map((el) => el.querySelector('b')!.textContent)).toEqual([3, 2, 1.6].map((x) => `${formatLiftRatio(x)}×`))
   })
 
-  it('shows the first 6 and Show all in place at every width (desktop took the phone order, B1 11-11)', () => {
+  it('shows every row in the right column from 1536 px (L1, 11-16); narrower, the first 6 and Show all in place (B1, 11-11)', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
     const many = hubWith(Array.from({ length: 8 }, (_, i) => hot(`c${i}`, 2 + i / 10, 120, 60)))
-    render(view({ attempt: 1, hub: many, nowMs: at }))
-    expect(upRows()).toHaveLength(UP_FIRST)
-    const all = within(rail()).getByRole('button', { name: 'Show all 8' })
-    expect(all.getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(all)
+    const mq = wide(true)
+    const { unmount } = render(view({ attempt: 1, hub: many, nowMs: at }))
     expect(upRows()).toHaveLength(8)
-    fireEvent.click(within(rail()).getByRole('button', { name: 'Show fewer' }))
-    expect(upRows()).toHaveLength(UP_FIRST)
+    expect(within(rail()).queryByRole('button', { name: /^Show / })).toBeNull()
+    unmount()
+    mq.mockRestore()
+    const narrow = wide(false)
+    try {
+      render(view({ attempt: 1, hub: many, nowMs: at }))
+      expect(upRows()).toHaveLength(UP_FIRST)
+      const all = within(rail()).getByRole('button', { name: 'Show all 8' })
+      expect(all.getAttribute('aria-expanded')).toBe('false')
+      fireEvent.click(all)
+      expect(upRows()).toHaveLength(8)
+      fireEvent.click(within(rail()).getByRole('button', { name: 'Show fewer' }))
+      expect(upRows()).toHaveLength(UP_FIRST)
+    } finally {
+      narrow.mockRestore()
+    }
   })
 
   it('says when nothing is picking up, and waits for the hub’s first answer', () => {
@@ -254,12 +269,34 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     expect(within(rail()).queryByText('Loading channels picking up')).toBeNull()
   })
 
-  it('no longer scrolls inside a sticky column, so its bottom never fades', () => {
+  it('fades the list’s bottom only while more of it is below (the sticky column from 1536 px, L1 11-16)', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
-    render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60)]), nowMs: at }))
-    expect(rail().querySelector('.hv5-tm-body')!.hasAttribute('data-more')).toBe(false)
+    let scrolled = 0
+    const own = (el: Element, n: number) => (el.classList.contains('hv5-tm-body') ? n : 0)
+    const sh = vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockImplementation(function (this: Element) { return own(this, 900) })
+    const ch = vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (this: Element) { return own(this, 600) })
+    const st = vi.spyOn(Element.prototype, 'scrollTop', 'get').mockImplementation(() => scrolled)
+    try {
+      render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60)]), nowMs: at }))
+      const body = rail().querySelector<HTMLElement>('.hv5-tm-body')!
+      expect(body.hasAttribute('data-more')).toBe(true)
+      scrolled = 300
+      fireEvent.scroll(body)
+      expect(body.hasAttribute('data-more')).toBe(false)
+      scrolled = 120
+      fireEvent.scroll(body)
+      expect(body.hasAttribute('data-more')).toBe(true)
+    } finally {
+      sh.mockRestore()
+      ch.mockRestore()
+      st.mockRestore()
+    }
+    // the CSS masks only a body with more below, and only in the column from 1536 px, so the last line never sits in the fade
     const css = readFileSync(resolve(__dirname, '../src/ui/components/hub/v5/hub-v5.css'), 'utf8')
-    expect(css).not.toMatch(/\.hv5-tm-body\[data-more\]/)
+    const column = css.slice(css.indexOf('@media (min-width: 1536px) {'))
+    expect(column.match(/\.hv5-up \.hv5-tm-body \{([^}]*)\}/)![1]).not.toContain('mask-image')
+    expect(column).toMatch(/\.hv5-up \.hv5-tm-body\[data-more\] \{ mask-image: linear-gradient\(180deg/)
+    expect(css.slice(0, css.indexOf('@media (min-width: 1536px) {'))).not.toMatch(/\.hv5-tm-body\[data-more\]/)
   })
 })
 

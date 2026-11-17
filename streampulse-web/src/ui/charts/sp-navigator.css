@@ -2,11 +2,13 @@
  * d3 chart navigator: ChartNavigator with variant="d3" (root classes
  * `hx-chart-navigator spc-nav`, data-chart-navigator-variant="d3").
  *
- * Values are the approved d3-v2 design (design-demos/d3-v2 chart.js renderNav
- * and shared.css .ch-nav*): a 30px track with the activity silhouette in its
- * top 22px, a 6px grey rail at y 22-28, the purple window (12% tint over the
- * silhouette, solid 6px bar on the rail) with 3x18 grips, then one control row
- * of readout, hint and - / + / Reset / Scroll zoom.
+ * The track is the extension's zoom rail (src/ui/ChartPositionRail.tsx and
+ * theme.ts .pulse-chart-rail-*; Aron picked Z1 on the 2026-11-02 zoom bar
+ * board for the session page and the hub): a 14px rounded box, a solid purple
+ * pill for the window with a thin line at each edge, no activity silhouette
+ * (the chart above shows it). The control row of readout, hint and - / + /
+ * Reset / Scroll zoom is the approved d3-v2 design (design-demos/d3-v2
+ * chart.js renderNav and shared.css .ch-nav*).
  *
  * Every rule is scoped to the d3 root, whose three-part selector outranks the
  * hub (hub.css, hub-public-audit.css) and session (analytics-tailwind.css)
@@ -22,12 +24,13 @@
   --spc-nav-accent: var(--sp-accent, #5eead4);
   --spc-nav-focus: var(--sp-focus, #99f6e4);
   --spc-nav-radius: var(--sp-r, 8px);
-  --spc-nav-purple: #bf78e2;
-  --spc-nav-window-tint: rgb(191 120 226 / 0.12);
-  --spc-nav-rail: #272728;
-  /* The silhouette's band inside the track (ChartNavigator reads these). */
-  --spc-nav-overview-top: 0px;
-  --spc-nav-overview-height: 22px;
+  /* The extension rail's values (theme.ts accent, accentStrong, border). */
+  --spc-nav-purple: var(--pulse-accent, #8b5cf6);
+  --spc-nav-purple-full: var(--pulse-accent-strong, #7c3aed);
+  --spc-nav-rail-border: #3f3f50;
+  --spc-nav-rail-bg: rgb(255 255 255 / 0.04);
+  --spc-nav-edge: rgb(196 181 253 / 0.55);
+  --spc-nav-edge-active: rgb(221 214 254 / 0.95);
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -46,6 +49,8 @@
   width: 100%;
   min-width: 0;
 }
+/* 30px, the old bar's height, so the chart's loading space still fits and the page does not
+   jump when the chart arrives: the 14px rail with 8px above and below, all of it a hit area. */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track-shell {
   position: relative;
   height: 30px;
@@ -58,73 +63,82 @@
   border: 0;
   border-radius: 0;
   background: transparent;
-  cursor: auto;
+  cursor: pointer;
   touch-action: none;
 }
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track::before {
   content: none;
   display: none;
 }
-/* The grey rail: a 6px line at y 25 with round caps (they reach 3px past each end). */
+/* The rail: a 14px box at y 8-22 (extension .pulse-chart-rail-track). Its 1px border
+   sits just outside the window's 0-100% span, so the pill stays inside it, as the
+   extension's thumb does. */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track-fill {
   position: absolute;
-  inset-inline: -3px;
-  top: 22px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--spc-nav-rail);
+  inset-inline: -1px;
+  top: 8px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--spc-nav-rail-border);
+  border-radius: 6px;
+  background: var(--spc-nav-rail-bg);
   transform: none;
   pointer-events: none;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
-.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__overview {
-  display: block;
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track:hover .hx-chart-navigator__track-fill {
+  border-color: rgb(167 139 250 / 0.5);
+  background: rgb(139 92 246 / 0.06);
 }
-/* The window: tint over the silhouette (y 0-22), the solid bar on the rail (y 22-28). */
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'].is-dragging .hx-chart-navigator__track-fill {
+  border-color: rgb(196 181 253 / 0.72);
+  box-shadow: 0 0 0 2px rgb(139 92 246 / 0.14);
+}
+/* The window: the solid pill inside the rail's border (extension .pulse-chart-rail-thumb). */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__window {
   position: absolute;
-  top: 0;
-  height: 28px;
+  top: 9px;
+  height: 12px;
   min-width: 2px;
   border: 0;
-  background: linear-gradient(to bottom, var(--spc-nav-window-tint) 0 22px, transparent 22px);
+  border-radius: 4px;
+  background: var(--spc-nav-purple);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
   cursor: grab;
   touch-action: none;
+  transition: filter 0.16s ease;
 }
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__window::before {
-  content: '';
-  position: absolute;
-  inset-inline: 0 auto;
-  top: 22px;
-  width: 100%;
-  min-width: 4px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--spc-nav-purple);
-  box-shadow: none;
-  transform: none;
-  pointer-events: none;
+  content: none;
+  display: none;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__track:hover .hx-chart-navigator__window {
+  filter: brightness(1.08);
 }
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'].is-full-range .hx-chart-navigator__window {
+  background: var(--spc-nav-purple-full);
   cursor: grab;
 }
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'].is-dragging .hx-chart-navigator__window {
   cursor: grabbing;
 }
-.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'].is-dragging .hx-chart-navigator__window::before {
-  background: var(--spc-nav-purple);
-}
+/* The edges: a 1px line just inside each end of the pill (extension resize handles). */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .spc-nav__grip {
   position: absolute;
-  top: 4px;
-  width: 3px;
-  height: 18px;
-  margin-left: -1.5px;
-  border-radius: 1.5px;
-  background: var(--spc-nav-purple);
+  top: 9px;
+  width: 1px;
+  height: 12px;
+  background: var(--spc-nav-edge);
   pointer-events: none;
 }
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .spc-nav__grip--end {
+  margin-left: -1px;
+}
+.hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'].is-dragging .spc-nav__grip {
+  background: var(--spc-nav-edge-active);
+}
 
-/* Handles: 44x44 hit areas centred on the track (y -7 to 37), as the design's grip targets. */
+/* Handles: 44x44 hit areas centred on the track (y -7 to 37) over each edge of the pill. */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__handles {
   position: absolute;
   inset: 0;
@@ -149,15 +163,15 @@
   pointer-events: auto;
   touch-action: none;
 }
-/* No hover mark (the grips are always drawn); keyboard focus rings the grip. */
+/* No hover mark (the edge lines are always drawn); keyboard focus rings the pill's edge. */
 .hx-chart-navigator.spc-nav[data-chart-navigator-variant='d3'] .hx-chart-navigator__handles .hx-chart-navigator__handle::after {
   content: '';
   position: absolute;
   left: 50%;
-  top: 9px;
+  top: 13px;
   bottom: auto;
   width: 9px;
-  height: 22px;
+  height: 18px;
   border-radius: 4px;
   background: transparent;
   box-shadow: none;

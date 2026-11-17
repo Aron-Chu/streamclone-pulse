@@ -15,7 +15,7 @@ import {
   viewerReadoutValue,
 } from '@streampulse/pulse-charts'
 import { formatMomentOffset } from '@streampulse/pulse-core'
-import { overviewPath, type SpCaption, type SpChartData, type SpOverview, type SpSpanMs } from '@streampulse/pulse-charts/spchart'
+import { type SpCaption, type SpChartData, type SpSpanMs } from '@streampulse/pulse-charts/spchart'
 import type { AnalyticsMinuteRollup, AnalyticsStreamDetail } from '../../api.ts'
 
 const MINUTE_MS = 60_000
@@ -42,7 +42,6 @@ export interface SessionChartModel {
   gaps: SpSpanMs[]
   /** Seconds at the stream start that were not tracked, when the backend says so. */
   untrackedLeadSeconds: number | null
-  overview: SpOverview | null
   /** The plotted emotes' per-minute counts (NaN where none), in plot order. */
   overlays: SessionOverlay[]
 }
@@ -171,7 +170,6 @@ export function buildSessionChartModel(args: {
     emoteSpike: spikeThreshold(emotes, coverage),
     gaps,
     untrackedLeadSeconds,
-    overview: overviewPath(chat, 1000, { coverage }),
     overlays,
   }
 }

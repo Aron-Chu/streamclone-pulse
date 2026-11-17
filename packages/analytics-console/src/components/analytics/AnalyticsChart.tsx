@@ -209,7 +209,6 @@ function SessionNavigator({
         variant="d3"
         infoDisclosure
         viewportSource={store}
-        overview={model.overview}
         pointCount={model.n}
         presets={presets}
         startIndex={target.startIndex}

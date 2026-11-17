@@ -57,9 +57,9 @@ describe('StreamSidebar list load state', () => {
     expect(count.classList.contains('invisible')).toBe(true)
   })
 
-  it('shows the count once the list settles, empty, failed or loaded', () => {
+  it('shows the count once the list settles, empty or loaded', () => {
     const stream = { streamId: '101', login: 'xqc', startedAt: '2026-07-11T18:00:00.000Z', title: 'Loaded broadcast' } as AnalyticsStream
-    const settled: Array<Partial<Parameters<typeof StreamSidebar>[0]>> = [{}, { loadFailed: true }, { streams: [stream], loading: true }]
+    const settled: Array<Partial<Parameters<typeof StreamSidebar>[0]>> = [{}, { streams: [stream], loading: true }, { streams: [stream], loadFailed: true }]
     for (const props of settled) {
       const view = renderSidebar(props)
       const count = document.querySelector('[data-stream-count]')!
@@ -67,6 +67,12 @@ describe('StreamSidebar list load state', () => {
       expect(count.textContent).toBe(String(props.streams?.length ?? 0))
       view.unmount()
     }
+  })
+
+  // OP3-DES-011: a failed first read is not an empty channel, so it shows no "0".
+  it('hides the count when the first read failed', () => {
+    renderSidebar({ loadFailed: true })
+    expect(document.querySelector('[data-stream-count]')!.classList.contains('invisible')).toBe(true)
   })
 
   // VOD-4 (fix, 10-30): the console may render the first page of the list

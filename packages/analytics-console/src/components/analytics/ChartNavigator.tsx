@@ -195,9 +195,10 @@ export interface ChartNavigatorProps {
   /** Activity silhouette drawn behind the track (fill #8e8e96 at 28%). */
   overview?: ChartNavigatorOverview | null
   /**
-   * 'd3' adds `.spc-nav` (styled only by the site's sp-navigator.css): a flat
-   * purple track with grips and one control row of - / + / Reset / Scroll zoom
-   * with its hint. Omitted, the markup is unchanged.
+   * 'd3' adds `.spc-nav` (styled only by the site's sp-navigator.css): the
+   * extension's zoom rail (a purple pill with an edge line at each end) and one
+   * control row of - / + / Reset / Scroll zoom with its hint. Omitted, the
+   * markup is unchanged.
    */
   variant?: 'd3'
   /**
@@ -487,8 +488,9 @@ function formatViewportIndex(value: number): string {
 const noSourceSubscribe = () => () => {}
 
 /**
- * The silhouette fills the track unless the site's navigator styles place it
- * (sp-navigator.css sets the d3 track's 22px band through these variables).
+ * The silhouette fills the track unless a host's navigator styles place it
+ * through these variables (the site's d3 hosts pass no overview since the
+ * 2026-11-02 extension rail).
  */
 const OVERVIEW_STYLE: CSSProperties = {
   position: 'absolute',

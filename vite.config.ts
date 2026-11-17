@@ -4,6 +4,7 @@ import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { loadManifestForTarget, manifestForTwitchSignInStage, resolveSupporterBackendOrigin, resolveTwitchSignInStage } from './scripts/extension-target.mjs'
 import { resolveChatBadgeDevKeys } from './scripts/chat-badge-keys.mjs'
+import { reactDomNoInnerHtml } from './scripts/lib/react-dom-inner-html.mjs'
 import { extensionBuildId, extensionReleasePreview, extensionResolve, extensionTarget, isStoreBuild, sharedOutput } from './vite.shared.ts'
 
 const root = __dirname
@@ -56,7 +57,8 @@ function chromeExtensionPlugin() {
 }
 
 export default defineConfig({
-  plugins: [react(), chromeExtensionPlugin()],
+  // reactDomNoInnerHtml: popup/options share React DOM through chunks/momentArrival.js (Firefox add-on lint).
+  plugins: [reactDomNoInnerHtml(), react(), chromeExtensionPlugin()],
   resolve: extensionResolve(),
   define: {
     __EXTENSION_STORE_BUILD__: JSON.stringify(isStoreBuild),
