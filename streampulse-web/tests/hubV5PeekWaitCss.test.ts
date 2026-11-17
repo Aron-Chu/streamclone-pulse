@@ -53,10 +53,13 @@ describe('the hero while the first answer loads', () => {
 })
 
 describe('the rail’s head, chips and links (10-30)', () => {
-  it('keeps the head and the chips whole, with no sticky scroll column since desktop took the phone order (B1, 11-11)', () => {
-    // the rail is a row of its own at every width: its first 6 rows, then Show all N
+  it('keeps the head and the chips whole in the sticky column from 1536 px when the rows overflow (L1, 11-16)', () => {
+    // under 1536 px the rail is a row of its own (B1, 11-11); from 1536 Picking up now alone is the flex column whose rows
+    // scroll, never the Top today peek that shares .hv5-top
+    const column = css.slice(css.indexOf('@media (min-width: 1536px) {'))
+    expect(column).toContain('.hv5-feed.hv5-up { display: flex; flex-direction: column; max-height: calc(100vh - 88px); }')
     expect(css).not.toMatch(/\.hv5-feed\.hv5-top \{ display: flex;/)
-    expect(css).not.toContain('max-height: calc(100vh - 88px)')
+    expect(css.split('max-height: calc(100vh - 88px)')).toHaveLength(2)
     expect(css).toMatch(/\n\.hv5-top \.hv5-rh \{ flex: none;/)
     expect(css).toMatch(/\n\.hv5-tm-games \{ flex: none;/)
   })
