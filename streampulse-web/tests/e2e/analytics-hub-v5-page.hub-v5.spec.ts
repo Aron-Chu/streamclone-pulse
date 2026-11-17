@@ -77,20 +77,31 @@ for (const [label, featuredSession] of [['with', READY_FEATURED_SESSION], ['with
     }).toPass(SETTLED)
     await noSideScroll(page)
 
-    // desktop takes the phone's order (B1, 11-11): every section full width, only Top emotes and Where chat is side by side
+    // under 1536 px desktop takes the phone's order (B1, 11-11): Picking up now under the chart, in the left column beside
+    // Top moments today from 1200 px (A1). From 1536 px it is the sticky column on the right, from Busiest now down (L1, 11-16)
     for (const [width, height] of [[1440, 900], [1920, 1000]] as const) {
       await page.setViewportSize({ width, height })
+      const column = width >= 1536
+      const flow = column ? order.filter((selector) => selector !== '#latest') : order
       await expect(async () => {
         const tops: number[] = []
-        for (const selector of order) tops.push((await box(page, selector)).y)
+        for (const selector of flow) tops.push((await box(page, selector)).y)
         expect(tops).toEqual([...tops].sort((a, b) => a - b))
-        const [activity, rail, emotes, games] = [await box(page, '#activity'), await box(page, '#latest'), await box(page, '#emotes'), await box(page, '#games')]
-        expect(Math.abs(rail.x - activity.x)).toBeLessThanOrEqual(1)
-        expect(Math.abs(rail.width - activity.width)).toBeLessThanOrEqual(1)
-        expect(emotes.y).toBeGreaterThanOrEqual(rail.y + rail.height - 1)
+        const [busiest, activity, rail, emotes, games] = await Promise.all(['#busiest', '#activity', '#latest', '#emotes', '#games'].map((selector) => box(page, selector)))
+        if (column) {
+          expect(Math.abs(rail.width - 380)).toBeLessThanOrEqual(1)
+          expect(Math.abs(rail.y - busiest.y)).toBeLessThanOrEqual(1)
+          expect(rail.x).toBeGreaterThanOrEqual(activity.x + activity.width + 23)
+          expect(games.x + games.width).toBeLessThanOrEqual(rail.x - 23)
+        } else {
+          expect(Math.abs(rail.x - activity.x)).toBeLessThanOrEqual(1)
+          expect(rail.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
+          expect(emotes.y).toBeGreaterThanOrEqual(rail.y + rail.height - 1)
+        }
         expect(Math.abs(emotes.y - games.y)).toBeLessThanOrEqual(1)
         expect(emotes.x + emotes.width).toBeLessThanOrEqual(games.x + 1)
       }).toPass(SETTLED)
+      await expect(page.locator('#latest')).toHaveCSS('position', column ? 'sticky' : 'static')
       await noSideScroll(page)
     }
   })
