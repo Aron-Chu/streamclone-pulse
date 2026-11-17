@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
-import { validatePilot, metadataForPage, writeRuntimeManifests, renderRecapSummary, renderRecapDocument, recapStructuredData, recapRedirects, sitemapWithRecaps, replayUrl } from './recap-pilot.mjs'
+import { validatePilot, metadataForPage, writeRuntimeManifests, renderRecapSummary, renderRecapDocument, recapStructuredData, recapRedirects, sitemapWithRecaps, replayUrl, recapHeading, otherRecaps } from './recap-pilot.mjs'
 
 import { fixture } from './fixtures/recap-pilot.mjs'
 const now = new Date('2026-10-31T18:00:00Z')
@@ -80,8 +80,31 @@ test('Cloudflare eligible rules precede dynamic catchalls and aliases resolve to
   assert.ok(rules.indexOf('/analytics/:login/:streamId /analytics-fallback/ 200') > 0)
   assert.ok(rules.includes('/analytics/fixturechan/s/123 /_recap-pages/fixturechan/123/ 200'))
   assert.ok(rules.includes('/s/fixturechan/123 /_recap-pages/fixturechan/123/ 200'))
+  // One URL per recap: every trailing-slash form redirects to the canonical path, never a second 200 copy.
+  for (const alias of ['/analytics/fixturechan/123/', '/s/fixturechan/123/', '/analytics/fixturechan/s/123/']) {
+    assert.ok(rules.includes(`${alias} /analytics/fixturechan/123 301`), alias)
+  }
+  assert.ok(rules.every(rule => !/\/ \S+ 200$/.test(rule) || rule.startsWith('/analytics/:login')), 'no trailing-slash 200 rewrite for a recap')
+  assert.ok(rules.indexOf('/analytics/fixturechan/123/ /analytics/fixturechan/123 301') < rules.indexOf('/analytics/:login/:streamId /analytics-fallback/ 200'))
   assert.doesNotMatch(recapRedirects(source, []), /fixturechan/)
   assert.throws(() => recapRedirects('', [page]), /marker/)
+})
+
+test('one heading without the brand, a breadcrumb back to /recaps and links to the other recaps', () => {
+  const page = validate(fixture())
+  const sameChannel = validate(fixture({ streamId: '124', title: 'Fixture Channel second recap — StreamPulse', description: 'Second synthetic fixture.', summary: 'Second synthetic summary.', startedAt: '2026-10-29T12:00:00Z', review: { ...fixture().review, sourceUrl: 'https://api.streampulse.stream/v1/portal/analytics/streams/124/recap' } }))
+  const otherChannel = validate(fixture({ login: 'otherchan', displayName: 'Other', streamId: '125', title: 'Other recap — StreamPulse', description: 'Third synthetic fixture.', summary: 'Third synthetic summary.', startedAt: '2026-10-30T18:00:00Z', review: { ...fixture().review, sourceUrl: 'https://api.streampulse.stream/v1/portal/analytics/streams/125/recap' } }))
+  assert.equal(recapHeading(page), 'Fixture Channel reaction recap')
+  const html = renderRecapSummary(page, [page, otherChannel, sameChannel])
+  assert.deepEqual([...html.matchAll(/<h1>([^<]*)<\/h1>/g)].map(m => m[1]), ['Fixture Channel reaction recap'])
+  assert.doesNotMatch(html, /<h[1-6]>\s*<\/h[1-6]>/)
+  assert.match(html, /<nav[^>]*aria-label="Breadcrumb"><a href="\/">Home<\/a>.*<a href="\/recaps">Recaps<\/a>.*<span aria-current="page">Fixture Channel reaction recap<\/span><\/nav><h1>/)
+  // This channel's other recap comes first, then other channels; never the page itself.
+  assert.deepEqual(otherRecaps(page, [page, otherChannel, sameChannel]).map(other => other.path), ['/analytics/fixturechan/124', '/analytics/otherchan/125'])
+  assert.match(html, /<h2>More recaps<\/h2><ul><li><a href="\/analytics\/fixturechan\/124">Fixture Channel second recap<\/a><\/li><li><a href="\/analytics\/otherchan\/125">Other recap<\/a><\/li><\/ul>/)
+  assert.doesNotMatch(renderRecapSummary(page, [page]), /More recaps/)
+  const crumbs = JSON.parse(recapStructuredData(page)).breadcrumb.itemListElement
+  assert.deepEqual(crumbs.map(crumb => [crumb.position, crumb.name, crumb.item]), [[1, 'Home', 'https://streampulse.stream/'], [2, 'Recaps', 'https://streampulse.stream/recaps'], [3, 'Fixture Channel reaction recap', 'https://streampulse.stream/analytics/fixturechan/123']])
 })
 
 test('initial reviewed HTML has its own metadata/content and keeps real asset references', () => {
@@ -110,6 +133,8 @@ test('runtime classification manifest contains paths and coarse categories only'
     writeRuntimeManifests(dir, [validate(fixture())])
     const entries = JSON.parse(readFileSync(join(dir, 'src/generated/recap-page-paths.json'), 'utf8'))
     assert.deepEqual(entries, [{ path: '/analytics/fixturechan/123', category: 'stream_recap' }])
+    const list = JSON.parse(readFileSync(join(dir, 'src/generated/recap-page-list.json'), 'utf8'))
+    assert.deepEqual(list, [{ path: '/analytics/fixturechan/123', heading: 'Fixture Channel reaction recap', description: 'A deliberately synthetic aggregate fixture for the recap tests.' }])
   } finally {
     if (dirname(resolve(dir)) !== parent || !resolve(dir).startsWith(join(parent, 'streampulse-recap-test-'))) throw new Error('Refusing unsafe test cleanup')
     rmSync(dir, { recursive: true })

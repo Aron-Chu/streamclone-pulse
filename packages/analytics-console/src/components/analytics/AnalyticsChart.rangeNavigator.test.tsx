@@ -248,8 +248,8 @@ describe('AnalyticsChart range controls and navigator', () => {
     for (const name of ['Zoom in', 'Zoom out', 'Reset zoom']) {
       expect(screen.getByRole('button', { name })).not.toBeNull()
     }
-    // The track draws the stream's activity silhouette (the overview).
-    expect(navigator.querySelector('.hx-chart-navigator__overview')).not.toBeNull()
+    // The extension rail: the chart above shows the activity, so the track draws no silhouette (Z1, 11-02).
+    expect(navigator.querySelector('.hx-chart-navigator__overview')).toBeNull()
     // On by default, and remembered in this browser.
     expect(scrollZoomToggle(container).getAttribute('aria-pressed')).toBe('true')
     expect(container.querySelector('[data-chart-position-rail]')).toBeNull()

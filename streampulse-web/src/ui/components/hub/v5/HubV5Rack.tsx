@@ -58,7 +58,8 @@ export function GameArt({ url, name, w, h, streamIds = [] }: { url: string | und
     if (byName) askGameArt(name, streamIds)
     else missGameArt(name)
   }
-  if (!src || failed === src) return <span>{gameInitials(name)}</span>
+  // the initials are the picture's stand-in: the row's own words name the game
+  if (!src || failed === src) return <span aria-hidden="true">{gameInitials(name)}</span>
   if (url) return <img src={src} alt="" width={w} height={h} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(src)} />
   // an unknown name or id gets Twitch's grey "?" cover with HTTP 200 (no onError):
   // it loads with CORS and stays hidden until checked; a proven placeholder or a
@@ -203,12 +204,14 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavaila
               const n = g.rows.length
               return (
                 <li key={g.name}>
-                  <button type="button" className="hv5-gr" data-game={g.name} aria-pressed={pressed} aria-label={gameAria(g, pressed, games.basis)} onClick={onRow(g)}>
+                  <button type="button" className="hv5-gr" data-game={g.name} aria-pressed={pressed} onClick={onRow(g)}>
                     <span className="hv5-gr-art"><GameArt url={art.get(g.name)} name={g.name} w={30} h={40} streamIds={g.rows.map((c) => c.streamId)} /></span>
-                    <span className="hv5-gr-nm">{g.name}</span>
-                    <span className="hv5-gr-v">{g.chatShare.toFixed(1)}%</span>
+                    <span className="hv5-gr-nm" aria-hidden="true">{g.name}</span>
+                    <span className="hv5-gr-v" aria-hidden="true">{g.chatShare.toFixed(1)}%</span>
                     <span className="hv5-gr-bar" aria-hidden="true"><i style={{ width: `${Math.max(1.5, (g.chatShare / max) * 100).toFixed(1)}%` }} /></span>
-                    <span className="hv5-gr-c">{formatHubInt(n)} {n === 1 ? 'channel' : 'channels'}</span>
+                    <span className="hv5-gr-c" aria-hidden="true">{formatHubInt(n)} {n === 1 ? 'channel' : 'channels'}</span>
+                    {/* Its words for screen readers; an aria-label would not match the row's own text (WCAG 2.5.3). */}
+                    <span className="hv5-vh">{gameAria(g, pressed, games.basis)}</span>
                   </button>
                 </li>
               )

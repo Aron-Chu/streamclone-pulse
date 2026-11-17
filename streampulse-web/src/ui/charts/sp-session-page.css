@@ -20,21 +20,21 @@
   gap: 12px;
   padding-bottom: 16px;
 }
-.analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 {
+.analytics-console[data-analytics-console-shell] header[data-session-header] :is(h1, h2).ssp-h1 {
   margin: 0;
   font-size: 24px;
   line-height: 1.08;
   letter-spacing: 0;
 }
 @media (min-width: 1024px) {
-  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 32px; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] :is(h1, h2).ssp-h1 { font-size: 32px; }
 }
 @media (max-width: 639px) {
   /* min-height: room for two lines (2 x 1.08) for a status heading (not recorded, not found, an error), so
      the figures under it do not drop when one lands on two lines. The channel's name is one line beside its
      picture (C1), about as tall as these two lines, so a switch between them barely moves the page. */
-  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1 { font-size: 21.6px; }
-  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1:not([data-channel-name]) { min-height: 2.16em; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] :is(h1, h2).ssp-h1 { font-size: 21.6px; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] :is(h1, h2).ssp-h1:not([data-channel-name]) { min-height: 2.16em; }
 }
 
 /* C1 (11-11): the channel's name is the headline. Picture | name over the badge row (Live or Ended, game,
@@ -48,7 +48,7 @@
   column-gap: 12px;
 }
 .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id > .ssp-meta-w { grid-column: 1 / -1; }
-.analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1[data-channel-name] {
+.analytics-console[data-analytics-console-shell] header[data-session-header] :is(h1, h2).ssp-h1[data-channel-name] {
   display: block;
   overflow: hidden;
   white-space: nowrap;
@@ -74,16 +74,16 @@
 .analytics-console .ssp-av img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .analytics-console .ssp-av-mono { font-size: 18px; font-weight: 800; line-height: 1; color: #e4e4e7; }
 @media (min-width: 640px) {
-  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1[data-channel-name] { font-size: 32px; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] :is(h1, h2).ssp-h1[data-channel-name] { font-size: 32px; }
   .analytics-console .ssp-av { width: 52px; height: 52px; }
   .analytics-console .ssp-av-mono { font-size: 22px; }
 }
 @media (min-width: 1024px) {
   .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id { column-gap: 18px; }
   .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id > .ssp-av { grid-row: 1 / span 2; }
-  .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id > h1.ssp-h1 { align-self: end; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id > :is(h1, h2).ssp-h1 { align-self: end; }
   .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id > .ssp-meta-w { grid-column: 2; align-self: start; }
-  .analytics-console[data-analytics-console-shell] header[data-session-header] h1.ssp-h1[data-channel-name] { font-size: 46px; line-height: 1.1; letter-spacing: -0.03em; }
+  .analytics-console[data-analytics-console-shell] header[data-session-header] :is(h1, h2).ssp-h1[data-channel-name] { font-size: 46px; line-height: 1.1; letter-spacing: -0.03em; }
   .analytics-console[data-analytics-console-shell] header[data-session-header] .ssp-id .ssp-meta { font-size: 16px; line-height: 22px; }
   .analytics-console .ssp-av { width: 62px; height: 62px; }
   .analytics-console .ssp-av-mono { font-size: 26px; }

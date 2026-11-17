@@ -32,7 +32,8 @@ const STREAMERS: readonly FeaturedStreamer[] = [
   { name: 'xQc', login: 'xqc' },
 ]
 
-export function StreamerChatStats() {
+/** `browse` adds the "Browse the Hub" link; the hub itself leaves it off, as a link to the page it is on. */
+export function StreamerChatStats({ browse = true }: { browse?: boolean } = {}) {
   return (
     <section id="streamer-chat-stats" className="streamer-chat-stats" aria-labelledby="streamer-chat-stats-title">
       <div className="streamer-chat-stats__header">
@@ -43,7 +44,7 @@ export function StreamerChatStats() {
             Choose a streamer to explore their available Twitch history.
           </p>
         </div>
-        <Link className="streamer-chat-stats__browse" to="/analytics">Browse the Hub <span aria-hidden="true">→</span></Link>
+        {browse ? <Link className="streamer-chat-stats__browse" to="/analytics">Browse the Hub <span aria-hidden="true">→</span></Link> : null}
       </div>
       <ul className="streamer-chat-stats__list">
         {STREAMERS.map(({ name, login, handleLabel }) => (

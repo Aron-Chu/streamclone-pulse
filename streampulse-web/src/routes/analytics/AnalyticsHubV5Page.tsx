@@ -44,6 +44,7 @@ import { useHubV5BusiestMoments } from '../../ui/components/hub/v5/useHubV5Busie
 import { useHubV5LockWarmup } from '../../ui/components/hub/v5/useHubV5LockWarmup'
 import { HUB_BUSIEST_COUNT, hubCategoryArt, hubChatBasis, hubSavedAt, hubSearchEmotes, hubSearchGames, rankBusiest, whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
+import { StreamerChatStats } from '../../ui/components/StreamerChatStats'
 import '../../ui/components/analytics/figma-analytics.css'
 import '../../ui/components/hub/d3/hub-d3-tokens.css'
 import '../../ui/components/hub/v5/hub-v5.css'
@@ -380,6 +381,12 @@ export default function AnalyticsHubV5Page() {
 
           <div className="hub-v5 hub-d3" data-hub-v5-page="">
             <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} foot={<HubV5FollowsButton />} games={searchGames} emotes={searchEmotes} waiting={measurementsWaiting} />
+            {/* Without scripts the cards never fill, so the prerendered page names the tracked channels for readers and
+                crawlers that do not run them. React renders a noscript's children only on the server. */}
+            <noscript>
+              <p>Live measurements load when JavaScript is available. Coverage and freshness are shown with the data.</p>
+              <StreamerChatStats browse={false} />
+            </noscript>
 
             {/* The viewer's own live follows, on Busiest now's live list and rate (Show my Twitch follows, 11-01). */}
             <HubV5Follows

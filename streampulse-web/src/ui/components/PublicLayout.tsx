@@ -122,6 +122,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <nav className="app-footer__nav" aria-label="Footer">
             <div className="app-footer__links">
               <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Hub</Link>
+              <Link to="/recaps">Stream recaps</Link>
               <Link to="/docs">Documentation</Link>
               <Link to="/status">System Status</Link>
               <Link to="/support">Support</Link>

@@ -29,7 +29,7 @@ const publicPageSources = {
   'guides/twitch-vod-timestamps': 'TwitchVodTimestampsGuide',
   docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds', withdraw: 'Withdraw',
   supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Support',
-  feedback: 'Feedback', discord: 'Discord', changelog: 'Changelog',
+  feedback: 'Feedback', discord: 'Discord', changelog: 'Changelog', recaps: 'Recaps',
 }
 function chunkFiles(key, files = new Set()) {
   const chunk = manifest[key]
@@ -39,12 +39,28 @@ function chunkFiles(key, files = new Set()) {
   return files
 }
 const entryChunks = chunkFiles('index.html')
+/** A chunk's styles in the order Vite's preload adds them: what it imports first, then its own. */
+function chunkStyles(key, styles = new Set(), seen = new Set()) {
+  const chunk = manifest[key]
+  if (!chunk || seen.has(key)) return styles
+  seen.add(key)
+  for (const imported of chunk.imports ?? []) chunkStyles(imported, styles, seen)
+  for (const file of chunk.css ?? []) styles.add(file)
+  return styles
+}
+const entryStyles = chunkStyles('index.html')
 function pagePreloads(path) {
-  const page = publicPageSources[path]
-  if (!page) return ''
-  return [...chunkFiles(`src/routes/public/${page}.tsx`)]
+  // The hub's first render is prerendered too (src/prerender.tsx), so its styles load with the document, not after it.
+  const source = path === 'analytics' ? 'src/routes/analytics/AnalyticsHubV5Page.tsx'
+    : publicPageSources[path] ? `src/routes/public/${publicPageSources[path]}.tsx` : null
+  if (!source) return ''
+  const styles = path === 'analytics'
+    ? [...chunkStyles(source)].filter(file => !entryStyles.has(file) && !analyticsCriticalStyles.includes(`/${file}"`))
+      .map(file => `<link rel="stylesheet" crossorigin href="/${file}">`)
+    : []
+  return [...styles, ...[...chunkFiles(source)]
     .filter(file => !entryChunks.has(file))
-    .map(file => `<link rel="modulepreload" crossorigin href="/${file}">`)
+    .map(file => `<link rel="modulepreload" crossorigin href="/${file}">`)]
     .join('\n    ')
 }
 // Reuse the Vite source aliases/shims; no second page copy and no browser/network fetch.
@@ -105,14 +121,14 @@ const routes = [
   {
     path: 'docs',
     title: 'Documentation — StreamPulse',
-    description: 'Install StreamPulse, understand coverage states, and open public Twitch analytics.',
+    description: 'Install the free StreamPulse extension for Chrome, Edge or Firefox, explore the Hub’s public Twitch chat stats, and read what each coverage state means.',
     canonicalPath: '/docs',
     robots: 'index,follow',
   },
   {
     path: 'status',
     title: 'Service Status — StreamPulse',
-    description: 'Current StreamPulse portal, API, coverage, and corpus status.',
+    description: 'Is StreamPulse working right now? Live status of the website, live Twitch chat tracking and the Twitch panel data, with when it was last checked.',
     canonicalPath: '/status',
     robots: 'index,follow',
   },
@@ -135,7 +151,7 @@ const routes = [
     // "and", not "&": renderShell splices the title in raw, and the same string
     // is reused inside og:/twitter: content attributes.
     title: 'Cancellation and Refunds — StreamPulse',
-    description: 'How to cancel Pulse Supporter and when a charge is refunded.',
+    description: 'How cancelling the optional Pulse Supporter membership works: no fee or minimum term, access until the paid period ends, and when a charge is refunded.',
     canonicalPath: '/refunds',
     robots: 'index,follow',
   },
@@ -165,7 +181,7 @@ const routes = [
     // "Send feedback" opens it.
     path: 'feedback',
     title: 'Send Feedback — StreamPulse',
-    description: 'Send private feedback to the StreamPulse team. No account needed.',
+    description: 'Spotted a problem or have an idea? Send private feedback about the StreamPulse extension or website. No account needed, and nothing is posted publicly.',
     canonicalPath: '/feedback',
     robots: 'index,follow',
   },
@@ -181,14 +197,12 @@ const routes = [
   },
   {
     // The extension's "Release details" links open this page. It describes only
-    // released versions and names the one in development; it is kept out of search
-    // (and out of public/sitemap.xml) because it documents the extension rather
-    // than the site.
+    // released versions, so it is indexed and listed in public/sitemap.xml.
     path: 'changelog',
     title: 'Release Notes — StreamPulse',
     description: 'What changed in each version of the StreamPulse extension.',
     canonicalPath: '/changelog',
-    robots: 'noindex,nofollow',
+    robots: 'index,follow',
   },
   {
     path: 'setup',
@@ -216,6 +230,12 @@ const shareImage = {
   alt: 'StreamPulse: find the Twitch moments people actually reacted to.',
 }
 
+// The newest released version, from the release notes the extension and /changelog share. The manifest
+// already names the version in development, which the stores do not have yet.
+const releaseNotes = JSON.parse(readFileSync(join(root, '..', 'src', 'shared', 'release-notes.json'), 'utf8'))
+const releasedVersion = releaseNotes.releases.find((release) => release.status === 'released')?.version
+if (!releasedVersion) throw new Error('src/shared/release-notes.json names no released version')
+
 // The extension's store listings, which the home page's structured data names as the same product.
 const storeListings = [
   'https://chromewebstore.google.com/detail/streampulse/nifgoonpcgmdhiffcpmhndjgkgahnelg',
@@ -238,18 +258,20 @@ function upsertMeta(html, attribute, key, content) {
 }
 
 function renderShell(metadata) {
-  const canonical = new URL(metadata.canonicalPath, origin).toString()
+  // null for the 404, which is not a page of its own.
+  const canonical = metadata.canonicalPath == null ? null : new URL(metadata.canonicalPath, origin).toString()
   let html = indexHtml.replace(/<title>[\s\S]*?<\/title>/i, `<title>${metadata.title}</title>`)
   if (metadata.path === 'analytics' && analyticsCriticalStyles) {
     html = html.replace('</head>', `    ${analyticsCriticalStyles}\n  </head>`)
   }
-  const preloads = pagePreloads(metadata.path)
+  // Stream, channel and recap documents render the loading shell, not the hub (rootPath below).
+  const preloads = metadata.rootPath ? '' : pagePreloads(metadata.path)
   if (preloads) html = html.replace('</head>', `    ${preloads}\n  </head>`)
   html = upsertMeta(html, 'name', 'description', metadata.description)
   html = upsertMeta(html, 'name', 'robots', metadata.robots)
   html = upsertMeta(html, 'property', 'og:title', metadata.title)
   html = upsertMeta(html, 'property', 'og:description', metadata.description)
-  html = upsertMeta(html, 'property', 'og:url', canonical)
+  html = canonical ? upsertMeta(html, 'property', 'og:url', canonical) : html.replace(/\s*<meta\s+property="og:url"[^>]*>/i, '')
   html = upsertMeta(html, 'property', 'og:type', 'website')
   html = upsertMeta(html, 'property', 'og:site_name', 'StreamPulse')
   html = upsertMeta(html, 'property', 'og:image', shareImage.url)
@@ -263,7 +285,8 @@ function renderShell(metadata) {
   html = upsertMeta(html, 'name', 'twitter:image', shareImage.url)
   html = upsertMeta(html, 'name', 'twitter:image:alt', shareImage.alt)
   const canonicalTag = `<link rel="canonical" href="${canonical}" />`
-  html = /<link\s+rel="canonical"[^>]*>/i.test(html)
+  if (!canonical) html = html.replace(/\s*<link\s+rel="canonical"[^>]*>/i, '')
+  else html = /<link\s+rel="canonical"[^>]*>/i.test(html)
     ? html.replace(/<link\s+rel="canonical"[^>]*>/i, canonicalTag)
     : html.replace('</head>', `    ${canonicalTag}\n  </head>`)
   if (metadata.path === '') {
@@ -278,7 +301,7 @@ function renderShell(metadata) {
       url: origin,
       downloadUrl: storeListings[0],
       sameAs: storeListings,
-      softwareVersion: '0.2.6',
+      softwareVersion: releasedVersion,
       description: metadata.description,
       publisher: { '@id': `${origin}/#organization` },
     }
@@ -294,11 +317,19 @@ function renderShell(metadata) {
       html = html.replace('</head>', `    <script type="application/ld+json">${JSON.stringify(data)}</script>\n  </head>`)
     }
   }
-  const path = metadata.path == null ? '/404' : `/${metadata.path}`
+  const path = metadata.rootPath ?? (metadata.path == null ? '/404' : `/${metadata.path}`)
   const markup = `<div id="root" data-prerendered>${prerenderPublicPage(path)}</div>`
   const boundary = /<!--public-root:start-->[\s\S]*?<!--public-root:end-->/
   if (!boundary.test(html)) throw new Error('Missing public root markers: run Vite build before prerender')
   return html.replace(boundary, () => `<!--public-root:start-->${markup}<!--public-root:end-->`)
+}
+
+// Each prerendered page answers at one URL: Pages would also serve its folder's index.html at the
+// trailing-slash URL, so that twin moves to the page, unless public/_redirects already sends it somewhere.
+// Pages applies a redirect even where an asset matches; first match wins, so these go first.
+function slashRedirects(source, paths) {
+  const rules = paths.filter((path) => !source.split('\n').some((line) => line.startsWith(`/${path}/ `))).map((path) => `/${path}/ /${path} 301`)
+  return rules.length ? `# Inserted at build time: one URL per prerendered page.\n${rules.join('\n')}\n\n${source}` : source
 }
 
 // The date each page states it was last updated (privacy, terms, refunds), for the sitemap's <lastmod>.
@@ -327,13 +358,13 @@ writeFileSync(
   renderShell({
     title: 'Page not found — StreamPulse',
     description: 'The requested URL is not a public StreamPulse page.',
-    canonicalPath: '/',
+    canonicalPath: null,
     robots: 'noindex,nofollow',
   }),
 )
 
 // A separate document prevents noindex on unreviewed paths from affecting the hub.
-const fallback = renderShell({ path: 'analytics', title: 'StreamPulse Analytics',
+const fallback = renderShell({ path: 'analytics', rootPath: '/analytics-fallback', title: 'StreamPulse Analytics',
   description: 'Explore tracked Twitch streams. Coverage and replay availability load with the data.',
   canonicalPath: '/analytics-fallback', robots: 'noindex,nofollow' })
 mkdirSync(join(dist, 'analytics-fallback'), { recursive: true })
@@ -341,12 +372,12 @@ writeFileSync(join(dist, 'analytics-fallback', 'index.html'), fallback)
 writeFileSync(join(dist, 'analytics-fallback.html'), fallback)
 
 for (const page of pilotPages) {
-  const html = renderRecapDocument(renderShell(routes.find(route => route.path === 'analytics')), page)
+  const html = renderRecapDocument(renderShell({ ...routes.find(route => route.path === 'analytics'), rootPath: '/analytics-fallback' }), page, pilotPages)
   const asset = join(dist, '_recap-pages', page.login, ...(page.kind === 'stream' ? [page.streamId] : []))
   mkdirSync(asset, { recursive: true })
   writeFileSync(join(asset, 'index.html'), html)
 }
-writeFileSync(join(dist, '_redirects'), recapRedirects(readFileSync(join(root, 'public', '_redirects'), 'utf8'), pilotPages))
+writeFileSync(join(dist, '_redirects'), slashRedirects(recapRedirects(readFileSync(join(root, 'public', '_redirects'), 'utf8'), pilotPages), routes.map((route) => route.path).filter(Boolean)))
 writeFileSync(join(dist, 'sitemap.xml'), sitemapWithStatedDates(sitemapWithRecaps(readFileSync(join(root, 'public', 'sitemap.xml'), 'utf8'), pilotPages), statedDates))
 
 await server.close()

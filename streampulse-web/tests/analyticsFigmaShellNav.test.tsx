@@ -14,7 +14,7 @@ describe('AnalyticsFigmaShell navigation', () => {
     )
 
     expect(screen.getByRole('link', { name: 'Home' }).getAttribute('href')).toBe('/')
-    expect(screen.getByLabelText('StreamPulse analytics home').getAttribute('href')).toBe('/analytics')
+    expect(screen.getByRole('link', { name: 'StreamPulse Analytics Hub' }).getAttribute('href')).toBe('/analytics')
     expect(screen.getByRole('link', { name: 'Analytics' }).getAttribute('href')).toBe('/analytics')
   })
 

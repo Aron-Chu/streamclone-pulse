@@ -112,24 +112,23 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     expect(document.body.textContent).not.toMatch(/currently (listed|on the Chrome Web Store)/i)
   })
 
-  it('is a prerendered page kept out of search, so a cold load is served without edge rewrites', () => {
+  it('is a prerendered, indexed page, so a cold load is served without edge rewrites', () => {
     expect(resolvePageMetadata('/changelog')).toEqual({
       title: 'Release Notes — StreamPulse',
       description: 'What changed in each version of the StreamPulse extension.',
       canonicalPath: '/changelog',
-      robots: 'noindex,nofollow',
+      robots: 'index,follow',
     })
     const html = prerenderPublicPage('/changelog')
     expect(html).toContain('data-testid="changelog-page"')
     expect(html).not.toContain('Page not found')
 
     expect(read('scripts/prerender.mjs')).toMatch(/path: 'changelog',\s+title: 'Release Notes — StreamPulse',/)
-    expect(read('scripts/check-public-pages.mjs')).toContain("['changelog/index.html', 'Release Notes — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/changelog']")
+    expect(read('scripts/check-public-pages.mjs')).toContain("['changelog/index.html', 'Release Notes — StreamPulse', 'index,follow', 'https://streampulse.stream/changelog']")
     expect(read('scripts/check-public-links.mjs')).toMatch(/EXTERNALLY_PUBLISHED = \[[^\]]*'\/changelog'/)
-    // It documents the extension rather than the site, so it is not offered to search engines:
-    // noindex, and left out of the sitemap so Search Console is not asked to index a noindex page.
-    expect(read('scripts/prerender.mjs')).toMatch(/canonicalPath: '\/changelog',\s+robots: 'noindex,nofollow',/)
-    expect(read('public/sitemap.xml')).not.toContain('https://streampulse.stream/changelog')
+    // It shows only released versions, so it is offered to search engines: indexed, and in the sitemap.
+    expect(read('scripts/prerender.mjs')).toMatch(/canonicalPath: '\/changelog',\s+robots: 'index,follow',/)
+    expect(read('public/sitemap.xml')).toContain('https://streampulse.stream/changelog')
     expect(read('public/sitemap.xml')).not.toContain('https://streampulse.stream/discord')
   })
 })

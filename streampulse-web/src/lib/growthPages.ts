@@ -9,4 +9,8 @@ export const GROWTH_PAGES = [
   { path: 'guides/twitch-vod-timestamps', canonicalPath: '/guides/twitch-vod-timestamps',
     title: 'Twitch VOD Availability and Timestamps — StreamPulse',
     description: 'Understand Twitch VOD retention, unavailable replays, elapsed player time and broadcast alignment before sharing a timestamped link.', robots: 'index,follow' as const },
+  // Lists every reviewed recap in content/recap-pilot.json, so it grows with the manifest.
+  { path: 'recaps', canonicalPath: '/recaps',
+    title: 'Twitch Chat Recaps — StreamPulse',
+    description: 'Reviewed recaps of tracked Twitch streams: the top chat reactions, most-used emotes and measured coverage for each broadcast, with replay links where available.', robots: 'index,follow' as const },
 ] as const

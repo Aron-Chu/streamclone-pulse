@@ -32,7 +32,7 @@ describe('StreamPulse Peak branding', () => {
       <AnalyticsTopNav items={[{ label: 'Overview', to: '/analytics', end: true }]} />,
     )
     expect(container.querySelector('[data-brand-mark="peak"]')).toBeTruthy()
-    expect(screen.getByRole('link', { name: /streamPulse analytics home/i }).getAttribute('href')).toBe('/analytics')
+    expect(screen.getByRole('link', { name: 'StreamPulse Analytics Hub' }).getAttribute('href')).toBe('/analytics')
   })
 
   it('uses Peak branding while preserving every public navigation link', () => {

@@ -176,7 +176,8 @@ describe('Show my Twitch follows', () => {
     const [xqc, cozy] = within(row).getAllByRole('link')
     expect(xqc?.textContent).toContain('120 chat/min')
     expect(cozy?.textContent).toContain('4,321 viewers')
-    expect(cozy!.getAttribute('aria-label')).toMatch(/^COZY, 4,321 viewers, no chat count, Just Chatting, rank 2 of 2\./)
+    // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
+    expect(within(row).getByRole('link', { name: /^COZY, 4,321 viewers, no chat count, Just Chatting, rank 2 of 2\./ })).toBe(cozy)
     expect(xqc!.getAttribute('tabindex')).toBe('0')
     expect(cozy!.getAttribute('tabindex')).toBe('-1')
     expect(within(row).getByRole('button', { name: 'About Your follows' })).toBeTruthy()
@@ -188,7 +189,7 @@ describe('Show my Twitch follows', () => {
     const tile = within(section()!).getByRole('link')
     expect(tile.textContent).toContain('1 viewer')
     expect(tile.textContent).not.toContain('viewers')
-    expect(tile.getAttribute('aria-label')).toMatch(/^COZY, 1 viewer, no chat count, /)
+    expect(within(section()!).getByRole('link', { name: /^COZY, 1 viewer, no chat count, / })).toBe(tile)
   })
 
   it('shows the pager only while some tiles are out of view', () => {

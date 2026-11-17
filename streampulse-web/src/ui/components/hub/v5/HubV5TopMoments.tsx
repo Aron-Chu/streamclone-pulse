@@ -387,12 +387,13 @@ export function TopGames({ games, game, onGame }: { games: TopGame[]; game: TopG
           type="button"
           title={g.name}
           aria-pressed={g.id === game?.id}
-          aria-label={`${g.name}, ${g.moments} ${g.moments === 1 ? 'moment' : 'moments'} that hold up today`}
           onClick={() => onGame(g.id === game?.id ? null : g)}
         >
           <GameArt url={g.art ?? undefined} name={g.name} w={15} h={20} />
-          <span className="hv5-fd-gn">{g.name}</span>
-          <small>{g.moments}</small>
+          <span className="hv5-fd-gn" aria-hidden="true">{g.name}</span>
+          <small aria-hidden="true">{g.moments}</small>
+          {/* Last: the chip's first span is its picture's place (hub-v5.css). */}
+          <span className="hv5-vh">{`${g.name}, ${g.moments} ${g.moments === 1 ? 'moment' : 'moments'} that hold up today`}</span>
         </button>
       ))}
     </div>
@@ -508,10 +509,11 @@ export function HubV5TopPeek({ top, nowMs }: { top: TopToday; nowMs: number }) {
               <button
                 className="hv5-tm-row"
                 type="button"
-                aria-label={`${top.fresh?.has(row.id) ? 'New. ' : ''}${topRowAria(row, i + 1, nowMs)}`}
                 onClick={() => onPick(row.id)}
               >
                 <RowFace row={row} avatar={row.avatar ?? top.avatars.get(row.login) ?? null} rank={i + 1} nowMs={nowMs} fresh={!!top.fresh?.has(row.id)} />
+                {/* Its words for screen readers; an aria-label would not match the row's own text (WCAG 2.5.3). */}
+                <span className="hv5-vh">{`${top.fresh?.has(row.id) ? 'New. ' : ''}${topRowAria(row, i + 1, nowMs)}`}</span>
               </button>
             </li>
           ))}
