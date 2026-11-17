@@ -539,14 +539,23 @@ test('on a phone the promo opens on See how it works, and Find emote clears with
   await expect(emotes.locator('.hv5-em-ly:not([data-out]) > .hv5-em-t[data-found]')).toHaveCount(0)
   await noSideScroll(page)
 
-  // a desktop gets the slim promo (B1, 11-11): one line and the same install button, no scene, no phone line or button
+  // a desktop gets the original card again (O1, 11-16): the panel's pictures beside the title, the line and the same
+  // install button; no scene, no phone line or button. Reduced motion keeps the first picture and shows no dots.
   await page.setViewportSize({ width: 1440, height: 900 })
+  const frames = promo.locator('.hv5-pr-frames')
+  await expect(frames).toBeVisible()
+  await expect(frames.locator('img')).toHaveCount(3)
+  await expect(frames.locator('img.on')).toHaveCount(1)
+  await expect(frames.locator('img').first()).toHaveClass('on')
+  await expect(frames.locator('.hv5-pr-frame-dots')).toHaveCount(0)
   await expect(promo.locator('.hv5-pr-h')).toBeVisible()
+  await expect(promo.locator('.hv5-pr-p')).toBeVisible()
   await expect(promo.locator('.hv5-hero-install')).toBeVisible()
   await expect(promo.locator('.hv5-hero-install')).toHaveAttribute('data-cta', 'chrome-install-hub-hero')
-  for (const selector of ['.hv5-pr-stage', '.hv5-pr-p', '.hv5-pr-sub']) await expect(promo.locator(selector)).toBeHidden()
+  for (const selector of ['.hv5-pr-stage', '.hv5-pr-sub']) await expect(promo.locator(selector)).toBeHidden()
   await expect(more).toBeHidden()
-  expect((await promo.boundingBox())!.height).toBeLessThanOrEqual(64)
+  expect((await promo.boundingBox())!.height).toBeLessThanOrEqual(216)
+  await noSideScroll(page)
 })
 
 test('a Top moments card on a phone keeps its clock whole; the game and the tail give way first (11-14)', async ({ page }) => {
