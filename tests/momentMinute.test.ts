@@ -74,9 +74,10 @@ describe('momentContextFromMinutes', () => {
   it('reports a measured zero and keeps viewers available in a chat gap', () => {
     expect(shape(payload([rowAt(0, { chatCount: 0 })]))?.selectedMessages).toBe(0)
     const context = shape(payload([rowAt(0, {
-      chatCount: undefined, missing: true, viewerAvg: 30, viewerSamples: 1,
+      chatCount: 9, chatMissing: true, viewerAvg: 30, viewerSamples: 1,
     })]))
     expect(context).toMatchObject({ coverage: 'partial', selectedMessages: null, selectedViewers: 30 })
+    expect(shape(payload([rowAt(0, { missing: true, viewerAvg: 30, viewerSamples: 1 })]))).toBeNull()
   })
 
   it('starts the strip at go-live and ends it at the newest minute', () => {

@@ -43,7 +43,7 @@ export interface MomentMinuteWindow {
 }
 
 type WindowMoment = Pick<DiscoveryMoment, 'login' | 'streamId' | 'offsetSeconds' | 'at'>
-interface MinutePointPayload { offsetSeconds?: unknown; chatCount?: unknown; missing?: unknown }
+interface MinutePointPayload { offsetSeconds?: unknown; chatCount?: unknown; chatMissing?: boolean; missing?: unknown }
 interface MinutesPayload { streamId?: unknown; channel?: unknown; startedAt?: unknown; minutes?: unknown }
 
 /**
@@ -114,7 +114,7 @@ export function momentMinuteWindowFromMinutes(moment: WindowMoment, payload: unk
     if (relative < -MOMENT_MINUTES_BEFORE || relative > MOMENT_MINUTES_AFTER) continue
     const chat = row.chatCount
     const value = row.missing === true ? null
-      : chat == null ? 'unrecorded' as const
+      : row.chatMissing === true || chat == null ? 'unrecorded' as const
         : typeof chat === 'number' && Number.isFinite(chat) && chat >= 0 ? chat : null
     // A repeated minute keeps its last row, as the timeline's rollup conversion does.
     values.set(relative, value)
@@ -145,7 +145,7 @@ function keptMinutes(payload: unknown): MinutesPayload | null {
   const { streamId, channel, startedAt, minutes } = payload as MinutesPayload
   return { streamId, channel, startedAt, minutes: Array.isArray(minutes)
     ? (minutes.slice(0, 240) as MinutePointPayload[]).map(row => row && typeof row === 'object'
-      ? { offsetSeconds: row.offsetSeconds, chatCount: row.chatCount, missing: row.missing } : null)
+      ? { offsetSeconds: row.offsetSeconds, chatCount: row.chatCount, chatMissing: row.chatMissing, missing: row.missing } : null)
     : minutes }
 }
 

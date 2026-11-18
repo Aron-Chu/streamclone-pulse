@@ -1049,8 +1049,8 @@ describe('streamcloneAnalytics adapter', () => {
       const { buildChartSeries, rollupHasMinuteData } = await import('@streampulse/pulse-charts')
       const { rollups } = portalMinutesToRollups('2026-07-13T18:00:00.000Z', [
         { offsetSeconds: 0, chatCount: 0 },
-        { offsetSeconds: 60, viewerAvg: 30, viewerSamples: 1, missing: true },
-        { offsetSeconds: 120, missing: true },
+        { offsetSeconds: 60, viewerAvg: 30, viewerSamples: 1, chatMissing: true, chatCount: 99 },
+        { offsetSeconds: 120, missing: true, chatMissing: true },
         { offsetSeconds: 180, viewerAvg: 45, viewerSamples: 1 },
       ])
       const series = buildChartSeries(rollups, new Set())
