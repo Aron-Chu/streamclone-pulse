@@ -179,7 +179,7 @@ May still include optional localhost hosts for local BFF debugging. That is **no
 | Permission / host | Why retained |
 |-------------------|--------------|
 | `storage` | Settings, short-lived caches, and device-only bookmarks, notes and watched history |
-| `scripting` | MAIN-world page inspection for live/VOD metadata; on-demand packaged files (`content/supporter-card.js`, `content/moment-frames.js`, `content/catch-me-up.js`); popup avatar and panel-shown reads |
+| `scripting` | MAIN-world page inspection for live/VOD metadata; on-demand packaged files (`content/supporter-card.js`, `content/moment-frames.js`, `content/catch-me-up.js`, `content/quick-settings.js`); popup avatar and panel-shown reads |
 | `https://api.streampulse.stream/*` | Hosted Pulse API |
 | `https://*.twitch.tv/*` | Content-script / scripting injection on Twitch hosts (www, m, clips, …), and the popup reading the active Twitch tab's URL. Wildcard also covers `gql.twitch.tv` for extension-origin network access, but GQL discovery runs in page MAIN world without a separate `gql.twitch.tv` host entry. |
 

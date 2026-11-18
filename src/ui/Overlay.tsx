@@ -14,7 +14,9 @@ import { LiveStatsBand } from './LiveStatsBand.tsx'
 import { MostReactedSection } from './MostReactedSection.tsx'
 import { PastVodsSection } from './PastVodsSection.tsx'
 import { CoverageCard } from './CoverageCard.tsx'
-import { OpenAllSettingsButton, PulseSettingsPanel } from './PulseSettingsPanel.tsx'
+import { OpenAllSettingsButton } from './OpenAllSettingsButton.tsx'
+import { loadQuickSettings } from './quickSettings.ts'
+import type { QuickSettingsPanel } from '../shared/quickSettingsContract.ts'
 import { SettingsGearIcon } from './SettingsGearIcon.tsx'
 import { useSupporterAppearanceDetails } from './useSupporterAppearance.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChrome, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
@@ -365,6 +367,9 @@ function OverlayMain({
   const [coverageLastCheck, setCoverageLastCheck] = useState<number | null>(null)
   const [coverageCheckError, setCoverageCheckError] = useState<string | null>(null)
   const [panelView, setPanelView] = useState<'pulse' | 'settings'>('pulse')
+  // Quick settings ships in content/quick-settings.js (src/ui/quickSettings.ts).
+  const [QuickSettings, setQuickSettings] = useState<QuickSettingsPanel | null>(() => globalThis.__pulseQuickSettings ?? null)
+  const settingsRequest = useRef(0)
   const [chartPinOffset, setChartPinOffset] = useState<number | null>(null)
   const [vodJumpChartPinEnabled, setVodJumpChartPinEnabled] = useState(true)
   // Hidden until storage says the reader hasn't dismissed it.
@@ -759,6 +764,7 @@ function OverlayMain({
     setMissedRefreshed(false)
     setMissedJob(null)
     setCoverageCheckError(null)
+    settingsRequest.current += 1
     setPanelView('pulse')
     setChartPinOffset(null)
     setMostReactedPinOffset(null)
@@ -1519,9 +1525,37 @@ function OverlayMain({
     payload?.coverage?.vodStatus,
   ])
 
+  /** Fetches Quick settings once the reader shows interest, so opening it waits on nothing. */
+  function preloadQuickSettings(): void {
+    if (QuickSettings) return
+    void loadQuickSettings().then(panel => {
+      if (panel) setQuickSettings(() => panel)
+    })
+  }
+
+  /**
+   * Shows Quick settings once its script is in, the way it always appeared: the
+   * view (and the expand, when asked) switch together, with nothing in between.
+   */
+  function showSettings(expand: boolean): void {
+    const request = ++settingsRequest.current
+    const show = (panel: QuickSettingsPanel) => {
+      setQuickSettings(() => panel)
+      setPanelView('settings')
+      if (expand && resolvedMode !== 'expanded') void persistMode('expanded')
+    }
+    const ready = globalThis.__pulseQuickSettings
+    if (ready) {
+      show(ready)
+      return
+    }
+    void loadQuickSettings().then(panel => {
+      if (panel && request === settingsRequest.current) show(panel)
+    })
+  }
+
   function openInlineSettings(): void {
-    setPanelView('settings')
-    if (resolvedMode !== 'expanded') void persistMode('expanded')
+    showSettings(true)
   }
 
   function openAnalytics(offsetSeconds?: number): void {
@@ -1826,7 +1860,7 @@ function OverlayMain({
           ? sortLiveHeatPoints(mostReactedHeat.points, 'reaction')[0] ?? null
           : null
     return (
-      <section className={shellClass} data-pulse-density={density} style={sidebarBodyOnly ? styles.miniHost : undefined} aria-label="StreamPulse mini overlay">
+      <section className={shellClass} data-pulse-density={density} style={sidebarBodyOnly ? styles.miniHost : undefined} aria-label="StreamPulse mini overlay" onPointerEnter={preloadQuickSettings} onFocus={preloadQuickSettings}>
         <MiniDock
           login={login}
           payload={payload}
@@ -1853,6 +1887,8 @@ function OverlayMain({
       data-pulse-density={density}
       style={{ ...styles.panel, overflow: 'hidden', boxSizing: 'border-box', height: sidebarBodyOnly ? '100%' : undefined, padding: showSidebarTabs || sidebarBodyOnly ? 0 : 12 }}
       aria-label="StreamPulse overlay"
+      onPointerEnter={preloadQuickSettings}
+      onFocus={preloadQuickSettings}
     >
       {panelView === 'pulse' && !sidebarChatOnly && <PulseBannerBackdrop value={banner.value} perks={supporterPerks} />}
       {showSidebarTabs ? (
@@ -1876,9 +1912,9 @@ function OverlayMain({
         }}
       >
       <PanelErrorBoundary>
-      {panelView === 'settings' ? (
+      {panelView === 'settings' && QuickSettings ? (
         <div key="settings" className="pulse-panel-view-enter pulse-panel-view-settings pulse-panel-view-stack">
-          <PulseSettingsPanel
+          <QuickSettings
             onBack={() => setPanelView('pulse')}
             // An unresolved VOD page has only the internal placeholder, which is not a channel name.
             channel={login.startsWith('__vod__:') ? undefined : {
@@ -2207,7 +2243,7 @@ function OverlayMain({
             data-pulse-settings-entry="bottom-bar"
             aria-label="Open settings"
             title="Settings"
-            onClick={() => setPanelView('settings')}
+            onClick={() => showSettings(false)}
           >
             <SettingsGearIcon size={16} />
             <span>Settings</span>
