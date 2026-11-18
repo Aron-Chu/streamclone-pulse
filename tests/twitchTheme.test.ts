@@ -215,6 +215,11 @@ describe('light Pulse panel', () => {
       expect(LIGHT_CHART_SVG[key], key).toBeDefined()
       expect(lightContrast(rgbOf(LIGHT_CHART_SVG[key]), ground), key).toBeGreaterThanOrEqual(3)
     }
+    // The highlighted game segment's edges carry alpha, so measure them composited.
+    for (const key of ['rgba(249, 115, 22, 0.95)', 'rgba(249, 115, 22, 0.7)']) {
+      expect(LIGHT_CHART_SVG[key], key).toBeDefined()
+      expect(lightContrast(lightOver(parseColour(LIGHT_CHART_SVG[key])!, ground), ground), key).toBeGreaterThanOrEqual(3)
+    }
     expect(lightContrast(rgbOf(LIGHT_CHART_SVG['rgba(161, 161, 170, 0.95)']), ground)).toBeGreaterThanOrEqual(4.5)
     // The live metric icons set stroke on the <svg> itself, so the rule matches it as well as its children.
     expect(lightCssRaw).toContain(`${PANEL_HOST} svg[stroke="${CHART_SIGNAL.viewers}"],${PANEL_HOST} svg [stroke="${CHART_SIGNAL.viewers}"]{stroke:${LIGHT_CHART_SVG[CHART_SIGNAL.viewers]}}`)

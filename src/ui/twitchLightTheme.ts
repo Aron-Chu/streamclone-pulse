@@ -434,6 +434,9 @@ export const LIGHT_CHART_SVG: Record<string, string> = {
   [CHART_SIGNAL.game]: '#c2410c',
   [CHART_SIGNAL.live]: '#15803d',
   '#67e8f9': '#0e7490', // viewer moment marker (PulseOverviewChart)
+  // Highlighted game segment's edges (PulseOverviewChart); its 0.22 band stays a tint.
+  'rgba(249, 115, 22, 0.95)': '#c2410c',
+  'rgba(249, 115, 22, 0.7)': 'rgba(194,65,12,0.8)',
   '#6ee7b7': '#047857', // 7TV lane (chatActivityEmotes)
   '#60a5fa': '#1d4ed8', // BTTV lane
   '#f472b6': '#be185d', // FFZ lane
