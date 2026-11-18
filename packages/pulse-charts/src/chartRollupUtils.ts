@@ -164,7 +164,7 @@ export function rollupHasMinuteData(point: ChartMinuteRollup) {
   return !point.missing && (
     (point.viewerSamples ?? 0) > 0
     || (chartViewerValue(point) ?? 0) > 0
-    || (point.chatCount ?? 0) > 0
+    || (typeof point.chatCount === 'number' && point.chatCount >= 0)
     || minuteEmoteTotal(point) > 0
   )
 }

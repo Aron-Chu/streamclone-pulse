@@ -1044,6 +1044,21 @@ describe('streamcloneAnalytics adapter', () => {
   })
 
   describe('portalMinutesToRollups plot series', () => {
+    it('plots measured chat zero and preserves viewers at a chat gap', async () => {
+      const { portalMinutesToRollups } = await import('../src/lib/streamcloneAnalytics')
+      const { buildChartSeries, rollupHasMinuteData } = await import('@streampulse/pulse-charts')
+      const { rollups } = portalMinutesToRollups('2026-07-13T18:00:00.000Z', [
+        { offsetSeconds: 0, chatCount: 0 },
+        { offsetSeconds: 60, viewerAvg: 30, viewerSamples: 1, missing: true },
+        { offsetSeconds: 120, missing: true },
+        { offsetSeconds: 180, viewerAvg: 45, viewerSamples: 1 },
+      ])
+      const series = buildChartSeries(rollups, new Set())
+      expect(rollups.map(rollupHasMinuteData)).toEqual([true, true, false, true])
+      expect(series.find(({ key }) => key === 'chat')?.values).toEqual([0, null, null, null])
+      expect(series.find(({ key }) => key === 'viewers')?.values).toEqual([null, 30, null, 45])
+    })
+
     it('keeps mid-rank stream-top emotes plottable (EDM-style)', async () => {
       const { portalMinutesToRollups, alignRollupEmoteKeys } = await import(
         '../src/lib/streamcloneAnalytics'

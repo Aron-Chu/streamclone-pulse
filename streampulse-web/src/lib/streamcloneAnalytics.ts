@@ -705,7 +705,7 @@ export function portalMinutesToRollups(
   const rollups = [...byOffset.values()].map((minute) => {
     const minuteMs = startMs + Math.max(0, minute.offsetSeconds) * 1000
     const seventv = minute.seventvEmoteCount ?? 0
-    const chat = minute.chatCount ?? 0
+    const chat = minute.missing ? undefined : minute.chatCount
     const viewerLatest = minute.viewerLatest ?? minute.viewerMax ?? minute.viewerAvg ?? 0
     const emotes: Record<string, number> = {}
     // Prefer authoritative totalEmoteCount from portal minutes when present.
@@ -743,7 +743,12 @@ export function portalMinutesToRollups(
       totalEmoteCount,
       seventvEmoteCount: seventv,
       emotes,
-      missing: minute.missing,
+      // The portal minute flag describes chat. Only mark the chart row
+      // missing if neither viewers nor emotes were measured.
+      missing: minute.missing && !(
+        (minute.viewerSamples ?? 0) > 0 || (minute.viewerAvg ?? 0) > 0 ||
+        (minute.viewerMax ?? 0) > 0 || viewerLatest > 0 || totalEmoteCount > 0
+      ),
       ...(validSignalObservations(minute.signalObservations)
         ? { signalObservations: minute.signalObservations }
         : {}),

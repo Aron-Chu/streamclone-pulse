@@ -77,9 +77,8 @@ function viewers(row: MinuteRow): number | null {
  * the minute it falls in, and chat per minute either side of it.
  *
  * A minute the API flags missing, or never returns, stays a gap rather than
- * zero. The API omits a zero count, so a row without one is "not available",
- * never a measured zero. Returns null when the payload is for another
- * broadcast or the moment's own minute has no rollup.
+ * zero. A row without a chat count is unmeasured, including older responses
+ * that omitted recorded zeros. A chat gap may still have viewer data.
  */
 export function momentContextFromMinutes(
   payload: unknown,
@@ -104,16 +103,18 @@ export function momentContextFromMinutes(
     if (Math.abs(relative) <= MOMENT_MINUTE_SPAN) rows.set(relative, row)
   }
   const selected = rows.get(0)
-  if (!selected || selected.missing === true) return null
+  if (!selected) return null
+  const selectedViewers = viewers(selected)
+  if (selected.missing === true && selectedViewers == null) return null
   const first = Math.max(-MOMENT_MINUTE_SPAN, Math.floor(startMs / 60_000) - momentMinute)
   const last = Math.min(MOMENT_MINUTE_SPAN, latest)
   const samples: { offsetSeconds: number; messages: number | null }[] = []
   let gaps = 0
   for (let relative = first; relative <= last; relative += 1) {
     const row = rows.get(relative)
-    if (!row || row.missing === true) gaps += 1
-    samples.push({ offsetSeconds: Math.max(0, moment.offsetSeconds + relative * 60),
-      messages: row && row.missing !== true && isCount(row.chatCount) ? row.chatCount : null })
+    const messages = row && row.missing !== true && isCount(row.chatCount) ? row.chatCount : null
+    if (messages == null) gaps += 1
+    samples.push({ offsetSeconds: Math.max(0, moment.offsetSeconds + relative * 60), messages })
   }
   return {
     provenance: 'snapshot',
@@ -122,9 +123,9 @@ export function momentContextFromMinutes(
     coverage: gaps ? 'partial' : 'complete',
     windowLabel: `±${MOMENT_MINUTE_SPAN} min`,
     samples,
-    selectedMessages: isCount(selected.chatCount) ? selected.chatCount : null,
+    selectedMessages: selected.missing !== true && isCount(selected.chatCount) ? selected.chatCount : null,
     selectedEmotes: isCount(selected.totalEmoteCount) ? selected.totalEmoteCount : null,
-    selectedViewers: viewers(selected),
+    selectedViewers,
     topEmotes: topEmotes(selected.topEmotes, options.emoteImage),
   }
 }
