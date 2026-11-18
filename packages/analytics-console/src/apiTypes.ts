@@ -6,6 +6,9 @@ export interface SourceStatus {
 
 export interface AnalyticsStream {
   streamId: string;
+  platform?: "twitch" | "kick";
+  vodAlignSeconds?: number;
+  vodDurationSeconds?: number;
   broadcasterId?: string;
   canonicalStreamId?: string;
   login: string;
