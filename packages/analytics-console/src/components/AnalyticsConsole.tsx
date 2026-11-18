@@ -154,6 +154,8 @@ export interface AnalyticsConsoleProps {
   shellNested?: boolean
   /** 2 when the host page already has its own h1 above the console (a reviewed recap's summary). */
   headingLevel?: 1 | 2
+  /** Replace the console when a historical session is missing and the host has its own content. */
+  missingSessionFallback?: ReactNode
   /** Enable sync / re-sync CTAs (local dev portal; hosted waits for API-008 rate limits). */
   enableSyncActions?: boolean
   buildSessionPath?: (login: string, streamId: string) => string
@@ -206,6 +208,7 @@ export function AnalyticsConsole({
   layer2LoadMode = 'eager',
   shellNested = false,
   headingLevel = 1,
+  missingSessionFallback,
   enableSyncActions = false,
   buildSessionPath = defaultSessionPath,
   buildChannelPath = defaultChannelPath,
@@ -1536,6 +1539,8 @@ export function AnalyticsConsole({
       </section>
     )
   }
+
+  if (sessionNotFound && missingSessionFallback != null) return <>{missingSessionFallback}</>
 
   const sessionContentReady = !sessionResolving && !effectiveSessionNotFound && !(detailQuery.isLoading && !detail)
   // The first session read is out: the chart skeleton stands in, and the meta line keeps its slot hidden
