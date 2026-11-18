@@ -71,6 +71,9 @@ export default function ConsoleChannelView() {
           mode="public"
           shellNested
           headingLevel={reviewedRecapShown ? 2 : 1}
+          missingSessionFallback={reviewedRecapShown ? (
+            <p>Live data for this stream has expired. The reviewed summary is available above.</p>
+          ) : undefined}
           showGameSegments
           enableLayoutControls
           layer2LoadMode="staged"
