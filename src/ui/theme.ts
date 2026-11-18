@@ -1,6 +1,18 @@
 import { panelComponentCss } from './panelComponentStyles.ts'
 import { supporterPaintCss } from './supporterPaintStyles.ts'
 
+/**
+ * A dark-panel colour that follows Twitch light mode. The panel host's light
+ * stylesheet (content/shadow.css, built by twitchLightTheme.ts) defines the
+ * variable; everywhere else, including the portal and options page, the dark
+ * literal is the fallback. `tone` is for grounds, borders and lines; `ink` is
+ * for text, which light mode also keeps at 4.5:1. Pass a literal: the build
+ * finds the calls by their source text.
+ */
+const lightVar = (kind: string) => (colour: string): string => `var(--pulse-${kind}-${colour.replace(/\W/g, '')}, ${colour})`
+export const tone = lightVar('tone')
+export const ink = lightVar('ink')
+
 /** Streamclone obsidian theme tokens (matches web app + Figma handoff). */
 export const accentTokens = {
   accent: 'var(--pulse-accent, #8b5cf6)',
@@ -12,15 +24,15 @@ export const accentTokens = {
 } as const
 
 export const theme = {
-  bg: '#18181b',
+  bg: tone('#18181b'),
   /** The options page's black, so the Twitch panel matches full settings. */
-  bgCanvas: '#0b0b0f',
-  panel: '#262633',
-  panelElevated: '#2a2440',
-  panelGlass: 'rgba(17, 17, 23, 0.92)',
-  textPrimary: '#fafafc',
-  textSecondary: '#a1a1b2',
-  textMuted: '#9090a5',
+  bgCanvas: tone('#0b0b0f'),
+  panel: tone('#262633'),
+  panelElevated: tone('#2a2440'),
+  panelGlass: tone('rgba(17, 17, 23, 0.92)'),
+  textPrimary: ink('#fafafc'),
+  textSecondary: ink('#a1a1b2'),
+  textMuted: ink('#9090a5'),
   accent: accentTokens.accent,
   accentStrong: accentTokens.accentStrong,
   accentSoft: accentTokens.accentSoft,
@@ -28,7 +40,7 @@ export const theme = {
   rank1: '#f97316',
   live: '#22c55e',
   liveSoft: '#86efac',
-  border: '#3f3f50',
+  border: tone('#3f3f50'),
   borderAccent: accentTokens.borderAccent,
   error: '#f87171',
   /** Channels of `error`, for token-derived rgba() tints. */
@@ -1211,7 +1223,7 @@ export const shadowStyles = `
   .pulse-settings-supporter-cta:disabled { cursor: progress; }
   .pulse-supporter-cta-head { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
   .pulse-supporter-cta-head strong { font-size: 14px; font-weight: 800; letter-spacing: -0.01em; line-height: 18px; }
-  .pulse-supporter-cta-head span { color: var(--spk-fin, #efc96a); flex: none; font-size: 11px; font-weight: 700; line-height: 18px; white-space: nowrap; }
+  .pulse-supporter-cta-head span { color: var(--spk-fin, ${ink('#efc96a')}); flex: none; font-size: 11px; font-weight: 700; line-height: 18px; white-space: nowrap; }
   .pulse-supporter-stage { display: block; height: 96px; margin: 6px -14px 0; position: relative; }
   ${/* @__PURE__ */ supporterPaintCss()}
   .pulse-settings-panel button:not(:disabled):hover{border-color:var(--pulse-accent-light,#a78bfa);filter:brightness(1.15)}
