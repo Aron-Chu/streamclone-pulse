@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEVICE_CREDENTIAL_STORAGE_KEY } from '../src/background/deviceAuth.ts'
+import * as deviceAuth from '../src/background/deviceAuth.ts'
 import {
   fetchExtensionHealth,
   fetchPulseChannel,
@@ -279,12 +279,9 @@ describe('extension API discipline', () => {
       principalId: 'c'.repeat(64),
       deviceId: `dev_${'b'.repeat(32)}`,
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      principalKind: 'device',
+      principalKind: 'device' as const,
     }
-    vi.stubGlobal('chrome', {
-      runtime: { id: 'test-extension' },
-      storage: { local: { get: vi.fn(async () => ({ [DEVICE_CREDENTIAL_STORAGE_KEY]: credential })) } },
-    })
+    const read = vi.spyOn(deviceAuth, 'getDeviceCredential').mockResolvedValue(credential)
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true, version: 'test', time: 1 }), {
       headers: { 'content-type': 'application/json' },
     }))
@@ -292,6 +289,9 @@ describe('extension API discipline', () => {
     await fetchExtensionHealth('https://custom.example')
     const [, init] = fetchMock.mock.calls[0]!
     expect(new Headers(init?.headers).get('Authorization')).toBeNull()
+    expect(read).not.toHaveBeenCalled()
+    await fetchExtensionHealth('https://api.streampulse.stream')
+    expect(new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get('Authorization')).toBe(`Bearer ${credential.token}`)
   })
 
   it('preserves VOD missing and backend-error semantics for non-2xx responses', async () => {

@@ -7,7 +7,7 @@ import { usePortalOrigin } from './usePortalOrigin.ts'
 import type { MomentPresentation } from '../ui/library/MomentMedia.tsx'
 import { momentIdentity } from '../background/myMomentsStore.ts'
 import { momentPictures, type SavedPicture } from '../shared/momentPictureStore.ts'
-import { getMomentPicturesEnabled } from '../shared/storage.ts'
+import { DEVICE_CREDENTIAL_REVISION_KEY, getMomentPicturesEnabled } from '../shared/storage.ts'
 
 /** Only a reference's own fields cross to the worker: a row's note, dates and other enrichment stay here. */
 function reference(r: MomentReference): MomentReference {
@@ -74,7 +74,7 @@ export function MyMomentsPage() {
   const [revision, setRevision] = useState(0)
   useEffect(() => {
     const changed = (changes: Record<string, chrome.storage.StorageChange>) => {
-      if (Object.keys(changes).some(k => k.startsWith('deviceCredential:') || k === 'backendUrl' || k === 'pulseAccountRevision')) setRevision(v => v + 1)
+      if (Object.keys(changes).some(k => k === DEVICE_CREDENTIAL_REVISION_KEY || k === 'backendUrl' || k === 'pulseAccountRevision')) setRevision(v => v + 1)
     }
     chrome.storage.onChanged.addListener(changed)
     return () => chrome.storage.onChanged.removeListener(changed)

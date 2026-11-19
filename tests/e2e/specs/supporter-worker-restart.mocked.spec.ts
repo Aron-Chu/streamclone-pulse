@@ -268,6 +268,84 @@ async function installation(context: BrowserContext, trace: Trace) {
   })
 }
 
+test('a cold worker migrates the legacy device, rotates it privately and revokes it', async ({ extension }) => {
+  const trace: Trace = { startedAt: Date.now(), calls: [], blockedExternal: [], lifecycle: [], checks: {} }
+  const { page, context, serviceWorker } = extension
+  const key = `deviceCredential:${API}`
+  const legacy = { token: `spdev_${'a'.repeat(64)}`, principalId: 'c'.repeat(64), deviceId: `dev_${'b'.repeat(32)}`,
+    expiresAt: new Date(Date.now() + 86_400_000).toISOString(), principalKind: 'device' }
+  const rotated = { ...legacy, token: `spdev_${'d'.repeat(64)}` }
+  let active = legacy
+  await context.route(`${API}/v1/extension/me`, async route => {
+    call(route, trace, active.token)
+    await route.fulfill({ json: { principalId: active.principalId, deviceId: active.deviceId, principalKind: 'device',
+      watchlistCount: 0, caps: { maxActiveChannels: 1, maxChannelsPerPrincipal: 1, maxDevicesPerPrincipal: 1,
+        deviceEnrollmentRatePerHour: 1, watchRatePerMin: 1, backfillRatePerHour: 1 } } })
+  })
+  await context.route(`${API}/v1/extension/auth/device/rotate`, async route => {
+    call(route, trace, legacy.token)
+    active = rotated
+    await route.fulfill({ json: rotated })
+  })
+  await context.route(`${API}/v1/extension/auth/device`, async route => {
+    expect(route.request().method()).toBe('DELETE')
+    call(route, trace, rotated.token)
+    await route.fulfill({ status: 204 })
+  })
+  // A passive extension document gives us a trusted sender without starting
+  // a settings screen that would make incidental status requests.
+  await page.goto(`chrome-extension://${extension.extensionId}/manifest.json`)
+  const status = (type: string) => page.evaluate(t => chrome.runtime.sendMessage({ type: t }), type)
+  expect((await status('GET_DEVICE_AUTH_STATUS')).status.connected).toBe(false)
+  // Recreate the previous release's storage state in the disposable profile.
+  await serviceWorker.evaluate(async ({ key, legacy }) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('pulse-account-private-v1', 1)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      const tx = db.transaction('account', 'readwrite')
+      tx.objectStore('account').delete(key)
+      await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error) })
+    } finally { db.close() }
+    await chrome.storage.local.set({ [key]: legacy, fixturePreference: true })
+  }, { key, legacy })
+  const fresh = await restart(context, page, serviceWorker, trace)
+  try {
+    const shared = () => page.evaluate(() => chrome.storage.local.get(null))
+    await expect.poll(async () => key in await shared()).toBe(false)
+    expect((await status('GET_DEVICE_AUTH_STATUS')).status.state).toBe('connected')
+    expect((await status('ROTATE_DEVICE')).status.state).toBe('connected')
+    const afterRotation = await shared()
+    expect(afterRotation).toMatchObject({ fixturePreference: true, pulseDeviceCredentialRevision: expect.any(String) })
+    expect(JSON.stringify(afterRotation)).not.toContain('spdev_')
+    // Check visibility from the overlay's actual isolated world on a local fixture.
+    const fixtureUrl = 'https://www.twitch.tv/fixturechan'
+    await context.route(fixtureUrl, route => route.fulfill({ contentType: 'text/html', body: '<title>Storage fixture</title>' }))
+    const twitch = await context.newPage()
+    await twitch.goto(fixtureUrl)
+    const visibility = await page.evaluate(async url => {
+      const [tab] = await chrome.tabs.query({ url })
+      if (tab?.id === undefined) throw new Error('Fixture tab missing')
+      const [isolated] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'ISOLATED',
+        func: async () => ({
+          seesPrivateStore: (await indexedDB.databases()).some(db => db.name === 'pulse-account-private-v1'),
+          sharedPreference: (await chrome.storage.local.get('fixturePreference')).fixturePreference,
+        }) })
+      return { trusted: (await indexedDB.databases()).some(db => db.name === 'pulse-account-private-v1'),
+        isolated: isolated.result }
+    }, fixtureUrl)
+    expect(visibility).toEqual({ trusted: true, isolated: { seesPrivateStore: false, sharedPreference: true } })
+    await twitch.close()
+    expect((await status('REVOKE_DEVICE')).status.error).toBe('device_revoked')
+    expect((await status('GET_DEVICE_AUTH_STATUS')).status.state).toBe('not_connected')
+    const afterRevocation = await shared()
+    expect(afterRevocation.pulseDeviceCredentialRevision).not.toBe(afterRotation.pulseDeviceCredentialRevision)
+    expect(JSON.stringify(afterRevocation)).not.toContain('spdev_')
+  } finally { await fresh.cdp.detach() }
+})
+
 test('a stopped packaged worker resumes Checkout cooldown and applies the chosen finish with Settings closed', async ({ extension, prepare }, info) => {
   test.setTimeout(90_000)
   await prepare()
