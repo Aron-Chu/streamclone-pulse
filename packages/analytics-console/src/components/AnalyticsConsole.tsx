@@ -2057,7 +2057,13 @@ export function AnalyticsConsole({
                 momentOffsetInBar={momentOffsetInBar}
                 selectionIsMoment={selectionIsMoment}
                 onExpandedChange={setChartExpanded}
-                selectedDetail={selectedRollup ? (bar: SessionChartBarLock | null) => <><SelectedMomentCompactCard
+                selectedDetail={selectedRollup ? (bar: SessionChartBarLock | null) => <SelectedMomentCompactCard
+                  // the host's actions for the selected minute (Save, View saved moments) sit in the card's header row
+                  actions={canonicalStreamId && selectedOffsetSeconds != null && Number.isFinite(selectedOffsetSeconds) && selectedOffsetSeconds >= 0
+                    ? renderSelectedMomentActions?.({ login: channelLogin, streamId: canonicalStreamId, offsetSeconds: selectedOffsetSeconds,
+                      at: Date.parse(selectedRollup.minuteTs), chatPerMin: selectedRollup.chatCount,
+                      emotesPerMin: selectedRollup.totalEmoteCount, category: selectedGameName || undefined,
+                      label: matchedHeatmapPoint?.reason ? momentScoreReasonLabel(matchedHeatmapPoint.reason) : undefined }) : null}
                   barSpan={bar}
                   barMoments={bar && Number.isFinite(streamStartMs) ? momentsInBar(stripMoments, barSecondsSpan(bar)) : null}
                   lockedMomentOffsetSeconds={bar ? selectedOffsetSeconds : null}
@@ -2080,11 +2086,7 @@ export function AnalyticsConsole({
                   games={chartGames}
                   vodId={streamVodId}
                   onClear={() => handleSelectRollup(null)}
-                />{canonicalStreamId && selectedOffsetSeconds != null && Number.isFinite(selectedOffsetSeconds) && selectedOffsetSeconds >= 0
-                  ? renderSelectedMomentActions?.({ login: channelLogin, streamId: canonicalStreamId, offsetSeconds: selectedOffsetSeconds,
-                    at: Date.parse(selectedRollup.minuteTs), chatPerMin: selectedRollup.chatCount,
-                    emotesPerMin: selectedRollup.totalEmoteCount, category: selectedGameName || undefined,
-                    label: matchedHeatmapPoint?.reason ? momentScoreReasonLabel(matchedHeatmapPoint.reason) : undefined }) : null}</> : null}
+                /> : null}
               />
               {momentsUnderChart ? null : noVodNote}
             </div>

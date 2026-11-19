@@ -159,12 +159,14 @@
   100% { transform: translateY(-122vh) rotate(var(--r, 0deg)); opacity: 0; }
 }
 
+/* 0.94, not 0.76 (11-18): at 0.76 the hero's 56 px heading ghosted through the blur as a grey smear across the
+   bar's middle. The blur stays, so the page's glow still tints the bar. */
 .sl-header {
   position: sticky;
   top: 0;
   z-index: 20;
   border-bottom: 1px solid hsl(var(--sc-border));
-  background: hsl(var(--sc-background) / 0.76);
+  background: hsl(var(--sc-background) / 0.94);
   backdrop-filter: blur(18px);
 }
 
@@ -360,14 +362,21 @@
 
 /* While the hero's own install button is on screen, the header's steps back
    (Landing useHeroButtonsInView): one at a time. It keeps its place, so Menu
-   and Open the Hub never move. Discord lives only in the header now. */
+   and Open the Hub never move. Discord lives only in the header now.
+   11-18: it is first in its group, so its empty place joins the free room and
+   Discord no longer sits stranded mid-bar; and it rises into the bar as the
+   hero's buttons go up under it, then sinks back out (as on the hub). */
 .sl-nav .sl-nav__install {
-  transition: opacity 0.2s ease, visibility 0s linear 0s;
+  transition: opacity 200ms ease-out, visibility 0s linear 0s, translate 320ms cubic-bezier(.16, 1, .3, 1),
+    background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
 }
 .sl-nav[data-hero-buttons] .sl-nav__install {
   opacity: 0;
   visibility: hidden;
-  transition-delay: 0s, 0.2s;
+  translate: 0 8px;
+  transition-duration: 140ms, 0s, 160ms, 150ms, 150ms, 150ms, 150ms;
+  transition-delay: 0s, 160ms, 0s, 0s, 0s, 0s, 0s;
+  transition-timing-function: ease-in, linear, cubic-bezier(.4, 0, 1, 1), ease, ease, ease, ease;
 }
 @media (prefers-reduced-motion: reduce) {
   .sl-nav .sl-nav__install { transition: none; }
@@ -381,7 +390,7 @@
   margin-top: 1.6rem;
 }
 
-.sl-search .hv5-search {
+:is(.sl-search, .sl-dock) .hv5-search {
   position: relative;
   text-align: left;
 }
@@ -401,14 +410,14 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.sl-search .hv5-field:hover { border-color: hsl(240 5% 34%); }
+:is(.sl-search, .sl-dock) .hv5-field:hover { border-color: hsl(240 5% 34%); }
 
 .sl-search .hv5-field:focus-within {
   border-color: #5eead4;
   box-shadow: 0 0 0 4px rgb(94 234 212 / 0.16), 0 18px 44px rgb(0 0 0 / 0.42);
 }
 
-.sl-search .hv5-ico {
+:is(.sl-search, .sl-dock) .hv5-ico {
   width: 22px;
   height: 22px;
   flex: none;
@@ -418,7 +427,7 @@
   stroke-linecap: round;
 }
 
-.sl-search .hv5-field input {
+:is(.sl-search, .sl-dock) .hv5-field input {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -432,10 +441,10 @@
   font: 500 17px/1.2 var(--sc-font);
 }
 
-.sl-search .hv5-field input::placeholder { color: hsl(var(--sc-muted-foreground)); }
-.sl-search .hv5-field input::-webkit-search-cancel-button { display: none; }
+:is(.sl-search, .sl-dock) .hv5-field input::placeholder { color: hsl(var(--sc-muted-foreground)); }
+:is(.sl-search, .sl-dock) .hv5-field input::-webkit-search-cancel-button { display: none; }
 
-.sl-search .hv5-kbd {
+:is(.sl-search, .sl-dock) .hv5-kbd {
   flex: none;
   padding: 0 7px;
   border: 1px solid hsl(240 5% 24%);
@@ -447,9 +456,9 @@
 }
 
 /* the hint fades as you focus the field (2026-11-02) instead of vanishing; it keeps its place, so the text does not jump */
-.sl-search .hv5-field:focus-within .hv5-kbd { opacity: 0; pointer-events: none; }
+:is(.sl-search, .sl-dock) .hv5-field:focus-within .hv5-kbd { opacity: 0; pointer-events: none; }
 @media (prefers-reduced-motion: no-preference) {
-  .sl-search .hv5-kbd { transition: opacity 140ms ease; }
+  :is(.sl-search, .sl-dock) .hv5-kbd { transition: opacity 140ms ease; }
 }
 
 .sl-search .hv5-hero-go {
@@ -472,7 +481,7 @@
   outline-offset: 2px;
 }
 
-.sl-search .hv5-sugg {
+:is(.sl-search, .sl-dock) .hv5-sugg {
   position: absolute;
   z-index: 45;
   top: 68px;
@@ -493,7 +502,7 @@
 
 /* closed, the list stays in the page but fades and lifts 4 px out (2026-11-02), then drops out of reach after the fade
    (visibility delayed, as the header's buttons do above). It floats (absolute), so it takes no room while closed. */
-.sl-search .hv5-sugg[hidden] {
+:is(.sl-search, .sl-dock) .hv5-sugg[hidden] {
   display: block;
   visibility: hidden;
   opacity: 0;
@@ -501,11 +510,11 @@
   pointer-events: none;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .sl-search .hv5-sugg { transition: opacity 140ms ease, translate 140ms ease, visibility 0s linear 0s; }
-  .sl-search .hv5-sugg[hidden] { transition-delay: 0s, 0s, 140ms; }
+  :is(.sl-search, .sl-dock) .hv5-sugg { transition: opacity 140ms ease, translate 140ms ease, visibility 0s linear 0s; }
+  :is(.sl-search, .sl-dock) .hv5-sugg[hidden] { transition-delay: 0s, 0s, 140ms; }
 }
 
-.sl-search .hv5-sugg a {
+:is(.sl-search, .sl-dock) .hv5-sugg a {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -516,27 +525,27 @@
   text-decoration: none;
 }
 
-.sl-search .hv5-sugg a[aria-selected="true"],
-.sl-search .hv5-sugg a:hover { background: hsl(var(--sc-muted)); }
+:is(.sl-search, .sl-dock) .hv5-sugg a[aria-selected="true"],
+:is(.sl-search, .sl-dock) .hv5-sugg a:hover { background: hsl(var(--sc-muted)); }
 
-.sl-search .hv5-sg-h {
+:is(.sl-search, .sl-dock) .hv5-sg-h {
   padding: 4px 10px 6px;
   color: hsl(var(--sc-muted-foreground));
   font: 600 12px/16px var(--sc-font);
 }
 
-.sl-search .hv5-sg-tx { display: flex; flex-direction: column; min-width: 0; }
+:is(.sl-search, .sl-dock) .hv5-sg-tx { display: flex; flex-direction: column; min-width: 0; }
 
-.sl-search :is(.hv5-sg-nm, .hv5-sg-c) {
+:is(.sl-search, .sl-dock) :is(.hv5-sg-nm, .hv5-sg-c) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.sl-search .hv5-sg-nm { font-size: 15px; font-weight: 600; line-height: 20px; }
-.sl-search .hv5-sg-c { color: hsl(var(--sc-muted-foreground)); font-size: 12px; line-height: 16px; }
+:is(.sl-search, .sl-dock) .hv5-sg-nm { font-size: 15px; font-weight: 600; line-height: 20px; }
+:is(.sl-search, .sl-dock) .hv5-sg-c { color: hsl(var(--sc-muted-foreground)); font-size: 12px; line-height: 16px; }
 
-.sl-search .hv5-sg-v {
+:is(.sl-search, .sl-dock) .hv5-sg-v {
   flex: none;
   margin-left: auto;
   color: hsl(var(--sc-muted-foreground));
@@ -544,33 +553,33 @@
   font-variant-numeric: tabular-nums;
 }
 
-.sl-search .hv5-sugg a.hv5-sg-open {
+:is(.sl-search, .sl-dock) .hv5-sugg a.hv5-sg-open {
   margin-top: 4px;
   border-top: 1px solid hsl(var(--sc-border));
   border-radius: 0 0 7px 7px;
   color: hsl(var(--sc-muted-foreground));
 }
 
-.sl-search .hv5-sg-open .hv5-ico { width: 16px; height: 16px; margin: 0 6px; }
-.sl-search .hv5-sg-open b { color: hsl(var(--sc-foreground)); }
-.sl-search .hv5-sg-k { margin-left: auto; color: hsl(var(--sc-muted-foreground)); font-size: 12px; }
+:is(.sl-search, .sl-dock) .hv5-sg-open .hv5-ico { width: 16px; height: 16px; margin: 0 6px; }
+:is(.sl-search, .sl-dock) .hv5-sg-open b { color: hsl(var(--sc-foreground)); }
+:is(.sl-search, .sl-dock) .hv5-sg-k { margin-left: auto; color: hsl(var(--sc-muted-foreground)); font-size: 12px; }
 
 /* 3A (11-02): the looked-up login's row, a game's cover and an emote's picture */
-.sl-search [data-kind="login"] > .hv5-ico { flex: none; width: 16px; height: 16px; margin: 0 6px; }
-.sl-search [data-kind="login"] b { color: hsl(var(--sc-foreground)); }
-.sl-search :is(.hv5-sg-gm, .hv5-sg-em) {
+:is(.sl-search, .sl-dock) [data-kind="login"] > .hv5-ico { flex: none; width: 16px; height: 16px; margin: 0 6px; }
+:is(.sl-search, .sl-dock) [data-kind="login"] b { color: hsl(var(--sc-foreground)); }
+:is(.sl-search, .sl-dock) :is(.hv5-sg-gm, .hv5-sg-em) {
   flex: none;
   display: grid;
   place-items: center;
   width: 32px;
   height: 32px;
 }
-.sl-search .hv5-sg-gm > * { width: 24px; height: 32px; border-radius: 3px; overflow: hidden; background: hsl(var(--sc-muted)); }
-.sl-search .hv5-sg-gm img { display: block; object-fit: cover; }
-.sl-search .hv5-sg-gm span { display: grid; place-items: center; color: hsl(var(--sc-muted-foreground)); font-size: 10px; font-weight: 600; }
-.sl-search .hv5-sg-em img { display: block; width: 28px; height: 28px; object-fit: contain; }
+:is(.sl-search, .sl-dock) .hv5-sg-gm > * { width: 24px; height: 32px; border-radius: 3px; overflow: hidden; background: hsl(var(--sc-muted)); }
+:is(.sl-search, .sl-dock) .hv5-sg-gm img { display: block; object-fit: cover; }
+:is(.sl-search, .sl-dock) .hv5-sg-gm span { display: grid; place-items: center; color: hsl(var(--sc-muted-foreground)); font-size: 10px; font-weight: 600; }
+:is(.sl-search, .sl-dock) .hv5-sg-em img { display: block; width: 28px; height: 28px; object-fit: contain; }
 
-.sl-search .hv5-sg-none {
+:is(.sl-search, .sl-dock) .hv5-sg-none {
   padding: 10px;
   color: hsl(var(--sc-muted-foreground));
   font-size: 12px;
@@ -662,6 +671,141 @@
   .sl-search .hv5-field,
   .sl-search .hv5-hero-go,
   .sp-landing .sl-try__chip { transition: none; }
+}
+
+/* The docked search (11-18): the hub's HubV5DockSearch in the header, the same box, suggestions and Enter rules
+   as the hero's. Once the hero's field has gone up under the header (Landing useDockedSearch) it rises into the
+   header, and sinks back out as the field returns; it keeps its place while hidden, so the header never shifts.
+   From 1100 px a field in the room between the links and the buttons, on the header's centre line or as near as
+   that room allows (HubV5TopBar sets --hv5-dock-shift). 760-1099 px a search button that opens the field as a row
+   under the header, as on the hub. Under 760 px there is no room beside the buttons, Menu and Discord, so that
+   header stays as it was; / still opens the row there (on phones it goes to the hero's field, as on the hub). */
+.sl-dock { display: contents; }
+
+.sl-dock .hv5-dock {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: opacity 140ms ease-in, transform 160ms cubic-bezier(.4, 0, 1, 1), visibility 0s linear 160ms;
+}
+
+.sl-dock .hv5-dock[data-shown] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 200ms ease-out, transform 320ms cubic-bezier(.16, 1, .3, 1), visibility 0s;
+}
+
+.sl-dock .hv5-dock > .hv5-search {
+  width: min(100%, 380px);
+  margin-inline: auto;
+  translate: var(--hv5-dock-shift, 0px) 0;
+}
+
+/* .sl-dock .hv5-dock, not .sl-dock alone: after a visit to the hub its stylesheet is on the page too, and these
+   must still win over its dock and hero field rules. */
+.sl-dock .hv5-dock .hv5-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 8px 0 12px;
+  border: 1px solid hsl(240 5% 24%);
+  border-radius: 10px;
+  background: hsl(var(--sc-card));
+  color: hsl(var(--sc-muted-foreground));
+  box-shadow: none;
+  cursor: text;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sl-dock .hv5-dock .hv5-field:hover { border-color: hsl(240 5% 34%); }
+
+.sl-dock .hv5-dock .hv5-field:focus-within {
+  border-color: #5eead4;
+  box-shadow: 0 0 0 3px rgb(94 234 212 / 0.16);
+}
+
+.sl-dock .hv5-dock .hv5-field .hv5-ico { width: 16px; height: 16px; }
+.sl-dock .hv5-dock .hv5-field input { color: hsl(var(--sc-foreground)); font-size: 14px; }
+.sl-dock .hv5-dock .hv5-kbd { padding: 0 6px; line-height: 20px; }
+.sl-dock .hv5-dock .hv5-sugg { top: 46px; }
+
+@media (pointer: coarse) {
+  .sl-dock .hv5-dock .hv5-field input { font-size: 16px; }
+}
+
+/* The search button, as the header's other icon buttons (Menu's border, the Discord mark's 44 px and focus ring). */
+.sl-dock .hv5-dock-btn { display: none; }
+
+@media (min-width: 760px) and (max-width: 1099px) {
+  /* It keeps its place while hidden, so Open the Hub, Menu and Discord never move. */
+  .sl-dock .hv5-dock-btn,
+  .sl-dock .hv5-dock-btn[hidden] {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-left: auto;
+    padding: 0;
+    border: 1px solid hsl(var(--sc-border));
+    border-radius: 0.55rem;
+    background: transparent;
+    color: hsl(var(--sc-foreground));
+    cursor: pointer;
+    transition: opacity 200ms ease-out, visibility 0s linear 0s, translate 320ms cubic-bezier(.16, 1, .3, 1),
+      background-color 150ms ease, border-color 150ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .sl-dock .hv5-dock-btn[hidden] {
+    opacity: 0;
+    visibility: hidden;
+    translate: 0 8px;
+    transition-duration: 140ms, 0s, 160ms, 150ms, 150ms, 260ms;
+    transition-delay: 0s, 160ms, 0s, 0s, 0s, 0s;
+    transition-timing-function: ease-in, linear, cubic-bezier(.4, 0, 1, 1), ease, ease, cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .sl-dock .hv5-dock-btn:not(:disabled):active {
+    scale: 0.96;
+    transition-duration: 200ms, 0s, 320ms, 150ms, 150ms, 70ms;
+  }
+  .sl-dock .hv5-dock-btn:hover { background: hsl(var(--sc-accent-surface)); }
+  .sl-dock .hv5-dock-btn[aria-expanded="true"] { border-color: #5eead4; }
+  .sl-dock .hv5-dock-btn:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+  .sl-dock .hv5-dock-btn .hv5-ico { width: 18px; height: 18px; }
+  .sl-dock + .sl-nav__right { margin-left: 0; }
+}
+
+@media (max-width: 1099px) {
+  /* The row: it drops in under the header over the page (the header keeps its height), the field as wide as the hero's. */
+  .sl-dock .hv5-dock {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    padding: 10px 1.5rem 12px;
+    border-bottom: 1px solid hsl(var(--sc-border));
+    background: hsl(var(--sc-background) / 0.97);
+    box-shadow: 0 14px 28px rgb(0 0 0 / 0.35);
+    transform: translateY(-6px);
+  }
+  .sl-dock .hv5-dock > .hv5-search { width: min(100%, 620px); translate: none; }
+  /* Closed it is display none, as the hub's row, so / knows to open it; display waits for the fade on the way out. */
+  .sl-dock .hv5-dock:not([data-open]) {
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-6px);
+    transition: opacity 140ms ease-in, transform 160ms cubic-bezier(.4, 0, 1, 1), visibility 0s linear 160ms,
+      display 0s linear 160ms;
+    transition-behavior: allow-discrete;
+  }
+  @starting-style {
+    .sl-dock .hv5-dock[data-open] { opacity: 0; transform: translateY(-6px); }
+  }
 }
 
 .sl-tickwrap {
@@ -1189,8 +1333,6 @@
 
 @media (max-width: 960px) {
   .sl-mobile-nav { display: block; }
-  /* Without the Discord mark, Menu takes the right edge, not the middle of the header. */
-  .sl-nav:not(.sl-nav--discord) .sl-mobile-nav { margin-left: auto; }
   .sl-menu { display: none; }
   .sl-nav__right .sl-discord-nav { display: none; }
   .sl-discord-icon { display: grid; margin-left: -0.75rem; }
@@ -1208,7 +1350,9 @@
 @media (max-width: 560px) {
   .sl-nav { padding: 0 1rem; }
   .sl-nav__right { display: none; }
-  .sl-discord-icon { margin-left: auto; }
+  /* Menu and the Discord mark stay together at the right edge, as wider (11-18: the mark took the free room, which
+     left Menu stranded in the middle of the header). */
+  .sl-mobile-nav { margin-left: auto; }
   .sl-stage { padding: 0 1rem; }
   .sl-stage h1 { font-size: 2.35rem; }
   .sl-ln-grid { grid-template-columns: 1fr; }
@@ -1223,6 +1367,8 @@
 
 @media (max-width: 359px) {
   .sl-nav--discord { gap: 0.5rem; }
+  /* the same 8 px between Menu and the mark as wider */
+  .sl-nav--discord .sl-discord-icon { margin-left: 0; }
 }
 
 /* Just above the Menu breakpoint the Discord button leaves the menu links

@@ -500,12 +500,13 @@ function EmoteDrivers({ a, peakT, bucketMinutes, intervalWindow, behind, avatars
   return (
     <div aria-busy={loading || undefined}>
       <p className={note ? 'hv5-el-none' : 'hv5-vh'} role="status">{say}</p>
+      {/* up to 3 rows fill the width in one column; 4 or 5 take the second column */}
       {loading ? (
-        <ol className="hv5-el-cols hv5-es-rows" aria-hidden="true">
+        <ol className="hv5-el-cols hv5-es-rows hv5-el-one" aria-hidden="true">
           {[0, 1, 2].map((i) => <li key={i} className="hv5-es-ph" />)}
         </ol>
       ) : drivers.length ? (
-        <ol className="hv5-el-cols hv5-es-rows" key={key}>
+        <ol className={`hv5-el-cols hv5-es-rows${drivers.length <= 3 ? ' hv5-el-one' : ''}`} key={key}>
           {drivers.map((d, i) => (
             <li key={momentRowKey(d.m)} style={{ animationDelay: `${i * 18}ms` }}>
               <Link to={momentHref(d.m)} className="hv5-el-r">
@@ -1115,7 +1116,7 @@ export function HubV5EmoteMap({
   const findLine = !data
     ? ''
     : findMiss === 'wider'
-      ? `Not in the ${emoteWindowWords(data, view)}. Search to look in ${wideLabel}.`
+      ? `Not in the ${emoteWindowWords(data, view)}. ${touch ? 'Search' : 'Press Enter'} to look in ${wideLabel}.`
       : findMiss
         ? `No emote matches “${findText.trim()}” here.${touch ? '' : ' Esc clears.'}`
         : foundAgg
@@ -1329,7 +1330,7 @@ export function HubV5EmoteMap({
                     <span>{shareOf(emoteMapValue(selected, view, data))} of all uses · {providerName(selected.prov)}</span>
                   </span>
                   {hourOk ? <Chg c={emoteChange(selected, data.windowLabel)} /> : null}
-                  <button type="button" className="hv5-el-clear" onClick={() => setSel(null)}>Clear ✕</button>
+                  <button type="button" className="hv5-el-clear" onClick={() => setSel(null)}>Clear<HubV5Icon name="x" /></button>
                 </div>
                 {spike ? (
                   <div className="hv5-es">
@@ -1362,7 +1363,7 @@ export function HubV5EmoteMap({
                 {spammed.length ? (
                   <>
                     <p className="hv5-el-sub hv5-es-live">Where {selected.e.name} led chat on streams live now · × is emotes against the 15 minutes before</p>
-                    <ol className="hv5-el-cols" key={`m|${selected.id}`}>
+                    <ol className={`hv5-el-cols${spammed.length <= 5 ? ' hv5-el-one' : ''}`} key={`m|${selected.id}`}>
                       {spammed.map((r, i) => (
                         <li key={r.key} style={{ animationDelay: `${i * 18}ms` }}>
                           <Link to={r.href} className="hv5-el-r">
@@ -1392,7 +1393,7 @@ export function HubV5EmoteMap({
                     <li key={x.a.id} style={{ animationDelay: `${i * 18}ms` }}>
                       <button
                         type="button"
-                        className="hv5-el-r"
+                        className={hourOk ? 'hv5-el-r hv5-el-pace' : 'hv5-el-r'}
                         onClick={() => select(x.a.id)}
                       >
                         <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
@@ -1411,7 +1412,7 @@ export function HubV5EmoteMap({
           </div>
           {onAgg && layout && typeof document !== 'undefined'
             ? createPortal(
-              <div ref={cardRef} className="hub-d3-layer hv5-layer hv5-em-card" aria-hidden="true" style={{ left: 0, top: 0, visibility: 'hidden' }}>
+              <div ref={cardRef} className="hub-d3-layer hv5-layer hv5-em-card hv5-emc" aria-hidden="true" style={{ left: 0, top: 0, visibility: 'hidden' }}>
                 <EmoteCard a={onAgg} data={data} win={view} total={layout.total} />
               </div>,
               document.body,

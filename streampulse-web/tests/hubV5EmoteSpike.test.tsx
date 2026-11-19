@@ -123,6 +123,11 @@ describe('a clicked emote (C1, 10-30)', () => {
     // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
     expect(screen.getByRole('link', { name: `XQC, Just Chatting, 41 Pog uses in its busiest minute at ${hubClock(SPIKE + 2 * MIN)}. Opens that minute in Moments.` })).toBe(links[0])
     expect(links[1]!.textContent).toContain('No category')
+    // up to 3 rows fill the width in one column, not half of it (11-18)
+    expect(container.querySelector('.hv5-es-rows')!.classList.contains('hv5-el-one')).toBe(true)
+    // the clear names its action; its × is the hub's icon, hidden from screen readers
+    const clear = screen.getByRole('button', { name: 'Clear' })
+    expect(clear.querySelector('svg.hv5-ico')!.getAttribute('aria-hidden')).toBe('true')
   })
 
   it('says when the read fails, lists nothing, or finds no match; the bars stay', async () => {
