@@ -281,10 +281,11 @@ describe('supporter settings', () => {
             supportPeriods: 24,
             features: ['supporter.banner.v1', 'supporter.finish.v1'],
             cosmetics: { enabled: true, finish: 'glass' },
+            checkoutEnabled: true,
           }}
         />,
       ))
-      // An expired member has nothing to equip: the only action is the choice for when Supporter starts, never Equip look.
+      // An expired member has nothing to equip: with checkout open, the only action is the choice for when Supporter starts, never Equip look.
       expect([...host.querySelectorAll('.pulse-account-link-actions button')].map(button => button.textContent)).toEqual(['Use this look when Supporter starts'])
       expect(host.textContent).not.toMatch(/Equip look|Default active/)
       // The backdrop can be tried in the preview only: it starts on the sample's backdrop, and a press saves nothing.

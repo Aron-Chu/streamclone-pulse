@@ -2,7 +2,7 @@ import { FINISH_INTENT_TTL_MS, type SupporterAccountAction, type SupporterAccoun
 import { supporterAccess, SUPPORTER_FEATURES, type SupporterScope } from '../shared/supporterAccess.ts'
 import { DEVICE_LINK_ENABLED } from '../shared/deviceLink.ts'
 import { parseChatBadgeSnapshot } from '../shared/chatBadges.ts'
-import { lookExtrasOf, type SupporterLookExtras } from '../shared/supporterLook.ts'
+import { lookExtrasOf, sameExtras, type SupporterLookExtras } from '../shared/supporterLook.ts'
 
 type Environment = SupporterScope['environment']
 type Finish = SupporterCosmetics['finish']
@@ -15,9 +15,11 @@ type PrivateState = Pending | Linked | { kind: 'refreshing'; installation?: true
  * Bound to the account linked when it was chosen, if any, and short-lived, so
  * it never equips an unsolicited cosmetic long after the choice was made.
  * `look` is the motion and backdrop chosen with it: they wait here, not in the
- * profile's settings, and are equipped only with the finish.
+ * profile's settings, and are equipped only with the finish. `pending` is set
+ * once the finish is on but this profile could not take the look yet: it is
+ * how this profile looked then, so a later change here outranks the retry.
  */
-export type FinishIntent = { finish: Finish; setAt: number; accountId?: string; look?: SupporterLookExtras }
+export type FinishIntent = { finish: Finish; setAt: number; accountId?: string; look?: SupporterLookExtras; pending?: SupporterLookExtras }
 export { FINISH_INTENT_TTL_MS } from '../shared/supporterAccount.ts'
 export type InstallationBootstrap = { key: string; state: 'pending' | 'claimed'; accountId?: string }
 type Ports = {
@@ -35,6 +37,8 @@ type Ports = {
   writeIntent?: (value: FinishIntent | null) => Promise<void>
   /** Equips a choice's motion and backdrop in this profile once its finish is applied. */
   applyLook?: (look: SupporterLookExtras) => Promise<void>
+  /** This profile's motion and backdrop as stored now. */
+  readLook?: () => Promise<SupporterLookExtras>
   readInstallationKey?: () => Promise<unknown>
   writeInstallationKey?: (value: InstallationBootstrap | null) => Promise<void>
   /**
@@ -136,7 +140,8 @@ function finishIntent(value: unknown, now: number): FinishIntent | null {
   if (!FINISHES.has(String(r.finish)) || typeof r.setAt !== 'number' || !Number.isFinite(r.setAt) || r.setAt > now || now - r.setAt > FINISH_INTENT_TTL_MS) return null
   if (r.accountId !== undefined && !id(r.accountId)) return null
   const look = lookExtrasOf(r.look)
-  return { finish: r.finish as Finish, setAt: r.setAt, ...(r.accountId ? { accountId: r.accountId as string } : {}), ...(look ? { look } : {}) }
+  const pending = look ? lookExtrasOf(r.pending) : null
+  return { finish: r.finish as Finish, setAt: r.setAt, ...(r.accountId ? { accountId: r.accountId as string } : {}), ...(look ? { look } : {}), ...(pending ? { pending } : {}) }
 }
 
 /** A shared appearance read for an account with perks; its accent still renews before it lapses. */
@@ -441,7 +446,8 @@ export class SupporterAccountCoordinator {
   /** Original save time for settings; the private account binding stays here. */
   async finishIntentDetails(): Promise<SupporterFinishIntentDetails | null> {
     const intent = finishIntent(await this.ports.readIntent?.().catch(() => null), this.now())
-    return intent ? { finish: intent.finish, setAt: intent.setAt, ...(intent.look ? { look: intent.look } : {}) } : null
+    // A choice whose finish is already on is no longer waiting to be made.
+    return intent && !intent.pending ? { finish: intent.finish, setAt: intent.setAt, ...(intent.look ? { look: intent.look } : {}) } : null
   }
 
   /** Record or clear the explicit pre-purchase choice (a finish, with the motion and backdrop chosen with it) for this installation. */
@@ -474,10 +480,31 @@ export class SupporterAccountCoordinator {
     try {
       const raw = await this.ports.readIntent().catch(() => null)
       const intent = finishIntent(raw, this.now())
+      if (!intent || (intent.accountId && intent.accountId !== credentials.accountId)) {
+        if (raw) await this.ports.writeIntent(null)
+        return value
+      }
+      if (intent.pending) {
+        // The finish went on earlier but this profile could not take its motion
+        // and backdrop. Retry them only while that finish is still worn and
+        // nothing here has changed this profile's look since.
+        const look = intent.look
+        const worn = value.cosmetics?.enabled === true && value.cosmetics.finish === intent.finish
+        const current = look && worn ? await this.ports.readLook?.().catch(() => null) ?? null : null
+        if (!look || !current || !sameExtras(current, intent.pending)) {
+          await this.ports.writeIntent(null)
+          return value
+        }
+        if (this.now() < this.intentRetry.until) return value
+        await this.ports.applyLook?.(look)
+        this.intentRetry = { failures: 0, until: 0 }
+        await this.ports.writeIntent(null)
+        return value
+      }
       // An account that already has a finish equipped keeps it: a later
       // explicit choice (perhaps on another browser) outranks this earlier one.
-      if (!intent || (intent.accountId && intent.accountId !== credentials.accountId) || value.cosmetics?.enabled) {
-        if (raw) await this.ports.writeIntent(null)
+      if (value.cosmetics?.enabled) {
+        await this.ports.writeIntent(null)
         return value
       }
       if (this.now() < this.intentRetry.until) return value
@@ -490,9 +517,16 @@ export class SupporterAccountCoordinator {
       }
       if (result.status !== 200) throw new Error('finish_intent_refused')
       this.intentRetry = { failures: 0, until: 0 }
-      // The finish is on; its motion and backdrop follow. A failed local write
-      // leaves the finish applied and the profile's own settings as they were.
-      if (intent.look) await this.ports.applyLook?.(intent.look).catch(() => undefined)
+      // The finish is on; its motion and backdrop follow. If this profile
+      // cannot take them now, they wait with the choice for a later read,
+      // together with how this profile looks, and the finish stays applied.
+      if (intent.look && !((await this.ports.applyLook?.(intent.look).then(() => true, () => false)) ?? true)) {
+        const pending = await this.ports.readLook?.().catch(() => null)
+        if (pending) {
+          await this.ports.writeIntent({ ...intent, pending })
+          return { ...value, cosmetics }
+        }
+      }
       await this.ports.writeIntent(null)
       return { ...value, cosmetics }
     } catch {

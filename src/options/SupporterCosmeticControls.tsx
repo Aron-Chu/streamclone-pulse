@@ -171,10 +171,11 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
   const intentLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === intent)?.label
   const checkoutAvailability = supporterCheckoutAvailability(entitlement)
   // A store build's browser with no account yet cannot ask whether sales are
-  // open, and a membership read that failed (or a server without Supporter)
-  // cannot confirm them, so each keeps the closed try-on: nothing new saved,
-  // no claim either way, and an earlier choice can still be removed.
-  const tryOnly = !allowed && (checkoutAvailability === 'closed' || entitlement?.state === 'unavailable' || entitlement?.state === 'error' || (entitlement?.state === 'not_linked' && !TWITCH_SIGNIN_ENABLED))
+  // open, and a membership read that failed, a server without Supporter, or an
+  // older server that does not say whether checkout is open cannot confirm
+  // them, so each keeps the closed try-on: nothing new saved, no claim either
+  // way, and an earlier choice can still be removed.
+  const tryOnly = !allowed && (checkoutAvailability === 'closed' || (entitlement?.state === 'ready' && checkoutAvailability === 'unknown') || entitlement?.state === 'unavailable' || entitlement?.state === 'error' || (entitlement?.state === 'not_linked' && !TWITCH_SIGNIN_ENABLED))
   const intentExpiresAt = intentSetAt === null ? null : intentSetAt + FINISH_INTENT_TTL_MS
   const savedEarlier = intentLabel && intentExpiresAt !== null && intentExpiresAt >= Date.now()
     ? { label: intentLabel, date: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(intentExpiresAt) }

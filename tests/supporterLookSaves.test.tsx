@@ -142,6 +142,7 @@ describe('choosing a look before Supporter starts', () => {
     ['a server without Supporter', { state: 'unavailable', reason: 'not_deployed' } as SupporterEntitlement],
     ['a membership read that failed', { state: 'error' } as SupporterEntitlement],
     ['closed checkout', guest(false)],
+    ['an older server that does not say whether checkout is open', { state: 'ready', status: 'none', features: [], supportPeriods: 0 } as SupporterEntitlement],
   ])('offers only a try-on on %s', async (_label, entitlement) => {
     const view = await mount(entitlement)
     expect(view.button('Use this look when Supporter starts')).toBeUndefined()

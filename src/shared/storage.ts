@@ -1,6 +1,6 @@
 import { normalizeLogin } from './login.ts'
 import { SUPPORTER_PAINT_KEY, normalizeSupporterPaintStyle, type SupporterPaintStyle } from './supporterPaint.ts'
-import { SUPPORTER_LOOKS_KEY, lookStorage, normalizeSupporterLooks, type SupporterLook, type SupporterLookExtras } from './supporterLook.ts'
+import { SUPPORTER_LOOKS_KEY, lookExtras, lookStorage, normalizeSupporterLooks, type SupporterLook, type SupporterLookExtras } from './supporterLook.ts'
 import type {
   ProtectChannelSyncStatus,
   ProtectSyncOperation,
@@ -671,6 +671,12 @@ export async function setPulseBanner(value: PulseBannerPreference): Promise<void
  * does. It starts from what is stored at that moment: a panel title renamed
  * meanwhile is kept, and so are wave and sheen when the motion is unchanged.
  */
+/** This profile's motion and backdrop as stored now. */
+export async function getSupporterLookExtras(): Promise<SupporterLookExtras> {
+  const [paint, banner] = await Promise.all([getSupporterPaintStyle(), getPulseBanner()])
+  return lookExtras(paint, banner)
+}
+
 export async function setSupporterLookExtras(extras: SupporterLookExtras): Promise<void> {
   const [paint, banner] = await Promise.all([getSupporterPaintStyle(), getPulseBanner()])
   const next = lookStorage(extras, paint, banner)
