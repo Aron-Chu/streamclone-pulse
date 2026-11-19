@@ -34,6 +34,28 @@ export function lookBanner(extras: SupporterLookExtras, title: string): PulseBan
   return { mode: !extras.backdrop ? 'off' : extras.motion === 'still' ? 'still' : 'rain', intensity: extras.intensity, title }
 }
 
+/**
+ * What equipping a look stores, given what this profile stores now. A motion
+ * left as it was keeps its stored wave, sheen and backdrop movement, so an
+ * older pair (Ripple and Glint, say) survives a backdrop-only change and the
+ * chat badge's wave is not rewritten. The panel title is always kept. The
+ * studio previews the same values it would store.
+ */
+export function lookStorage(extras: SupporterLookExtras, paint: SupporterPaintStyle, banner: PulseBannerPreference): { paint: SupporterPaintStyle; banner: PulseBannerPreference } {
+  const next = lookBanner(extras, banner.title)
+  if (motionOf(paint) !== extras.motion) return { paint: motionPaint(extras.motion), banner: next }
+  return { paint, banner: extras.backdrop && banner.mode !== 'off' ? { ...next, mode: banner.mode } : next }
+}
+
+/** A look's motion and backdrop exactly as a message or stored record carries them, or null. */
+export function lookExtrasOf(value: unknown): SupporterLookExtras | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const raw = value as Record<string, unknown>
+  if (Object.keys(raw).length !== 3 || !SUPPORTER_MOTIONS.some(option => option.id === raw.motion) || typeof raw.backdrop !== 'boolean') return null
+  if (typeof raw.intensity !== 'number' || !Number.isInteger(raw.intensity) || raw.intensity < 10 || raw.intensity > 70) return null
+  return { motion: raw.motion as SupporterMotion, backdrop: raw.backdrop, intensity: raw.intensity }
+}
+
 export function lookExtras(paint: SupporterPaintStyle, banner: PulseBannerPreference): SupporterLookExtras {
   return { motion: motionOf(paint), backdrop: banner.mode !== 'off', intensity: banner.intensity }
 }
@@ -57,12 +79,16 @@ export const SAMPLE_LOOK: SupporterLook = STARTER_LOOKS[0].look
 
 const FINISH_LABELS = { glass: 'Glass', etched: 'Etched', halo: 'Halo' } as const
 
-/** A starter's name, or the look described by its paint and motion. */
+/**
+ * A starter's name, or the look described by its paint, motion and backdrop.
+ * Two looks that differ anywhere get different names, so the shelf, its
+ * Remove buttons and the notices can tell them apart.
+ */
 export function lookName(look: SupporterLook): string {
   const starter = STARTER_LOOKS.find(option => sameLook(option.look, look))
   if (starter) return starter.name
   const motion = SUPPORTER_MOTIONS.find(option => option.id === look.motion)?.label ?? 'Shimmer'
-  return `${look.finish ? FINISH_LABELS[look.finish] : 'Default'} · ${motion}${look.backdrop ? '' : ' · no backdrop'}`
+  return `${look.finish ? FINISH_LABELS[look.finish] : 'Default'} · ${motion} · ${look.backdrop ? `backdrop ${look.intensity}%` : 'no backdrop'}`
 }
 
 export const SUPPORTER_LOOKS_KEY = 'supporterLooks'
@@ -78,7 +104,8 @@ export function normalizeSupporterLooks(value: unknown): SupporterLook[] {
     const motion = item.motion === 'still' || item.motion === 'shimmer' || item.motion === 'drift' ? item.motion : 'shimmer'
     const intensity = typeof item.intensity === 'number' && Number.isFinite(item.intensity) ? Math.min(70, Math.max(10, Math.round(item.intensity / 5) * 5)) : 35
     const look: SupporterLook = { finish, motion, backdrop: item.backdrop === true, intensity }
-    if (!looks.some(existing => sameLook(existing, look))) looks.push(look)
+    // A starter is always on the shelf already.
+    if (!looks.some(existing => sameLook(existing, look)) && !STARTER_LOOKS.some(option => sameLook(option.look, look))) looks.push(look)
     if (looks.length === MAX_SAVED_LOOKS) break
   }
   return looks

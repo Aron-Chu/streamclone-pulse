@@ -3,6 +3,7 @@ import { parseMyMoments } from './myMoments.ts'
 import { parseMomentPicture } from './momentPictureMessages.ts'
 import { validBookmarkCursor, validBookmarkPageLimit } from './bookmarkPage.ts'
 import { keptVodOriginDelta, resolveVodOriginAlignment } from './vodOriginAlignment.ts'
+import { lookExtrasOf } from './supporterLook.ts'
 import type { BackgroundRequest, CreatePulseBookmarkInput } from './messages.ts'
 
 const KNOWN_MESSAGE_TYPES = new Set<string>([
@@ -354,10 +355,16 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'SUPPORTER_COSMETICS':
       if (Object.keys(raw).some(key => !['type', 'enabled', 'finish'].includes(key))) return null
       return typeof raw.enabled === 'boolean' && (raw.finish === 'glass' || raw.finish === 'etched' || raw.finish === 'halo') ? { type, enabled: raw.enabled, finish: raw.finish } : null
-    case 'SUPPORTER_FINISH_INTENT':
-      if (Object.keys(raw).some(key => key !== 'type' && key !== 'finish')) return null
-      if (!('finish' in raw)) return { type }
-      return raw.finish === null || raw.finish === 'glass' || raw.finish === 'etched' || raw.finish === 'halo' ? { type, finish: raw.finish } : null
+    case 'SUPPORTER_FINISH_INTENT': {
+      if (Object.keys(raw).some(key => key !== 'type' && key !== 'finish' && key !== 'look')) return null
+      // A look rides only with a finish being chosen; reads and clears carry none.
+      if (!('finish' in raw)) return 'look' in raw ? null : { type }
+      if (raw.finish === null) return 'look' in raw ? null : { type, finish: null }
+      if (raw.finish !== 'glass' && raw.finish !== 'etched' && raw.finish !== 'halo') return null
+      if (!('look' in raw)) return { type, finish: raw.finish }
+      const look = lookExtrasOf(raw.look)
+      return look ? { type, finish: raw.finish, look } : null
+    }
     case 'SUPPORTER_CHAT_BADGE': {
       const keys = Object.keys(raw)
       if (raw.action === 'status' || raw.action === 'on' || raw.action === 'off') return keys.length === 2 ? { type, action: raw.action } : null

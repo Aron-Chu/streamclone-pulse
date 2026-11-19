@@ -308,8 +308,8 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_ENTITLEMENT' }
   | { type: 'SUPPORTER_COSMETICS'; enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
   | { type: 'SUPPORTER_APPEARANCE' }
-  /** Omit `finish` to read; null clears the pre-purchase choice. */
-  | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
+  /** Omit `finish` to read; null clears the pre-purchase choice. `look` rides with a finish only. */
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null; look?: import('./supporterLook.ts').SupporterLookExtras }
   /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
   | { type: 'SUPPORTER_CARD_SCRIPT' }
   /** Explicit opt-in/out controls are restricted to extension pages. */
@@ -840,7 +840,7 @@ export type BackgroundResponse =
    * `unverified`: the account read failed or is waiting on renewal; keep the last verified state until it expires.
    */
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
-  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null; setAt?: number }
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null; setAt?: number; look?: import('./supporterLook.ts').SupporterLookExtras }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
   | import('./chatBadges.ts').ChatBadgesReply
   | { type: 'SUPPORTER_CHAT_BADGE'; ok: boolean; listReceived: boolean; keysPinned?: boolean; own?: 'on' | 'off'; login?: string; error?: import('./chatBadges.ts').ChatBadgeActionError }

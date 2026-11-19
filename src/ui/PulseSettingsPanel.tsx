@@ -391,7 +391,8 @@ export function QuickLook({ appearance, disabled, onOpen }: { appearance: Suppor
   const paint = tried ?? worn
   const finish = paint === 'default' ? null : paint
   const on = perks ? banner.value.mode !== 'off' : backdrop === 'on'
-  const moving = appearance?.paint?.sheen === 'none' ? 'still' : 'rain'
+  // A backdrop that is on keeps how it moves; one turned on moves with the motion.
+  const moving = banner.value.mode !== 'off' ? banner.value.mode : appearance?.paint?.sheen === 'none' ? 'still' : 'rain'
   const mode = on ? moving : 'off'
   const title = banner.value.title || 'Stream Pulse'
   return (

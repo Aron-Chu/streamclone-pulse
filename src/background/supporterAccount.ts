@@ -2,6 +2,7 @@ import { FINISH_INTENT_TTL_MS, type SupporterAccountAction, type SupporterAccoun
 import { supporterAccess, SUPPORTER_FEATURES, type SupporterScope } from '../shared/supporterAccess.ts'
 import { DEVICE_LINK_ENABLED } from '../shared/deviceLink.ts'
 import { parseChatBadgeSnapshot } from '../shared/chatBadges.ts'
+import { lookExtrasOf, type SupporterLookExtras } from '../shared/supporterLook.ts'
 
 type Environment = SupporterScope['environment']
 type Finish = SupporterCosmetics['finish']
@@ -13,8 +14,10 @@ type PrivateState = Pending | Linked | { kind: 'refreshing'; installation?: true
  * A finish the user explicitly chose before their membership was verified.
  * Bound to the account linked when it was chosen, if any, and short-lived, so
  * it never equips an unsolicited cosmetic long after the choice was made.
+ * `look` is the motion and backdrop chosen with it: they wait here, not in the
+ * profile's settings, and are equipped only with the finish.
  */
-export type FinishIntent = { finish: Finish; setAt: number; accountId?: string }
+export type FinishIntent = { finish: Finish; setAt: number; accountId?: string; look?: SupporterLookExtras }
 export { FINISH_INTENT_TTL_MS } from '../shared/supporterAccount.ts'
 export type InstallationBootstrap = { key: string; state: 'pending' | 'claimed'; accountId?: string }
 type Ports = {
@@ -30,6 +33,8 @@ type Ports = {
   /** Worker-private storage for the optional pre-purchase finish choice. */
   readIntent?: () => Promise<unknown>
   writeIntent?: (value: FinishIntent | null) => Promise<void>
+  /** Equips a choice's motion and backdrop in this profile once its finish is applied. */
+  applyLook?: (look: SupporterLookExtras) => Promise<void>
   readInstallationKey?: () => Promise<unknown>
   writeInstallationKey?: (value: InstallationBootstrap | null) => Promise<void>
   /**
@@ -130,7 +135,8 @@ function finishIntent(value: unknown, now: number): FinishIntent | null {
   const r = object(value)
   if (!FINISHES.has(String(r.finish)) || typeof r.setAt !== 'number' || !Number.isFinite(r.setAt) || r.setAt > now || now - r.setAt > FINISH_INTENT_TTL_MS) return null
   if (r.accountId !== undefined && !id(r.accountId)) return null
-  return { finish: r.finish as Finish, setAt: r.setAt, ...(r.accountId ? { accountId: r.accountId as string } : {}) }
+  const look = lookExtrasOf(r.look)
+  return { finish: r.finish as Finish, setAt: r.setAt, ...(r.accountId ? { accountId: r.accountId as string } : {}), ...(look ? { look } : {}) }
 }
 
 /** A shared appearance read for an account with perks; its accent still renews before it lapses. */
@@ -435,11 +441,11 @@ export class SupporterAccountCoordinator {
   /** Original save time for settings; the private account binding stays here. */
   async finishIntentDetails(): Promise<SupporterFinishIntentDetails | null> {
     const intent = finishIntent(await this.ports.readIntent?.().catch(() => null), this.now())
-    return intent ? { finish: intent.finish, setAt: intent.setAt } : null
+    return intent ? { finish: intent.finish, setAt: intent.setAt, ...(intent.look ? { look: intent.look } : {}) } : null
   }
 
-  /** Record or clear the explicit pre-purchase finish choice for this installation. */
-  setFinishIntent(finish: Finish | null): Promise<Finish | null> {
+  /** Record or clear the explicit pre-purchase choice (a finish, with the motion and backdrop chosen with it) for this installation. */
+  setFinishIntent(finish: Finish | null, look?: SupporterLookExtras): Promise<Finish | null> {
     const generation = this.generation
     const task = this.queue.then(async () => {
       // The next appearance read applies or drops the choice; never a stale one.
@@ -448,7 +454,7 @@ export class SupporterAccountCoordinator {
       if (finish === null) { await this.ports.writeIntent(null); return null }
       const credentials = linked(await this.ports.read())
       if (generation !== this.generation) return null
-      await this.ports.writeIntent({ finish, setAt: this.now(), ...(credentials ? { accountId: credentials.accountId } : {}) })
+      await this.ports.writeIntent({ finish, setAt: this.now(), ...(credentials ? { accountId: credentials.accountId } : {}), ...(look ? { look } : {}) })
       return finish
     }).catch(() => null)
     this.queue = task
@@ -484,6 +490,9 @@ export class SupporterAccountCoordinator {
       }
       if (result.status !== 200) throw new Error('finish_intent_refused')
       this.intentRetry = { failures: 0, until: 0 }
+      // The finish is on; its motion and backdrop follow. A failed local write
+      // leaves the finish applied and the profile's own settings as they were.
+      if (intent.look) await this.ports.applyLook?.(intent.look).catch(() => undefined)
       await this.ports.writeIntent(null)
       return { ...value, cosmetics }
     } catch {

@@ -1018,9 +1018,9 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           return
         }
         case 'SUPPORTER_FINISH_INTENT': {
-          const finish = message.finish === undefined ? await supporterAccount.finishIntent() : await supporterAccount.setFinishIntent(message.finish)
+          const finish = message.finish === undefined ? await supporterAccount.finishIntent() : await supporterAccount.setFinishIntent(message.finish, message.look)
           const details = finish === null ? null : await supporterAccount.finishIntentDetails()
-          sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish, ...(details && details.finish === finish ? { setAt: details.setAt } : {}) } satisfies BackgroundResponse)
+          sendResponse({ type: 'SUPPORTER_FINISH_INTENT', finish, ...(details && details.finish === finish ? { setAt: details.setAt, ...(details.look ? { look: details.look } : {}) } : {}) } satisfies BackgroundResponse)
           return
         }
         case 'SUPPORTER_CARD_SCRIPT': {

@@ -1,5 +1,5 @@
 import { readPrivateRecord, writePrivateRecord } from './privateExtensionStorage.ts'
-import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
+import { DEFAULT_BACKEND_URL, getBackendUrl, setSupporterLookExtras } from '../shared/storage.ts'
 import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
 import { TWITCH_SIGNIN_ENABLED, type TwitchSignInMode, type TwitchStepUpResult } from '../shared/twitchSignIn.ts'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
@@ -57,6 +57,7 @@ export const supporterAccount = new SupporterAccountCoordinator({
   projectionChanged: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
   readIntent: () => access(false, undefined, FINISH_INTENT_KEY),
   writeIntent: async value => { await access(true, value, FINISH_INTENT_KEY) },
+  applyLook: look => setSupporterLookExtras(look),
   readInstallationKey: () => access(false, undefined, INSTALLATION_KEY),
   writeInstallationKey: async value => { await access(true, value, INSTALLATION_KEY) },
   accountForgotten: accountId => accountDataForget?.(accountId),

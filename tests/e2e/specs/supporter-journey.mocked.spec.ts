@@ -127,9 +127,9 @@ test('tester purchase journey needs no codes, refreshes or reloads, and revocati
   // The connected account now has an explicit checkoutEnabled: true answer.
   // Only this open state may keep a paint for the membership to apply later.
   await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
-  await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
+  await settings.getByRole('button', { name: 'Use this look when Supporter starts', exact: true }).click()
   await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
-  await expect(settings.getByText('We keep this choice for 7 days.', { exact: true })).toBeVisible()
+  await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toContainText('We keep this choice for 7 days.')
   expect(cosmeticWrites).toEqual([])
   const checkout = context.waitForEvent('page')
   await settings.locator('a[data-supporter-action="billing"]').click()

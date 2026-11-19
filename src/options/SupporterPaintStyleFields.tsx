@@ -6,13 +6,13 @@ import {
   type SupporterPaintStyle,
 } from '../shared/supporterPaint.ts'
 import { SUPPORTER_LOOKS_KEY, SUPPORTER_MOTIONS, normalizeSupporterLooks, type SupporterLook, type SupporterMotion } from '../shared/supporterLook.ts'
-import { getSupporterLooks, getSupporterPaintStyle, setSupporterLooks, setSupporterPaintStyle } from '../shared/storage.ts'
+import { getSupporterLooks, getSupporterPaintStyle, setSupporterLooks } from '../shared/storage.ts'
 import type { SupporterFinishId } from '../ui/supporterFinish.ts'
 
 /**
- * The profile's paint motion (stored as wave and sheen). Your look writes it
- * when a look is equipped; `choose` throws when the write fails so the caller
- * can say so.
+ * The profile's paint motion (stored as wave and sheen), as saved. Your look
+ * writes it with the backdrop when a look is equipped; this follows the stored
+ * value only, so a write that failed never shows as saved.
  *
  * Unlike the finish, it is not checked by the server: it only describes how a
  * verified finish moves, so choosing it unlocks nothing.
@@ -29,11 +29,7 @@ export function useSupporterPaintStyle() {
     changes?.addListener(listener)
     return () => { alive = false; changes?.removeListener(listener) }
   }, [])
-  async function choose(next: SupporterPaintStyle) {
-    setStyle(next)
-    await setSupporterPaintStyle(next)
-  }
-  return { style, choose }
+  return { style }
 }
 
 /** A Supporter's saved looks, synced with their other settings. `write` throws when the write fails. */

@@ -393,7 +393,7 @@ describe('supporter settings', () => {
   })
 
   it('keeps the seven-day line after saving a choice while checkout is open, and clears it on request', async () => {
-    // A live sync store, so the motion and backdrop written with the choice are read back.
+    // A live sync store: the choice must leave it untouched, its motion and backdrop wait with the worker.
     const store: Record<string, unknown> = {}
     const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>, area: string) => void>()
     const set = vi.fn(async (items: Record<string, unknown>) => {
@@ -401,7 +401,7 @@ describe('supporter settings', () => {
       Object.assign(store, items)
       listeners.forEach(listener => listener(changes, 'sync'))
     })
-    const sendMessage = vi.fn(async (message: { type: string; finish?: string | null }) => ({ type: 'SUPPORTER_FINISH_INTENT', finish: message.finish ?? null, ...(message.finish ? { setAt: Date.now() } : {}) }))
+    const sendMessage = vi.fn(async (message: { type: string; finish?: string | null; look?: unknown }) => ({ type: 'SUPPORTER_FINISH_INTENT', finish: message.finish ?? null, ...(message.finish ? { setAt: Date.now(), ...(message.look ? { look: message.look } : {}) } : {}) }))
     vi.stubGlobal('chrome', { runtime: { id: 'test-extension', sendMessage }, storage: {
       sync: { get: vi.fn(async (key: string) => ({ [key]: store[key] })), set },
       onChanged: { addListener: (listener: never) => listeners.add(listener), removeListener: (listener: never) => listeners.delete(listener) },
@@ -414,7 +414,9 @@ describe('supporter settings', () => {
       await act(async () => host.querySelector<HTMLInputElement>('input[value="finish-halo"]')!.click())
       const choose = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Use this look when Supporter starts')!
       await act(async () => choose.click())
-      expect(sendMessage).toHaveBeenLastCalledWith({ type: 'SUPPORTER_FINISH_INTENT', finish: 'halo' })
+      // The whole look rides with the choice: Halo with the sample's Drift and 40% backdrop.
+      expect(sendMessage).toHaveBeenLastCalledWith({ type: 'SUPPORTER_FINISH_INTENT', finish: 'halo', look: { motion: 'drift', backdrop: true, intensity: 40 } })
+      expect(set).not.toHaveBeenCalled()
       expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Halo will be applied when your Supporter membership is confirmed.')
       expect(buttons()).toContain('Clear choice')
       expect(buttons()).not.toContain('Use this look when Supporter starts')
@@ -423,6 +425,10 @@ describe('supporter settings', () => {
       await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Clear choice')!.click())
       expect(sendMessage).toHaveBeenLastCalledWith({ type: 'SUPPORTER_FINISH_INTENT', finish: null })
       expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Saved choice cleared.')
+      // Clearing leaves nothing behind in this profile's settings, and the look stays as tried.
+      expect(set).not.toHaveBeenCalled()
+      expect(host.querySelector<HTMLInputElement>('input[value="finish-halo"]')?.checked).toBe(true)
+      expect(host.querySelector<HTMLInputElement>('input[value="motion-drift"]')?.checked).toBe(true)
     } finally { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() }
   })
 
@@ -814,7 +820,9 @@ describe('cosmetics while membership is unavailable', () => {
     const root = createRoot(host)
     try {
       await act(async () => root.render(<SupporterAccountSection />))
-      expect(host.textContent).toMatch(/Use this look when Supporter starts/)
+      // Nothing can be bought on that server, so the studio is a try-on like closed checkout: no new choice.
+      expect(host.textContent).toContain("Try a look. Changes here aren't saved.")
+      expect(host.textContent).not.toMatch(/Use this look when Supporter starts/)
       // The footer says the server has no Supporter yet; the studio itself does not pause.
       expect([...host.querySelectorAll('.pulse-account-link-actions button')].map(button => button.textContent)).not.toContain('Supporter status unavailable')
     } finally {
@@ -961,7 +969,7 @@ describe('cosmetic save races', () => {
       state: 'ready', status: 'active', supportPeriods: 3,
       features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'glass' },
     }
-    // The studio writes motion and backdrop together: two storage writes per save.
+    // The studio writes motion and backdrop together: one storage write per save.
     const settleAll = async (ok: boolean) => { await act(async () => { writes.filter((_, index) => index >= settled).forEach(write => write.settle(ok)); settled = writes.length }) }
     let settled = 0
     try {
@@ -979,14 +987,14 @@ describe('cosmetic save races', () => {
       expect(set).not.toHaveBeenCalled()
       equip().focus()
       await act(async () => equip().click())
-      expect(set).toHaveBeenCalledTimes(2)
+      expect(set).toHaveBeenCalledTimes(1)
       // Saving keeps the button reachable: a disabled button would drop focus to the body in Chromium.
       expect(equip().disabled).toBe(false)
       expect(equip().getAttribute('aria-busy')).toBe('true')
       expect(document.activeElement).toBe(equip())
       // A second press while the first save runs is ignored.
       await act(async () => equip().click())
-      expect(set).toHaveBeenCalledTimes(2)
+      expect(set).toHaveBeenCalledTimes(1)
       await settleAll(true)
       expect(host.querySelector('.pulse-supporter-save-status')).toBe(status)
       expect(status.textContent).toBe('Equipped: Signal.')
@@ -999,7 +1007,7 @@ describe('cosmetic save races', () => {
       await act(async () => choice('Off').click())
       equip().focus()
       await act(async () => equip().click())
-      expect(set).toHaveBeenCalledTimes(4)
+      expect(set).toHaveBeenCalledTimes(2)
       expect(status.textContent).toBe('')
       await settleAll(false)
       expect(status.textContent).toBe('Could not save. Please try again.')

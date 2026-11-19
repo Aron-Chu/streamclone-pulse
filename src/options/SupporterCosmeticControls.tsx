@@ -3,15 +3,15 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { FINISH_INTENT_TTL_MS, supporterPerksAllowed, type SupporterEntitlement, type SupporterCosmetics } from '../shared/supporterAccount.ts'
 import { supporterCheckoutAvailability } from '../shared/supporterCheckoutAvailability.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
-import { setPulseBanner } from '../shared/storage.ts'
+import { setSupporterLookExtras } from '../shared/storage.ts'
 import {
   MAX_SAVED_LOOKS,
   SAMPLE_LOOK,
   STARTER_LOOKS,
-  lookBanner,
   lookExtras,
+  lookExtrasOf,
   lookName,
-  motionPaint,
+  lookStorage,
   sameExtras,
   sameLook,
   type SupporterLook,
@@ -38,10 +38,12 @@ const SAMPLE_EXTRAS: SupporterLookExtras = { motion: SAMPLE_LOOK.motion, backdro
  * backdrop styles, so nothing promises a look the extension does not render.
  *
  * A Supporter's Equip look saves the paint to the server (when it changed),
- * then the motion and backdrop to this browser profile; Revert drops the
- * draft. Everyone else starts on the sample look, may try any look, and
- * (while sales are open) choose one to apply when Supporter starts. With
- * checkout closed nothing is saved.
+ * then the motion and backdrop to this browser profile in one write; what is
+ * shown as saved is only ever what was stored, and Revert drops the draft.
+ * Everyone else starts on the sample look, may try any look, and (while sales
+ * are open) choose one to apply when Supporter starts: the worker keeps the
+ * whole look with that choice, and the profile's own settings are untouched
+ * until it is applied. With checkout closed or unconfirmed nothing is saved.
  */
 export function SupporterCosmeticControls({ entitlement, unavailable = false, tenure, onSaved, seenInChat = false }: {
   entitlement: SupporterEntitlement | null
@@ -70,6 +72,8 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
   // privately and applies it once the server grants Supporter access.
   const [intent, setIntent] = useState<SupporterCosmetics['finish'] | null>(null)
   const [intentSetAt, setIntentSetAt] = useState<number | null>(null)
+  // The motion and backdrop saved with that choice (absent on a choice saved before they were).
+  const [intentLook, setIntentLook] = useState<SupporterLookExtras | null>(null)
   const [intentBusy, setIntentBusy] = useState(false)
   const allowed = supporterPerksAllowed(entitlement)
   const entitlementState = entitlement?.state
@@ -135,25 +139,27 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
         if (!mounted.current || response?.type !== 'SUPPORTER_FINISH_INTENT') return
         setIntent(response.finish)
         setIntentSetAt(typeof response.setAt === 'number' ? response.setAt : null)
+        setIntentLook(response.finish ? lookExtrasOf(response.look) : null)
         if (response.finish) setFinish(current => current === SAMPLE_LOOK.finish ? response.finish : current)
       })
       .catch(() => { /* No saved choice is shown when the worker is unavailable. */ })
   }, [allowed, unknown])
   // Once access is verified the worker has applied (and cleared) the choice.
-  useEffect(() => { if (allowed) setIntent(null) }, [allowed])
+  useEffect(() => { if (allowed) { setIntent(null); setIntentLook(null) } }, [allowed])
   async function chooseForLater(value: SupporterCosmetics['finish'] | null) {
     if (intentBusy || unknown || (tryOnly && value !== null)) return
     setIntentBusy(true)
     setNotice('')
-    // The look stays as tried while the choice saves.
-    if (value !== null) setExtrasDraft(extras)
+    // The look stays as tried while the choice saves, and after it is cleared.
+    setExtrasDraft(extras)
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'SUPPORTER_FINISH_INTENT', finish: value })
+      // Motion and backdrop travel with the choice and wait in the worker, so
+      // clearing it leaves nothing behind in this profile's settings.
+      const response = await chrome.runtime.sendMessage(value === null ? { type: 'SUPPORTER_FINISH_INTENT', finish: null } : { type: 'SUPPORTER_FINISH_INTENT', finish: value, look: extras })
       if (response?.type !== 'SUPPORTER_FINISH_INTENT') throw new Error('worker unavailable')
       setIntent(response.finish)
       setIntentSetAt(typeof response.setAt === 'number' ? response.setAt : null)
-      // Motion and backdrop wait in this profile; they draw once perks are on.
-      if (response.finish && banner.ready) await writeExtras(extras)
+      setIntentLook(response.finish ? lookExtrasOf(response.look) : null)
       const label = SUPPORTER_FINISH_OPTIONS.find(option => option.id === response.finish)?.label
       setNotice(response.finish && label ? `${label} will be applied when your Supporter membership is confirmed.` : value === null ? 'Saved choice cleared.' : 'Could not save this choice. Please try again.')
     } catch {
@@ -165,26 +171,28 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
   const intentLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === intent)?.label
   const checkoutAvailability = supporterCheckoutAvailability(entitlement)
   // A store build's browser with no account yet cannot ask whether sales are
-  // open, so it keeps the closed try-on: nothing saved, no claim either way.
-  const tryOnly = !allowed && (checkoutAvailability === 'closed' || (entitlement?.state === 'not_linked' && !TWITCH_SIGNIN_ENABLED))
+  // open, and a membership read that failed (or a server without Supporter)
+  // cannot confirm them, so each keeps the closed try-on: nothing new saved,
+  // no claim either way, and an earlier choice can still be removed.
+  const tryOnly = !allowed && (checkoutAvailability === 'closed' || entitlement?.state === 'unavailable' || entitlement?.state === 'error' || (entitlement?.state === 'not_linked' && !TWITCH_SIGNIN_ENABLED))
   const intentExpiresAt = intentSetAt === null ? null : intentSetAt + FINISH_INTENT_TTL_MS
   const savedEarlier = intentLabel && intentExpiresAt !== null && intentExpiresAt >= Date.now()
     ? { label: intentLabel, date: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(intentExpiresAt) }
     : null
 
-  // What this profile has saved, and the look being tried.
+  // What this profile has saved (or the pending choice holds), and the look being tried.
   const stored = lookExtras(paint.style, banner.value)
-  const base = allowed || intent ? stored : SAMPLE_EXTRAS
+  const base = allowed ? stored : intent ? intentLook ?? stored : SAMPLE_EXTRAS
   const extras = extrasDraft ?? base
   const look: SupporterLook = { finish, ...extras }
-  const extrasChanged = !sameExtras(extras, stored)
+  const extrasChanged = !sameExtras(extras, base)
   const dirty = finish !== appliedFinish || extrasChanged
   // A draft that now matches what is saved follows it again, so a change made
   // elsewhere (quick settings, another window) shows here.
-  const storedKey = `${stored.motion}|${stored.backdrop}|${stored.intensity}`
+  const baseKey = `${base.motion}|${base.backdrop}|${base.intensity}`
   useEffect(() => {
-    if (allowed || intent) setExtrasDraft(draft => draft && sameExtras(draft, stored) ? null : draft)
-  }, [storedKey, allowed, intent])
+    if (allowed || intent) setExtrasDraft(draft => draft && sameExtras(draft, base) ? null : draft)
+  }, [baseKey, allowed, intent])
 
   const studio = useRef<HTMLDivElement>(null)
   const equipButton = useRef<HTMLButtonElement>(null)
@@ -214,10 +222,6 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
     selectFinish(next.finish)
     setExtras({ motion: next.motion, backdrop: next.backdrop, intensity: next.intensity })
   }
-  async function writeExtras(next: SupporterLookExtras) {
-    await Promise.all([paint.choose(motionPaint(next.motion)), setPulseBanner(lookBanner(next, banner.value.title))])
-  }
-
   async function equip() {
     if (!allowed || pending.current || !dirty || !banner.ready) return
     const current = generation.current
@@ -242,14 +246,19 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
         setAppliedFinish(finish)
         onSaved?.(cosmetics)
       }
-      if (extrasChanged) await writeExtras(extras)
+      // Read back what is stored at this moment and written in one go; the
+      // studio shows them as saved only once storage reports them.
+      if (extrasChanged) await setSupporterLookExtras(extras)
       if (current !== generation.current) return
       focusLookAfterSave.current = document.activeElement === equipButton.current
       setNotice(`Equipped: ${lookName(look)}.`)
     } catch {
       if (current === generation.current) {
         if (!finishSaved) savedCosmetics.current = null
-        setNotice('Could not save. Please try again.')
+        // A paint the server saved is worn everywhere; the draft keeps motion
+        // and backdrop, so Equip look retries just those and Revert shows what
+        // is worn now.
+        setNotice(finishChanged && finishSaved ? 'Your paint saved, but motion and backdrop did not. Try Equip look again.' : 'Could not save. Please try again.')
       }
     } finally {
       if (current === generation.current) {
@@ -296,6 +305,8 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
     {id === finish && finish !== appliedFinish ? <span className="pulse-supporter-tile-chip" data-chip="previewing">Previewing</span> : null}
   </>
   const perkLine = checkoutAvailability === 'closed' ? 'closed' : checkoutAvailability === 'open' || entitlement?.state === 'not_linked' ? 'locked' : null
+  // The preview draws exactly what equipping would store.
+  const preview = lookStorage(extras, paint.style, banner.value)
   // The preview wears a Supporter's own look, the sample, or a look being tried; unlabelled while membership is unknown.
   const shown = unknown ? undefined : allowed ? (dirty ? 'trying' : 'own') : sameLook(look, SAMPLE_LOOK) ? 'sample' : 'trying'
 
@@ -328,9 +339,9 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
   >
     <SupporterLookPreview
       finish={finish}
-      paint={motionPaint(extras.motion)}
+      paint={preview.paint}
       tenure={tenure}
-      banner={lookBanner(extras, banner.value.title)}
+      banner={preview.banner}
       name={lookName(look)}
       shown={shown}
       hideStateLabel={tryOnly}
