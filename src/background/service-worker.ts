@@ -1421,6 +1421,9 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   return true
 })
 
+// Start legacy credential migration even if the user never opens settings.
+void getDeviceCredential()
+
 // A worker restarted while a link request waited picks the wait back up.
 void resumePendingLink()
 
@@ -1445,8 +1448,7 @@ chrome.runtime.onInstalled.addListener(details => {
 // No import() in this worker: Chromium forbids it in extension service workers,
 // and Vite's preload helper throws on `document`. storage.local also stays open
 // to content scripts for now (the VOD analytics bridge and the panel's consent
-// and debug reads use it); restrictCredentialStorageAccess waits until those
-// reads go through worker messages.
+// and debug reads use it). Device and account bearers live in extension-origin IndexedDB.
 
 installBackgroundDiagnosticsEmitters()
 installChatBadges()
