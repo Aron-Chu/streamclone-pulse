@@ -78,7 +78,7 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
   it("renders the mockup's strip for the bar that holds moment 1", async () => {
     const { container } = renderStrip()
     await act(async () => {})
-    const region = screen.getByRole('region', { name: 'Bucket selected: 0:50:54' })
+    const region = screen.getByRole('region', { name: 'Bucket selected: 0:50:54, 1 min' })
     expect(region.className).toContain('bkc--below')
     expect(container.querySelector('[data-selected-moment-card]')).not.toBeNull()
     expect(container.querySelector('.bkc-s')?.textContent).toBe('Bucket selected · 1 min')
@@ -91,7 +91,8 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect([...container.querySelectorAll('.bkc-el li')].map((li) => [
       li.querySelector('.bkc-en')?.textContent, li.querySelector('.bkc-ec')?.textContent,
     ])).toEqual([['HUH', '56'], ['LOL', '44'], ['LO', '29']])
-    expect(container.querySelector('.bkc-pv .r')?.textContent).toBe('7TV 218·other 32')
+    // the provider split, one quiet line under the top emotes
+    expect(container.querySelector('.bkc-emo .bkc-pv')?.textContent).toBe('7TV 218 · other 32 per min')
     // the locked moment is marked
     const row = container.querySelector('[data-strip-moment="3054"]')
     expect(row?.className).toBe('bkc-mr lk')
@@ -207,8 +208,12 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     await act(async () => {})
     expect(container.querySelector('.bkc-gt')?.textContent).toBe('Not measured')
     expect(container.querySelector('.bkc-s')?.textContent).toBe('Bucket selected')
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('Bucket selected: 0:50:54–0:51:54')
+    expect(screen.getByRole('region', { name: 'Bucket selected: 0:50:54–0:51:54' })).toBeTruthy()
     expect(container.querySelector('.bkc-fig')).toBeNull()
-    expect(container.querySelector('.bkc-act')).toBeNull()
+    expect(container.querySelector('.bkc-hact')).toBeNull()
+    expect(container.querySelector('[data-strip-vod-link]')).toBeNull()
+    expect(container.querySelector('.bkc-mom')).toBeNull()
     expect(container.querySelector('.mpl')).toBeNull()
   })
 
@@ -233,6 +238,48 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     cleanup()
     renderStrip()
     expect(screen.queryByRole('button', { name: 'Zoom to bucket' })).toBeNull()
+  })
+
+  it('says "Bucket selected" and the bucket length once to screen readers: the heading names the region, the state line is hidden', async () => {
+    const { container } = renderStrip()
+    await act(async () => {})
+    expect(container.querySelector('.bkc-s')?.getAttribute('aria-hidden')).toBe('true')
+    // one hidden line carries the whole name (no space before the comma); the visible time is not read twice
+    expect(screen.getByRole('heading', { level: 2, name: 'Bucket selected: 0:50:54, 1 min' })).toBeTruthy()
+    expect(container.querySelector('[data-selected-moment-time]')?.getAttribute('aria-hidden')).toBe('true')
+    expect(screen.getByRole('region', { name: 'Bucket selected: 0:50:54, 1 min' })).toBeTruthy()
+  })
+
+  it("puts the host's actions in the header row, after Zoom and before close", async () => {
+    const onZoomToBar = vi.fn()
+    const { container } = renderStrip({ onZoomToBar, actions: <button type="button">Save</button> })
+    await act(async () => {})
+    const top = container.querySelector('header.bkc-h .bkc-top')!
+    expect([...top.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent))
+      .toEqual(['Zoom to bucket', 'Save', 'Clear selected moment'])
+    expect(top.querySelector('.bkc-hact')?.contains(screen.getByRole('button', { name: 'Save' }))).toBe(true)
+  })
+
+  it("shows the VOD link as 'Open VOD' beside Play (Play already says the time); its name keeps the time", async () => {
+    const { container } = renderStrip()
+    await act(async () => {})
+    const link = screen.getByRole('link', { name: 'Open VOD at 0:50:39' })
+    expect(link.closest('.mpl-link')?.parentElement?.className).toBe('mpl')
+    expect(link.firstChild?.textContent).toBe('Open VOD')
+    expect(link.querySelector('.sr-only')?.textContent).toBe('at 0:50:39')
+    // one footer less: the link is the VOD panel's, not a separate row of actions
+    expect(container.querySelector('.bkc-act')).toBeNull()
+  })
+
+  it('keeps the time and the figures in the body, then the picture, then the emotes and the moments as rows of their own', async () => {
+    const { container } = renderStrip()
+    await act(async () => {})
+    const body = container.querySelector('.bkc-body')!
+    expect([...body.children].map((el) => el.className)).toEqual(['bkc-id', 'bkc-fg'])
+    expect([...container.querySelector('.bkc-in')!.children].map((el) => el.className))
+      .toEqual(['bkc-h', 'bkc-body', 'bkc-pvw', 'bkc-emo', 'bkc-mom'])
+    // the provider split sits on the emotes' label line, for the whole row
+    expect(container.querySelector('.bkc-emo > .bkc-eh > .bkc-pv')).not.toBeNull()
   })
 
   // B1 (11-13, SESSION-MOMENTS-1): what opened the details gets focus back when they close

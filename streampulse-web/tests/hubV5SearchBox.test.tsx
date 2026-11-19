@@ -234,6 +234,6 @@ describe('HubV5SearchBox: the list above a phone keyboard (K1, 11-02)', () => {
     const hub = read('src/ui/components/hub/v5/hub-v5.css')
     expect(hub).toMatch(/\n\.hv5-sugg \{[^}]*max-height: min\(72vh, 640px, var\(--hv5-sugg-room, 640px\)\);/)
     expect(hub).toMatch(/\.hv5-dock \.hv5-sugg \{ max-height: min\(calc\(100dvh - 200px\), var\(--hv5-sugg-room, 100dvh\)\);/)
-    expect(read('src/ui/components/landing/landing.css')).toMatch(/\.sl-search \.hv5-sugg \{[^}]*max-height: min\(72vh, 640px, var\(--hv5-sugg-room, 640px\)\);/)
+    expect(read('src/ui/components/landing/landing.css')).toMatch(/:is\(\.sl-search, \.sl-dock\) \.hv5-sugg \{[^}]*max-height: min\(72vh, 640px, var\(--hv5-sugg-room, 640px\)\);/)
   })
 })
