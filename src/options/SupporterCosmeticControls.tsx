@@ -1,33 +1,47 @@
 import { SupporterActionButton } from './SupporterActionButton.tsx'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { FINISH_INTENT_TTL_MS, supporterPerksAllowed, type SupporterEntitlement, type SupporterCosmetics } from '../shared/supporterAccount.ts'
 import { supporterCheckoutAvailability } from '../shared/supporterCheckoutAvailability.ts'
 import { TWITCH_SIGNIN_ENABLED } from '../shared/twitchSignIn.ts'
-import { finishVars, SAMPLE_KIT } from '../supporter/kit.ts'
+import { setPulseBanner } from '../shared/storage.ts'
+import {
+  MAX_SAVED_LOOKS,
+  SAMPLE_LOOK,
+  STARTER_LOOKS,
+  lookBanner,
+  lookExtras,
+  lookName,
+  motionPaint,
+  sameExtras,
+  sameLook,
+  type SupporterLook,
+  type SupporterLookExtras,
+} from '../shared/supporterLook.ts'
+import type { SupporterTenure } from '../shared/supporterPaint.ts'
+import { finishVars } from '../supporter/kit.ts'
 import { PulseSectionCard } from '../ui/PulseSectionCard.tsx'
 import { SUPPORTER_FINISH_OPTIONS } from '../ui/supporterFinish.ts'
 import { PulseBannerLoadError, usePulseBanner } from '../ui/PulseBanner.tsx'
-import type { PulseBannerPreference } from '../shared/storage.ts'
-import type { SupporterTenure } from '../shared/supporterPaint.ts'
 import { SupporterCardTag } from './SupporterCardTag.tsx'
 import { SupporterLookPreview } from './SupporterLookPreview.tsx'
-import { SupporterPaintStyleFields, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
+import { SupporterMotionField, useSavedLooks, useSupporterPaintStyle } from './SupporterPaintStyleFields.tsx'
 
-/** The sample look's emote rain, which anyone may try in the preview. */
-const SAMPLE_RAIN = { mode: 'rain', intensity: 35, title: '' } as const
+type Finish = SupporterCosmetics['finish']
+const SAMPLE_EXTRAS: SupporterLookExtras = { motion: SAMPLE_LOOK.motion, backdrop: SAMPLE_LOOK.backdrop, intensity: SAMPLE_LOOK.intensity }
 
 /**
- * The "Your look" studio: a live preview pinned above the paint, wave, sheen
- * and emote rain choices, so every click shows at once. The paint colours the
- * panel title, wave and sheen choose how that paint moves, the tenure crest
- * sits beside it, and emote rain falls behind the panel. The preview draws
- * with the overlay's own paint and crest styles, so nothing promises a look
- * the extension does not render.
+ * The "Your look" studio: a live preview pinned above one look draft (paint,
+ * motion and backdrop), so every click shows at once and nothing saves until
+ * the look is equipped. Looks offers ready-made starters and, for Supporters,
+ * up to four saved looks. The crest is earned, shown under every paint and
+ * never chosen. The preview draws with the overlay's own paint, crest and
+ * backdrop styles, so nothing promises a look the extension does not render.
  *
- * A paint is checked by the server and saved with Equip; wave, sheen and emote
- * rain save to this browser profile at once. Everyone else may try any look
- * (emote rain only in the preview) and choose a paint to apply when Supporter
- * starts.
+ * A Supporter's Equip look saves the paint to the server (when it changed),
+ * then the motion and backdrop to this browser profile; Revert drops the
+ * draft. Everyone else starts on the sample look, may try any look, and
+ * (while sales are open) choose one to apply when Supporter starts. With
+ * checkout closed nothing is saved.
  */
 export function SupporterCosmeticControls({ entitlement, unavailable = false, tenure, onSaved, seenInChat = false }: {
   entitlement: SupporterEntitlement | null
@@ -39,16 +53,14 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
   seenInChat?: boolean
 }) {
   const banner = usePulseBanner()
-  // Emote rain tried without the perk: shown in the preview only, never saved.
-  const [rainTry, setRainTry] = useState<PulseBannerPreference['mode']>(SAMPLE_RAIN.mode)
   const paint = useSupporterPaintStyle()
-  const [paintTry, setPaintTry] = useState(paint.style)
-  const paintTried = useRef(false)
-  useEffect(() => { if (!paintTried.current) setPaintTry(paint.style) }, [paint.style])
+  const saved = useSavedLooks()
   // Nothing is presumed while the first answer is pending: a finish shown as
   // chosen then is one the person chose.
-  const [finish, setFinish] = useState<SupporterCosmetics['finish'] | null>(null)
-  const [appliedFinish, setAppliedFinish] = useState<SupporterCosmetics['finish'] | null>(null)
+  const [finish, setFinish] = useState<Finish | null>(null)
+  const [appliedFinish, setAppliedFinish] = useState<Finish | null>(null)
+  // Motion, backdrop and intensity being tried; null follows the base look.
+  const [extrasDraft, setExtrasDraft] = useState<SupporterLookExtras | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const generation = useRef(0)
@@ -104,7 +116,9 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
     setBusy(false)
     // The first answer keeps what the person chose while it was pending; after
     // that, a change to access or the applied finish replaces the draft.
-    if (!(firstAnswer && chosenWhileChecking.current)) setFinish(cosmetics ? activeFinish : SAMPLE_KIT.finish)
+    // Without perks the try-on starts on the sample look, never on Default.
+    if (!(firstAnswer && chosenWhileChecking.current)) setFinish(allowed ? activeFinish : SAMPLE_LOOK.finish)
+    setExtrasDraft(null)
     setNotice('')
   }, [appliedKey])
   // A save in flight belongs to this view only.
@@ -121,7 +135,7 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
         if (!mounted.current || response?.type !== 'SUPPORTER_FINISH_INTENT') return
         setIntent(response.finish)
         setIntentSetAt(typeof response.setAt === 'number' ? response.setAt : null)
-        if (response.finish) setFinish(current => current === SAMPLE_KIT.finish ? response.finish : current)
+        if (response.finish) setFinish(current => current === SAMPLE_LOOK.finish ? response.finish : current)
       })
       .catch(() => { /* No saved choice is shown when the worker is unavailable. */ })
   }, [allowed, unknown])
@@ -131,11 +145,15 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
     if (intentBusy || unknown || (tryOnly && value !== null)) return
     setIntentBusy(true)
     setNotice('')
+    // The look stays as tried while the choice saves.
+    if (value !== null) setExtrasDraft(extras)
     try {
       const response = await chrome.runtime.sendMessage({ type: 'SUPPORTER_FINISH_INTENT', finish: value })
       if (response?.type !== 'SUPPORTER_FINISH_INTENT') throw new Error('worker unavailable')
       setIntent(response.finish)
       setIntentSetAt(typeof response.setAt === 'number' ? response.setAt : null)
+      // Motion and backdrop wait in this profile; they draw once perks are on.
+      if (response.finish && banner.ready) await writeExtras(extras)
       const label = SUPPORTER_FINISH_OPTIONS.find(option => option.id === response.finish)?.label
       setNotice(response.finish && label ? `${label} will be applied when your Supporter membership is confirmed.` : value === null ? 'Saved choice cleared.' : 'Could not save this choice. Please try again.')
     } catch {
@@ -144,18 +162,7 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
       setIntentBusy(false)
     }
   }
-  const selectedLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === finish)?.label ?? 'Default'
   const intentLabel = SUPPORTER_FINISH_OPTIONS.find(option => option.id === intent)?.label
-  const unchanged = finish === appliedFinish
-  const paintFields = useRef<HTMLFieldSetElement>(null)
-  const equipButton = useRef<HTMLButtonElement>(null)
-  const focusPaintAfterSave = useRef(false)
-  useEffect(() => {
-    if (!busy && unchanged && focusPaintAfterSave.current) {
-      focusPaintAfterSave.current = false
-      paintFields.current?.querySelector<HTMLInputElement>('input:checked')?.focus()
-    }
-  }, [busy, unchanged])
   const checkoutAvailability = supporterCheckoutAvailability(entitlement)
   // A store build's browser with no account yet cannot ask whether sales are
   // open, so it keeps the closed try-on: nothing saved, no claim either way.
@@ -164,44 +171,84 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
   const savedEarlier = intentLabel && intentExpiresAt !== null && intentExpiresAt >= Date.now()
     ? { label: intentLabel, date: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(intentExpiresAt) }
     : null
-  /** The swatch's state, as a chip on it: the paint you are trying, and the one in use. */
-  const chip = (id: SupporterCosmetics['finish'] | null) => tryOnly || unknown ? null : <>
-    {id === appliedFinish ? <small data-chip="equipped"> · Equipped</small> : null}
-    {id === finish && !unchanged ? <span className="pulse-supporter-tile-chip" data-chip="previewing">Previewing</span> : null}
-  </>
 
-  function selectFinish(value: typeof finish) {
+  // What this profile has saved, and the look being tried.
+  const stored = lookExtras(paint.style, banner.value)
+  const base = allowed || intent ? stored : SAMPLE_EXTRAS
+  const extras = extrasDraft ?? base
+  const look: SupporterLook = { finish, ...extras }
+  const extrasChanged = !sameExtras(extras, stored)
+  const dirty = finish !== appliedFinish || extrasChanged
+  // A draft that now matches what is saved follows it again, so a change made
+  // elsewhere (quick settings, another window) shows here.
+  const storedKey = `${stored.motion}|${stored.backdrop}|${stored.intensity}`
+  useEffect(() => {
+    if (allowed || intent) setExtrasDraft(draft => draft && sameExtras(draft, stored) ? null : draft)
+  }, [storedKey, allowed, intent])
+
+  const studio = useRef<HTMLDivElement>(null)
+  const equipButton = useRef<HTMLButtonElement>(null)
+  const revertButton = useRef<HTMLButtonElement>(null)
+  const focusLookAfterSave = useRef(false)
+  // The Equip and Revert buttons leave once the draft is saved or dropped:
+  // focus moves to the look now worn instead of the page.
+  useEffect(() => {
+    if (!busy && !dirty && focusLookAfterSave.current) {
+      focusLookAfterSave.current = false
+      studio.current?.querySelector<HTMLInputElement>('input:checked')?.focus()
+    }
+  }, [busy, dirty])
+
+  function selectFinish(value: Finish | null) {
     if (unknown) return
     if (lastAppliedKey.current === null) chosenWhileChecking.current = true
     setFinish(value)
     setNotice('')
   }
+  function setExtras(next: SupporterLookExtras) {
+    if (unknown) return
+    setExtrasDraft(next)
+    setNotice('')
+  }
+  function chooseLook(next: SupporterLook) {
+    selectFinish(next.finish)
+    setExtras({ motion: next.motion, backdrop: next.backdrop, intensity: next.intensity })
+  }
+  async function writeExtras(next: SupporterLookExtras) {
+    await Promise.all([paint.choose(motionPaint(next.motion)), setPulseBanner(lookBanner(next, banner.value.title))])
+  }
 
-  async function save() {
-    if (!allowed || pending.current || unchanged) return
+  async function equip() {
+    if (!allowed || pending.current || !dirty || !banner.ready) return
     const current = generation.current
+    const finishChanged = finish !== appliedFinish
     const cosmetics: SupporterCosmetics = { enabled: finish !== null, finish: finish ?? 'glass' }
+    let finishSaved = !finishChanged
     pending.current = true
     setBusy(true)
     setNotice('')
-    // Expect our own acknowledgment before asking, so a refresh it causes is recognised.
-    savedCosmetics.current = cosmetics
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'SUPPORTER_COSMETICS', ...cosmetics })
-      if (current !== generation.current) return
-      if (response?.type !== 'SUPPORTER_COSMETICS' || !response.ok) {
-        savedCosmetics.current = null
-        setNotice('Could not save. Refresh your Supporter status and try again.')
-        return
+      if (finishChanged) {
+        // Expect our own acknowledgment before asking, so a refresh it causes is recognised.
+        savedCosmetics.current = cosmetics
+        const response = await chrome.runtime.sendMessage({ type: 'SUPPORTER_COSMETICS', ...cosmetics })
+        if (current !== generation.current) return
+        if (response?.type !== 'SUPPORTER_COSMETICS' || !response.ok) {
+          savedCosmetics.current = null
+          setNotice('Could not save. Refresh your Supporter status and try again.')
+          return
+        }
+        finishSaved = true
+        setAppliedFinish(finish)
+        onSaved?.(cosmetics)
       }
-      focusPaintAfterSave.current = document.activeElement === equipButton.current
-      setAppliedFinish(finish)
-      setNotice(finish ? `${selectedLabel} paint equipped.` : 'Default paint restored.')
-      savedCosmetics.current = cosmetics
-      onSaved?.(cosmetics)
+      if (extrasChanged) await writeExtras(extras)
+      if (current !== generation.current) return
+      focusLookAfterSave.current = document.activeElement === equipButton.current
+      setNotice(`Equipped: ${lookName(look)}.`)
     } catch {
       if (current === generation.current) {
-        savedCosmetics.current = null
+        if (!finishSaved) savedCosmetics.current = null
         setNotice('Could not save. Please try again.')
       }
     } finally {
@@ -211,31 +258,105 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
       }
     }
   }
-  // The preview wears a Supporter's own look, the sample, or a paint being tried; unlabelled while membership is unknown.
-  const shown = unknown ? undefined : finish !== (allowed ? appliedFinish : SAMPLE_KIT.finish) ? 'trying' : allowed ? 'own' : 'sample'
+  function revert() {
+    if (busy) return
+    focusLookAfterSave.current = document.activeElement === revertButton.current
+    setFinish(appliedFinish)
+    setExtrasDraft(null)
+    setNotice('')
+  }
+
+  const isStarter = STARTER_LOOKS.some(option => sameLook(option.look, look))
+  const isSaved = saved.looks.some(item => sameLook(item, look))
+  const shelfFull = saved.looks.length >= MAX_SAVED_LOOKS
+  const canSave = allowed && finish !== null && !isStarter && !isSaved
+  async function saveLook() {
+    if (!canSave || shelfFull) return
+    try {
+      await saved.write([...saved.looks, look])
+      setNotice(`Saved ${lookName(look)} to your looks.`)
+    } catch {
+      setNotice("Could not save that look. Try again.")
+    }
+  }
+  async function removeLook(item: SupporterLook) {
+    const name = lookName(item)
+    try {
+      await saved.write(saved.looks.filter(existing => !sameLook(existing, item)))
+      setNotice(`Removed ${name} from your looks.`)
+      studio.current?.querySelector<HTMLInputElement>('input[name="supporter-look"]')?.focus()
+    } catch {
+      setNotice("Could not remove that look. Try again.")
+    }
+  }
+
+  /** A Supporter's paint chips: the one in use, and the one being tried. */
+  const chip = (id: Finish | null) => !allowed ? null : <>
+    {id === appliedFinish ? <small data-chip="equipped"> · Equipped</small> : null}
+    {id === finish && finish !== appliedFinish ? <span className="pulse-supporter-tile-chip" data-chip="previewing">Previewing</span> : null}
+  </>
+  const perkLine = checkoutAvailability === 'closed' ? 'closed' : checkoutAvailability === 'open' || entitlement?.state === 'not_linked' ? 'locked' : null
+  // The preview wears a Supporter's own look, the sample, or a look being tried; unlabelled while membership is unknown.
+  const shown = unknown ? undefined : allowed ? (dirty ? 'trying' : 'own') : sameLook(look, SAMPLE_LOOK) ? 'sample' : 'trying'
+
+  let action: ReactNode = null
+  if (unknown) {
+    action = <span className="pulse-supporter-detail">{unavailable ? 'Supporter status unavailable' : 'Checking Supporter status…'}</span>
+  } else if (allowed) {
+    action = dirty || busy ? <>
+      <SupporterActionButton ref={equipButton} type="button" disabled={busy || !banner.ready} aria-busy={busy} onClick={() => void equip()}>
+        {busy ? 'Saving...' : 'Equip look'}
+      </SupporterActionButton>
+      <SupporterActionButton ref={revertButton} type="button" disabled={busy} onClick={revert}>Revert</SupporterActionButton>
+    </> : null
+  } else if (!tryOnly) {
+    const chosen = finish !== null && finish === intent && !extrasChanged
+    action = finish && !chosen || intent ? <>
+      {finish && !chosen ? <SupporterActionButton type="button" disabled={intentBusy} aria-busy={intentBusy} onClick={() => void chooseForLater(finish)}>
+        {intentBusy ? 'Saving...' : 'Use this look when Supporter starts'}
+      </SupporterActionButton> : null}
+      {intent ? <SupporterActionButton aria-busy={intentBusy || undefined} type="button" disabled={intentBusy} onClick={() => void chooseForLater(null)}>Clear choice</SupporterActionButton> : null}
+    </> : null
+  }
+
   return <PulseSectionCard
     title="Your look"
     headingLevel={3}
     className="pulse-supporter-studio"
     titleAction={<SupporterCardTag audience="only-you">Only you</SupporterCardTag>}
-    meta={unknown ? undefined : tryOnly ? "Try a look. Changes here aren't saved." : allowed ? 'Wave, sheen and Emote rain save right away' : 'Try any look. Paint, wave and sheen apply when you support.'}
+    meta={unknown ? undefined : tryOnly ? "Try a look. Changes here aren't saved." : allowed ? 'Try looks in the preview. Equip look saves them.' : 'Try any look. Choose one now and it applies when you support.'}
   >
     <SupporterLookPreview
       finish={finish}
-      paint={tryOnly ? paintTry : paint.style}
+      paint={motionPaint(extras.motion)}
       tenure={tenure}
-      rain={allowed || unknown ? banner.value : { ...SAMPLE_RAIN, mode: rainTry }}
+      banner={lookBanner(extras, banner.value.title)}
+      name={lookName(look)}
       shown={shown}
       hideStateLabel={tryOnly}
       seenInChat={seenInChat}
     />
-    <div className="pulse-supporter-look" data-preview-finish={finish ?? 'default'}>
-      <fieldset ref={paintFields} className="pulse-supporter-look-row" disabled={busy || unknown}>
+    <div ref={studio} className="pulse-supporter-look" data-preview-finish={finish ?? 'default'}>
+      <fieldset className="pulse-supporter-look-row" disabled={busy || unknown}>
+        <legend>Looks</legend>
+        <div>
+          <div className="pulse-supporter-tiles">
+            {STARTER_LOOKS.map(option => <LookTile key={option.name} name={option.name} look={option.look} current={look} onChoose={chooseLook} />)}
+            {saved.looks.map(item => <span key={lookName(item)} className="pulse-supporter-saved-look">
+              <LookTile name={lookName(item)} look={item} current={look} onChoose={chooseLook} />
+              <button type="button" className="pulse-supporter-look-remove" aria-label={`Remove ${lookName(item)} from your looks`} onClick={() => void removeLook(item)}>×</button>
+            </span>)}
+            {canSave && !shelfFull ? <SupporterActionButton type="button" className="pulse-supporter-save-look" onClick={() => void saveLook()}>Save look</SupporterActionButton> : null}
+          </div>
+          {canSave && shelfFull ? <p className="pulse-supporter-detail">You can keep {MAX_SAVED_LOOKS} looks. Remove one to save this one.</p> : null}
+        </div>
+      </fieldset>
+      <fieldset className="pulse-supporter-look-row" disabled={busy || unknown}>
         <legend>Paint</legend>
         <div className="pulse-supporter-tiles">
           <label className="pulse-supporter-tile" title="Your free theme">
             <input type="radio" name="supporter-finish" value="finish-default" checked={finish === null} onChange={() => selectFinish(null)} />
-            <i className="pulse-supporter-swatch" aria-hidden="true" />
+            <i className="pulse-supporter-swatch" data-swatch="default" aria-hidden="true" />
             <small>Default</small>
             {chip(null)}
           </label>
@@ -253,100 +374,51 @@ export function SupporterCosmeticControls({ entitlement, unavailable = false, te
           </label>)}
         </div>
       </fieldset>
-      {tryOnly ? <details className="pulse-supporter-wave-disclosure">
-        <summary>Wave and sheen</summary>
-        <SupporterPaintStyleFields style={paintTry} onChoose={next => { paintTried.current = true; setPaintTry(next) }} />
-      </details> : <SupporterPaintStyleFields style={paint.style} disabled={unknown} onChoose={next => { if (!unknown) void paint.choose(next) }} />}
-      <EmoteRainField banner={banner} perks={unknown ? undefined : allowed} line={checkoutAvailability === 'closed' ? 'closed' : checkoutAvailability === 'open' || entitlement?.state === 'not_linked' ? 'locked' : null} tried={rainTry} onTry={setRainTry} />
+      <SupporterMotionField motion={extras.motion} finish={finish} disabled={busy || unknown} onChoose={motion => setExtras({ ...extras, motion })} />
+      <fieldset className="pulse-supporter-look-row" disabled={busy || unknown} data-supporter-perks={unknown ? 'pending' : allowed ? 'on' : 'locked'}>
+        <legend>Backdrop</legend>
+        <div>
+          <div className="pulse-supporter-backdrop">
+            <div className="pulse-supporter-seg">
+              {([false, true] as const).map(on => <SupporterActionButton
+                key={String(on)}
+                type="button"
+                aria-pressed={extras.backdrop === on}
+                onClick={() => setExtras({ ...extras, backdrop: on })}
+              >{on ? 'On' : 'Off'}</SupporterActionButton>)}
+            </div>
+            {extras.backdrop ? <label className="pulse-supporter-intensity">
+              <span>Intensity</span>
+              <input type="range" min={10} max={70} step={5} value={extras.intensity} onChange={event => setExtras({ ...extras, intensity: Number(event.target.value) })} />
+              <output>{extras.intensity}%</output>
+            </label> : null}
+          </div>
+          {!allowed && !unknown && perkLine
+            ? <p className="pulse-supporter-detail" data-supporter-perk="backdrop">The backdrop is a Supporter perk. Only you see it. {perkLine === 'closed' ? "Supporter isn't on sale yet. " : ''}<a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>See Supporter →</a></p>
+            : null}
+        </div>
+      </fieldset>
     </div>
     {banner.loadError ? <PulseBannerLoadError onRetry={() => void banner.reload()} /> : null}
-    {tryOnly || unknown ? null : <p className="pulse-supporter-detail" aria-live="polite">{paint.status}</p>}
-    {tryOnly ? null : <div className="pulse-account-link-actions">
-      {unknown ? (
-        <span className="pulse-supporter-detail">{unavailable ? 'Supporter status unavailable' : 'Checking Supporter status…'}</span>
-      ) : allowed && unchanged && !busy ? (
-        <span className="pulse-supporter-detail">{finish ? 'Equipped' : 'Default active'}</span>
-      ) : allowed ? (
-        <SupporterActionButton ref={equipButton} type="button" disabled={busy} aria-busy={busy} onClick={() => void save()}>
-          {busy ? 'Saving...' : finish ? 'Equip paint' : 'Use default'}
-        </SupporterActionButton>
-      ) : finish && finish !== intent ? (
-        <SupporterActionButton type="button" disabled={intentBusy} aria-busy={intentBusy} onClick={() => void chooseForLater(finish)}>
-          {intentBusy ? 'Saving...' : `Use ${selectedLabel} when Supporter starts`}
-        </SupporterActionButton>
-      ) : (
-        <span className="pulse-supporter-detail">{finish ? `${selectedLabel} chosen` : 'Default active'}</span>
-      )}
-      {!allowed && !unknown && intent ? <SupporterActionButton aria-busy={intentBusy || undefined} type="button" disabled={intentBusy} onClick={() => void chooseForLater(null)}>Clear choice</SupporterActionButton> : null}
-    </div>}
-    {!allowed && !unknown && !tryOnly ? <p className="pulse-supporter-detail">We keep this choice for 7 days.</p> : null}
+    {action ? <div className="pulse-account-link-actions">{action}</div> : null}
     {tryOnly && savedEarlier ? <p className="pulse-supporter-detail" data-supporter-finish-intent={intent ?? 'none'}>
       Saved earlier: {savedEarlier.label}, until {savedEarlier.date}.{' '}
       <SupporterActionButton aria-busy={intentBusy || undefined} className="pulse-supporter-remove-intent" type="button" disabled={intentBusy} onClick={() => void chooseForLater(null)}>Remove</SupporterActionButton>
     </p> : null}
     {!allowed && !unknown && !tryOnly ? <p className="pulse-supporter-detail" data-supporter-finish-intent={intent ?? 'none'}>
       {intentLabel
-        ? `${intentLabel} is applied automatically when your Supporter membership is confirmed. Until then, this is only a preview.`
-        : 'Preview is free. Choose a paint now and it applies when your Supporter membership starts.'}
+        ? `${intentLabel} is applied automatically when your Supporter membership is confirmed. We keep this choice for 7 days.`
+        : 'Preview is free. Choose a look now and it applies when your Supporter membership starts. We keep this choice for 7 days.'}
     </p> : null}
     <p className="pulse-supporter-detail pulse-supporter-save-status" role="status">{notice}</p>
   </PulseSectionCard>
 }
 
-/**
- * Emote rain behind your Pulse panel: off, still or falling. A Supporter's
- * choice saves at once. Without the perk it is tried in the preview only
- * (`tried`) and the saved choice stays as it was; while membership is unknown
- * it waits, neutral.
- *
- * A save never disables the row: the pressed button would lose keyboard focus
- * to the page. Presses while one saves are ignored instead, and one live region,
- * always present, is cleared when a save starts and then states its result.
- */
-function EmoteRainField({ banner, perks, line, tried, onTry }: {
-  banner: ReturnType<typeof usePulseBanner>
-  perks: boolean | undefined
-  /**
-   * The lock line: "closed" adds that Supporter isn't on sale yet, as the server
-   * said. A browser with no account yet gets the plain line; an older or
-   * unreachable server gets none.
-   */
-  line: 'locked' | 'closed' | null
-  tried: PulseBannerPreference['mode']
-  onTry: (mode: PulseBannerPreference['mode']) => void
-}) {
-  const [message, setMessage] = useState('')
-  const [saving, setSaving] = useState(false)
-  const shown = perks === false ? tried : banner.value.mode
-  // The shared hook reports the result once its write settles (status and
-  // saving change together), so this row reads only the save it started.
-  useEffect(() => {
-    if (!saving || banner.saving) return
-    setSaving(false)
-    setMessage(banner.status === 'Saved' ? 'Emote rain saved.' : "Couldn't save that. Try again.")
-  }, [saving, banner.saving, banner.status])
-  function choose(mode: PulseBannerPreference['mode']) {
-    if (perks === false) return onTry(mode)
-    if (!perks || !banner.ready || saving || banner.saving) return
-    setMessage('')
-    setSaving(true)
-    void banner.save({ ...banner.value, mode })
-  }
-  return <fieldset className="pulse-supporter-look-row" disabled={perks === undefined || (perks && !banner.ready)} aria-busy={perks === undefined || saving || undefined} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
-    <legend>Emote rain</legend>
-    <div>
-      <div className="pulse-supporter-seg">
-        {(['off', 'still', 'rain'] as const).map(mode => <SupporterActionButton
-          key={mode}
-          type="button"
-          aria-pressed={shown === mode}
-          onClick={() => choose(mode)}
-        >{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</SupporterActionButton>)}
-      </div>
-      {perks === false && line
-        ? <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">Emote rain is a Supporter perk. Only you see it. {line === 'closed' ? "Supporter isn't on sale yet. " : ''}<a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>See Supporter →</a></p>
-        : null}
-      <p className="pulse-supporter-detail" role="status" data-emote-rain-status>{message}</p>
-    </div>
-  </fieldset>
+/** One look on the shelf, as a pill with its paint's dot; choosing it loads it into the draft. */
+function LookTile({ name, look, current, onChoose }: { name: string; look: SupporterLook; current: SupporterLook; onChoose: (look: SupporterLook) => void }) {
+  return <label className="pulse-supporter-tile">
+    <input type="radio" name="supporter-look" value={`look-${name}`} checked={sameLook(look, current)} onChange={() => onChoose(look)} />
+    <i className="pulse-supporter-swatch" data-swatch={look.finish ?? 'default'} style={look.finish ? finishVars(look.finish) as CSSProperties : undefined} aria-hidden="true" />
+    <small>{name}</small>
+  </label>
 }

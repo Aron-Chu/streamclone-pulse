@@ -60,7 +60,7 @@ test('quick settings opens on the channel, then Supporter and live controls, wit
 
   // Your look's link opens Supporter settings; the nonmember preview stays closed until chosen.
   const opened = extension.context.waitForEvent('page')
-  await panel.getByRole('button', { name: 'Wave, sheen and crest in all settings ↗' }).click()
+  await panel.getByRole('button', { name: 'Motion and saved looks in all settings ↗' }).click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
   expect(settings.url()).toContain('#supporter')
@@ -70,7 +70,7 @@ test('quick settings opens on the channel, then Supporter and live controls, wit
   await settings.getByText('Preview Supporter looks', { exact: true }).click()
   await expect(previewDisclosure).toHaveJSProperty('open', true)
   await expect(settings.locator('[data-supporter-preview]')).toBeVisible()
-  await expect(settings.getByRole('group', { name: 'Emote rain' }).getByRole('button')).toHaveCount(3)
+  await expect(settings.getByRole('group', { name: 'Backdrop' }).getByRole('button')).toHaveCount(2)
 })
 
 test('density chosen in quick settings reaches the open panel without a reload', async ({ extension, prepare }) => {

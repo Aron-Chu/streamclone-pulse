@@ -32,7 +32,7 @@ describe('shared cosmetics disclosure', () => {
     const offer = renderToStaticMarkup(<SupporterPerkList compact seenInChat />)
     expect(offer).toContain('only if you turn it on')
     expect(offer).not.toContain('Nothing is added to Twitch chat')
-    const preview = renderToStaticMarkup(<SupporterLookPreview finish="glass" paint={DEFAULT_SUPPORTER_PAINT} tenure="new" rain={{ mode: 'off', intensity: 35, title: '' }} seenInChat />)
+    const preview = renderToStaticMarkup(<SupporterLookPreview finish="glass" paint={DEFAULT_SUPPORTER_PAINT} tenure="new" banner={{ mode: 'off', intensity: 35, title: '' }} name="Quiet" seenInChat />)
     expect(preview).toContain('separately opt in')
     expect(preview).not.toContain('Everyone else on Twitch sees normal chat.')
   })

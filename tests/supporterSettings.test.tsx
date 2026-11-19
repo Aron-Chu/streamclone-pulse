@@ -32,7 +32,7 @@ describe('equipping paint without losing keyboard focus', () => {
       await act(async () => root.render(<SupporterCosmeticControls entitlement={{ state: 'ready', status: 'active', supportPeriods: 2, features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'glass' } }} />))
       const halo = host.querySelector<HTMLInputElement>('input[value="finish-halo"]')!
       await act(async () => halo.click())
-      const equip = [...host.querySelectorAll('button')].find(button => button.textContent === 'Equip paint')!
+      const equip = [...host.querySelectorAll('button')].find(button => button.textContent === 'Equip look')!
       equip.focus()
       await act(async () => equip.click())
       expect(document.activeElement).toBe(equip)
@@ -42,12 +42,33 @@ describe('equipping paint without losing keyboard focus', () => {
       expect(sendMessage).toHaveBeenCalledTimes(1)
       if (moveElsewhere) outside.focus()
       await act(async () => finish({ type: 'SUPPORTER_COSMETICS', ok: true }))
+      // Equip look leaves once saved: focus lands on the checked paint, unless the user moved on.
+      expect(halo.checked).toBe(true)
       expect(document.activeElement).toBe(moveElsewhere ? outside : halo)
-      expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Equipped')).toBe(false)
-      expect(host.querySelector('.pulse-account-link-actions')?.textContent).toBe('Equipped')
+      expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Equip look')).toBe(false)
+      expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Equipped: Halo · Shimmer · no backdrop.')
       expect(halo.closest('label')?.textContent).toContain('· Equipped')
       expect(halo.closest('label')?.querySelector('.pulse-supporter-tile-chip')).toBeNull()
     } finally { act(() => root.unmount()); host.remove(); outside.remove(); vi.unstubAllGlobals() }
+  })
+})
+
+describe('reverting a look without losing keyboard focus', () => {
+  it('moves focus to the checked paint when Revert drops the draft', async () => {
+    vi.stubGlobal('chrome', { runtime: { sendMessage: vi.fn() } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls tenure="new" entitlement={{ state: 'ready', status: 'active', supportPeriods: 2, features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'glass' } }} />))
+      await act(async () => host.querySelector<HTMLInputElement>('input[value="finish-halo"]')!.click())
+      const revert = [...host.querySelectorAll('button')].find(button => button.textContent === 'Revert')!
+      revert.focus()
+      await act(async () => revert.click())
+      expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Revert' || button.textContent === 'Equip look')).toBe(false)
+      expect(host.querySelector<HTMLInputElement>('input[value="finish-glass"]')!.checked).toBe(true)
+      expect(document.activeElement).toBe(host.querySelector('.pulse-supporter-look input:checked'))
+    } finally { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() }
   })
 })
 
@@ -84,10 +105,11 @@ describe('supporter settings', () => {
       expect(card.querySelector('.pulse-supporter-card-sample')?.textContent).toBe('Sample look')
       // The card names nobody; the footer says how Supporter will start.
       expect(card.querySelector('.pulse-supporter-card-who')?.textContent).not.toMatch(/twitch/i)
-      // The card wears the sample paint, with emote rain across its top and no gradient layer of its own.
+      // The card wears the sample paint, with the backdrop across its top and no gradient layer of its own.
       expect(card.style.getPropertyValue('--spk-fin')).toBe('#efc96a')
       expect(card.querySelector('.pulse-supporter-card-banner .pulse-banner-art')?.getAttribute('data-mode')).toBe('rain')
-      expect(card.querySelectorAll('.pulse-supporter-card-banner .pulse-banner-art img')).toHaveLength(6)
+      expect(card.querySelectorAll('.pulse-supporter-card-banner .pulse-banner-art svg')).toHaveLength(6)
+      expect(card.querySelectorAll('.pulse-supporter-card-banner img')).toHaveLength(0)
       // The five-step crest ladder starts at New for everyone who is not a Supporter.
       const steps = [...card.querySelectorAll<HTMLElement>('.pulse-supporter-ladder li')]
       expect(steps.map(step => step.textContent)).toEqual(['New', '3 mo', '6 mo', '1 year', '2 years'])
@@ -119,15 +141,15 @@ describe('supporter settings', () => {
       expect(preview.querySelector('[data-supporter-perk-names="true"]')?.textContent).toBe(SUPPORTER_PERKS.names.join(' · '))
       expect(preview.textContent).toContain('Everyone else on Twitch sees normal chat.')
       expect(preview.textContent).not.toContain('Sample look')
-      // It wears the sample paint and crest, with the sample's emote rain falling.
+      // It wears the sample paint and crest, with the sample's backdrop drifting.
       expect(preview.style.getPropertyValue('--spk-fin')).toBe('#efc96a')
       expect(preview.querySelector('.pulse-supporter-chat-line .pulse-crest')).not.toBeNull()
       expect(preview.querySelector('.pulse-banner-art')?.getAttribute('data-mode')).toBe('rain')
       expect(host.querySelector('[data-concept]')).toBeNull()
       expect(host.textContent).not.toContain('Concept · not built')
-      // Your look: paint, wave, sheen and emote rain; rain can be tried here, not saved.
-      expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Paint', 'Wave', 'Sheen', 'Emote rain'])
-      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent).toBe('Emote rain is a Supporter perk. Only you see it. See Supporter →')
+      // Your look: looks, paint, motion and backdrop; the backdrop can be tried here, not saved.
+      expect([...host.querySelectorAll('.pulse-supporter-look-row > legend')].map(legend => legend.textContent)).toEqual(['Looks', 'Paint', 'Motion', 'Backdrop'])
+      expect(host.querySelector('[data-supporter-perk="backdrop"]')?.textContent).toBe('The backdrop is a Supporter perk. Only you see it. See Supporter →')
       // No signature emote anywhere, and the old badge preview is gone.
       expect(host.textContent).not.toMatch(/signature/i)
       expect(host.querySelector('.pulse-supporter-tenure-choices, .pulse-supporter-chat-preview')).toBeNull()
@@ -208,14 +230,14 @@ describe('supporter settings', () => {
   })
 
   it.each<[string, SupporterEntitlement | null, string | null]>([
-    ['open', { state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true }, "Emote rain is a Supporter perk. Only you see it. See Supporter →"],
-    ['closed', { state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: false }, "Emote rain is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →"],
+    ['open', { state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true }, "The backdrop is a Supporter perk. Only you see it. See Supporter →"],
+    ['closed', { state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: false }, "The backdrop is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →"],
     ['older server', { state: 'ready', status: 'none', supportPeriods: 0, features: [] }, null],
     ['failed', { state: 'error' }, null],
     ['unavailable', { state: 'unavailable', reason: 'temporarily_unavailable' }, null],
     ['member', { state: 'ready', status: 'active', supportPeriods: 1, features: ['supporter.banner.v1', 'supporter.finish.v1'], checkoutEnabled: true }, null],
     ['pending', null, null],
-  ])('keeps Emote rain availability honest when %s without changing entitlement', async (_name, entitlement, copy) => {
+  ])('keeps backdrop availability honest when %s without changing entitlement', async (_name, entitlement, copy) => {
     const sendMessage = vi.fn(async (_message: { type: string }) => undefined)
     vi.stubGlobal('chrome', { runtime: { sendMessage } })
     const host = document.createElement('div')
@@ -223,7 +245,7 @@ describe('supporter settings', () => {
     const root = createRoot(host)
     try {
       await act(async () => root.render(<SupporterCosmeticControls entitlement={entitlement} />))
-      expect(host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent ?? null).toBe(copy)
+      expect(host.querySelector('[data-supporter-perk="backdrop"]')?.textContent ?? null).toBe(copy)
       if (entitlement === null) {
         expect(host.querySelector('[data-supporter-perks="pending"]')?.hasAttribute('disabled')).toBe(true)
         expect(host.textContent).toContain('Checking Supporter status…')
@@ -262,19 +284,20 @@ describe('supporter settings', () => {
           }}
         />,
       ))
-      expect(host.querySelector('.pulse-account-link-actions button')).toBeNull()
-      expect(host.querySelector('.pulse-account-link-actions')?.textContent).toContain('Default active')
-      // Emote rain can be tried in the preview only: it starts on the sample's falling rain, and a press saves nothing.
+      // An expired member has nothing to equip: the only action is the choice for when Supporter starts, never Equip look.
+      expect([...host.querySelectorAll('.pulse-account-link-actions button')].map(button => button.textContent)).toEqual(['Use this look when Supporter starts'])
+      expect(host.textContent).not.toMatch(/Equip look|Default active/)
+      // The backdrop can be tried in the preview only: it starts on the sample's backdrop, and a press saves nothing.
       const locked = host.querySelector('[data-supporter-perks="locked"]')!
       expect(locked.querySelectorAll('button:disabled')).toHaveLength(0)
-      expect([...locked.querySelectorAll('[aria-pressed="true"]')].map(button => button.textContent)).toEqual(['Rain'])
-      await act(async () => { [...locked.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Still')!.click() })
-      expect([...locked.querySelectorAll('[aria-pressed="true"]')].map(button => button.textContent)).toEqual(['Still'])
-      expect(host.querySelector('[data-supporter-preview] .pulse-banner-art')?.getAttribute('data-mode')).toBe('still')
+      expect([...locked.querySelectorAll('[aria-pressed="true"]')].map(button => button.textContent)).toEqual(['On'])
+      await act(async () => { [...locked.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Off')!.click() })
+      expect([...locked.querySelectorAll('[aria-pressed="true"]')].map(button => button.textContent)).toEqual(['Off'])
+      expect(host.querySelector('[data-supporter-preview] .pulse-banner-art')?.getAttribute('data-mode')).toBe('off')
       // No "Preview: … / Active: …" line: the swatches carry the state.
       expect(host.textContent).not.toMatch(/Preview: |Active: /)
-      expect(chipState(host)).toEqual(['Equipped:default'])
-      expect(host.textContent).toContain('Preview is free. Choose a paint now and it applies when your Supporter membership starts.')
+      expect(chipState(host)).toEqual([])
+      expect(host.textContent).toContain('Preview is free. Choose a look now and it applies when your Supporter membership starts.')
       // Only a read of the optional saved choice; never a save.
       expect(sendMessage.mock.calls).toEqual([[{ type: 'SUPPORTER_FINISH_INTENT' }]])
     } finally {
@@ -284,32 +307,38 @@ describe('supporter settings', () => {
     }
   })
 
-  it('tries every closed-state cosmetic locally, seeded from saved wave and sheen, without any writes or new worker calls', async () => {
+  it('tries every closed-state cosmetic locally, starting on the sample look, without any writes or new worker calls', async () => {
     const sendMessage = vi.fn(async (message: { type: string }) => message.type === 'SUPPORTER_FINISH_INTENT' ? { type: 'SUPPORTER_FINISH_INTENT', ok: true, finish: null } : undefined)
     const write = vi.fn()
-    vi.stubGlobal('chrome', { runtime: { id: 'test-extension', sendMessage }, storage: { sync: { get: vi.fn(async () => ({ supporterPaintStyle: { wave: 'ripple', sheen: 'glint' } })), set: write }, local: { set: write } } })
+    vi.stubGlobal('chrome', { runtime: { id: 'test-extension', sendMessage }, storage: { sync: { get: vi.fn(async () => ({ supporterPaintStyle: { wave: 'ripple', sheen: 'glint' }, pulseBanner: { mode: 'off', intensity: 20, title: '' } })), set: write }, local: { set: write } } })
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
+    const checked = (name: string) => [...host.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)].map(input => input.value)
     try {
-      await act(async () => root.render(<SupporterCosmeticControls entitlement={CLOSED} />))
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={CLOSED} tenure="new" />))
       expect(host.textContent).toContain("Try a look. Changes here aren't saved.")
       expect(host.textContent).not.toContain('Try anything')
-      const wave = host.querySelector<HTMLDetailsElement>('.pulse-supporter-wave-disclosure')!
-      expect(wave.open).toBe(false)
-      expect(host.querySelector<HTMLInputElement>('input[value="wave-ripple"]')?.checked).toBe(true)
-      expect(host.querySelector<HTMLInputElement>('input[value="sheen-glint"]')?.checked).toBe(true)
+      // A visitor starts on the sample look (Gold leaf), not on what this profile saved or on Default.
+      expect(checked('supporter-look')).toEqual(['look-Gold leaf'])
+      expect(checked('supporter-finish')).toEqual(['finish-etched'])
+      expect(checked('supporter-motion')).toEqual(['motion-drift'])
+      expect(host.querySelector('.pulse-supporter-preview .pulse-banner-art')?.getAttribute('data-mode')).toBe('rain')
+      expect(host.querySelector<HTMLInputElement>('input[type="range"]')!.value).toBe('40')
       const callsBeforeTry = sendMessage.mock.calls.length
-      const etched = host.querySelector<HTMLInputElement>('input[value="finish-etched"]')!
-      await act(async () => { etched.click() })
-      await act(async () => { host.querySelector<HTMLInputElement>('input[value="wave-aurora"]')!.click(); host.querySelector<HTMLInputElement>('input[value="sheen-pulse"]')!.click() })
-      await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('[data-supporter-perks="locked"] button')].find(button => button.textContent === 'Still')!.click() })
-      expect(host.querySelector('.pulse-supporter-preview .pulse-paint')?.getAttribute('data-wave')).toBe('aurora')
-      expect(host.querySelector('.pulse-supporter-preview .pulse-paint')?.getAttribute('data-sheen')).toBe('pulse')
+      await act(async () => { host.querySelector<HTMLInputElement>('input[value="finish-halo"]')!.click() })
+      await act(async () => { host.querySelector<HTMLInputElement>('input[value="motion-still"]')!.click() })
+      expect(host.querySelector('.pulse-supporter-preview .pulse-paint')?.getAttribute('data-finish')).toBe('halo')
+      expect(host.querySelector('.pulse-supporter-preview .pulse-paint')?.getAttribute('data-wave')).toBe('smooth')
+      expect(host.querySelector('.pulse-supporter-preview .pulse-paint')?.getAttribute('data-sheen')).toBe('none')
       expect(host.querySelector('.pulse-supporter-preview .pulse-banner-art')?.getAttribute('data-mode')).toBe('still')
+      await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('[data-supporter-perks="locked"] button')].find(button => button.textContent === 'Off')!.click() })
+      expect(host.querySelector('.pulse-supporter-preview .pulse-banner-art')?.getAttribute('data-mode')).toBe('off')
+      await act(async () => { host.querySelector<HTMLInputElement>('input[value="look-Signal"]')!.click() })
+      expect(checked('supporter-finish')).toEqual(['finish-glass'])
       expect(chipState(host)).toEqual([])
       expect(host.querySelector('.pulse-account-link-actions')).toBeNull()
-      expect(host.textContent).not.toMatch(/Save for when|Saved for when|Preview is free|Wave and sheen save/)
+      expect(host.textContent).not.toMatch(/Save for when|Saved for when|Preview is free|Equip look|Save look/)
       expect(sendMessage).toHaveBeenCalledTimes(callsBeforeTry)
       expect(write).not.toHaveBeenCalled()
     } finally {
@@ -352,22 +381,48 @@ describe('supporter settings', () => {
     } finally { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() }
   })
 
-  it('keeps the seven-day line before and after saving a choice while checkout is open', async () => {
+  it('keeps the seven-day line before saving a choice while checkout is open', async () => {
     const sendMessage = vi.fn(async (message: { type: string; finish?: string | null }) => ({ type: 'SUPPORTER_FINISH_INTENT', finish: message.finish ?? null, ...(message.finish ? { setAt: Date.now() } : {}) }))
     vi.stubGlobal('chrome', { runtime: { sendMessage } })
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     try {
-      await act(async () => root.render(<SupporterCosmeticControls entitlement={{ state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true }} />))
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={{ state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true }} tenure="new" />))
       expect(host.textContent).toContain('We keep this choice for 7 days.')
+    } finally { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() }
+  })
+
+  it('keeps the seven-day line after saving a choice while checkout is open, and clears it on request', async () => {
+    // A live sync store, so the motion and backdrop written with the choice are read back.
+    const store: Record<string, unknown> = {}
+    const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>, area: string) => void>()
+    const set = vi.fn(async (items: Record<string, unknown>) => {
+      const changes = Object.fromEntries(Object.entries(items).map(([key, value]) => [key, { newValue: value }]))
+      Object.assign(store, items)
+      listeners.forEach(listener => listener(changes, 'sync'))
+    })
+    const sendMessage = vi.fn(async (message: { type: string; finish?: string | null }) => ({ type: 'SUPPORTER_FINISH_INTENT', finish: message.finish ?? null, ...(message.finish ? { setAt: Date.now() } : {}) }))
+    vi.stubGlobal('chrome', { runtime: { id: 'test-extension', sendMessage }, storage: {
+      sync: { get: vi.fn(async (key: string) => ({ [key]: store[key] })), set },
+      onChanged: { addListener: (listener: never) => listeners.add(listener), removeListener: (listener: never) => listeners.delete(listener) },
+    } })
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    const buttons = () => [...host.querySelectorAll<HTMLButtonElement>('button')].map(button => button.textContent)
+    try {
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={{ state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled: true }} tenure="new" />))
       await act(async () => host.querySelector<HTMLInputElement>('input[value="finish-halo"]')!.click())
-      const choose = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Use Halo when Supporter starts')!
+      const choose = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Use this look when Supporter starts')!
       await act(async () => choose.click())
       expect(sendMessage).toHaveBeenLastCalledWith({ type: 'SUPPORTER_FINISH_INTENT', finish: 'halo' })
-      expect(host.textContent).toContain('Halo chosen')
-      expect(host.textContent).toContain('Clear choice')
-      expect(host.textContent).toContain('We keep this choice for 7 days.')
+      expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Halo will be applied when your Supporter membership is confirmed.')
+      expect(buttons()).toContain('Clear choice')
+      expect(buttons()).not.toContain('Use this look when Supporter starts')
+      expect(host.textContent).toContain('Halo is applied automatically when your Supporter membership is confirmed. We keep this choice for 7 days.')
       expect(host.textContent).not.toContain('Saved earlier:')
+      await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Clear choice')!.click())
+      expect(sendMessage).toHaveBeenLastCalledWith({ type: 'SUPPORTER_FINISH_INTENT', finish: null })
+      expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Saved choice cleared.')
     } finally { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() }
   })
 
@@ -388,6 +443,7 @@ describe('supporter settings', () => {
     try {
       await render(entitlement)
       act(() => radio('etched').click())
+      expect(host.querySelector('.pulse-account-link-actions')?.textContent).toBe('Equip lookRevert')
       await render({ ...entitlement, cosmetics: { enabled: true, finish: 'glass' } })
       expect(radio('etched').checked).toBe(true)
       expect(chipState(host)).toEqual(['Equipped:glass', 'Previewing:etched'].sort())
@@ -396,12 +452,13 @@ describe('supporter settings', () => {
       expect(radio('halo').checked).toBe(true)
       expect(host.querySelector('[data-preview-finish]')?.getAttribute('data-preview-finish')).toBe('halo')
       expect(chipState(host)).toEqual(['Equipped:halo'])
-      expect(host.querySelector('.pulse-account-link-actions button')).toBeNull()
-      expect(host.querySelector('.pulse-account-link-actions')?.textContent).toContain('Equipped')
+      // Nothing is left to equip or revert once the draft matches what is applied.
+      expect(host.querySelector('.pulse-account-link-actions')).toBeNull()
 
       await render({ ...entitlement, cosmetics: { enabled: false, finish: 'halo' } })
       expect(radio('default').checked).toBe(true)
-      expect(host.textContent).toContain('Default active')
+      expect(chipState(host)).toEqual(['Equipped:default'])
+      expect(host.querySelector('.pulse-account-link-actions')).toBeNull()
       expect(sendMessage).not.toHaveBeenCalled()
     } finally {
       act(() => root.unmount())
@@ -423,6 +480,7 @@ describe('supporter settings', () => {
     }
     const render = () => root.render(<SupporterCosmeticControls
       entitlement={entitlement}
+      tenure="new"
       onSaved={cosmetics => {
         if (entitlement.state === 'ready') entitlement = { ...entitlement, cosmetics }
         render()
@@ -433,7 +491,7 @@ describe('supporter settings', () => {
       act(() => (host.querySelector('input[value="finish-halo"]') as HTMLInputElement).click())
       await act(async () => (host.querySelector('.pulse-account-link-actions button') as HTMLButtonElement).click())
       expect(sendMessage).toHaveBeenCalledOnce()
-      expect(host.textContent).toContain('Halo paint equipped.')
+      expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Equipped: Halo · Shimmer · no backdrop.')
       expect(chipState(host)).toEqual(['Equipped:halo'])
 
       await act(async () => {
@@ -441,7 +499,7 @@ describe('supporter settings', () => {
         render()
       })
       expect(chipState(host)).toEqual(['Equipped:etched'])
-      expect(host.textContent).not.toContain('Halo paint equipped.')
+      expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('')
       expect((host.querySelector('input[value="finish-etched"]') as HTMLInputElement).checked).toBe(true)
     } finally {
       act(() => root.unmount())
@@ -738,7 +796,7 @@ describe('cosmetics while membership is unavailable', () => {
       expect(host.textContent).not.toContain('Save for when Supporter opens')
       expect(host.textContent).not.toContain('Sign-ups are not open yet.')
       expect([...host.querySelectorAll<HTMLFieldSetElement>('.pulse-supporter-look fieldset')].every(fieldset => fieldset.disabled)).toBe(true)
-      expect(host.querySelector('[data-supporter-perk="emote-rain"]')).toBeNull()
+      expect(host.querySelector('[data-supporter-perk="backdrop"]')).toBeNull()
       expect(chipState(host)).toEqual([])
     } finally {
       act(() => root.unmount())
@@ -756,7 +814,7 @@ describe('cosmetics while membership is unavailable', () => {
     const root = createRoot(host)
     try {
       await act(async () => root.render(<SupporterAccountSection />))
-      expect(host.textContent).toMatch(/Use \w+ when Supporter starts/)
+      expect(host.textContent).toMatch(/Use this look when Supporter starts/)
       // The footer says the server has no Supporter yet; the studio itself does not pause.
       expect([...host.querySelectorAll('.pulse-account-link-actions button')].map(button => button.textContent)).not.toContain('Supporter status unavailable')
     } finally {
@@ -766,18 +824,18 @@ describe('cosmetics while membership is unavailable', () => {
     }
   })
 
-  it('drops "Sign-ups are not open yet" from the emote rain line once paid sign-ups open', async () => {
+  it('drops the not-on-sale line from the backdrop line once paid sign-ups open', async () => {
     vi.stubGlobal('chrome', { runtime: { sendMessage: vi.fn() } })
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
     const none = (checkoutEnabled: boolean): SupporterEntitlement => ({ state: 'ready', status: 'none', supportPeriods: 0, features: [], checkoutEnabled })
-    const rain = () => host.querySelector('[data-supporter-perk="emote-rain"]')?.textContent
+    const rain = () => host.querySelector('[data-supporter-perk="backdrop"]')?.textContent
     try {
       await act(async () => root.render(<SupporterCosmeticControls entitlement={none(false)} />))
-      expect(rain()).toBe("Emote rain is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →")
+      expect(rain()).toBe("The backdrop is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →")
       await act(async () => root.render(<SupporterCosmeticControls entitlement={none(true)} />))
-      expect(rain()).toBe('Emote rain is a Supporter perk. Only you see it. See Supporter →')
+      expect(rain()).toBe('The backdrop is a Supporter perk. Only you see it. See Supporter →')
     } finally {
       act(() => root.unmount())
       host.remove()
@@ -805,7 +863,7 @@ describe('cosmetic save races', () => {
       // The worker's change signal made settings re-read first.
       await act(async () => root.render(<SupporterCosmeticControls entitlement={active('halo', true)} />))
       await act(async () => respond({ type: 'SUPPORTER_COSMETICS', ok: true }))
-      expect(host.textContent).toContain('Halo paint equipped.')
+      expect(host.textContent).toContain('Equipped: Halo · Shimmer · no backdrop.')
       expect(chipState(host)).toEqual(['Equipped:halo'])
     } finally {
       act(() => root.unmount())
@@ -833,7 +891,7 @@ describe('cosmetic save races', () => {
       await act(async () => root.render(<SupporterCosmeticControls entitlement={null} />))
       await act(async () => root.render(<SupporterCosmeticControls entitlement={active('halo', true)} />))
       await act(async () => respond({ type: 'SUPPORTER_COSMETICS', ok: true }))
-      expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Halo paint equipped.')
+      expect(host.querySelector('.pulse-supporter-save-status')?.textContent).toBe('Equipped: Halo · Shimmer · no backdrop.')
       expect(chipState(host)).toEqual(['Equipped:halo'])
     } finally {
       act(() => root.unmount())
@@ -864,7 +922,7 @@ describe('cosmetic save races', () => {
       await act(async () => root.render(<SupporterCosmeticControls entitlement={active({ enabled: false, finish: 'glass' })} />))
       expect(radio('default').checked).toBe(true)
       expect(chipState(host)).toEqual(['Equipped:default'])
-      expect(host.querySelector('.pulse-account-link-actions')?.textContent).toBe('Default active')
+      expect(host.querySelector('.pulse-account-link-actions')).toBeNull()
       // After that, a change to the applied finish still replaces the draft.
       await act(async () => root.render(<SupporterCosmeticControls entitlement={active({ enabled: true, finish: 'halo' })} />))
       expect(radio('halo').checked).toBe(true)
@@ -876,13 +934,25 @@ describe('cosmetic save races', () => {
     }
   })
 
-  it('keeps the emote rain choice enabled and focused through its save, and announces each save afresh', async () => {
-    // Each storage write waits for the test to settle it.
+  it('keeps Equip look enabled and focused through its save, and announces each save afresh', async () => {
+    // Each storage write waits for the test to settle it; a settled write is read back like a synced change.
+    const store: Record<string, unknown> = {}
+    const listeners = new Set<(changes: Record<string, chrome.storage.StorageChange>, area: string) => void>()
     const writes: Array<{ settle: (ok: boolean) => void }> = []
-    const set = vi.fn(() => new Promise<void>((resolve, reject) => { writes.push({ settle: ok => ok ? resolve() : reject(new Error('quota exceeded')) }) }))
+    const set = vi.fn((items: Record<string, unknown>) => new Promise<void>((resolve, reject) => {
+      writes.push({ settle: ok => {
+        if (!ok) return reject(new Error('quota exceeded'))
+        Object.assign(store, items)
+        listeners.forEach(listener => listener(Object.fromEntries(Object.entries(items).map(([key, value]) => [key, { newValue: value }])), 'sync'))
+        resolve()
+      } })
+    }))
     vi.stubGlobal('chrome', {
       runtime: { id: 'test-extension', sendMessage: vi.fn() },
-      storage: { sync: { get: vi.fn(async () => ({})), set }, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } },
+      storage: {
+        sync: { get: vi.fn(async (key: string) => ({ [key]: store[key] })), set },
+        onChanged: { addListener: (listener: never) => listeners.add(listener), removeListener: (listener: never) => listeners.delete(listener) },
+      },
     })
     const host = document.createElement('div')
     document.body.append(host)
@@ -891,48 +961,55 @@ describe('cosmetic save races', () => {
       state: 'ready', status: 'active', supportPeriods: 3,
       features: ['supporter.banner.v1', 'supporter.finish.v1'], cosmetics: { enabled: true, finish: 'glass' },
     }
+    // The studio writes motion and backdrop together: two storage writes per save.
+    const settleAll = async (ok: boolean) => { await act(async () => { writes.filter((_, index) => index >= settled).forEach(write => write.settle(ok)); settled = writes.length }) }
+    let settled = 0
     try {
-      await act(async () => root.render(<SupporterCosmeticControls entitlement={entitlement} />))
+      await act(async () => root.render(<SupporterCosmeticControls entitlement={entitlement} tenure="new" />))
       const group = host.querySelector<HTMLFieldSetElement>('[data-supporter-perks="on"]')!
-      expect(group.querySelector('legend')?.textContent).toBe('Emote rain')
+      expect(group.querySelector('legend')?.textContent).toBe('Backdrop')
       const choice = (name: string) => [...group.querySelectorAll('button')].find(button => button.textContent === name)!
+      const equip = () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Equip look' || button.textContent === 'Saving...')!
       // One live region, present and empty before any save, so each result is announced.
-      const status = group.querySelector<HTMLElement>('[role="status"]')!
+      const status = host.querySelector<HTMLElement>('.pulse-supporter-save-status')!
+      expect(status.getAttribute('role')).toBe('status')
       expect(status.textContent).toBe('')
 
-      choice('Still').focus()
-      await act(async () => choice('Still').click())
-      expect(set).toHaveBeenCalledTimes(1)
-      // Saving locks nothing: a disabled fieldset would drop focus to the body in Chromium.
-      expect(group.disabled).toBe(false)
-      expect(group.querySelectorAll('button:disabled')).toHaveLength(0)
-      expect(group.getAttribute('aria-busy')).toBe('true')
-      expect(document.activeElement).toBe(choice('Still'))
+      await act(async () => choice('On').click())
+      expect(set).not.toHaveBeenCalled()
+      equip().focus()
+      await act(async () => equip().click())
+      expect(set).toHaveBeenCalledTimes(2)
+      // Saving keeps the button reachable: a disabled button would drop focus to the body in Chromium.
+      expect(equip().disabled).toBe(false)
+      expect(equip().getAttribute('aria-busy')).toBe('true')
+      expect(document.activeElement).toBe(equip())
       // A second press while the first save runs is ignored.
-      await act(async () => choice('Rain').click())
-      expect(set).toHaveBeenCalledTimes(1)
-      await act(async () => writes[0].settle(true))
-      expect(group.querySelector('[role="status"]')).toBe(status)
-      expect(status.textContent).toBe('Emote rain saved.')
-      expect(choice('Still').getAttribute('aria-pressed')).toBe('true')
-      expect(group.hasAttribute('aria-busy')).toBe(false)
-      expect(document.activeElement).toBe(choice('Still'))
+      await act(async () => equip().click())
+      expect(set).toHaveBeenCalledTimes(2)
+      await settleAll(true)
+      expect(host.querySelector('.pulse-supporter-save-status')).toBe(status)
+      expect(status.textContent).toBe('Equipped: Signal.')
+      expect(choice('On').getAttribute('aria-pressed')).toBe('true')
+      // The buttons leave once the look is worn; focus moves to the look now worn.
+      expect(equip()).toBeUndefined()
+      expect(document.activeElement).toBe(host.querySelector('.pulse-supporter-look input:checked'))
 
       // The next save clears the last confirmation while it runs, then reports its own result.
-      choice('Rain').focus()
-      await act(async () => choice('Rain').click())
-      expect(set).toHaveBeenCalledTimes(2)
+      await act(async () => choice('Off').click())
+      equip().focus()
+      await act(async () => equip().click())
+      expect(set).toHaveBeenCalledTimes(4)
       expect(status.textContent).toBe('')
-      expect(group.querySelectorAll('button:disabled')).toHaveLength(0)
-      await act(async () => writes[1].settle(false))
-      expect(status.textContent).toBe("Couldn't save that. Try again.")
-      expect(document.activeElement).toBe(choice('Rain'))
+      await settleAll(false)
+      expect(status.textContent).toBe('Could not save. Please try again.')
+      expect(document.activeElement).toBe(equip())
 
       // And a later success is announced again, not left as the old text.
-      await act(async () => choice('Rain').click())
+      await act(async () => equip().click())
       expect(status.textContent).toBe('')
-      await act(async () => writes[2].settle(true))
-      expect(status.textContent).toBe('Emote rain saved.')
+      await settleAll(true)
+      expect(status.textContent).toBe('Equipped: Glass · Shimmer · no backdrop.')
     } finally {
       act(() => root.unmount())
       host.remove()

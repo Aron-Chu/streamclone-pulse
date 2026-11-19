@@ -55,7 +55,7 @@ const LADDER: ReadonlyArray<{ id: SupporterTenure; label: string; months: number
   { id: '24m', label: '2 years', months: 24 },
 ]
 
-/** The card's own emote rain: decoration, the same falling 7TV set the Pulse panel draws. */
+/** The card's own backdrop: decoration, the same original marks the Pulse panel draws, falling. */
 const CARD_RAIN: PulseBannerPreference = { ...DEFAULT_PULSE_BANNER, mode: 'rain', intensity: 50 }
 
 const months = (count: number) => `${count} ${count === 1 ? 'month' : 'months'}`
@@ -75,7 +75,7 @@ const isKnown = (status: CardStatus) => status !== 'checking' && status !== 'unk
 
 /**
  * The Account & Supporter page's lead, direction B "Your card" of the
- * 2026-10-07 redesign: a Twitch-style viewer card with emote rain across its
+ * 2026-10-07 redesign: a Twitch-style viewer card with the backdrop across its
  * top, the avatar, the name (painted, with the crest, for a Supporter), the
  * membership in one line and the action for the current account state.
  * The five-step crest ladder and cosmetic studio share a preview disclosure,
@@ -106,7 +106,7 @@ export function SupporterCard({ identity, membership, look, children, preview }:
     <section className="pulse-supporter-card" aria-labelledby={headingId} data-supporter-card={own ? 'own' : 'sample'} style={finishVars(look.finish) as CSSProperties}>
       <h3 id={headingId} className="pulse-visually-hidden">Your Supporter card</h3>
       <div className="pulse-supporter-card-banner pulse-personal-panel">
-        <PulseBannerBackdrop value={CARD_RAIN} perks />
+        <PulseBannerBackdrop value={CARD_RAIN} finish={look.finish} perks />
         {/* Only a known non-Supporter is told the look is a sample. */}
         {isSupporter(status) || !known ? null : <span className="pulse-supporter-card-sample">Sample look</span>}
       </div>

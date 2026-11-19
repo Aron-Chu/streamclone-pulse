@@ -1664,7 +1664,7 @@ export const shadowStyles = `
   /* Quick settings' Your look strip: the panel title with its paint, crest and emote rain. */
   .pulse-quick-look { align-items: center; background: ${theme.bgCanvas}; border: 1px solid ${theme.border}; border-radius: 9px; display: flex; gap: 8px; height: 48px; overflow: hidden; padding: 0 12px; position: relative; }
   .pulse-quick-look strong { font-size: 16px; font-weight: 800; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pulse-quick-look .pulse-banner-art img { height: 24px; width: 24px; }
+  .pulse-quick-look .pulse-banner-art svg { height: 24px; width: 24px; }
   .pulse-quick-chip { border: 1px solid rgba(245, 196, 81, 0.45); border-radius: 999px; color: #f5c451; font-size: 9px; letter-spacing: 0.04em; margin-left: 6px; padding: 1px 6px; vertical-align: 1px; }
   .pulse-quick-community { display: grid; gap: 6px; grid-template-columns: 3fr 2fr; }
   .pulse-quick-community button { appearance: none; background: none; border: 1px solid ${theme.border}; border-radius: 10px; color: ${theme.textSecondary}; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; min-height: 40px; padding: 8px; }
@@ -1673,9 +1673,10 @@ export const shadowStyles = `
   .pulse-banner-art { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; container-type: size; }
   .pulse-background-preview .pulse-banner-art, .pulse-quick-look .pulse-banner-art { z-index: 0; }
   .pulse-background-preview .pulse-banner-copy, .pulse-quick-look > :not(.pulse-banner-art) { position: relative; z-index: 1; }
-  .pulse-banner-art img { position: absolute; width: 34px; height: 34px; object-fit: contain; transform: rotate(calc(var(--i) * 9deg - 20deg)); opacity: .8; }
-  .pulse-banner-art[data-mode="rain"] img { top: 0 !important; animation: pulse-banner-rain linear infinite; animation-play-state: paused; }
-  .pulse-banner-art[data-mode="rain"][data-running="true"] img { animation-play-state: running; }
+  .pulse-banner-art svg { position: absolute; width: 34px; height: 34px; fill: none; stroke: var(--pulse-paint-base, ${theme.accentSoft}); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transform: rotate(calc(var(--i) * 9deg - 20deg)); opacity: .8; }
+  .pulse-banner-art svg:nth-child(odd) { stroke: var(--pulse-paint-lift, ${theme.accent}); }
+  .pulse-banner-art[data-mode="rain"] svg { top: 0 !important; animation: pulse-banner-rain linear infinite; animation-play-state: paused; }
+  .pulse-banner-art[data-mode="rain"][data-running="true"] svg { animation-play-state: running; }
   .pulse-banner-copy { min-width: 0; overflow-wrap: anywhere; }
   .pulse-banner-customize { width: 100%; min-width: 0; font-size: 12px; color: inherit; }
   .pulse-banner-customize summary { cursor: pointer; padding: 10px 0; font-weight: 600; color: var(--pulse-banner-text); }
@@ -1695,7 +1696,7 @@ export const shadowStyles = `
   .pulse-banner-customize button:hover { background: var(--pulse-banner-panel-elevated); }
   .pulse-banner-customize button:disabled { opacity: .5; cursor: default; }
   @keyframes pulse-banner-rain { from { translate: 0 -50px; rotate: -12deg; } to { translate: -12px calc(100cqh + 50px); rotate: 18deg; } }
-  @media (prefers-reduced-motion: reduce) { .pulse-banner-art[data-mode="rain"] img { animation: none; top: calc(8% + var(--i) * 15%) !important; } .pulse-banner-customize button { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .pulse-banner-art[data-mode="rain"] svg { animation: none; top: calc(8% + var(--i) * 15%) !important; } .pulse-banner-customize button { transition: none; } }
   ${/* @__PURE__ */ panelComponentCss()}
 `
 

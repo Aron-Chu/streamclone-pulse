@@ -209,10 +209,10 @@ const hostStyles = `
   }
   .pulse-supporter-card-banner { height: 92px; isolation: isolate; overflow: hidden; position: relative; }
   .pulse-supporter-card-banner .pulse-banner-art { z-index: 0; }
-  .pulse-supporter-card-banner .pulse-banner-art img { height: 30px; width: 30px; }
-  .pulse-supporter-card-banner .pulse-banner-art[data-mode="rain"] img { animation-name: pulse-supporter-header-rain; }
+  .pulse-supporter-card-banner .pulse-banner-art svg { height: 30px; width: 30px; }
+  .pulse-supporter-card-banner .pulse-banner-art[data-mode="rain"] svg { animation-name: pulse-supporter-header-rain; }
   @keyframes pulse-supporter-header-rain { from { translate: 0 8px; rotate: -12deg; } to { translate: -12px calc(100cqh - 42px); rotate: 18deg; } }
-  @media (prefers-reduced-motion: reduce) { .pulse-supporter-card-banner .pulse-banner-art[data-mode="rain"] img { top: clamp(8px, calc(var(--i) * 12%), calc(100% - 42px)) !important; } }
+  @media (prefers-reduced-motion: reduce) { .pulse-supporter-card-banner .pulse-banner-art[data-mode="rain"] svg { top: clamp(8px, calc(var(--i) * 12%), calc(100% - 42px)) !important; } }
   .pulse-supporter-card-sample { background: rgba(13, 13, 18, 0.92); border: 1px solid rgba(var(--spk-fin-rgb), 0.55); border-radius: 999px; color: var(--spk-fin-core); font-size: 12px; font-weight: 800; letter-spacing: 0.03em; line-height: 16px; padding: 2px 8px; pointer-events: none; position: absolute; right: 8px; top: 8px; z-index: 3; }
   .pulse-supporter-card-body { align-items: end; display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: -30px; padding: 0 16px; position: relative; z-index: 1; }
   .pulse-supporter-card-avatar { align-items: center; background: #1d1d26; border-radius: 999px; box-shadow: 0 0 0 4px #15151c, 0 0 0 6px var(--spk-fin); color: var(--spk-fin); display: inline-flex; flex: none; font-size: 26px; font-weight: 900; height: 64px; justify-content: center; overflow: hidden; width: 64px; }
@@ -256,17 +256,16 @@ const hostStyles = `
   /* The Your look studio's live preview, pinned above its controls while they scroll. */
   .pulse-supporter-preview { background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 12px; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); display: grid; gap: 8px; margin: 0 0 14px; padding: 10px; position: sticky; top: 8px; z-index: 2; }
   .pulse-supporter-preview > [role="img"] { display: grid; gap: 6px; }
-  /* Tall enough for the emote rain to read behind the title. */
+  /* Tall enough for the backdrop to read behind the title. */
   .pulse-supporter-preview .pulse-supporter-mini-head { align-items: flex-end; display: flex; min-height: 72px; padding-bottom: 9px; }
   .pulse-supporter-preview-badge { background: rgba(11, 11, 15, 0.82); border: 1px solid ${theme.border}; border-radius: 999px; color: ${theme.textSecondary}; font-size: 12px; font-weight: 800; line-height: 18px; padding: 0 8px; position: absolute; right: 8px; top: 7px; white-space: nowrap; z-index: 3; }
   .pulse-supporter-preview-foot { align-items: baseline; color: ${theme.textSecondary}; display: flex; flex-wrap: wrap; font-size: 12px; gap: 4px 12px; }
   .pulse-supporter-preview-foot small { color: ${theme.textMuted}; font-size: 12px; }
-  .pulse-supporter-preview-foot small:last-child { color: ${theme.textSecondary}; font-weight: 800; margin-left: auto; }
+  .pulse-supporter-preview-foot .pulse-supporter-preview-state { color: ${theme.textSecondary}; font-weight: 800; margin-left: auto; }
   .pulse-supporter-mini-head { background: ${theme.bgCanvas}; border: 1px solid #2a2a36; border-radius: 8px; isolation: isolate; overflow: hidden; padding: 7px 10px; position: relative; }
   .pulse-supporter-mini-head .pulse-banner-art { z-index: 0; }
-  .pulse-supporter-mini-head .pulse-banner-art img { height: 24px; width: 24px; }
+  .pulse-supporter-mini-head .pulse-banner-art svg { height: 24px; width: 24px; }
   .pulse-supporter-mini-head > div:not(.pulse-banner-art) { position: relative; z-index: 1; }
-  .pulse-supporter-mini-head h2 { font-size: 15px !important; }
   .pulse-supporter-mini-head h2 + span { align-self: center; }
   /* The real title block, without its lead line: one row, like the panel's top. */
   .pulse-supporter-mini-head > p { display: none; }
@@ -277,7 +276,7 @@ const hostStyles = `
     .pulse-supporter-card-body { padding: 0 14px; }
   }
 
-  /* "Your look": paint, wave, sheen and emote rain as rows of pills. */
+  /* "Your look": looks, paint, motion and backdrop as rows of pills. */
   .pulse-supporter-look { display: grid; gap: 12px; }
   .pulse-supporter-look-row { align-items: start; border: 0; display: grid; gap: 6px 14px; grid-template-columns: minmax(0, 120px) minmax(0, 1fr); margin: 0; min-width: 0; padding: 0; }
   .pulse-supporter-look-row > legend { color: ${theme.textSecondary}; float: left; font-size: 12px; font-weight: 700; padding: 8px 0 0; }
@@ -289,6 +288,20 @@ const hostStyles = `
   .pulse-supporter-tile input { height: 1px; opacity: 0; position: absolute; width: 1px; }
   /* A paint's colour, from the kit's finish variables; Default shows your theme accent. */
   .pulse-supporter-swatch { background: var(--spk-fin, ${theme.accentSoft}); border-radius: 50%; box-shadow: 0 0 8px rgba(var(--spk-fin-rgb, 167, 139, 250), 0.55); flex: none; height: 10px; width: 10px; }
+  /* Default is no paint: an empty ring, never a paint's colour inherited from the card. */
+  .pulse-supporter-swatch[data-swatch="default"] { background: transparent; border: 1.5px solid ${theme.textSecondary}; box-shadow: none; box-sizing: border-box; }
+  .pulse-supporter-motion-sample { font-size: 15px; font-weight: 800; line-height: 1; pointer-events: none; }
+  .pulse-supporter-saved-look { align-items: center; display: inline-flex; gap: 2px; }
+  .pulse-supporter-look-remove { background: transparent; border: 0; border-radius: 999px; color: ${theme.textSecondary}; cursor: pointer; font: inherit; font-size: 16px; height: 30px; line-height: 1; padding: 0; width: 30px; }
+  .pulse-supporter-look-remove:hover { background: rgba(255, 255, 255, 0.06); color: ${theme.textPrimary}; }
+  .pulse-supporter-look-remove:disabled, .pulse-supporter-save-look:disabled { cursor: not-allowed; opacity: .6; }
+  .pulse-supporter-look-remove:focus-visible, .pulse-supporter-save-look:focus-visible, .pulse-supporter-intensity input:focus-visible { outline: 2px solid ${theme.accentSoft}; outline-offset: 2px; }
+  .pulse-supporter-save-look { background: transparent; border: 1px dashed ${theme.border}; border-radius: 999px; color: ${theme.textSecondary}; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; min-height: 34px; padding: 4px 12px; }
+  .pulse-supporter-save-look:hover { border-color: ${theme.accentSoft}; color: ${theme.textPrimary}; }
+  .pulse-supporter-backdrop { align-items: center; display: flex; flex-wrap: wrap; gap: 8px 14px; }
+  .pulse-supporter-intensity { align-items: center; color: ${theme.textSecondary}; display: inline-flex; font-size: 12px; font-weight: 700; gap: 8px; }
+  .pulse-supporter-intensity input { accent-color: ${theme.accentSoft}; min-height: 24px; width: 140px; }
+  .pulse-supporter-intensity output { color: ${theme.textPrimary}; font-variant-numeric: tabular-nums; min-width: 4ch; }
   .pulse-supporter-tile small { font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-supporter-tile-chip { background: ${theme.panel}; border: 1px solid ${theme.border}; border-radius: 999px; box-sizing: border-box; color: ${theme.textPrimary}; font-size: 12px; font-weight: 700; line-height: 16px; max-width: 100%; overflow: hidden; padding: 0 6px; pointer-events: none; text-overflow: ellipsis; white-space: nowrap; }
   .pulse-supporter-tile-chip[data-chip="previewing"] { border-color: ${theme.accentSoft}; border-style: dashed; }

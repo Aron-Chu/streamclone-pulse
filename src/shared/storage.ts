@@ -1,5 +1,6 @@
 import { normalizeLogin } from './login.ts'
 import { SUPPORTER_PAINT_KEY, normalizeSupporterPaintStyle, type SupporterPaintStyle } from './supporterPaint.ts'
+import { SUPPORTER_LOOKS_KEY, normalizeSupporterLooks, type SupporterLook } from './supporterLook.ts'
 import type {
   ProtectChannelSyncStatus,
   ProtectSyncOperation,
@@ -644,6 +645,16 @@ export async function getSupporterPaintStyle(): Promise<SupporterPaintStyle> {
 
 export async function setSupporterPaintStyle(value: SupporterPaintStyle): Promise<void> {
   await syncStorageSet({ [SUPPORTER_PAINT_KEY]: normalizeSupporterPaintStyle(value) })
+}
+
+/** A Supporter's saved looks (at most four), synced with their other settings. */
+export async function getSupporterLooks(): Promise<SupporterLook[]> {
+  const stored = await syncStorageGet(SUPPORTER_LOOKS_KEY)
+  return normalizeSupporterLooks(stored[SUPPORTER_LOOKS_KEY])
+}
+
+export async function setSupporterLooks(looks: SupporterLook[]): Promise<void> {
+  await syncStorageSet({ [SUPPORTER_LOOKS_KEY]: normalizeSupporterLooks(looks) })
 }
 
 export async function getPulseBanner(): Promise<PulseBannerPreference> {

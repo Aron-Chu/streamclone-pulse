@@ -86,9 +86,9 @@ describe('/analytics support menu', () => {
 // perk the extension gives, from the one list in src/shared/supporter-perks.json
 // that the extension renders too. These pin the exact text on both pages.
 const PERKS = [
-      'Title paint: your Pulse panel title in Glass, Etched or Halo paint, with the wave and sheen you pick.',
-      'Tenure crest: a crest beside your painted title. It levels up at 3, 6, 12 and 24 months.',
-      'Emote rain: 7TV emotes behind your Pulse panel header, still or falling. This is the 7TV header backdrop.',
+      'Title paint: your Pulse panel title in Glass, Etched or Halo paint, still, shimmering or drifting.',
+      'Tenure crest: a crest beside your Pulse panel title, under any paint. It levels up at 3, 6, 12 and 24 months.',
+      "Backdrop: original StreamPulse art behind your Pulse panel header, in your paint's colours, still or drifting.",
       'Supporter card: your crest and paint on your Supporter card in settings.',
     ]
 
@@ -112,7 +112,7 @@ describe('frozen Supporter benefit lists', () => {
   })
 
   it('pins the shared perk list itself', () => {
-    expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
+    expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', 'Backdrop', 'Supporter card'])
     expect(SUPPORTER_PERKS.onlyYou).toBe('Only you see these, in your own StreamPulse extension. Nothing is added to Twitch chat.')
     expect(SUPPORTER_PERKS).not.toHaveProperty('moved')
   })

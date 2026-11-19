@@ -20,7 +20,7 @@ const PRICE_SHORT = 'US$4.99/mo'
  * runs calmer, with a soft glow at each peak. Every so often your crest drops
  * in on top, bigger and glowing in your paint, with a small "you" tag. The
  * copy names every perk as a chip, in the order of the one perk list
- * (src/shared/supporter-perks.json): title paint, tenure crest, emote rain,
+ * (src/shared/supporter-perks.json): title paint, tenure crest, backdrop,
  * Supporter card.
  * A Supporter sees their own paint and crest; everyone else sees the lab's
  * sample. The price shows only while paid sign-ups are open (the worker's
