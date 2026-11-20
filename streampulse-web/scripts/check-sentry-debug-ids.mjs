@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // The Sentry Vite plugin stamps each JS chunk with a debug ID ("sentry-dbid-…").
 // A chunk without one has frames Sentry cannot map back to source, so the
-// production deploy checks every chunk, not only the entry bundle. CSS, fonts
-// and images carry no debug ID and are not checked.
+// production deploy checks every non-empty chunk, not only the entry bundle.
+// CSS, fonts and images carry no debug ID and are not checked. The source-map
+// half runs inside the Sentry-enabled build (sentrySourceMapGatePlugin), before
+// the plugin deletes the maps it uploaded.
 //
 // Usage: node scripts/check-sentry-debug-ids.mjs [dist/assets]
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
@@ -10,7 +12,7 @@ import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const JS_CHUNK = /\.(?:m|c)?js$/
-const DEBUG_ID = /sentry-dbid-[0-9a-f]{8}-[0-9a-f]{4}-/i
+const DEBUG_ID = /sentry-dbid-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
 function listJsChunks(dir) {
   const out = []
@@ -44,6 +46,43 @@ export function assertEveryChunkHasDebugId(assetsDir) {
     throw new Error(`${missing.length} of ${checked} JS chunks have no Sentry debug ID: ${missing.join(', ')}`)
   }
   return `Sentry debug IDs in ${checked} of ${checked} JS chunks`
+}
+
+/**
+ * Vite never writes a source map for its own preload helper (a generated
+ * module with no source): a plain build and a Sentry-stamped build both leave
+ * `assets/preload-helper-<hash>.js` without a `.map`, while every other chunk
+ * has one. It is the one chunk the map check lets through, so its stack frames
+ * stay unmapped in Sentry.
+ */
+export const SOURCE_MAP_EXEMPT_CHUNK = /(?:^|\/)preload-helper-[\w-]+\.js$/
+
+/**
+ * Stamped JS chunks in a Vite/Rollup bundle without their `.map` asset.
+ * Runs on the in-memory bundle: the Sentry plugin deletes the maps from disk
+ * after its upload (filesToDeleteAfterUpload), so a check after the build
+ * would never see them.
+ */
+export function findStampedChunksWithoutMaps(bundle) {
+  return Object.values(bundle)
+    .filter((file) => file.type === 'chunk' && DEBUG_ID.test(file.code ?? ''))
+    .map((chunk) => chunk.fileName)
+    .filter((fileName) => !(`${fileName}.map` in bundle) && !SOURCE_MAP_EXEMPT_CHUNK.test(fileName))
+}
+
+/** Fails a Sentry-enabled build when a stamped chunk has no source map to upload. */
+export function sentrySourceMapGatePlugin() {
+  return {
+    name: 'streampulse-sentry-source-map-gate',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const missing = findStampedChunksWithoutMaps(bundle)
+      if (missing.length > 0) {
+        const count = missing.length === 1 ? '1 stamped JS chunk has' : `${missing.length} stamped JS chunks have`
+        this.error(`${count} no source map: ${missing.join(', ')}`)
+      }
+    },
+  }
 }
 
 // Real paths on both sides, so a run through a symlink or junction still counts as the CLI.

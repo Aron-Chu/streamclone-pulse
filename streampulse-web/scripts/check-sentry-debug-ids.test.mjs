@@ -5,7 +5,13 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assertEveryChunkHasDebugId, findChunksWithoutDebugIds } from './check-sentry-debug-ids.mjs'
+import {
+  SOURCE_MAP_EXEMPT_CHUNK,
+  assertEveryChunkHasDebugId,
+  findChunksWithoutDebugIds,
+  findStampedChunksWithoutMaps,
+  sentrySourceMapGatePlugin,
+} from './check-sentry-debug-ids.mjs'
 
 const script = join(dirname(fileURLToPath(import.meta.url)), 'check-sentry-debug-ids.mjs')
 const stamp = (id) => `var n=(new e.Error).stack;n&&(e._sentryDebugIdIdentifier="sentry-dbid-${id}");`
@@ -58,6 +64,64 @@ test('does not take a bare "sentry-dbid-" without an ID for a stamp', (t) => {
     'route-Mno345.js': 'const label = "sentry-dbid-";export{label}',
   })
   assert.deepEqual(findChunksWithoutDebugIds(assets).missing, ['route-Mno345.js'])
+})
+
+test('needs the whole UUID: a cut-off ID is not a stamp', (t) => {
+  const assets = assetsFixture(t, {
+    'index-AbC123.js': `${stamp('11111111-1111-4111-8111-111111111111')}console.log(1)`,
+    'route-Mno345.js': `${stamp('22222222-2222-4222')}export{}`,
+    'route-Stu901.js': `${stamp('33333333-3333-')}export{}`,
+  })
+  assert.deepEqual(findChunksWithoutDebugIds(assets).missing.sort(), ['route-Mno345.js', 'route-Stu901.js'])
+})
+
+/** A build's in-memory output, as a Vite plugin sees it in generateBundle. */
+function bundleOf(files) {
+  return Object.fromEntries(Object.entries(files).map(([fileName, code]) => [
+    fileName,
+    fileName.endsWith('.map') ? { type: 'asset', fileName } : { type: 'chunk', fileName, code },
+  ]))
+}
+
+test('source maps: a stamped chunk without its map is reported', () => {
+  const bundle = bundleOf({
+    'assets/index-AbC123.js': `${stamp('11111111-1111-4111-8111-111111111111')}console.log(1)`,
+    'assets/index-AbC123.js.map': '{}',
+    'assets/route-Mno345.js': `${stamp('22222222-2222-4222-8222-222222222222')}export{}`,
+  })
+  assert.deepEqual(findStampedChunksWithoutMaps(bundle), ['assets/route-Mno345.js'])
+})
+
+test('source maps: the preload helper is exempt by name, since Vite never writes its map', () => {
+  const bundle = bundleOf({
+    'assets/index-AbC123.js': `${stamp('11111111-1111-4111-8111-111111111111')}console.log(1)`,
+    'assets/index-AbC123.js.map': '{}',
+    'assets/preload-helper-Ghi789.js': `${stamp('33333333-3333-4333-8333-333333333333')}export{}`,
+  })
+  assert.deepEqual(findStampedChunksWithoutMaps(bundle), [])
+  assert.ok(SOURCE_MAP_EXEMPT_CHUNK.test('assets/preload-helper-Ghi789.js'))
+  assert.ok(!SOURCE_MAP_EXEMPT_CHUNK.test('assets/route-preload-helper-Ghi789.js'))
+})
+
+test('source maps: every stamped chunk with its map passes; unstamped chunks are not this check', () => {
+  const bundle = bundleOf({
+    'assets/index-AbC123.js': `${stamp('11111111-1111-4111-8111-111111111111')}console.log(1)`,
+    'assets/index-AbC123.js.map': '{}',
+    'assets/nested/worker-Jkl012.mjs': `${stamp('44444444-4444-4444-8444-444444444444')}self.onmessage=()=>{}`,
+    'assets/nested/worker-Jkl012.mjs.map': '{}',
+    'assets/styles-only-Vwx234.js': '',
+  })
+  assert.deepEqual(findStampedChunksWithoutMaps(bundle), [])
+})
+
+test('source maps: the build plugin fails the build before anything deletes the maps', () => {
+  const plugin = sentrySourceMapGatePlugin()
+  const bundle = bundleOf({ 'assets/route-Mno345.js': `${stamp('22222222-2222-4222-8222-222222222222')}export{}` })
+  assert.equal(plugin.apply, 'build')
+  assert.throws(
+    () => plugin.generateBundle.call({ error: (message) => { throw new Error(message) } }, {}, bundle),
+    /1 stamped JS chunk has no source map: assets\/route-Mno345\.js/,
+  )
 })
 
 test('exempts a whitespace-only JS chunk, which the plugin leaves unstamped', (t) => {
