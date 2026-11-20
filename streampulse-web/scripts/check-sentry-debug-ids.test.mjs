@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -48,6 +48,41 @@ test('passes when every JS chunk has a debug ID; CSS, fonts and images need none
   const result = runCheck(assets)
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /3 of 3 JS chunks/)
+})
+
+test('does not take a bare "sentry-dbid-" without an ID for a stamp', (t) => {
+  const assets = assetsFixture(t, {
+    'index-AbC123.js': `${stamp('11111111-1111-4111-8111-111111111111')}console.log(1)`,
+    'route-Mno345.js': 'const label = "sentry-dbid-";export{label}',
+  })
+  const result = runCheck(assets)
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /route-Mno345\.js/)
+})
+
+test('exempts a whitespace-only JS chunk, which the plugin leaves unstamped', (t) => {
+  const assets = assetsFixture(t, {
+    'index-AbC123.js': `${stamp('11111111-1111-4111-8111-111111111111')}console.log(1)`,
+    'empty-Pqr678.js': '\n  \n',
+  })
+  const result = runCheck(assets)
+  assert.equal(result.status, 0, result.stderr)
+})
+
+test('runs as a CLI when reached through a symlinked folder', (t) => {
+  const assets = assetsFixture(t, { 'index-AbC123.js': 'console.log(1)' })
+  const linkRoot = mkdtempSync(join(tmpdir(), 'sentry-dbid-link-'))
+  t.after(() => rmSync(linkRoot, { recursive: true, force: true }))
+  const link = join(linkRoot, 'scripts')
+  try {
+    symlinkSync(dirname(script), link, 'junction')
+  } catch {
+    t.skip('this system cannot create a directory link')
+    return
+  }
+  const result = spawnSync(process.execPath, [join(link, 'check-sentry-debug-ids.mjs'), assets], { encoding: 'utf8' })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /index-AbC123\.js/)
 })
 
 test('fails loudly on an assets folder with no JS chunks', (t) => {
