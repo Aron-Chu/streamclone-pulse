@@ -94,9 +94,15 @@ describe('landing page', () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
 
-    // Keep one search; the streamer directory follows the demo (Aron, 11-03).
-    expect(screen.getAllByRole('search')).toHaveLength(1)
-    expect(screen.getAllByRole('combobox', { name: /search streamers or games/i })).toHaveLength(1)
+    // Keep one search; the streamer directory follows the demo (Aron, 11-03). The header's is the same box docked
+    // (11-18), held back until the hero's field has gone up under the header.
+    const main = within(screen.getByRole('main'))
+    expect(main.getAllByRole('search')).toHaveLength(1)
+    expect(main.getAllByRole('combobox', { name: /search streamers or games/i })).toHaveLength(1)
+    const dock = document.querySelector('.sl-header .hv5-dock')
+    expect(dock).toBeTruthy()
+    expect(dock!.hasAttribute('data-shown')).toBe(false)
+    expect(document.querySelector<HTMLButtonElement>('.sl-header .hv5-dock-btn')!.hidden).toBe(true)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       expect.stringMatching(/see it beside twitch chat/i),
       'Twitch chat stats by streamer',

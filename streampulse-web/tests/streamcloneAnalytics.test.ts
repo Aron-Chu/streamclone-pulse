@@ -1054,7 +1054,7 @@ describe('streamcloneAnalytics adapter', () => {
         { offsetSeconds: 180, viewerAvg: 45, viewerSamples: 1 },
       ])
       const series = buildChartSeries(rollups, new Set())
-      expect(rollups.map(rollupHasMinuteData)).toEqual([true, true, false, true])
+      expect(rollups.map(rollupHasMinuteData)).toEqual([false, true, false, true])
       expect(series.find(({ key }) => key === 'chat')?.values).toEqual([0, null, null, null])
       expect(series.find(({ key }) => key === 'viewers')?.values).toEqual([null, 30, null, 45])
     })

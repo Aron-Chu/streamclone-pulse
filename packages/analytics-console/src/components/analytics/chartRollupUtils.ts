@@ -144,7 +144,7 @@ export function rollupHasMinuteData(point: AnalyticsMinuteRollup) {
   return !point.missing && (
     (point.viewerSamples ?? 0) > 0
     || viewerValue(point) > 0
-    || (typeof point.chatCount === 'number' && point.chatCount >= 0)
+    || (point.chatCount ?? 0) > 0
     || minuteEmoteTotal(point) > 0
   )
 }

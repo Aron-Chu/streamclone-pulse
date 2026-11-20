@@ -169,14 +169,6 @@ export function momentRefToPortalStreamPath(
   return base
 }
 
-export function momentRefToTwitchVodUrl(ref: MomentRef): string | null {
-  if (!isValidMomentRef(ref)) return null
-  const vodId = (ref.vodId ?? '').trim()
-  if (!vodId) return null
-  const t = Math.max(0, Math.floor(ref.offsetSeconds))
-  return `https://www.twitch.tv/videos/${encodeURIComponent(vodId)}?t=${t}s`
-}
-
 export function normalizeCreateBookmarkInput(input: CreateBookmarkPayload): NormalizeBookmarkResult {
   if (input.estimated === true) {
     return {

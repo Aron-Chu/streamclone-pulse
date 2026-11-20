@@ -36,6 +36,7 @@ const DEFAULT_CHART_WINDOW_MIGRATED_TO_FULL_V3_KEY = 'defaultChartWindowMigrated
 const KEEP_LOCAL_CACHE_KEY = 'keepLocalCache'
 export const PROTECT_SYNC_STATE_KEY = 'protectSyncState'
 
+export const DEVICE_CREDENTIAL_REVISION_KEY = 'pulseDeviceCredentialRevision'
 export const DEFAULT_BACKEND_URL = 'https://api.streampulse.stream'
 export const DEFAULT_POLL_INTERVAL_MS = 30_000
 export const DEFAULT_AUTO_UPDATE_ENABLED = true
@@ -361,11 +362,9 @@ export async function setBackendUrl(url: string): Promise<void> {
 }
 
 /**
- * Beta / access keys stay device-local (chrome.storage.local), not sync.
- * Local storage is device-local but is not encrypted at rest by the browser.
- * One-time migration copies a legacy sync value into local and clears sync.
- * Where supported, restrict local storage to trusted extension contexts so
- * content scripts cannot read credential keys directly.
+ * Area-wide restriction for callers that have moved all content-script
+ * settings reads behind the worker. The current overlay still reads this
+ * area. The worker keeps device and account credentials in private IndexedDB.
  */
 export async function restrictCredentialStorageAccess(): Promise<void> {
   try {

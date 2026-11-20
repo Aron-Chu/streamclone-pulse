@@ -54,6 +54,9 @@ export class PortalChannelEmotesError extends Error {
 
 interface PortalStreamRecord {
   streamId: string
+  platform?: 'twitch' | 'kick'
+  vodAlignSeconds?: number
+  vodDurationSeconds?: number
   login: string
   displayName?: string
   title?: string

@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnalyticsConsole } from './AnalyticsConsole.tsx'
+import { AnalyticsConsole, type AnalyticsConsoleProps } from './AnalyticsConsole.tsx'
 
 // OP1-RES-001 / OP1-RES-002: failed, timed-out and pending reads on the channel
 // and session routes must not be presented as an empty channel (or a missing date).
@@ -55,7 +55,7 @@ function NavigateGrab() {
   return null
 }
 
-function renderConsole(route: string) {
+function renderConsole(route: string, props?: AnalyticsConsoleProps) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   })
@@ -64,7 +64,7 @@ function renderConsole(route: string) {
       <MemoryRouter initialEntries={[route]}>
         <NavigateGrab />
         <Routes>
-          <Route path="/analytics/:login/:streamId?" element={<AnalyticsConsole />} />
+          <Route path="/analytics/:login/:streamId?" element={<AnalyticsConsole {...props} />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -291,6 +291,29 @@ describe('AnalyticsConsole session route timeout', () => {
       expect(alert?.textContent).toContain('Session data for 320567744986 took too long to load. Refresh to try again.')
     })
     expect(screen.getByRole('button', { name: 'Refresh data' })).toBeTruthy()
+  })
+})
+
+describe('AnalyticsConsole with reviewed content above it', () => {
+  const fallback = <p>The reviewed summary is available above.</p>
+
+  it('replaces the missing-session heading, stat cards and warning with the fallback', async () => {
+    api.getAnalyticsStream.mockRejectedValue({ kind: 'not_found', message: 'not found', status: 404 })
+    renderConsole('/analytics/xqc/320567744986', { missingSessionFallback: fallback })
+
+    await screen.findByText('The reviewed summary is available above.')
+    expect(screen.queryByRole('heading', { name: /Session .* not found/ })).toBeNull()
+    expect(screen.queryByText(/Pick another stream from the sidebar/)).toBeNull()
+    expect(screen.queryAllByTestId('stat-card')).toHaveLength(0)
+  })
+
+  it('keeps the retry UI when a session read times out', async () => {
+    api.getAnalyticsStream.mockRejectedValue(timeout)
+    renderConsole('/analytics/xqc/320567744986', { missingSessionFallback: fallback })
+
+    await screen.findByText(/took too long to load/)
+    expect(screen.getByRole('button', { name: 'Refresh data' })).toBeTruthy()
+    expect(screen.queryByText('The reviewed summary is available above.')).toBeNull()
   })
 })
 
