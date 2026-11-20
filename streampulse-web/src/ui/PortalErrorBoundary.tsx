@@ -70,7 +70,7 @@ export class PortalErrorBoundary extends Component<Props, State> {
           {/* A plain link, not a router Link: the router may be what crashed. */}
           <p className="muted">{this.state.moduleLoadFailed
             ? 'A required part of the site failed to load. Reload to request the current version.'
-            : <>Reload the page. If it keeps happening, check <a href="/status">Status</a>.</>}</p>
+            : <>Reload the page. If it keeps happening, check <a className="public-inline-link" href="/status">Status</a>.</>}</p>
           <button type="button" onClick={() => reloadAfterPortalError()}>
             Reload page
           </button>

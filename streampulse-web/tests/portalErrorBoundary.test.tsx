@@ -29,6 +29,8 @@ describe('crash panel', () => {
     const link = screen.getByRole('link', { name: 'Status' })
     expect(link.tagName).toBe('A')
     expect(link.getAttribute('href')).toBe('/status')
+    // Underlined like other links in running text: colour alone is not a cue (WCAG 1.4.1).
+    expect(link.classList.contains('public-inline-link')).toBe(true)
     expect(link.closest('p')?.textContent).toBe('Reload the page. If it keeps happening, check Status.')
   })
 

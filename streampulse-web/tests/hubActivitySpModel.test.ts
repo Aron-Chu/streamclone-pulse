@@ -144,8 +144,8 @@ describe('buildHubActivitySpModel', () => {
     expect(barViewerChannels(model, 0, 4)).toEqual({ live: 73, roster: 100, members: 4 })
   })
 
-  it('shows a viewer-only bucket (no chat rollup flag) as unmeasured chat, and Now skips it', () => {
-    const viewerOnly = { chat: 0, emotes: 0, seventv: 0, hasChatRollup: undefined }
+  it.each([undefined, false])('shows a viewer-only bucket (chat rollup flag %s) as unmeasured chat, and Now skips it', (hasChatRollup) => {
+    const viewerOnly = { chat: 0, emotes: 0, seventv: 0, hasChatRollup }
     const points = series(10, 6, (index) => (index >= 8 ? viewerOnly : index === 5 ? viewerOnly : {}))
     const model = buildHubActivitySpModel(points, 60, { bucketMinutes: 6 })!
     for (const index of [5, 8, 9]) {
