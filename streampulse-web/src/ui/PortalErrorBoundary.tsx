@@ -65,11 +65,12 @@ export class PortalErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       const panel = (
-        <div className="panel" style={{ margin: '2rem auto', maxWidth: 480 }}>
+        <div className="panel panel--centered">
           <h1>{this.state.moduleLoadFailed ? 'This page could not load' : 'Something went wrong'}</h1>
+          {/* A plain link, not a router Link: the router may be what crashed. */}
           <p className="muted">{this.state.moduleLoadFailed
             ? 'A required part of the site failed to load. Reload to request the current version.'
-            : 'Reload the page. If it keeps happening, check Status.'}</p>
+            : <>Reload the page. If it keeps happening, check <a href="/status">Status</a>.</>}</p>
           <button type="button" onClick={() => reloadAfterPortalError()}>
             Reload page
           </button>
