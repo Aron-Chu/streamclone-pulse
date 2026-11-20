@@ -7,7 +7,7 @@ test('public and analytics route shells reflow across desktop and zoom-sized vie
   const measurements: unknown[] = []
   for (const width of [1440, 1024, 768, 560, 375]) {
     await page.setViewportSize({ width, height: width === 768 ? 450 : 900 })
-    for (const route of ['/docs', '/privacy', '/terms', '/refunds', '/support', '/status', '/supporter', '/account/sign-in', '/analytics/moments', '/analytics/xqc']) {
+    for (const route of ['/help', '/privacy', '/terms', '/refunds', '/guides/twitch-vod-timestamps', '/status', '/supporter', '/account/sign-in', '/analytics/moments', '/analytics/xqc']) {
       await page.goto(route)
       await expect(page.locator('h1').first()).toBeVisible()
       await page.evaluate(() => document.fonts.ready)

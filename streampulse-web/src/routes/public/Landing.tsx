@@ -15,9 +15,9 @@ import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/
 import { BrandMark } from '../../ui/components/BrandMark'
 import { DiscordMark } from '../../ui/components/DiscordMark'
 import { InstallCta } from '../../ui/components/InstallCta'
-import { AnalyticsPreferences } from '../../ui/components/AnalyticsPreferences'
+import { SiteFooter } from '../../ui/components/SiteFooter'
 import { StreamerChatStats } from '../../ui/components/StreamerChatStats'
-import { FEEDBACK_PATH, GITHUB_REPO_URL, PRIVACY_PATH, REFUNDS_PATH, SUPPORTER_PATH, TERMS_PATH } from '../../lib/externalLinks'
+import { SITE_NAV_ITEMS } from '../../lib/siteNav'
 import { discordInviteUrl } from '../../lib/discord'
 import { capturePublicCta } from '../../lib/productAnalytics'
 import type { HubLiveChannel } from '../../lib/publicHub'
@@ -29,6 +29,72 @@ import { channelHref, channelsByViewers, formatHubInt, hubCategoryArt, hubSearch
 import { createHubV5SearchStore, HubV5SearchContext, useHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
 
 const ExtensionShowcase = lazy(() => import('../../ui/components/landing/ExtensionShowcase').then(module => ({ default: module.ExtensionShowcase })))
+
+/** How long the decorations wait after load for the hub read and the ticker pictures. */
+const FIRST_SCREEN_WAIT_MS = 3000
+
+/**
+ * True once the first screen is in and the browser is idle: the window has
+ * loaded, the hub read has settled and its ticker pictures are in (or
+ * FIRST_SCREEN_WAIT_MS has passed since load). The rain waits for it, so it
+ * never competes with what the page opens with.
+ */
+function useFirstScreenIdle(settled: boolean): boolean {
+  const [loaded, setLoaded] = useState(false)
+  const [due, setDue] = useState(false)
+  const [idle, setIdle] = useState(false)
+  useEffect(() => {
+    if (document.readyState === 'complete') { setLoaded(true); return undefined }
+    const onLoad = () => setLoaded(true)
+    window.addEventListener('load', onLoad, { once: true })
+    return () => window.removeEventListener('load', onLoad)
+  }, [])
+  useEffect(() => {
+    if (!loaded || due) return undefined
+    const timer = window.setTimeout(() => setDue(true), FIRST_SCREEN_WAIT_MS)
+    return () => window.clearTimeout(timer)
+  }, [loaded, due])
+  useEffect(() => {
+    if (!loaded || !settled || due) return undefined
+    const pending = Array.from(document.querySelectorAll<HTMLImageElement>('.sl-tickwrap img')).filter(img => !img.complete)
+    if (!pending.length) { setDue(true); return undefined }
+    let left = pending.length
+    const settle = () => { left -= 1; if (left <= 0) setDue(true) }
+    for (const img of pending) {
+      img.addEventListener('load', settle, { once: true })
+      img.addEventListener('error', settle, { once: true })
+    }
+    return () => {
+      for (const img of pending) {
+        img.removeEventListener('load', settle)
+        img.removeEventListener('error', settle)
+      }
+    }
+  }, [loaded, settled, due])
+  useEffect(() => {
+    if (!due || idle) return undefined
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(() => setIdle(true), { timeout: 2000 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const timer = window.setTimeout(() => setIdle(true), 1)
+    return () => window.clearTimeout(timer)
+  }, [due, idle])
+  return idle
+}
+
+/** landing.css hides .sl-fx under reduced motion; keep this query in step. */
+const RAIN_MOTION_QUERY = '(prefers-reduced-motion: no-preference)'
+
+/**
+ * The emote rain mounts on the client once the first screen is idle, and only
+ * where motion is allowed: under reduced motion its pictures never download.
+ * It stays out of the prerendered HTML.
+ */
+function DeferredEmoteRain({ ready }: { ready: boolean }) {
+  const motion = useMatchMedia(RAIN_MOTION_QUERY)
+  return ready && motion ? <EmoteRain /> : null
+}
 
 /** Heavy illustrative UI loads near its section, not on every public route. */
 function DeferredDemo({ children }: { children: ReactNode }) {
@@ -119,8 +185,12 @@ function TopNav({ discord, heroButtons, live, games, emotes }: { discord: string
           StreamPulse
         </Link>
         <div className="sl-menu">
-          <a href="#demo">Pulse tab</a>
-          <Link to="/docs">Docs</Link>
+          {SITE_NAV_ITEMS.map((item) => (
+            <Link key={item.to} to={item.to}
+              onClick={item.to === '/analytics' ? () => capturePublicCta('open_analytics') : undefined}>
+              {item.label}
+            </Link>
+          ))}
         </div>
         {/* The hub's docked search (11-18): from 1100 px a field on the header's middle, 760-1099 px a search button (landing.css). */}
         <div className="sl-dock">
@@ -247,60 +317,10 @@ function Hero({
   )
 }
 
-/** Product, help and legal links in three columns (B1), with the Twitch disclaimer. */
-function Footer({ discord }: { discord: string | null }) {
-  return (
-    <footer className="sl-footer">
-      <div className="sl-container sl-foot">
-        <div className="sl-foot__brand">
-          <Link to="/" className="sl-brand">
-            <BrandMark className="sl-brand__mark" size={28} />
-            StreamPulse
-          </Link>
-          <p>Free Twitch chat and emote stats.</p>
-        </div>
-        <nav className="sl-foot__cols" aria-label="Footer">
-          <div className="sl-foot__links">
-            <span className="sl-foot__head">Product</span>
-            <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Hub</Link>
-            <Link to="/docs">Extension guide</Link>
-            <Link to="/tools/twitch-vod-timestamp-link">Twitch timestamp tool</Link>
-            <Link to="/guides/find-twitch-moments">Find Twitch moments</Link>
-            <Link to="/guides/twitch-vod-timestamps">Twitch VOD timestamps</Link>
-            <Link to="/recaps">Stream recaps</Link>
-            <Link to="/status">Status</Link>
-            <Link to="/changelog">Changelog</Link>
-          </div>
-          <div className="sl-foot__links">
-            <span className="sl-foot__head">Help</span>
-            <Link to="/support">Support</Link>
-            <Link to={FEEDBACK_PATH}>Send feedback</Link>
-            {discord ? (
-              <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-foot__discord" aria-label="Discord (opens in a new tab)">
-                <DiscordMark size={15} />Discord
-              </a>
-            ) : null}
-            <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">GitHub</a>
-          </div>
-          <div className="sl-foot__links">
-            <span className="sl-foot__head">Legal</span>
-            <Link to={PRIVACY_PATH}>Privacy</Link>
-            <Link to={TERMS_PATH}>Terms</Link>
-            <Link to={REFUNDS_PATH}>Refunds</Link>
-            <Link to={SUPPORTER_PATH}>Supporter</Link>
-          </div>
-        </nav>
-        <small>
-          StreamPulse is not affiliated with Twitch. <AnalyticsPreferences />
-        </small>
-      </div>
-    </footer>
-  )
-}
-
 export default function Landing() {
   // Marketing needs one bounded snapshot, not a full analytics poll loop.
-  const { data } = usePublicHubData({ pollMs: 0, activityWindow: '30m', projection: 'tickers' })
+  const { data, loading } = usePublicHubData({ pollMs: 0, activityWindow: '30m', projection: 'tickers' })
+  const firstScreenIdle = useFirstScreenIdle(!loading)
   const emoteItems = useMemo(() => buildEmoteTicker(data), [data])
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
   const live = data?.liveChannels ?? NO_LIVE
@@ -357,7 +377,7 @@ export default function Landing() {
   return (
     <HubV5SearchContext.Provider value={searchStore}>
       <div className="sp-landing">
-        <EmoteRain />
+        <DeferredEmoteRain ready={firstScreenIdle} />
         <DeferredChatBackdrop />
         <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
         <TopNav discord={discord} heroButtons={heroButtons} live={live} games={searchGames} emotes={searchEmotes} />
@@ -390,7 +410,7 @@ export default function Landing() {
             </div>
           </section>
         </main>
-        <Footer discord={discord} />
+        <SiteFooter />
       </div>
     </HubV5SearchContext.Provider>
   )

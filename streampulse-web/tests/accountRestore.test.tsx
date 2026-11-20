@@ -63,7 +63,7 @@ describe('restore confirmation', () => {
     expect(screen.getByText(/confirmation may have completed/i)).toBeTruthy()
     expect(screen.queryByText(/request a new restore link/i)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Confirm restore' })).toBeNull()
-    expect(screen.getByRole('link', { name: 'Help & support' }).classList.contains('pulse-account-primary')).toBe(true)
+    expect(screen.getAllByRole('link', { name: 'Help' }).some((link) => link.classList.contains('pulse-account-primary') && link.getAttribute('href') === '/help')).toBe(true)
     expect(document.querySelectorAll('[data-testid="supporter-restore"] .pulse-account-primary')).toHaveLength(1)
   })
   it.each(['A4C8E2', '9F0A31'])('submits the inspected code %s only after a deliberate confirmation', async comparisonCode => {
@@ -81,7 +81,7 @@ describe('restore confirmation', () => {
     expect(restoreRequest).toHaveBeenLastCalledWith('/approve', { secret, comparisonCode, confirmed: true })
     expect(getAccountRestore()).toBeNull()
     expect(screen.queryByRole('button', { name: 'Confirm restore' })).toBeNull()
-    expect(screen.getByRole('link', { name: 'Help & support' }).classList.contains('pulse-account-primary')).toBe(true)
+    expect(screen.getAllByRole('link', { name: 'Help' }).some((link) => link.classList.contains('pulse-account-primary') && link.getAttribute('href') === '/help')).toBe(true)
     expect(document.querySelectorAll('[data-testid="supporter-restore"] .pulse-account-primary')).toHaveLength(1)
   })
   it('does not inspect when the fragment is missing or malformed', () => {
@@ -93,7 +93,7 @@ describe('restore confirmation', () => {
     await screen.findByRole('heading', { name: 'This restore link is unavailable' })
     expect(getAccountRestore()).toBeNull()
     expect(screen.getByText(/request a new restore link/i)).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Help & support' }).classList.contains('pulse-account-primary')).toBe(true)
+    expect(screen.getAllByRole('link', { name: 'Help' }).some((link) => link.classList.contains('pulse-account-primary') && link.getAttribute('href') === '/help')).toBe(true)
     expect(document.querySelectorAll('[data-testid="supporter-restore"] .pulse-account-primary')).toHaveLength(1)
   })
   it('refuses to confirm an installation with its own paid history', async () => {
@@ -142,7 +142,7 @@ describe('static payment return', () => {
     expect(screen.getByText(/Your extension will check its status/)).toBeTruthy()
     expect(screen.queryByText(/Payment received|nothing was charged|Supporter is active/i)).toBeNull()
     expect(restoreRequest).not.toHaveBeenCalled()
-    expect(screen.getByRole('link', { name: 'Help & support' }).classList.contains('pulse-account-primary')).toBe(true)
+    expect(screen.getAllByRole('link', { name: 'Help' }).some((link) => link.classList.contains('pulse-account-primary') && link.getAttribute('href') === '/help')).toBe(true)
     expect(document.querySelectorAll('[data-testid="supporter-checkout-return"] .pulse-account-primary')).toHaveLength(1)
   })
 })

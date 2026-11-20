@@ -10,7 +10,7 @@ vi.mock('../src/routes/analytics/ChannelAnalyticsPage', () => ({
   default: () => <main aria-label="Stream page">Stream route</main>,
 }))
 
-const publicPaths = ['/', '/docs', '/status', '/privacy'] as const
+const publicPaths = ['/', '/help', '/status', '/privacy'] as const
 
 function LocationProbe() {
   const { pathname, search, hash } = useLocation()

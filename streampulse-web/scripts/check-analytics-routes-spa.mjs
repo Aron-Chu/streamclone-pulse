@@ -13,6 +13,7 @@ const source = readFileSync(routesPath, 'utf8')
 
 const required = [
   '/',
+  '/help',
   '/docs',
   '/status',
   '/privacy',

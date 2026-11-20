@@ -17,7 +17,9 @@ test('analytics support navigation at desktop and mobile sizes', async ({ page }
     const menu = page.locator('.analytics-topnav__more')
     const trigger = menu.getByRole('button', { name: 'Navigation menu', exact: true })
     await trigger.click()
-    await expect(menu.getByRole('link', { name: 'Pulse Supporter' })).toBeVisible()
+    await expect(menu.getByRole('link', { name: 'Status', exact: true })).toBeVisible()
+    // Supporter, refunds and recaps are off the menus; their pages stay reachable.
+    await expect(menu.getByRole('link', { name: 'Pulse Supporter' })).toHaveCount(0)
     // Until Continue with Twitch is public, the menu links no tester sign-in,
     // closed billing action or extension connection code.
     await expect(menu.locator('a[href^="/account"]')).toHaveCount(0)

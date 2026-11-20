@@ -8,6 +8,21 @@ const deploymentScript = readFileSync(resolve(webRoot, 'scripts/pages-deploy-pro
 const hostedRouteSmokeScript = readFileSync(resolve(webRoot, 'scripts/hosted-analytics-route-smoke.mjs'), 'utf8')
 const viteConfig = readFileSync(resolve(webRoot, 'vite.config.ts'), 'utf8')
 
+/**
+ * The target of the first _redirects rule that matches `path`, as Pages reads
+ * them: top to bottom, `:name` is one segment, `*` the rest.
+ */
+function firstRewrite(lines: string[], path: string): string | null {
+  for (const line of lines) {
+    const [from, to] = line.trim().split(/\s+/)
+    if (!from || !to || from.startsWith('#')) continue
+    const pattern = from.split('/').map(segment => segment === '*' ? '.*'
+      : segment.startsWith(':') ? '[^/]+' : segment.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('/')
+    if (new RegExp(`^${pattern}$`).test(path)) return to
+  }
+  return null
+}
+
 describe('Cloudflare Pages production deployment hygiene', () => {
   it('uses the pinned local Wrangler and protects production deploys', () => {
     expect(deploymentScript).toContain('ALLOW_DIRTY_PAGES_DEPLOY')
@@ -41,7 +56,7 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     const robots = readFileSync(resolve(webRoot, 'public/robots.txt'), 'utf8')
     const sitemap = readFileSync(resolve(webRoot, 'public/sitemap.xml'), 'utf8')
     expect(robots).toContain('Sitemap: https://streampulse.stream/sitemap.xml')
-    for (const path of ['/', '/analytics', '/docs', '/status', '/privacy', '/support']) {
+    for (const path of ['/', '/analytics', '/help', '/status', '/privacy']) {
       expect(sitemap).toContain(`<loc>https://streampulse.stream${path}</loc>`)
     }
   })
@@ -81,32 +96,65 @@ describe('Cloudflare Pages production deployment hygiene', () => {
       expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics/moments?view=recent 301`)
     }
     // An Explorer broadcast must reach the SPA (rewrite, not 301) so the client
-    // can map its id onto the stream page.
+    // can map its id onto the stream page. Moments keeps the plain shell too.
+    // A clip and an old Newsroom story have two segments but are not stream
+    // pages, so they keep the plain shell and download no console code.
+    const plainShell = [
+      '/analytics/explore/:broadcastId', '/analytics/explore/:broadcastId/', '/analytics/moments', '/analytics/moments/',
+      '/analytics/clips/:clipId', '/analytics/clips/:clipId/', '/analytics/newsroom/:storyId', '/analytics/newsroom/:storyId/',
+    ]
+    for (const path of plainShell) {
+      // Pages must serve the separate noindexed fallback while retaining the
+      // requested URL; an .html target produces a browser redirect instead.
+      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics-fallback/ 200`)
+    }
+    // Stream and channel pages get the same shell with the console's code preloaded.
     for (const path of [
-      '/analytics/explore/:broadcastId', '/analytics/explore/:broadcastId/',
       '/analytics/:login', '/analytics/:login/',
       '/analytics/:login/:streamId', '/analytics/:login/:streamId/',
       '/analytics/:login/s/:streamId', '/analytics/:login/s/:streamId/',
       '/s/:login', '/s/:login/:streamId',
     ]) {
-      // Pages must serve the separate noindexed fallback while retaining the
-      // requested URL; an .html target produces a browser redirect instead.
-      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics-fallback/ 200`)
+      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /analytics-console-fallback/ 200`)
     }
+    // First match wins: Moments, clips and stories must not fall into the channel rules.
+    const lines = redirects.split(/\r?\n/)
+    const firstChannelRule = lines.indexOf('/analytics/:login /analytics-console-fallback/ 200')
+    for (const path of plainShell.filter(path => !path.startsWith('/analytics/explore/'))) {
+      expect(lines.indexOf(`${path} /analytics-fallback/ 200`), path).toBeGreaterThan(-1)
+      expect(lines.indexOf(`${path} /analytics-fallback/ 200`), path).toBeLessThan(firstChannelRule)
+    }
+    expect(firstRewrite(lines, '/analytics/moments')).toBe('/analytics-fallback/')
+    expect(firstRewrite(lines, '/analytics/clips/AwkwardHelplessSalamander')).toBe('/analytics-fallback/')
+    expect(firstRewrite(lines, '/analytics/clips/AwkwardHelplessSalamander/')).toBe('/analytics-fallback/')
+    expect(firstRewrite(lines, '/analytics/newsroom/story-1')).toBe('/analytics-fallback/')
+    expect(firstRewrite(lines, '/analytics/xqc')).toBe('/analytics-console-fallback/')
+    expect(firstRewrite(lines, '/analytics/xqc/321206426716')).toBe('/analytics-console-fallback/')
+    expect(firstRewrite(lines, '/s/xqc/321206426716')).toBe('/analytics-console-fallback/')
   })
 
-  it('temporarily redirects both install entry forms to the existing guide', () => {
+  it('temporarily redirects both install entry forms to the install section of Help', () => {
     const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8').split(/\r?\n/)
-    expect(redirects).toContain('/install /docs#extension 302')
-    expect(redirects).toContain('/install/ /docs#extension 302')
+    expect(redirects).toContain('/install /help#install 302')
+    expect(redirects).toContain('/install/ /help#install 302')
   })
 
-  it('rewrites every account deep link to the private SPA entry', () => {
+  it('sends the old documentation aliases straight to their section of Help', () => {
+    const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8').split(/\r?\n/)
+    for (const [path, target] of [['/docs/getting-started', '/help#install'], ['/docs/coverage', '/help#coverage'], ['/docs/api', '/help#api']]) {
+      expect(redirects).toContain(`${path} ${target} 301`)
+      expect(redirects).toContain(`${path}/ ${target} 301`)
+    }
+    // No edge rule stops at /docs, which is now itself a redirect into Help.
+    expect(redirects.filter(line => /^\/\S+ \/docs[#\s]/.test(line))).toEqual([])
+  })
+
+  it('rewrites every account deep link to its account shell', () => {
     const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8')
     for (const path of ['/account/sign-in', '/account/confirm', '/account/restore', '/account/link-device', '/account/settings', '/account/billing', '/account/billing/return']) {
       // An .html rewrite target is canonicalized into a browser redirect by
       // Pages; the account URL must retain the requested route.
-      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} / 200`)
+      expect(redirects.split(/\r?\n/).find(line => line.startsWith(`${path} `))).toBe(`${path} /account-fallback/${path.slice('/account/'.length)}/ 200`)
       expect(redirects).toContain(`${path}/ ${path} 301`)
     }
     // Show my Twitch follows returns to a private route that moves itself to the hub.

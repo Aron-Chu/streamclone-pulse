@@ -32,10 +32,10 @@ async function breakPageModule(page: Page, name: string) {
   }))
 }
 
-/** Only the site layout has these; nav labels are shared with other shells. */
+/** Only the site layout has these: its main region and its header. The footer and nav labels are shared with the analytics shell. */
 async function expectNoSiteLayout(page: Page) {
   await expect(page.locator('#public-main')).toHaveCount(0)
-  await expect(page.locator('.app-footer')).toHaveCount(0)
+  await expect(page.locator('.app-nav')).toHaveCount(0)
 }
 
 test.describe('portal crash guards (mocked)', () => {
@@ -108,7 +108,7 @@ test.describe('portal crash guards (mocked)', () => {
     await expect(page.locator('.analytics-topnav')).toBeVisible()
     await expectNoSiteLayout(page)
 
-    await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'All moments' }).click()
+    await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'Moments', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Moments', exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
   })

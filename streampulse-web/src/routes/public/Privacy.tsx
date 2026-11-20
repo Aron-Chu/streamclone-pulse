@@ -668,7 +668,7 @@ export default function Privacy() {
         <p data-testid="privacy-contact">
           For privacy or legal questions, email{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> or visit the{' '}
-          <Link to="/support">support page</Link>. That mailbox is privacy, legal and billing only —
+          <Link to="/help">Help page</Link>. That mailbox is privacy, legal and billing only —
           not routine product support.
         </p>
         <p>Aron answers billing, cancellation and refund requests within 7 days.</p>

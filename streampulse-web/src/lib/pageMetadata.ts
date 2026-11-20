@@ -1,5 +1,5 @@
 import { isChannelRouteLogin } from './channelRoute'
-import { GROWTH_PAGES } from './growthPages'
+import { GROWTH_PAGES, TIMESTAMP_TOOL_PATH } from './growthPages'
 import reviewedRecapMetadata from '../generated/recap-page-metadata.json'
 
 export interface PageMetadata {
@@ -46,6 +46,11 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     const { path: _path, ...metadata } = growthPage
     return metadata
   }
+  // The builder's old address shows the guide it moved into, and points search there.
+  if (normalizedPath === TIMESTAMP_TOOL_PATH) {
+    const { path: _path, ...metadata } = GROWTH_PAGES.find(page => page.canonicalPath === '/guides/twitch-vod-timestamps')!
+    return { ...metadata, robots: 'noindex,nofollow' }
+  }
 
   const reviewedPath = normalizedPath
     .replace(/^\/s\/([^/]+)(\/[^/]+)?$/, '/analytics/$1$2')
@@ -73,15 +78,19 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
         canonicalPath: '/analytics',
         robots: 'index,follow',
       }
+    // The old help pages open a section of Help and point search to it.
+    case '/help':
     case '/docs':
     case '/docs/getting-started':
     case '/docs/coverage':
     case '/docs/api':
+    case '/support':
+    case '/feedback':
       return {
-        title: 'Documentation — StreamPulse',
-        description: 'Install the free StreamPulse extension for Chrome, Edge or Firefox, explore the Hub’s public Twitch chat stats, and read what each coverage state means.',
-        canonicalPath: '/docs',
-        robots: 'index,follow',
+        title: 'Help — StreamPulse',
+        description: 'Install the free StreamPulse extension, fix common problems, or ask us on Discord, on GitHub or with the private feedback form.',
+        canonicalPath: '/help',
+        robots: normalizedPath === '/help' ? 'index,follow' : 'noindex,nofollow',
       }
     case '/status':
       return {
@@ -107,15 +116,6 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
       return { title: 'Cancellation and Refunds — StreamPulse', description: 'How cancelling the optional Pulse Supporter membership works: no fee or minimum term, access until the paid period ends, and when a charge is refunded.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/withdraw':
       return { title: 'Withdraw from your contract — StreamPulse', description: 'Send a withdrawal request for your Pulse Supporter subscription.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
-    case '/support':
-      return {
-        title: 'Support — StreamPulse',
-        description: 'Troubleshoot the StreamPulse Twitch extension and public analytics portal.',
-        canonicalPath: '/support',
-        robots: 'index,follow',
-      }
-    case '/feedback':
-      return { title: 'Send Feedback — StreamPulse', description: 'Spotted a problem or have an idea? Send private feedback about the StreamPulse extension or website. No account needed, and nothing is posted publicly.', canonicalPath: '/feedback', robots: 'index,follow' }
     case '/discord':
       return { title: 'Discord — StreamPulse', description: 'Join the public StreamPulse community on Discord.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/changelog':

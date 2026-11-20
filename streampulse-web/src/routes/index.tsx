@@ -1,7 +1,9 @@
 import { lazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
-import Landing from './public/Landing'
+// The home page loads on demand like the other public pages. The tokens it
+// brought stay first in the first stylesheet: every page's styles read them.
+import '../ui/tokens.css'
 // The public pages' styles stay in the first stylesheet, in the order the
 // pages brought them when they were imported here: a prerendered page paints
 // styled before its chunk loads, and the cascade is unchanged.
@@ -22,10 +24,11 @@ const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage
 const clipsBuildFlag = import.meta.env.VITE_PUBLIC_NATIVE_CLIPS
 const clipsRouteOn = clipsBuildFlag === 'on' || clipsBuildFlag === '1'
 const NativeClipWatchPage = clipsRouteOn ? lazy(() => import('./analytics/NativeClipWatchPage')) : null
-const AccountPage = lazy(() => import('./account/AccountPage'))
-const AccountSettings = lazy(() => import('./account/AccountSettings'))
-const BillingPage = lazy(() => import('./account/BillingPage'))
-const AccountRestore = lazy(() => import('./account/AccountRestore'))
+// Each account address has its own prerendered card (scripts/prerender.mjs), which stays up until its page is in.
+const AccountPage = onDemandPage(() => import('./account/AccountPage'))
+const AccountSettings = onDemandPage(() => import('./account/AccountSettings'))
+const BillingPage = onDemandPage(() => import('./account/BillingPage'))
+const AccountRestore = onDemandPage(() => import('./account/AccountRestore'))
 // Sign in with Twitch and My Moments pages exist only in builds with their
 // switches on; read inline, like the clip page, so a build without them emits
 // no chunk for them.
@@ -57,12 +60,12 @@ function onDemandPage(load: () => Promise<{ default: ComponentType }>) {
   return Object.assign(Page, { preload })
 }
 
-const TwitchTimestampTool = onDemandPage(() => import('./public/TwitchTimestampTool'))
+const Landing = onDemandPage(() => import('./public/Landing'))
 const FindTwitchMomentsGuide = onDemandPage(() => import('./public/FindTwitchMomentsGuide'))
 const TwitchVodTimestampsGuide = onDemandPage(() => import('./public/TwitchVodTimestampsGuide'))
 const Recaps = onDemandPage(() => import('./public/Recaps'))
 
-const Docs = onDemandPage(() => import('./public/Docs'))
+const Help = onDemandPage(() => import('./public/Help'))
 const Status = onDemandPage(() => import('./public/Status'))
 const Privacy = onDemandPage(() => import('./public/Privacy'))
 const Terms = onDemandPage(() => import('./public/Terms'))
@@ -70,18 +73,22 @@ const Refunds = onDemandPage(() => import('./public/Refunds'))
 const Withdraw = onDemandPage(() => import('./public/Withdraw'))
 const Supporter = onDemandPage(() => import('./public/Supporter'))
 const SupporterThanks = onDemandPage(() => import('./public/SupporterThanks'))
-const Support = onDemandPage(() => import('./public/Support'))
-const Feedback = onDemandPage(() => import('./public/Feedback'))
 const Discord = onDemandPage(() => import('./public/Discord'))
 const Changelog = onDemandPage(() => import('./public/Changelog'))
 
 const OPENING_PAGES: Record<string, { preload: () => Promise<void> }> = {
+  '/': Landing,
   '/analytics': AnalyticsHubV5Page,
-  '/tools/twitch-vod-timestamp-link': TwitchTimestampTool,
+  // The builder's old address opens the guide it now sits in.
+  '/tools/twitch-vod-timestamp-link': TwitchVodTimestampsGuide,
   '/guides/find-twitch-moments': FindTwitchMomentsGuide,
   '/guides/twitch-vod-timestamps': TwitchVodTimestampsGuide,
   '/recaps': Recaps,
-  '/docs': Docs,
+  '/help': Help,
+  // The old help pages open a section of Help.
+  '/docs': Help,
+  '/support': Help,
+  '/feedback': Help,
   '/status': Status,
   '/privacy': Privacy,
   '/terms': Terms,
@@ -89,10 +96,20 @@ const OPENING_PAGES: Record<string, { preload: () => Promise<void> }> = {
   '/withdraw': Withdraw,
   '/supporter': Supporter,
   '/supporter/thanks': SupporterThanks,
-  '/support': Support,
-  '/feedback': Feedback,
   '/discord': Discord,
   '/changelog': Changelog,
+  '/account/sign-in': AccountPage,
+  '/account/confirm': AccountPage,
+  '/account/link-device': AccountPage,
+  '/account/settings': AccountSettings,
+  '/account/restore': AccountRestore,
+  '/account/billing': BillingPage,
+  '/account/billing/return': BillingPage,
+}
+
+/** An account page loads under its own card, not the analytics skeleton. */
+function accountPage(Page: ComponentType) {
+  return <Suspense fallback={<AnalyticsRouteFallback variant="account" />}><Page /></Suspense>
 }
 
 /** Load the public page a visit opens on, before the first render. Other paths resolve at once. */
@@ -134,10 +151,23 @@ function AnalyticsAliasRedirect() {
   return <Navigate to={`/analytics${search}${hash}`} replace />
 }
 
-/** Matches the static install redirect during local dev and client navigation. */
-function InstallRedirect() {
+/**
+ * The old help pages are sections of /help now. Each keeps its query and maps
+ * its old anchors to the same place on Help, so links from the extension,
+ * other sites and bookmarks still land on the right part.
+ */
+function HelpRedirect({ section, anchors = {} }: { section: string; anchors?: Record<string, string> }) {
+  const { search, hash } = useLocation()
+  const anchor = hash.slice(1)
+  return <Navigate to={`/help${search}#${anchors[anchor] ?? section}`} replace />
+}
+
+const DOCS_ANCHORS = { extension: 'install', analytics: 'hub', coverage: 'coverage', api: 'api', help: 'ask' }
+const SUPPORT_ANCHORS = { install: 'install', 'send-feedback': 'feedback', 'billing-email': 'billing-email', contact: 'contact', security: 'security' }
+
+function TimestampToolRedirect() {
   const { search } = useLocation()
-  return <Navigate to={`/docs${search}#extension`} replace />
+  return <Navigate to={`/guides/twitch-vod-timestamps${search}`} replace />
 }
 
 /** Pulse Explorer and the older Newsroom are retired: a broadcast opens its stream page, the rest open Moments. */
@@ -181,15 +211,18 @@ function PortalRoutes() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/setup" element={<AnalyticsAliasRedirect />} />
-        <Route path="/tools/twitch-vod-timestamp-link" element={<TwitchTimestampTool />} />
+        {/* The timestamp builder now sits at the top of its guide. */}
+        <Route path="/tools/twitch-vod-timestamp-link" element={<TimestampToolRedirect />} />
         <Route path="/guides/find-twitch-moments" element={<FindTwitchMomentsGuide />} />
         <Route path="/guides/twitch-vod-timestamps" element={<TwitchVodTimestampsGuide />} />
         <Route path="/recaps" element={<Recaps />} />
-        <Route path="/docs" element={<Docs />} />
-        <Route path="/install" element={<InstallRedirect />} />
-        <Route path="/docs/getting-started" element={<Navigate to="/docs#extension" replace />} />
-        <Route path="/docs/coverage" element={<Navigate to="/docs#coverage" replace />} />
-        <Route path="/docs/api" element={<Navigate to="/docs#api" replace />} />
+        <Route path="/help" element={<Help />} />
+        {/* Install, the docs, Support and Feedback are sections of Help. */}
+        <Route path="/docs" element={<HelpRedirect section="install" anchors={DOCS_ANCHORS} />} />
+        <Route path="/install" element={<HelpRedirect section="install" />} />
+        <Route path="/docs/getting-started" element={<HelpRedirect section="install" />} />
+        <Route path="/docs/coverage" element={<HelpRedirect section="coverage" />} />
+        <Route path="/docs/api" element={<HelpRedirect section="api" />} />
         <Route path="/docs/*" element={<NotFound />} />
         <Route path="/status" element={<Status />} />
         <Route path="/privacy" element={<Privacy />} />
@@ -200,21 +233,21 @@ function PortalRoutes() {
             must stay a real route — never a redirect into a gated surface. */}
         <Route path="/supporter" element={<Supporter />} />
         <Route path="/supporter/thanks" element={<SupporterThanks />} />
-        <Route path="/support" element={<Support />} />
-        {/* The private feedback form. The extension's "Send feedback" opens this page. */}
-        <Route path="/feedback" element={<Feedback />} />
+        <Route path="/support" element={<HelpRedirect section="fix" anchors={SUPPORT_ANCHORS} />} />
+        {/* The extension's "Send feedback" opens the form on Help. */}
+        <Route path="/feedback" element={<HelpRedirect section="feedback" />} />
         {/* The extension's "Join Discord" opens this page; it forwards to the
             build-time invite, or says the server is not open yet. */}
         <Route path="/discord" element={<Discord />} />
         {/* The extension's "Release details" links open this page. */}
         <Route path="/changelog" element={<Changelog />} />
-        <Route path="/account/sign-in" element={<AccountPage />} />
-        <Route path="/account/settings" element={<AccountSettings />} />
-        <Route path="/account/confirm" element={<AccountPage />} />
-        <Route path="/account/restore" element={<AccountRestore />} />
-        <Route path="/account/link-device" element={<AccountPage />} />
-        <Route path="/account/billing" element={<BillingPage />} />
-        <Route path="/account/billing/return" element={<BillingPage />} />
+        <Route path="/account/sign-in" element={accountPage(AccountPage)} />
+        <Route path="/account/settings" element={accountPage(AccountSettings)} />
+        <Route path="/account/confirm" element={accountPage(AccountPage)} />
+        <Route path="/account/restore" element={accountPage(AccountRestore)} />
+        <Route path="/account/link-device" element={accountPage(AccountPage)} />
+        <Route path="/account/billing" element={accountPage(BillingPage)} />
+        <Route path="/account/billing/return" element={accountPage(BillingPage)} />
         {/* Sign in with Twitch (VITE_TWITCH_SIGNIN=1). While off, the path is
             the ordinary 404; main.tsx still strips any token from its URL.
             Show my Twitch follows returns here too, and main.tsx moves that

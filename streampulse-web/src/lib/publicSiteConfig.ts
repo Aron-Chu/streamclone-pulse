@@ -28,7 +28,7 @@ export const EDGE_ADDONS_LISTING_URL =
  */
 const STORE_LINK_PAGES = [
   'home', 'analytics', 'account', 'docs', 'status', 'privacy', 'terms', 'refunds',
-  'tools', 'guides', 'supporter', 'support', 'feedback', 'discord', 'changelog', 'site',
+  'tools', 'guides', 'supporter', 'support', 'feedback', 'discord', 'changelog', 'help', 'site',
 ] as const
 export type StoreLinkPage = (typeof STORE_LINK_PAGES)[number]
 

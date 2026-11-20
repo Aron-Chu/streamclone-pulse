@@ -1,13 +1,15 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { PublicLayout } from '../../ui/components/PublicLayout'
-import { InstallCta } from '../../ui/components/InstallCta'
 import { buildTwitchTimestampLink, type TimestampLinkResult } from '../../lib/twitchTimestampLink'
 import { captureTimestampLinkBuilt } from '../../lib/productAnalytics'
 import { TimestampToolFeedback } from '../../ui/components/TimestampToolFeedback'
 import './growth-guides.css'
 
-export default function TwitchTimestampTool() {
+/**
+ * The Twitch VOD timestamp link builder: a replay link and a player time in, a
+ * clean link out. Runs in the browser; it uploads nothing and does not check
+ * that the replay exists. It sits at the top of the timestamps guide.
+ */
+export function TimestampLinkBuilder() {
   const [video, setVideo] = useState('')
   const [timestamp, setTimestamp] = useState('')
   const [result, setResult] = useState<TimestampLinkResult | null>(null)
@@ -40,10 +42,7 @@ export default function TwitchTimestampTool() {
       setCopyStatus('Copy is unavailable here. The link is selected; copy it with your browser or keyboard.')
     }
   }
-  return <PublicLayout><article className="panel public-document growth-guide">
-    <h1>Twitch VOD timestamp link builder</h1>
-    <p>Share the exact time you already found in a Twitch replay. Paste a past-broadcast link, enter the player time, and copy a clean link.</p>
-    <p>This works in your browser. It does not upload your inputs, search a video, or check whether a replay is available.</p>
+  return <section id="builder" className="timestamp-builder" aria-label="Timestamp link builder">
     <form className="timestamp-form" onSubmit={submit} noValidate>
       <div><label htmlFor="vod-link">Twitch VOD link or video ID</label>
         <input ref={videoInput} id="vod-link" type="text" autoComplete="off" spellCheck={false} maxLength={2048} value={video}
@@ -68,13 +67,5 @@ export default function TwitchTimestampTool() {
       <p>A correctly formatted link can still point to a deleted, unpublished, subscriber-only, or shorter video. Open it on Twitch to verify it before sharing.</p>
     </section> : null}
     {hasCopied ? <TimestampToolFeedback returnFocus={() => (copyButton.current ?? videoInput.current)?.focus()} /> : null}
-    <h2>Which timestamp should I enter?</h2>
-    <p>Use the elapsed time shown in the Twitch VOD player. For example, 1:23:45 is 5,025 seconds after the replay starts. A wall-clock time such as “8:15 pm” does not identify a replay position.</p>
-    <p>If you found a moment in StreamPulse, use its verified replay action when available. Broadcast time and VOD time can have an offset; this builder does not calculate that alignment.</p>
-    <h2>Need to find a moment first?</h2>
-    <p>StreamPulse shows chat and emote reactions for streams it tracked. It can help you choose moments to review; it does not analyze every past Twitch VOD on demand.</p>
-    <div className="public-document__actions"><InstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/analytics">Explore tracked channels</Link></div>
-    <nav className="growth-guide__related" aria-label="Related tools and guides"><Link to="/guides/find-twitch-moments">Find and bookmark tracked reaction moments</Link><Link to="/guides/twitch-vod-timestamps">Understand replay availability and timestamps</Link><Link to="/docs#extension">Installation guide</Link></nav>
-    <p className="growth-guide__source">Twitch also offers a “Skip to” option in its sharing controls. <a href="https://help.twitch.tv/s/article/how-to-share-a-stream" target="_blank" rel="noopener noreferrer">Read Twitch’s sharing guide</a>.</p>
-  </article></PublicLayout>
+  </section>
 }

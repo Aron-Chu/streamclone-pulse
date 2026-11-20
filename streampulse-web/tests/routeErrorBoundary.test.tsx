@@ -6,18 +6,14 @@
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }))
 vi.mock('../src/lib/sentry', async importOriginal => ({
   ...await importOriginal<typeof import('../src/lib/sentry')>(),
-  Sentry: {
-    withScope: (report: (scope: { setTag: () => void }) => void) => report({ setTag: () => {} }),
-    captureException: sentry.captureException,
-  },
-  sanitizePortalPath: (path: string) => path,
+  reportPortalError: sentry.captureException,
 }))
 vi.mock('../src/routes/public/Status', () => ({
   default: () => { throw new TypeError('e?.trim is not a function') },
@@ -36,13 +32,13 @@ vi.mock('../src/routes/analytics/AnalyticsMomentsPage', async () => {
   }
   return { default: () => createElement(AnalyticsFigmaShell, { hideSidebar: true, children: createElement(Body) }) }
 })
-vi.mock('../src/routes/public/Support', async () => {
+vi.mock('../src/routes/public/Help', async () => {
   const { createElement, useState } = await import('react')
   const { PublicLayout } = await import('../src/ui/components/PublicLayout')
   function Body() {
     const [broken, setBroken] = useState(false)
     if (broken) throw new TypeError('incident.title is an object')
-    return createElement('button', { type: 'button', onClick: () => setBroken(true) }, 'Show support')
+    return createElement('button', { type: 'button', onClick: () => setBroken(true) }, 'Show help')
   }
   return { default: () => createElement(PublicLayout, null, createElement(Body)) }
 })
@@ -61,10 +57,14 @@ function renderAt(path: string) {
   )
 }
 
-/** Only the site layout has these; nav labels are shared with other shells. */
+/** Only the site layout has these; nav labels and the footer are shared with other shells. */
 function expectNoSiteLayout(container: HTMLElement) {
   expect(container.querySelector('#public-main')).toBeNull()
-  expect(container.querySelector('.app-footer')).toBeNull()
+  expect(container.querySelector('.app-nav')).toBeNull()
+}
+
+function navLink(navigation: string, name: string) {
+  return within(screen.getByRole('navigation', { name: navigation })).getByRole('link', { name })
 }
 
 beforeEach(() => {
@@ -85,8 +85,8 @@ describe('route-level error boundary', () => {
     expect(screen.getByRole('navigation', { name: 'Main Navigation' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Reload page' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('link', { name: 'Docs' }))
-    expect(await screen.findByRole('heading', { name: 'Get started with Pulse' })).toBeTruthy()
+    fireEvent.click(navLink('Main Navigation', 'Help'))
+    expect(await screen.findByRole('button', { name: 'Show help' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
   })
 
@@ -97,7 +97,7 @@ describe('route-level error boundary', () => {
     expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
     expectNoSiteLayout(container)
 
-    fireEvent.click(screen.getByRole('link', { name: 'All moments' }))
+    fireEvent.click(navLink('Analytics navigation', 'Moments'))
     expect(await screen.findByRole('button', { name: 'Show moments' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
   })
@@ -114,19 +114,19 @@ describe('route-level error boundary', () => {
     expect(container.querySelector('#analytics-main')?.textContent).toContain('Something went wrong')
   })
 
-  it('recovers when a nav link changes only the query, as All moments does from History', async () => {
+  it('recovers when a nav link changes only the query, as Moments does from History', async () => {
     renderAt('/analytics/moments?view=history')
     fireEvent.click(await screen.findByRole('button', { name: 'Show moments' }))
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('link', { name: 'All moments' }))
+    fireEvent.click(navLink('Analytics navigation', 'Moments'))
     expect(await screen.findByRole('button', { name: 'Show moments' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
   })
 
   it('keeps the mounted site header when content inside it throws', async () => {
-    const { container } = renderAt('/support')
-    const show = await screen.findByRole('button', { name: 'Show support' })
+    const { container } = renderAt('/help')
+    const show = await screen.findByRole('button', { name: 'Show help' })
     const header = container.querySelector('.app-nav')
     fireEvent.click(show)
 
@@ -167,6 +167,7 @@ describe('route-level error boundary', () => {
 
 describe('error reporting', () => {
   it('reports a page reached by an in-app link once', async () => {
+    // /docs opens Help, whose footer links to Status.
     renderAt('/docs')
     fireEvent.click(await screen.findByRole('link', { name: 'Status' }))
 
@@ -177,12 +178,12 @@ describe('error reporting', () => {
   it('reports a crash inside a layout once, and the root boundary stays out of it', async () => {
     render(
       <PortalErrorBoundary>
-        <MemoryRouter initialEntries={['/support']}>
+        <MemoryRouter initialEntries={['/help']}>
           <AppRoutes />
         </MemoryRouter>
       </PortalErrorBoundary>,
     )
-    fireEvent.click(await screen.findByRole('button', { name: 'Show support' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Show help' }))
 
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
     expect(screen.getByRole('navigation', { name: 'Main Navigation' })).toBeTruthy()

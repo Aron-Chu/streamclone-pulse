@@ -1,7 +1,7 @@
 # A stable install link while the dedicated extension page is being prepared.
 # Pages preserves the incoming query; store CTAs send only fixed page categories.
-/install /docs#extension 302
-/install/ /docs#extension 302
+/install /help#install 302
+/install/ /help#install 302
 
 # Legacy public routes → Command Center (must be static; client-only Navigate
 # never runs when Pages returns 404.html for a missing path).
@@ -29,15 +29,16 @@
 /account/billing/ /account/billing 301
 /account/billing/return/ /account/billing/return 301
 /account/twitch/callback/ /account/twitch/callback 301
-# Pages canonicalizes /index.html to /. Rewrite to the canonical asset URL so
-# the browser retains the requested account path instead of following a 308.
-/account/sign-in / 200
-/account/confirm / 200
-/account/restore / 200
-/account/link-device / 200
-/account/settings / 200
-/account/billing / 200
-/account/billing/return / 200
+# Each opens on its noindexed account card (scripts/prerender.mjs). Rewrite to
+# the canonical asset URL (a folder, not index.html, which Pages answers with a
+# 308) so the browser retains the requested account path.
+/account/sign-in /account-fallback/sign-in/ 200
+/account/confirm /account-fallback/confirm/ 200
+/account/restore /account-fallback/restore/ 200
+/account/link-device /account-fallback/link-device/ 200
+/account/settings /account-fallback/settings/ 200
+/account/billing /account-fallback/billing/ 200
+/account/billing/return /account-fallback/billing/return/ 200
 # Show my Twitch follows comes back here and the page moves itself to the hub
 # (src/lib/twitchFollowsCallback.ts), so it gets the hub's noindexed shell.
 /account/twitch/callback /analytics-fallback/ 200
@@ -45,13 +46,14 @@
 # Static Checkout return remains a no-login surface with no payment claims.
 /supporter/thanks/ /supporter/thanks 301
 
-# Known documentation aliases resolve at the edge even without JavaScript.
-/docs/getting-started /docs#extension 301
-/docs/getting-started/ /docs#extension 301
-/docs/coverage /docs#coverage 301
-/docs/coverage/ /docs#coverage 301
-/docs/api /docs#api 301
-/docs/api/ /docs#api 301
+# Known documentation aliases resolve at the edge even without JavaScript,
+# straight to their section of Help (each id is on src/routes/public/Help.tsx).
+/docs/getting-started /help#install 301
+/docs/getting-started/ /help#install 301
+/docs/coverage /help#coverage 301
+/docs/coverage/ /help#coverage 301
+/docs/api /help#api 301
+/docs/api/ /help#api 301
 
 # Pulse Explorer is retired into Moments. Pages passes the request's query to a
 # 301 target unless the target has its own, so ?view=recent (the Latest view)
@@ -69,11 +71,21 @@
 
 # Unreviewed deep links use a separate noindexed shell; /analytics stays indexable.
 # Without these, Cloudflare Pages serves 404.html for /analytics/:login/:streamId.
-/analytics/:login /analytics-fallback/ 200
-/analytics/:login/ /analytics-fallback/ 200
-/analytics/:login/:streamId /analytics-fallback/ 200
-/analytics/:login/:streamId/ /analytics-fallback/ 200
-/analytics/:login/s/:streamId /analytics-fallback/ 200
-/analytics/:login/s/:streamId/ /analytics-fallback/ 200
-/s/:login /analytics-fallback/ 200
-/s/:login/:streamId /analytics-fallback/ 200
+# Moments keeps the plain shell, so its lines come before /analytics/:login.
+/analytics/moments /analytics-fallback/ 200
+/analytics/moments/ /analytics-fallback/ 200
+# A clip and an old Newsroom story have two segments but are not stream pages,
+# so they keep the plain shell too and download no console code.
+/analytics/clips/:clipId /analytics-fallback/ 200
+/analytics/clips/:clipId/ /analytics-fallback/ 200
+/analytics/newsroom/:storyId /analytics-fallback/ 200
+/analytics/newsroom/:storyId/ /analytics-fallback/ 200
+# Stream and channel pages: the same shell, with the console's code preloaded.
+/analytics/:login /analytics-console-fallback/ 200
+/analytics/:login/ /analytics-console-fallback/ 200
+/analytics/:login/:streamId /analytics-console-fallback/ 200
+/analytics/:login/:streamId/ /analytics-console-fallback/ 200
+/analytics/:login/s/:streamId /analytics-console-fallback/ 200
+/analytics/:login/s/:streamId/ /analytics-console-fallback/ 200
+/s/:login /analytics-console-fallback/ 200
+/s/:login/:streamId /analytics-console-fallback/ 200
