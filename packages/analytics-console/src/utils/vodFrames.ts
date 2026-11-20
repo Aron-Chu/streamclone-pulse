@@ -183,6 +183,14 @@ const vodFirst = new Map<string, Promise<VodFrameResult>>()
 const vodAnswered = new Set<string>()
 const VOD_ID = /^\d{6,20}$/
 
+/** Reads the storyboard tile route; a page without the configured console API passes its own. */
+export type VodStoryboardReader = (vodId: string, offsetSec: number) => Promise<unknown>
+let storyboardReader: VodStoryboardReader | null = null
+
+export function configureVodStoryboardReader(reader: VodStoryboardReader | null): void {
+  storyboardReader = reader
+}
+
 /** Test hook. */
 export function resetVodFrameCache(): void {
   frameCache.clear()
@@ -218,7 +226,7 @@ export function loadVodFrame(vodId: string, vodOffsetSec: number): Promise<VodFr
   const request = (async (): Promise<VodFrameResult> => {
     let raw: unknown = null
     try {
-      raw = await getConfiguredAnalyticsApi().getVodStoryboardThumb(vodId, offset)
+      raw = await (storyboardReader ? storyboardReader(vodId, offset) : getConfiguredAnalyticsApi().getVodStoryboardThumb(vodId, offset))
     } catch (error) {
       const status = typeof error === 'object' && error !== null
         ? num((error as Record<string, unknown>).status ?? (error as Record<string, unknown>).statusCode)

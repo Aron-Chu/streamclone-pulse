@@ -1,20 +1,41 @@
-import { apiClient } from './apiClient'
 import type { DiscoveryMoment } from './discoveryMoments'
+import { loadMomentRecap, untilStopped } from './momentReads'
 
-/** Selected-only hydration, never a nearby/lead-moment substitution or a history poll. */
-export async function loadExactMomentRecap(moment: DiscoveryMoment, signal: AbortSignal): Promise<Partial<DiscoveryMoment> | null> {
-  const { data } = await apiClient<{
-    login?: string; streamId?: string; topMoments?: Array<{
-      offsetSeconds?: number; publicMomentId?: string; reasons?: string[];
-      topEmotes?: Array<{ code?: string; count?: number; provider?: string; imageUrl?: string }>;
-    }>;
-  }>(`/v1/portal/analytics/streams/${encodeURIComponent(moment.streamId)}/recap`,
-    { signal, timeoutMs: 8000, maxResponseBytes: 512 * 1024 })
-  if (data?.login?.toLowerCase() !== moment.login || data.streamId !== moment.streamId || !Array.isArray(data.topMoments)) return null
+type RecapRow = {
+  offsetSeconds?: number; publicMomentId?: string; reasons?: string[];
+  topEmotes?: Array<{ code?: string; count?: number; provider?: string; imageUrl?: string }>;
+}
+/** The recap route's answer, as far as a moment reads it. */
+export interface MomentRecapAnswer { login?: string; streamId?: string; topMoments?: RecapRow[] }
+type Found = { kind: 'unknown' } | { kind: 'unlisted' } | { kind: 'row'; row: RecapRow }
+type RecapMoment = Pick<DiscoveryMoment, 'login' | 'streamId' | 'offsetSeconds' | 'publicMomentId'>
+
+function findRow(moment: RecapMoment, data: MomentRecapAnswer | null | undefined): Found {
+  // A recap for another login or stream, or one without a list, says nothing about this minute.
+  if (data?.login?.toLowerCase() !== moment.login || data.streamId !== moment.streamId || !Array.isArray(data.topMoments)) return { kind: 'unknown' }
   const matches = data.topMoments.filter(row => row.offsetSeconds === moment.offsetSeconds
     && (!moment.publicMomentId || row.publicMomentId === moment.publicMomentId))
-  if (matches.length !== 1) return null
-  const row = matches[0]!
+  if (matches.length === 0) return { kind: 'unlisted' }
+  return matches.length === 1 ? { kind: 'row', row: matches[0]! } : { kind: 'unknown' }
+}
+
+/** Through the stream's one shared recap read; the caller's signal stops only its own wait. */
+async function findInRecap(moment: DiscoveryMoment, signal: AbortSignal): Promise<Found> {
+  return findRow(moment, await untilStopped(() => loadMomentRecap(moment.streamId), signal))
+}
+
+/**
+ * Whether the recap lists the Moment: true or false for a well-formed recap,
+ * a throw when it cannot tell (a mismatched or malformed recap, a duplicate
+ * row, no answer). Only a false means "no longer listed".
+ */
+export async function momentRecapLists(moment: DiscoveryMoment, signal: AbortSignal): Promise<boolean> {
+  const found = await findInRecap(moment, signal)
+  if (found.kind === 'unknown') throw new Error('the recap could not say')
+  return found.kind === 'row'
+}
+
+function recapDetails(row: RecapRow): Partial<DiscoveryMoment> {
   const reasons = Array.isArray(row.reasons) ? row.reasons : []
   const label = reasons.some(reason => typeof reason === 'string' && (reason.includes('emote_spike') || reason === 'seventv_spike')) ? 'Emote spike'
     : reasons.includes('chat_spike') ? 'Chat spike' : 'Measured reaction'
@@ -26,4 +47,16 @@ export async function loadExactMomentRecap(moment: DiscoveryMoment, signal: Abor
   }) : []
   // Recap aggregate counts have a different contract from minute rates. Do not relabel them /min.
   return { label, topEmotes }
+}
+
+/** Selected-only hydration, never a nearby/lead-moment substitution or a history poll. */
+export async function loadExactMomentRecap(moment: DiscoveryMoment, signal: AbortSignal): Promise<Partial<DiscoveryMoment> | null> {
+  const found = await findInRecap(moment, signal)
+  return found.kind === 'row' ? recapDetails(found.row) : null
+}
+
+/** The recap's row for exactly this moment, on an answer already read: its label and top emotes; null when the recap does not list it once. */
+export function exactMomentRecapFrom(moment: RecapMoment, data: MomentRecapAnswer | null | undefined): Partial<DiscoveryMoment> | null {
+  const found = findRow(moment, data)
+  return found.kind === 'row' ? recapDetails(found.row) : null
 }

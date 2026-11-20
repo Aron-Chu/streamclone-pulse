@@ -162,6 +162,19 @@ describe('return paths (no open redirects)', () => {
     }
   })
 
+  it('takes a Moment page, only in a build with it and its ratings and comments', () => {
+    const moment = '/analytics/moments/123/20261114T2031Z'
+    expect(twitchReturnPath(moment)).toBeNull()
+    vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+    // The read-only page has nothing to sign in for.
+    expect(twitchReturnPath(moment)).toBeNull()
+    vi.stubEnv('VITE_PUBLIC_MOMENT_FEEDBACK', 'on')
+    expect(twitchReturnPath(moment)).toBe(moment)
+    for (const value of ['/analytics/moments/123/x', `${moment}?x=1`, `${moment}#x`, `${moment}/`, `//evil.example${moment}`, `https://evil.example${moment}`]) {
+      expect(twitchReturnPath(value)).toBeNull()
+    }
+  })
+
   it.each([
     'https://evil.example/account/settings', '//evil.example/account/settings', '/\\evil.example', '\\\\evil.example',
     'javascript:alert(1)', '/account/settings?next=//evil.example', '/account/settings#x', '/account/sign-in',

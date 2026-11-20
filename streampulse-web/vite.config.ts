@@ -178,6 +178,11 @@ export default defineConfig({
         pulseRoot,
         'packages/analytics-console/src/chart-navigator.ts',
       ),
+      // A moment's preview picture (match, reads, labels) for the public Moment pages, without the console entry.
+      '@streampulse/analytics-console/moment-previews': resolve(
+        pulseRoot,
+        'packages/analytics-console/src/moment-previews.ts',
+      ),
       '@streampulse/analytics-console': resolve(pulseRoot, 'packages/analytics-console/src/index.tsx'),
       // Activity bar pyramid (hub chat bars) without the whole chart package.
       '@streampulse/pulse-charts/barPyramid': resolve(pulseRoot, 'packages/pulse-charts/src/barPyramid.ts'),

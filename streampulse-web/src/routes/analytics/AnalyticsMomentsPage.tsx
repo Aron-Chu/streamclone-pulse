@@ -42,6 +42,8 @@ import type { ArchiveArtwork } from '../../lib/archiveArtwork'
 import { EmoteImg } from '../../ui/components/analytics/EmoteImg'
 import { emoteImageUrlFromIdentity } from '../../lib/emoteAssetUrl'
 import { loadExactMomentRecap } from '../../lib/discoveryMomentRecap'
+import { forgetFailedMomentReads, primeMomentStream } from '../../lib/momentReads'
+import { handOverMoment, momentPageHref, momentPageWarmth } from '../../lib/momentPageFlag'
 import { newsroomProfileUrl } from '../../lib/newsroomProfiles'
 import { creatorHistoryHref } from '../../lib/creatorHistoryHref'
 import type { PublicHubLoadSource } from '../../lib/publicHub'
@@ -253,7 +255,8 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
     // The detail is keyed by exact moment identity; a new selection starts fresh.
     setLoading(true); setError('')
     onSourceState(moment.key, 'Checking source')
-    void checkMomentSource(moment, controller.signal, true).then(result => {
+    // The answer is the stream route's, so the Moment page this detail links to reuses it.
+    void checkMomentSource(moment, controller.signal, true, data => primeMomentStream(moment.streamId, data)).then(result => {
       if (controller.signal.aborted) return
       if (result.lookupFailed) {
         setError('The source recheck failed. Any visible preview uses the last verified mapping; playback still depends on Twitch.')
@@ -303,6 +306,9 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
   const clock = momentRowClock(moment.offsetSeconds)
   // The head (C1, 10-22): the × in plain words, then when and how far in (standalone; in line the row says so) and the game.
   const lift = early ? null : momentLiftLine(moment)
+  // The Moment’s own page, when the build has it and the minute is known. The source's occurrence and the hub's `at` are both the stream start plus whole seconds, so a stream that started on a fractional second puts them just before the Moment's minute; momentPageHref rounds up to the second before it names the minute. The link shows while the source loads.
+  const occurrenceMs = source?.occurrenceAt ?? moment.at
+  const momentPageTo = momentPageHref({ streamId: moment.streamId, at: occurrenceMs })
   const streamPage = broadcastTimelineHref(moment.login, moment.streamId, detailLocation.pathname + detailLocation.search + detailLocation.hash, moment.offsetSeconds)
   const gameArt = moment.category && moment.categoryId && moment.boxArtUrl && !moment.categoryMetadataRejected && isExactCategoryBoxArt(moment.boxArtUrl, moment.categoryId) ? moment.boxArtUrl : null
   const gameIn = moment.category ? <>{gameArt ? <img src={gameArt} alt="" /> : null}{moment.category}</> : null
@@ -347,6 +353,8 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
     {source?.vodHref ? <a href={source.vodHref} target="_blank" rel="noopener noreferrer" data-focus-key="open-vod">Open VOD at {formatStreamOffset(source.vodOffsetSeconds ?? moment.offsetSeconds)} ↗</a> : null}
     {source?.liveHref ? <a href={source.liveHref} target="_blank" rel="noopener noreferrer" data-focus-key="watch-live">Watch live now ↗</a> : null}
     {source?.vodHref && source.vodOffsetSeconds != null ? <VodOffsetNote broadcastSeconds={moment.offsetSeconds} vodSeconds={source.vodOffsetSeconds} /> : null}
+    {momentPageTo ? <Link to={momentPageTo} state={{ from: 'moments', moment: handOverMoment(moment, occurrenceMs) }} data-focus-key="moment-page"
+      {...momentPageWarmth({ streamId: moment.streamId, at: occurrenceMs })}>Open the Moment’s page</Link> : null}
   </div>
   const actionsInPreview = phone && Boolean(source?.vodHref)
   const watch = <>
@@ -383,7 +391,7 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
     {variant === 'standalone' ? <h2 tabIndex={-1} className="moments-detail-title"><Link className="moments-detail-name" to={streamPage} title="Open the stream’s page">{moment.displayName || moment.login}</Link> · {moment.label}</h2> : null}
     {head}
     {phone ? <div className="moments-detail-watch">{watch}</div> : null}
-    {evidenceState ? <p className="moments-muted" role="status">{evidenceState}{!evidenceState.startsWith('Loading') ? <> <button type="button" onClick={() => setEvidenceAttempt(value => value + 1)}>Retry reaction details</button></> : null}</p> : null}
+    {evidenceState ? <p className="moments-muted" role="status">{evidenceState}{!evidenceState.startsWith('Loading') ? <> <button type="button" onClick={() => { forgetFailedMomentReads(suppliedMoment.streamId); setEvidenceAttempt(value => value + 1) }}>Retry reaction details</button></> : null}</p> : null}
     <MomentMinuteChart moment={moment} />
     <div className="moments-detail-grid">
       {/* What happened (why it was selected) on the left; watching and actions on the right. */}
@@ -1076,7 +1084,7 @@ function MomentsWorkspace() {
       onChange={(values, options) => { leaveSelection(); keepPlaceFor(options); update({ ...resetSelection, ...values, calendar: null, month: null, q: null }, options?.replace ?? false) }}
       onRefresh={() => { if (!chosen) setRankedClock(new Date()); retention.refresh() }} /> : null}
     {/* The games on top, outside the filters so a phone shows them too (M1, 10-22). */}
-    {!rankedMode && (games.length > 1 || category) ? <MomentsGameRow games={games} total={collection.length} picked={category} onPick={pickGame} /> : null}
+    {!rankedMode && (games.length > 0 || category) ? <MomentsGameRow games={games} total={collection.length} picked={category} onPick={pickGame} /> : null}
     {/* While Latest first loads, the games row and filters keep their space (L1, 11-13). */}
     {view === 'recent' && loadingFirst && !collection.length ? <MomentsTopPlaceholder /> : null}
     {!rankedMode && (collection.length > 0 || displayed.length > 0) ? <>

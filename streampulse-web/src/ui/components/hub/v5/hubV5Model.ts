@@ -12,6 +12,7 @@ import type { LiveWireMetricComparison } from '../../../../lib/liveWire'
 import { screenerMetricMultiplier, type HubScreenerMetric } from '../../../../lib/channelScreenerContract'
 import { buildAnalyticsHref } from '../../../../lib/analyticsLinks'
 import { isPlausibleTwitchLogin } from '../../../../lib/normalizeTwitchLogin'
+import { momentPageHref } from '../../../../lib/momentPageFlag'
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 
@@ -599,8 +600,13 @@ function momentCmp(m: HubLivePulseMoment, series: 'chat' | 'emotes'): HubMomentC
   return { why: 'no avg', long: 'No comparison came with this moment.' }
 }
 
-/** Analytics → Moments deep link (login, stream, whole-second offset). */
-export function momentHref(m: Pick<HubLivePulseMoment, 'login' | 'streamId' | 'offsetSeconds'>): string {
+/**
+ * The Moment's own page for the minute that holds `at` when the build has the page; else the
+ * Analytics → Moments deep link (login, stream, whole-second offset).
+ */
+export function momentHref(m: Pick<HubLivePulseMoment, 'login' | 'streamId' | 'offsetSeconds' | 'at'>): string {
+  const page = momentPageHref({ streamId: m.streamId ?? '', at: m.at })
+  if (page) return page
   const query = new URLSearchParams({ login: m.login ?? '', stream: m.streamId ?? '', offset: String(Math.max(0, Math.floor(m.offsetSeconds || 0))) })
   return `/analytics/moments?${query}`
 }

@@ -8,7 +8,6 @@ import {
 } from '../../../lib/clipFeedback'
 import { accountBillingSignInHref } from '../../../lib/accountBillingReturn'
 import { currentAccountTag, useAccountSession } from '../../../lib/accountSession'
-import { clipPagePath } from '../../../lib/nativeClips'
 import { ChannelAvatar, formatAgo, formatCount } from './NativeClipParts'
 
 
@@ -56,12 +55,21 @@ export function worthShareText(feedback: ClipFeedback | null): string | null {
   return `${Math.round(share * 100)}% worth watching (${formatCount(total)} reviews)`
 }
 
-/** Shown in place when a signed-out viewer presses Worth watching, Skip or Add a comment. */
-export function SignInPrompt({ clipId, canWrite, signedIn }: { clipId: string; canWrite: boolean; signedIn: boolean }) {
+/**
+ * Shown in place when a signed-out viewer presses Worth watching, Skip, a rating or Add a comment.
+ * `returnTo` is the page the sign-in comes back to. The two texts default to the clip page's.
+ */
+export function SignInPrompt({ returnTo, canWrite, signedIn, signedOutText = 'Reviews and comments are read-only until you sign in with Twitch.', linkText = 'Link your Twitch account to review and comment.' }: {
+  returnTo: string
+  canWrite: boolean
+  signedIn: boolean
+  signedOutText?: string
+  linkText?: string
+}) {
   return (
     <div className="nc-signin" role="status">
-      <span>{signedIn && !canWrite ? 'Link your Twitch account to review and comment.' : 'Reviews and comments are read-only until you sign in with Twitch.'}</span>
-      <Link className="nc-btn nc-pill nc-pill-light" to={signedIn ? '/account/settings' : accountBillingSignInHref(clipPagePath(clipId))}>{signedIn ? 'Link Twitch' : 'Sign in with Twitch'}</Link>
+      <span>{signedIn && !canWrite ? linkText : signedOutText}</span>
+      <Link className="nc-btn nc-pill nc-pill-light" to={signedIn ? '/account/settings' : accountBillingSignInHref(returnTo)}>{signedIn ? 'Link Twitch' : 'Sign in with Twitch'}</Link>
     </div>
   )
 }
@@ -105,7 +113,7 @@ export function ReviewSplit({ feedback, onChange, onNeedSignIn, onStatus }: {
   )
 }
 
-const REASONS: { value: ReportReason; label: string }[] = [
+export const REPORT_REASONS: { value: ReportReason; label: string }[] = [
   { value: 'spam', label: 'Spam' },
   { value: 'abuse', label: 'Abuse or harassment' },
   { value: 'other', label: 'Something else' },
@@ -176,7 +184,7 @@ function CommentMenu({ comment, canWrite, onDelete, onReported, onNeedSignIn, on
           ) : (
             <>
               <p>Why report it?</p>
-              {REASONS.map(reason => (
+              {REPORT_REASONS.map(reason => (
                 <button key={reason.value} type="button" disabled={busy} onClick={() => void run(async () => {
                   await reportClipComment(comment.id, reason.value)
                   onReported()

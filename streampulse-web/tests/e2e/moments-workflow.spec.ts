@@ -416,7 +416,7 @@ test('storage failure has one workspace warning rather than a warning per card',
   await expect(page.getByText('Saved data could not be read.', { exact: false })).toHaveCount(1)
 })
 
-test('reviewed archive artwork returns only to its exact card without background source lookups', async ({ page }) => {
+test('a row reads its own stream once on screen and shows only that stream’s verified thumbnail, labeled', async ({ page }) => {
   let checks = 0
   const artwork = { vodId: '123456', kind: 'archive_thumbnail', url: 'https://static-cdn.jtvnw.net/cf_vods/fixture/thumb/preview.jpg' }
   await page.route(artwork.url, route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#222"/></svg>' }))
@@ -426,25 +426,29 @@ test('reviewed archive artwork returns only to its exact card without background
   })
   await page.goto('/analytics/moments')
   await expect(page.locator('.moments-result')).toHaveCount(2)
-  expect(checks).toBe(0)
-  await expect(page.locator('.moments-card-artwork')).toHaveCount(0)
+  const first = page.locator('.moments-result').first()
+  // Every row keeps its picture slot; the picture says what it is.
+  await expect(page.locator('.moments-card-slot')).toHaveCount(2)
+  await expect(first.locator('.moments-card-slot')).toHaveAttribute('data-preview', 'broadcast')
+  await expect(first.locator('.moments-card-pic img')).toHaveAttribute('src', artwork.url)
+  await expect(first.locator('.moments-card-label')).toContainText('VOD thumbnail')
+  // The other stream's answer carries no thumbnail: its row never borrows this one.
+  await expect(page.locator('.moments-result').nth(1).locator(`img[src="${artwork.url}"]`)).toHaveCount(0)
+  // One read for the row's stream, however often the list renders.
+  await expect.poll(() => checks).toBe(1)
   await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
   await expect(page.getByRole('link', { name: /^Open VOD at/ })).toBeVisible()
-  // Dev StrictMode may abort/re-run selection effects. Gallery navigation must
-  // issue zero additional requests relative to the completed selected review.
   const selectedChecks = checks
-  expect(selectedChecks).toBeGreaterThan(0)
+  expect(selectedChecks).toBeGreaterThan(1)
   await page.getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(page.locator('.moments-card-artwork')).toHaveCount(1)
-  await expect(page.locator('.moments-result').first().locator('.moments-card-artwork img')).toHaveAttribute('src', artwork.url)
-  await expect(page.locator('.moments-result').nth(1).locator('.moments-card-artwork')).toHaveCount(0)
+  await expect(first.locator('.moments-card-pic img')).toHaveAttribute('src', artwork.url)
   expect(checks).toBe(selectedChecks)
   await page.locator('.moments-result').first().getByRole('button', { name: 'Twitch emote spike — Open moment for xQc at about 0:07:00 into broadcast', exact: true }).click()
   await expect(page.getByRole('link', { name: /^Open VOD at/ })).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456?t=420s')
   expect(checks).toBeGreaterThan(selectedChecks)
 })
 
-test('recent hub artwork is display-only, request-free per card, and suppressed by newer source state', async ({ page }) => {
+test('recent hub artwork is display-only, read once per stream, and suppressed by newer source state', async ({ page }) => {
   const artwork = { vodId: '123456', kind: 'archive_thumbnail', url: 'https://static-cdn.jtvnw.net/cf_vods/fixture/thumb/recent.jpg' }
   let sourceChecks = 0
   await installHubUxMock(page, { firstMomentArchiveArtwork: artwork })
@@ -455,25 +459,27 @@ test('recent hub artwork is display-only, request-free per card, and suppressed 
   })
   await page.goto('/analytics/moments')
   const first = page.locator('.moments-result').first()
-  await expect(first.locator('.moments-card-artwork img')).toHaveAttribute('src', artwork.url)
-  await expect(first.locator('.moments-card-artwork img')).toHaveAttribute('loading', 'lazy')
+  await expect(first.locator('.moments-card-pic img')).toHaveAttribute('src', artwork.url)
+  await expect(first.locator('.moments-card-pic img')).toHaveAttribute('loading', 'lazy')
   await expect(first.locator('.moments-row-emotes')).toHaveCount(1)
-  await expect(page.locator('.moments-result').nth(1).locator('.moments-card-artwork')).toHaveCount(0)
+  await expect(page.locator('.moments-result').nth(1).locator(`img[src="${artwork.url}"]`)).toHaveCount(0)
   await expect(page.locator('.moments-result').nth(1)).toContainText('Chat spike')
   await expect(first.locator('.moments-card-artwork').getByRole('button')).toHaveCount(0)
-  expect(sourceChecks).toBe(0)
+  // The row asks its stream once, on screen; Save asks nothing more.
+  await expect.poll(() => sourceChecks).toBe(1)
   await first.getByRole('button', { name: 'Save', exact: true }).click()
   expect(await page.evaluate(() => localStorage.getItem('streampulse.saved-moments.v2'))).not.toContain(artwork.url)
-  expect(sourceChecks).toBe(0)
+  expect(sourceChecks).toBe(1)
   const artworkBounds = await first.locator('.moments-card-artwork').boundingBox()
   expect(artworkBounds).not.toBeNull()
   await page.mouse.click(artworkBounds!.x + artworkBounds!.width / 2, artworkBounds!.y + artworkBounds!.height / 2)
   await expect(page.getByText('archive unavailable', { exact: false })).toBeVisible()
-  expect(sourceChecks).toBeGreaterThan(0)
+  expect(sourceChecks).toBeGreaterThan(1)
   // The open row keeps the thumbnail it opened with; it changes only after closing.
-  await expect(first.locator('.moments-card-artwork img')).toHaveAttribute('src', artwork.url)
+  await expect(first.locator('.moments-card-pic img')).toHaveAttribute('src', artwork.url)
   await page.getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(first.locator('.moments-card-artwork')).toHaveCount(0)
+  await expect(first.locator(`img[src="${artwork.url}"]`)).toHaveCount(0)
+  await expect(first.locator('.moments-card-slot')).not.toHaveAttribute('data-preview', 'broadcast')
 })
 
 test('moment cards keep background, keyboard, Save, analytics, and emote interactions independent', async ({ page }) => {

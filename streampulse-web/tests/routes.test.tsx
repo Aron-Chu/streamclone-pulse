@@ -105,3 +105,11 @@ describe('clip addresses without the clip page', () => {
     expect(screen.queryByRole('main', { name: 'Stream page' })).toBeNull()
   })
 })
+
+describe('Moment page addresses without the Moment page', () => {
+  it.each(['/analytics/moments/9000001/20261114T1040Z', '/analytics/moments/9000001/20261114T1040Z/'])('%s is not found, never a channel named "moments"', async path => {
+    renderPath(path)
+    expect(await screen.findByTestId('not-found')).toBeTruthy()
+    expect(screen.queryByRole('main', { name: 'Stream page' })).toBeNull()
+  })
+})

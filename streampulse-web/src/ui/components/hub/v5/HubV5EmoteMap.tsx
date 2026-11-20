@@ -509,7 +509,7 @@ function EmoteDrivers({ a, peakT, bucketMinutes, intervalWindow, behind, avatars
         <ol className={`hv5-el-cols hv5-es-rows${drivers.length <= 3 ? ' hv5-el-one' : ''}`} key={key}>
           {drivers.map((d, i) => (
             <li key={momentRowKey(d.m)} style={{ animationDelay: `${i * 18}ms` }}>
-              <Link to={momentHref(d.m)} className="hv5-el-r">
+              <Link to={momentHref(d.m)} state={{ from: 'hub' }} className="hv5-el-r">
                 <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
                 <HubV5Avatar login={d.m.login!} name={d.m.displayName || d.m.login!} src={d.m.profileImageUrl || avatars?.get(d.m.login!)} size={24} />
                 <span className="hv5-el-n" aria-hidden="true">{d.m.displayName || d.m.login}<small>{d.m.category || 'No category'}</small></span>
@@ -1366,7 +1366,7 @@ export function HubV5EmoteMap({
                     <ol className={`hv5-el-cols${spammed.length <= 5 ? ' hv5-el-one' : ''}`} key={`m|${selected.id}`}>
                       {spammed.map((r, i) => (
                         <li key={r.key} style={{ animationDelay: `${i * 18}ms` }}>
-                          <Link to={r.href} className="hv5-el-r">
+                          <Link to={r.href} state={{ from: 'hub' }} className="hv5-el-r">
                             <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
                             <HubV5Avatar login={r.login} name={r.displayName} src={r.moment.profileImageUrl || avatars?.get(r.login)} size={24} />
                             <span className="hv5-el-n" aria-hidden="true">{r.displayName}<small>{r.moment.category || 'No category'}</small></span>
