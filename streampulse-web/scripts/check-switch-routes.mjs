@@ -38,6 +38,10 @@ const TRUE = Object.freeze(['true'])
 export const SWITCHES = Object.freeze([
   { name: 'VITE_PUBLIC_MOMENTS_FEED', on: ON_OR_ONE, source: 'src/lib/momentsFeed.ts', routes: ['/v1/public/moments'] },
   { name: 'VITE_PUBLIC_NATIVE_CLIPS', on: ON_OR_ONE, source: 'src/lib/nativeClips.ts', routes: ['/v1/public/clips'] },
+  // The read-only Moment page reads the public stream and recap routes the stream page already uses; both need a stream id to probe.
+  { name: 'VITE_PUBLIC_MOMENT_PAGE', on: ON_OR_ONE, source: 'src/lib/momentPageFlag.ts, src/lib/momentReads.ts', routes: [], note: 'no route to check: reads the public stream and recap routes the stream page uses today; a live Moment\'s Up next also reads /v1/public/moments only when VITE_PUBLIC_MOMENTS_FEED is on' },
+  // Ratings and comments go through the edge relay, which needs a pattern route (edge amendment v3) the exact-key check here cannot see.
+  { name: 'VITE_PUBLIC_MOMENT_FEEDBACK', on: ON_OR_ONE, source: 'src/lib/momentPageFlag.ts, src/lib/momentFeedback.ts', routes: [], note: 'no route to check: keep off until the backend PULSE_MOMENT_FEEDBACK_ENABLED, its migrations and the edge relay for /v1/account/streams/<id>/... are live, and confirm those by hand' },
   {
     name: 'VITE_TWITCH_SIGNIN', on: ONE, relay: true, source: 'src/lib/twitchSignIn.ts, src/lib/accountSession.ts',
     routes: ['/v1/account/auth/twitch/start', '/v1/account/auth/twitch/complete', '/v1/account/identities/twitch/link', '/v1/account/sessions/revoke-all'],

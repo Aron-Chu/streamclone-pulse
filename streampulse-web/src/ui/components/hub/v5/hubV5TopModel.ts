@@ -28,6 +28,7 @@ import { momentsFeedFrom, type MomentsFeedCategoryFacet, type MomentsFeedSnapsho
 import type { MomentVodRef } from '../../../../lib/momentsFeedVod'
 import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
 import { hubCategoryArt, momentHref, momentRowKey, momentRowsV5 } from './hubV5Model'
+import { momentPageHref } from '../../../../lib/momentPageFlag'
 
 /** Rows the list shows. */
 export const TOP_ROWS = 20
@@ -142,7 +143,7 @@ function feedRow(m: CheckedMoment, ends: ReadonlyMap<string, number>): TopRowDat
     game: item.category?.name || null, art: boxArtImage(item) ?? null,
     emote: m.kind === 'emotes' ? emotes[0] ?? null : null, emotes,
     rate: item[m.kind].perMin, usual: m.kind === 'chat' ? m.baseC : m.baseE, viewers: item.viewers ?? null, live: item.streamLive,
-    href: `/analytics/moments?${new URLSearchParams({ m: item.id })}`, also: [], checked: m,
+    href: momentPageHref({ streamId: item.streamId, at: item.minuteStart }) ?? `/analytics/moments?${new URLSearchParams({ m: item.id })}`, also: [], checked: m,
     edge: momentEdge(item.offsetSeconds, item.streamEdge, ends.get(`${item.login.toLowerCase()}|${item.streamId}`)) ?? null,
   }
 }

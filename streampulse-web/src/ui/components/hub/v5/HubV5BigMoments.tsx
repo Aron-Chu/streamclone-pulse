@@ -194,7 +194,7 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still, fresh }: 
                 Watch live <span aria-hidden="true">↗</span>
               </a>
             ) : null}
-            <Link className="hv5-bm-open" to={row.href} tabIndex={tab} draggable={false}>Open in Moments</Link>
+            <Link className="hv5-bm-open" to={row.href} state={{ from: 'hub' }} tabIndex={tab} draggable={false}>Open in Moments</Link>
           </span>
         </div>
       </div>

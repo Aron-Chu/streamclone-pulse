@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import { checkMoment, feedStreamEnds, fx, momentEdge, sparkLastDataOffset, topBursts } from '../src/lib/momentsChecked'
 import { normalizePublicHub, type HubLiveChannel, type HubLivePulseMoment, type PublicHub } from '../src/lib/publicHub'
@@ -36,6 +36,20 @@ describe('Top moments today from the Moments list', () => {
     expect(rows.map((r) => r.id)).toEqual(want.map((m) => m.item.id))
     for (const r of rows) expect([r.checked?.item.verdict, r.checked?.item.checks.rise?.code]).toEqual(['ok', 'rose'])
     expect(rows[0]!.href).toBe(`/analytics/moments?m=${encodeURIComponent(rows[0]!.id)}`)
+  })
+
+  it('links each row’s own Moment page by the feed’s minute once the page is switched on', () => {
+    vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+    try {
+      const rows = topFeedRows(fixture)
+      expect(rows.length).toBeGreaterThan(0)
+      for (const r of rows) {
+        const minute = new Date(r.checked!.item.minuteStart).toISOString().replace(/[-:]/g, '').slice(0, 13) + 'Z'
+        expect(r.href).toBe(`/analytics/moments/${r.streamId}/${minute}`)
+      }
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('counts the day as the moments that hold up, else the feed total', () => {

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
+import { lazy, Suspense, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AnalyticsRouteFallback } from './AnalyticsRouteFallback'
 import Landing from './public/Landing'
@@ -14,6 +14,8 @@ import { PublicLayout } from '../ui/components/PublicLayout'
 import { retiredExplorerPath } from '../lib/momentsNavigation'
 import { twitchSignInEnabled } from '../lib/twitchSignInFlag'
 import { accountMomentsEnabled } from '../lib/accountMoments'
+import { warmMomentPage } from '../lib/momentPageFlag'
+import { parseMomentAtKey } from '../lib/momentFeedback'
 
 // On demand like the public pages: /analytics is prerendered as the hub's first render, which main.tsx loads before its own.
 const AnalyticsHubV5Page = onDemandPage(() => import('./analytics/AnalyticsHubV5Page'))
@@ -22,6 +24,20 @@ const AnalyticsMomentsPage = lazy(() => import('./analytics/AnalyticsMomentsPage
 const clipsBuildFlag = import.meta.env.VITE_PUBLIC_NATIVE_CLIPS
 const clipsRouteOn = clipsBuildFlag === 'on' || clipsBuildFlag === '1'
 const NativeClipWatchPage = clipsRouteOn ? lazy(() => import('./analytics/NativeClipWatchPage')) : null
+// A Moment's own page exists only in a build with VITE_PUBLIC_MOMENT_PAGE on; read inline, like the clip page, so a build without it folds the route away.
+const momentPageFlag = import.meta.env.VITE_PUBLIC_MOMENT_PAGE
+const momentPageRouteOn = momentPageFlag === 'on' || momentPageFlag === '1'
+const MomentWatchPage = momentPageRouteOn ? lazy(() => import('./analytics/MomentWatchPage')) : null
+/** The Moment's page as it opens: its reads start beside its code, not after it, once per address. */
+function MomentWatchRoute() {
+  const { streamId = '', momentAt = '' } = useParams()
+  const warmed = useRef('')
+  if (warmed.current !== `${streamId}/${momentAt}`) {
+    warmed.current = `${streamId}/${momentAt}`
+    warmMomentPage({ streamId, at: parseMomentAtKey(momentAt) })
+  }
+  return MomentWatchPage ? <MomentWatchPage /> : null
+}
 const AccountPage = lazy(() => import('./account/AccountPage'))
 const AccountSettings = lazy(() => import('./account/AccountSettings'))
 const BillingPage = lazy(() => import('./account/BillingPage'))
@@ -242,6 +258,7 @@ function PortalRoutes() {
         <Route path="/analytics/moments" element={<AnalyticsMomentsPage />} />
         {/* Without the clip page, a clip address is a 404, never a channel named "clips". */}
         {NativeClipWatchPage ? <Route path="/analytics/clips/:clipId" element={<NativeClipWatchPage />} /> : <Route path="/analytics/clips/*" element={<NotFound />} />}
+        {MomentWatchPage ? <Route path="/analytics/moments/:streamId/:momentAt" element={<MomentWatchRoute />} /> : <Route path="/analytics/moments/:streamId/:momentAt" element={<NotFound />} />}
         <Route path="/analytics/newsroom" element={<RetiredExplorerRedirect />} />
         <Route path="/analytics/newsroom/:storyId" element={<RetiredExplorerRedirect />} />
         <Route path="/analytics/explore" element={<RetiredExplorerRedirect />} />

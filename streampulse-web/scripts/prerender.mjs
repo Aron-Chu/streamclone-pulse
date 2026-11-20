@@ -5,9 +5,10 @@
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createServer, loadConfigFromFile } from 'vite'
+import { createServer, loadConfigFromFile, loadEnv } from 'vite'
 import { readPilot, writeRuntimeManifests, renderRecapDocument, recapRedirects, sitemapWithRecaps } from './recap-pilot.mjs'
 import { sitemapWithStatedDates, statedUpdateDate } from './sitemap-lastmod.mjs'
+import { momentPageRedirects } from './moment-page-redirects.mjs'
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -377,7 +378,10 @@ for (const page of pilotPages) {
   mkdirSync(asset, { recursive: true })
   writeFileSync(join(asset, 'index.html'), html)
 }
-writeFileSync(join(dist, '_redirects'), slashRedirects(recapRedirects(readFileSync(join(root, 'public', '_redirects'), 'utf8'), pilotPages), routes.map((route) => route.path).filter(Boolean)))
+// A Moment's own page keeps its rewrite lines only in a build with its switch on (the env vite build read).
+const buildEnv = { ...process.env, ...loadEnv('production', root, ['VITE_']) }
+const redirects = momentPageRedirects(readFileSync(join(root, 'public', '_redirects'), 'utf8'), buildEnv)
+writeFileSync(join(dist, '_redirects'), slashRedirects(recapRedirects(redirects, pilotPages), routes.map((route) => route.path).filter(Boolean)))
 writeFileSync(join(dist, 'sitemap.xml'), sitemapWithStatedDates(sitemapWithRecaps(readFileSync(join(root, 'public', 'sitemap.xml'), 'utf8'), pilotPages), statedDates))
 
 await server.close()

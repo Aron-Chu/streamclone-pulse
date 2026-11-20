@@ -64,6 +64,11 @@
 # /analytics/, which would otherwise discard the requested deep-link path.
 /analytics/explore/:broadcastId /analytics-fallback/ 200
 /analytics/explore/:broadcastId/ /analytics-fallback/ 200
+# The Moments list and a Moment's own page keep their own lines above /analytics/:login, so a rule for channel pages never applies to them.
+/analytics/moments /analytics-fallback/ 200
+/analytics/moments/ /analytics-fallback/ 200
+/analytics/moments/:streamId/:momentAt /analytics-fallback/ 200
+/analytics/moments/:streamId/:momentAt/ /analytics-fallback/ 200
 
 # Reviewed recap pilot routes are inserted here at build time.
 

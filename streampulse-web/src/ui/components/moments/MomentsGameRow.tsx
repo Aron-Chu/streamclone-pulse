@@ -4,11 +4,19 @@ import type { MomentsGame } from '../../../lib/momentsPage'
 const initials = (name: string) => name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).toUpperCase() || '?'
 const count = (n: number) => `${n} ${n === 1 ? 'moment' : 'moments'}`
 
+/**
+ * The covers a 390 px phone shows beside "All games" (84 px each). They are the phone's largest
+ * picture, so they are asked for at once and ahead of the row emotes; the rest wait until near.
+ */
+export const FIRST_COVERS = 3
+
 /** A game's cover; its initials when Twitch sends none or the picture fails. */
-function Cover({ game }: { game: MomentsGame }) {
+function Cover({ game, first }: { game: MomentsGame; first: boolean }) {
   const [failed, setFailed] = useState(false)
   return <span className="moments-cover-art">
-    {game.art && !failed ? <img src={game.art} alt="" width={285} height={380} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : <span>{initials(game.name)}</span>}
+    {game.art && !failed ? <img src={game.art} alt="" width={285} height={380} loading={first ? 'eager' : 'lazy'} decoding="async" referrerPolicy="no-referrer"
+      // React 18 DOM: lowercase attribute for the fetch priority hint, as EmoteImg does.
+      {...{ fetchpriority: first ? 'high' : undefined }} onError={() => setFailed(true)} /> : <span>{initials(game.name)}</span>}
   </span>
 }
 
@@ -86,10 +94,10 @@ export function MomentsGameRow({ games, total, picked, onPick }: {
         <span className="moments-cover-count">{count(total)}</span>
       </button>
     </li>
-    {shown.map(game => <li key={game.name}>
+    {shown.map((game, index) => <li key={game.name}>
       <button className="moments-cover" type="button" data-game={game.name} aria-pressed={game.name === picked} onClick={() => onPick(game.name === picked ? null : game.name)}
         aria-label={`${game.name}: ${count(game.moments)}. ${game.name === picked ? 'Shows every game again.' : 'Shows its moments.'}`}>
-        <Cover game={game} />
+        <Cover game={game} first={index < FIRST_COVERS} />
         <span className="moments-cover-name">{game.name}</span>
         <span className="moments-cover-count">{count(game.moments)}</span>
       </button>
