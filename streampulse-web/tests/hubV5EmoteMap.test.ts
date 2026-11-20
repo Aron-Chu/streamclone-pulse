@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { HubActivityPoint, HubBucketEmote, HubLivePulseMoment } from '../src/lib/publicHub'
+import type { HubActivityPoint, HubBucketEmote, HubEmote, HubLivePulseMoment } from '../src/lib/publicHub'
 import { hubClockRange } from '../src/ui/components/hub/v5/hubV5Model'
 import {
   EMOTE_FIELD_INSET,
   EMOTE_ZOOM_MAX,
   MAP_VIEW_1X,
   NO_TILE_FITS,
+  animatedFlags,
+  animatedFlagsFromKey,
+  animatedFlagsKey,
   clampMapView,
   conveyorEmotes,
   conveyorRng,
@@ -23,6 +26,7 @@ import {
   emoteMapLayout,
   emoteMapMeta,
   emoteMapNext,
+  emoteMapSignature,
   emoteMapValue,
   emoteMomentRows,
   emoteSpike,
@@ -36,6 +40,7 @@ import {
   fieldMapView,
   fieldOf,
   findMapEmote,
+  keepEmoteMapData,
   mapRectOnScreen,
   mapViewShowing,
   nearestTile,
@@ -888,5 +893,59 @@ describe('Find emote (3A, 11-02)', () => {
   it('keeps the whole map for a tile already that big, or no size', () => {
     expect(tileMapView({ x: 0, y: 0, w: 300, h: 200 }, W, H)).toEqual(MAP_VIEW_1X)
     expect(tileMapView({ x: 0, y: 0, w: 20, h: 20 }, 0, 0)).toEqual(MAP_VIEW_1X)
+  })
+})
+
+describe('the map data across polls', () => {
+  const pts = () => [
+    point(0, 6, [em('EmA', 'twitch', 30), em('EmB', 'seventv', 10)]),
+    point(1, 6, [em('EmB', 'seventv', 20)]),
+    point(2, 6, [em('EmA', 'twitch', 5)], { bucketComplete: false }),
+  ]
+
+  it('keeps the same data object for a poll that repeats the closed intervals', () => {
+    const a = keepEmoteMapData(null, pts(), 6)
+    expect(a.data).not.toBeNull()
+    // new point objects, the same closed intervals
+    const b = keepEmoteMapData(a, pts(), 6)
+    expect(b).toBe(a)
+    expect(b.data).toBe(a.data)
+    // the open live edge moving does not count
+    const edge = pts()
+    edge[2] = point(2, 6, [em('EmA', 'twitch', 50)], { bucketComplete: false })
+    expect(keepEmoteMapData(a, edge, 6).data).toBe(a.data)
+  })
+
+  it('changes it for a revised last interval, a newly closed one, or a new bucket length', () => {
+    const a = keepEmoteMapData(null, pts(), 6)
+    const revised = pts()
+    revised[1] = point(1, 6, [em('EmB', 'seventv', 21)])
+    const b = keepEmoteMapData(a, revised, 6)
+    expect(b.data).not.toBe(a.data)
+    expect(b.data!.emotes.find((e) => e.e.name === 'EmB')!.c24).toBe(31)
+    const closed = pts()
+    closed[2] = point(2, 6, [em('EmA', 'twitch', 5)])
+    expect(keepEmoteMapData(a, closed, 6).data).not.toBe(a.data)
+    expect(keepEmoteMapData(a, pts(), 5).data).not.toBe(a.data)
+    expect(keepEmoteMapData(a, pts().slice(1), 6).data).not.toBe(a.data)
+  })
+
+  it('signs the points in one pass, in any order', () => {
+    const p = pts()
+    expect(emoteMapSignature([p[2]!, p[1]!, p[0]!], 6)).toBe(emoteMapSignature(p, 6))
+    expect(emoteMapSignature([], 6)).toBe(emoteMapSignature([point(0, 6, [])], 6))
+  })
+})
+
+describe('animated flags', () => {
+  const top = (names: ReadonlyArray<[string, string, boolean]>) => names.map(([name, provider, animated]) => ({ name, provider, animated }) as HubEmote)
+
+  it('keys the hub top list by its animated emotes only, in any order', () => {
+    const key = animatedFlagsKey(top([['LOL', 'seventv', true], ['Kappa', 'twitch', false], ['catJAM', 'seventv', true]]))
+    expect(key).toBe(animatedFlagsKey(top([['catJAM', 'seventv', true], ['LOL', 'seventv', true]])))
+    expect([...animatedFlagsFromKey(key)].sort()).toEqual([emoteFlagKey('seventv', 'LOL'), emoteFlagKey('seventv', 'catJAM')].sort())
+    expect(animatedFlags(top([['LOL', 'seventv', true]])).has(emoteFlagKey('seventv', 'LOL'))).toBe(true)
+    expect(animatedFlagsKey(undefined)).toBe('')
+    expect(animatedFlagsFromKey('').size).toBe(0)
   })
 })

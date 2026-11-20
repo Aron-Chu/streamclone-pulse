@@ -33,6 +33,7 @@ import { Link } from 'react-router-dom'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import { loadHubIntervalMoments, readHubIntervalMoments, type HubIntervalMomentsState, type HubIntervalRequest } from '../../../../lib/hubIntervalMoments'
 import type { HubApiWindow } from '../../../../lib/hubWindows'
+import { measureTextWidth } from '../../../../lib/textWidth'
 import type { HubActivityPoint, HubEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { HubToggletip } from '../d3/HubToggletip'
@@ -45,12 +46,13 @@ import {
   clampMapView,
   emoteChange,
   emoteDrivers,
+  animatedFlagsFromKey,
+  animatedFlagsKey,
   emoteFlagKey,
   emoteImageAt,
   emoteInWindow,
   emoteIntervalLabel,
   emoteMapChips,
-  emoteMapData,
   emoteMapHeight,
   emoteMapMeta,
   emoteMapNext,
@@ -64,6 +66,7 @@ import {
   emoteWindowWords,
   fieldMapView,
   findMapEmote,
+  keepEmoteMapData,
   mapViewShowing,
   nearestTile,
   paceHeat,
@@ -149,13 +152,6 @@ function heatStyle(a: HubEmoteAgg): CSSProperties | null {
   if (!h) return null
   const c = h.dir === 'up' ? 'var(--hv5-rise)' : 'var(--hv5-cool)'
   return { '--bg': `color-mix(in oklab, ${c} ${h.mix}%, #17171a)`, '--bgh': `color-mix(in oklab, ${c} ${h.mix + 8}%, #1e1e22)` } as CSSProperties
-}
-
-/** 7TV has a still frame only for an animated emote: the hub's top list says which are. */
-function animatedFlags(top: readonly HubEmote[] | undefined): ReadonlySet<string> {
-  const out = new Set<string>()
-  for (const e of top ?? []) if (e.animated) out.add(emoteFlagKey(e.provider, e.name))
-  return out
 }
 
 function Chg({ c, hidden }: { c: EmoteChange; hidden?: boolean }) {
@@ -557,7 +553,13 @@ export function HubV5EmoteMap({
   /** The hub search's emote pick (3A): find it on the map once per n. */
   findRequest?: { name: string; n: number } | null
 }) {
-  const data = useMemo(() => emoteMapData(points, bucketMinutes), [points, bucketMinutes])
+  // one pass over the points per poll: while what the map reads is unchanged, its data (so its layout and tiles) stays the same object
+  const keptRef = useRef<{ sig: string; data: HubEmoteMapData | null } | null>(null)
+  const kept = useMemo(() => keepEmoteMapData(keptRef.current, points, bucketMinutes), [points, bucketMinutes])
+  useLayoutEffect(() => {
+    keptRef.current = kept
+  }, [kept])
+  const data = kept.data
   const phone = useMatchMedia('(max-width: 719px)')
   const reduce = useMatchMedia('(prefers-reduced-motion: reduce)')
   // a phone has no Esc key: Find emote's × clears there (X1, 11-02)
@@ -656,18 +658,27 @@ export function HubV5EmoteMap({
 
   // a field label sits on its frame's top line only as far as the field goes: a narrow field drops the share, then the label
   const [labelFit, setLabelFit] = useState<Record<string, 'name' | 'none'>>({})
+  const labelFamily = useRef<string | null>(null)
   useLayoutEffect(() => {
     const map = mapRef.current
     if (!map || !layout) return undefined
     const measure = () => {
+      // The labels' text is measured on a canvas in their own fonts (600 and 500 12px), so the fit never forces a layout
+      // of the freshly styled map (S1, 11-19). Without a canvas it reads the DOM as before.
+      labelFamily.current ??= getComputedStyle(map).getPropertyValue('--sp-font').trim() || '"Inter", system-ui, sans-serif'
       const next: Record<string, 'name' | 'none'> = {}
-      for (const el of map.querySelectorAll<HTMLElement>('.hv5-em-fl')) {
-        const f = layout.fields.find((x) => x.field === el.dataset.field)
-        const name = el.querySelector('span')?.getBoundingClientRect().width ?? 0
-        const share = el.querySelector('b')?.getBoundingClientRect().width ?? 0
-        if (!f) continue
+      for (const f of layout.fields) {
+        if (f.h < 40) continue
+        let name = measureTextWidth(String(f.name), `600 12px ${labelFamily.current}`)
+        let share = measureTextWidth(String(f.share), `500 12px ${labelFamily.current}`)
+        if (name == null || share == null) {
+          const el = map.querySelector<HTMLElement>(`.hv5-em-fl[data-field="${cssEscape(String(f.field))}"]`)
+          if (!el) continue
+          name = el.querySelector('span')?.getBoundingClientRect().width ?? 0
+          share = el.querySelector('b')?.getBoundingClientRect().width ?? 0
+        }
         // 7 px pads, the dot and its 6 px gap, the name, a 6 px gap, the share; 10 px in from the field and 6 px short of its end
-        const bare = 14 + (el.querySelector('i') ? 13 : 0) + name
+        const bare = 14 + (heat ? 0 : 13) + name
         const room = f.w - 16
         if (bare > room) next[f.field] = 'none'
         else if (bare + 6 + share > room) next[f.field] = 'name'
@@ -694,7 +705,9 @@ export function HubV5EmoteMap({
     fitsRef.current = fits
   }, [fits])
   const playing = useMemo(() => (layout ? playingTiles(layout.tiles, settled, W, VH, fits) : NO_IDS), [layout, settled, W, VH, fits])
-  const animatedSet = useMemo(() => animatedFlags(topEmotes), [topEmotes])
+  // 7TV has a still frame only for an animated emote: the hub's top list says which are
+  const animatedKey = useMemo(() => animatedFlagsKey(topEmotes), [topEmotes])
+  const animatedSet = useMemo(() => animatedFlagsFromKey(animatedKey), [animatedKey])
 
   const hide = useCallback(() => {
     window.clearTimeout(timer.current)
@@ -1139,7 +1152,7 @@ export function HubV5EmoteMap({
   return (
     <section id="emotes" className="hv5-sec hv5-emotes" aria-labelledby={H_ID} aria-busy={loading || undefined}>
       <div className="hv5-rh hv5-em-rh">
-        <h2 id={H_ID}>Top emotes</h2>
+        <h2 id={H_ID}>Emote map</h2>
         {data ? <HubToggletip tip={emoteMapTip(data)} label="About the emote map" /> : null}
         {data ? (
           <span className="hv5-end">

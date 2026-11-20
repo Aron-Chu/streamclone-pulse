@@ -11,7 +11,7 @@
  */
 import type { HubLiveChannel, PublicHub } from '../../../../lib/publicHub'
 import { screenerMetricMultiplier } from '../../../../lib/channelScreenerContract'
-import { formatHubInt, hasFullChatWindow, hubClock, hubClockRange } from './hubV5Model'
+import { formatHubClockAt, formatHubInt, hasFullChatWindow, hubClock, hubClockRange } from './hubV5Model'
 
 export const FEED_UP_MIN = 1.5
 export const FEED_NOW_MIN = 30
@@ -40,7 +40,7 @@ export function screenerHot(c: HubLiveChannel | null | undefined): boolean {
 
 /** "4:25 PM", to the minute and never rounded up (the "as of" line). */
 export function feedClockFloor(t: number): string {
-  return new Date(Math.floor(t / 60_000) * 60_000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return formatHubClockAt(new Date(Math.floor(t / 60_000) * 60_000))
 }
 
 /** "just now", "12 min ago", else the clock time. */

@@ -8,11 +8,26 @@
  * and fades out before the line under the hero. It fades in once its pictures
  * are drawn, pauses off screen or in a hidden tab, and holds one still frame
  * under reduced motion. Decorative: aria-hidden, no numbers, no pointer events.
+ *
+ * S1 (11-19): it was 120 full-size pictures (most of them animated, 7TV at 4x)
+ * fetched while the hub first drew, only to be drawn as 32 px stills at a third
+ * of their strength. It now asks for the small still (Twitch static, 7TV 2x),
+ * at low priority, once the page is idle, and its frame loop stops while it is
+ * off screen or the tab is hidden instead of ticking on.
+ *
+ * An emote the hub flags as animated asks 7TV for its 2x still (_static), the
+ * first frame the canvas would have drawn anyway, instead of the moving file;
+ * if that still fails to load, it tries the moving file once.
  */
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import type { HubActivityPoint } from '../../../../lib/publicHub'
-import { conveyorEmotes, conveyorRng, type ConveyorEmote } from './hubV5EmoteMapModel'
+import { conveyorEmotes, conveyorRng, emoteFlagKey, tilePicUrl, type ConveyorEmote } from './hubV5EmoteMapModel'
+
+/** A conveyor picture, and the moving file to try once if its still fails. */
+type ConveyorPic = ConveyorEmote & { moving?: string }
+
+const NO_FLAGS: ReadonlySet<string> = new Set()
 
 const TILT = -0.12
 const SZ = 32
@@ -22,6 +37,19 @@ const SEED = 825
 const ALPHA = 0.34
 const BAKE_H = 72
 const BAKE_TIMEOUT_MS = 5000
+/** The pictures wait for the page to be idle, but never longer than this after the hub's first data. */
+const IDLE_WAIT_MS = 2500
+
+/** Runs `fn` once the page is idle (Safari has no requestIdleCallback: a timer). */
+function whenIdle(fn: () => void): () => void {
+  const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }
+  if (typeof w.requestIdleCallback === 'function') {
+    const id = w.requestIdleCallback(fn, { timeout: IDLE_WAIT_MS })
+    return () => w.cancelIdleCallback?.(id)
+  }
+  const id = window.setTimeout(fn, 600)
+  return () => window.clearTimeout(id)
+}
 
 export interface HubV5ConveyorRefs {
   mast: RefObject<HTMLElement | null>
@@ -35,7 +63,7 @@ export interface HubV5ConveyorRefs {
 interface Sprite { w: number; ar: number; img: HTMLCanvasElement }
 
 /** Each picture drawn once onto a 72 px high canvas; a slow CDN never holds the hero back past 5 s. */
-function bake(list: readonly ConveyorEmote[]): { items: Sprite[]; total: number; ready: Promise<void>; cancel: () => void } {
+function bake(list: readonly ConveyorPic[]): { items: Sprite[]; total: number; ready: Promise<void>; cancel: () => void } {
   const S = { items: [] as Sprite[], total: 0, ready: Promise.resolve(), cancel: () => {} }
   let dead = false
   const imgs: HTMLImageElement[] = []
@@ -58,6 +86,7 @@ function bake(list: readonly ConveyorEmote[]): { items: Sprite[]; total: number;
       imgs.push(im)
       im.decoding = 'async'
       im.referrerPolicy = 'no-referrer'
+      ;(im as HTMLImageElement & { fetchPriority?: string }).fetchPriority = 'low'
       if (!/betterttv/.test(it.url)) im.crossOrigin = 'anonymous' // BTTV sends no CORS header; it draws either way
       im.onload = () => {
         if (dead) return
@@ -76,29 +105,48 @@ function bake(list: readonly ConveyorEmote[]): { items: Sprite[]; total: number;
         }
         settle()
       }
-      im.onerror = settle
+      im.onerror = it.moving
+        ? () => {
+            // the still failed: the moving file once, then give up on this picture
+            im.onerror = settle
+            im.src = it.moving!
+          }
+        : settle
       im.src = it.url
     }
   }).then(() => { S.items.sort((a, b) => b.w - a.w) })
   return S
 }
 
-export function HubV5Conveyor({ points, refs }: { points: readonly HubActivityPoint[]; refs: HubV5ConveyorRefs }) {
+export function HubV5Conveyor({
+  points,
+  refs,
+  animated = NO_FLAGS,
+}: {
+  points: readonly HubActivityPoint[]
+  refs: HubV5ConveyorRefs
+  /** The hub's animated top emotes by emoteFlagKey (animatedFlags). */
+  animated?: ReadonlySet<string>
+}) {
   const fxRef = useRef<HTMLDivElement>(null)
   const hostRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [list, setList] = useState<ConveyorEmote[]>([])
+  const [list, setList] = useState<ConveyorPic[]>([])
   const [on, setOn] = useState(false)
 
   // made of the first poll that lists emotes, so later polls never re-bake it
   useEffect(() => {
     if (list.length) return
-    const next = conveyorEmotes(points).flatMap((e) => {
-      const url = sanitizeEmoteImageUrl(e.url)
-      return url ? [{ ...e, url }] : []
+    // the small still: Twitch's static picture; 7TV's 2x still (_static) for an emote the hub flags as animated,
+    // else its 2x (a still emote's _static is a 404, and the bucket emotes carry no animated flag of their own)
+    const next = conveyorEmotes(points).flatMap((e): ConveyorPic[] => {
+      const moving = sanitizeEmoteImageUrl(tilePicUrl(e.url, SZ, false, false, 1.5))
+      if (!moving) return []
+      const still = e.name && animated.has(emoteFlagKey(e.provider, e.name)) ? sanitizeEmoteImageUrl(tilePicUrl(e.url, SZ, false, true, 1.5)) : null
+      return [still && still !== moving ? { ...e, url: still, moving } : { ...e, url: moving }]
     })
     if (next.length) setList(next)
-  }, [points, list.length])
+  }, [points, animated, list.length])
 
   // the layer runs from the top of the hero to the line under it
   useEffect(() => {
@@ -132,7 +180,7 @@ export function HubV5Conveyor({ points, refs }: { points: readonly HubActivityPo
       x.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
     fit()
-    const S = bake(list)
+    let S: ReturnType<typeof bake> = { items: [], total: 0, ready: new Promise<void>(() => {}), cancel: () => {} }
     let R = conveyorRng(SEED)
     let rows: Array<{ seq: Array<{ s: Sprite; o: number }>; len: number; y: number; dir: number; v: number; off: number }> = []
     let dead = false
@@ -205,14 +253,18 @@ export function HubV5Conveyor({ points, refs }: { points: readonly HubActivityPo
       }
       x.restore()
     }
+    // the frame loop runs only while the hero is on screen in a shown tab; it stops, not idles, otherwise
+    let ready = false
     const run = () => {
       cancelAnimationFrame(raf)
+      raf = 0
+      if (dead || reduce || !ready || !visible) return
       let t0 = performance.now()
       const step = (t: number) => {
         const dt = Math.min(0.05, (t - t0) / 1000)
         t0 = t
-        if (dead) return
-        if (visible) draw(dt)
+        if (dead || !visible) { raf = 0; return }
+        draw(dt)
         raf = requestAnimationFrame(step)
       }
       raf = requestAnimationFrame(step)
@@ -230,12 +282,17 @@ export function HubV5Conveyor({ points, refs }: { points: readonly HubActivityPo
     ro?.observe(host)
     ro?.observe(mast)
     let seen = true
+    const show = () => {
+      const was = visible
+      visible = seen && !document.hidden
+      if (visible && !was) run()
+    }
     const io = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(([entry]) => {
       seen = Boolean(entry?.isIntersecting)
-      visible = seen && !document.hidden
+      show()
     })
     io?.observe(mast)
-    const onVis = () => { visible = seen && !document.hidden }
+    const onVis = show
     document.addEventListener('visibilitychange', onVis)
     // a little depth: the rows lean with the pointer
     const onMove = (event: PointerEvent) => {
@@ -252,15 +309,21 @@ export function HubV5Conveyor({ points, refs }: { points: readonly HubActivityPo
       mast.addEventListener('pointerleave', onLeave)
     }
     place()
-    void S.ready.then(() => {
+    const stopIdle = whenIdle(() => {
       if (dead) return
-      lay()
-      draw(0)
-      setOn(true)
-      if (!reduce) run()
+      S = bake(list)
+      void S.ready.then(() => {
+        if (dead) return
+        lay()
+        draw(0)
+        setOn(true)
+        ready = true
+        run()
+      })
     })
     return () => {
       dead = true
+      stopIdle()
       S.cancel()
       cancelAnimationFrame(raf)
       ro?.disconnect()

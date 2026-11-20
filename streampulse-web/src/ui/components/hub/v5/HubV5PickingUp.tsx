@@ -1,7 +1,7 @@
 /**
  * Picking up now (M1 + P1, hub rail board 2026-11-02): the rail is only what is
- * heating up now; the day's moments are in Top moments today, the carousel under
- * the chart (HubV5BigMoments). Every live channel whose chat over the last 5
+ * heating up now; the day's moments are in Top moments today, the list under
+ * the chart (HubV5TopList). Every live channel whose chat over the last 5
  * minutes ran at least 1.5× its own usual, strongest × first, with how many more
  * messages a minute beside it (hubV5FeedModel). Each row opens the stream page.
  *
@@ -15,7 +15,7 @@
  * can't tell, with the time it last knew, and shows no count (nor "Show all N").
  * Z06 (11-13): the × reads in pulse-core's words, "6.0× more chat".
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatLiftRatio } from '@streampulse/pulse-core'
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
@@ -89,14 +89,6 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
     const body = bodyRef.current
     setMore(!!body && body.scrollHeight - body.scrollTop - body.clientHeight > 1)
   }, [])
-  useLayoutEffect(() => measureMore())
-  useEffect(() => {
-    const body = bodyRef.current
-    if (!body || typeof ResizeObserver === 'undefined') return undefined
-    const observer = new ResizeObserver(measureMore)
-    observer.observe(body)
-    return () => observer.disconnect()
-  }, [measureMore])
 
   const none = top.shown?.source === 'none'
   // older than LIVE lasts: it can't tell what is picking up now (S1, 11-13)
@@ -107,6 +99,22 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
   const saved = !waiting && upSaved && upAsOf != null ? hubSavedClock(upAsOf, nowMs) : null
   const fresh = waiting ? '' : saved ? `Saved ${saved}` : feedFreshText(upAsOf, nowMs)
   const stale = waiting || down || upAsOf == null || upSaved || feedStale(upAsOf, nowMs)
+
+  // Measured only where the list scrolls inside the column (from 1536 px), and only when the body or what is in it
+  // changes size: a ResizeObserver reads after layout, where a layout effect on every render forced one (about
+  // 200 ms on a phone, S1 11-19). A new branch (loading, rows, a line) observes its new children.
+  const branch = waiting ? 'wait' : down ? `down${n}` : n ? 'rows' : 'none'
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!wide || !body || typeof ResizeObserver === 'undefined') {
+      setMore(false)
+      return undefined
+    }
+    const observer = new ResizeObserver(measureMore)
+    observer.observe(body)
+    for (const child of Array.from(body.children)) observer.observe(child)
+    return () => observer.disconnect()
+  }, [measureMore, wide, branch, all])
 
   return (
     <aside

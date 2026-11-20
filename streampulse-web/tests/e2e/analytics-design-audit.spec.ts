@@ -26,8 +26,8 @@ async function collectDomEvidence(page: Page): Promise<Omit<EvidenceStep, 'step'
   return page.evaluate(() => {
     const main = document.querySelector('main[data-hub-state]')
     const pool = document.querySelector('[data-testid="live-pool-size"]')
-    // The Hub's moments carousel (the Live Wire rail it replaced is gone, H06).
-    const moments = document.querySelector('#big-moments')
+    // The Hub's Top moments today list (the carousel it replaced is gone, H1 11-19).
+    const moments = document.querySelector('#top-moments')
     return {
       hubState: main?.getAttribute('data-hub-state') ?? null,
       poolText: pool?.textContent?.replace(/\s+/g, ' ').trim() ?? null,

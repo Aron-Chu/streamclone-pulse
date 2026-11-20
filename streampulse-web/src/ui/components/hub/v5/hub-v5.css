@@ -58,40 +58,41 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   column-gap: 24px;
-  grid-template-areas: "mast" "fol" "peek" "busy" "act" "intv" "rail" "emo" "games" "chan" "meas";
+  /* H1 (11-19): who is hot, which emotes, when it spiked, the day's best moments, then the full lists */
+  grid-template-areas: "mast" "fol" "busy" "emr" "act" "intv" "tops" "rail" "emo" "games" "chan" "meas";
   color: var(--sp-text-1);
   font: 400 13px/1.4 var(--sp-font);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
   -webkit-font-smoothing: antialiased;
 }
-.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-emr, .hv5-tops, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(*, *::before, *::after),
 .hv5-layer,
 .hv5-layer :is(*, *::before, *::after) {
   box-sizing: border-box;
 }
-.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-emr, .hv5-tops, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(h1, h2, h3, p, ol, ul),
 .hv5-layer :is(p, ol, ul) {
   margin: 0;
 }
-.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-emr, .hv5-tops, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels) img,
 .hv5-layer img {
   display: block;
 }
-.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-emr, .hv5-tops, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a {
   color: var(--hv5-accent);
   text-decoration: none;
 }
-.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-emr, .hv5-tops, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-emr, .hv5-tops, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) :is(button, input) {
   font: inherit;
   color: inherit;
   letter-spacing: inherit;
 }
-.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-f3-peek, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
+.hub-v5 :is(.hv5-mast, .hv5-fol, .hv5-emr, .hv5-tops, .hv5-busiest, .hv5-latest, .hv5-emotes, .hv5-games, .hv5-channels, .hv5-dis) button {
   margin: 0;
   padding: 0;
   border: 0;
@@ -133,15 +134,18 @@
 /* a size container like Where chat is beside it; the hub search's emote pick lands it clear of the docked bar, as Channels does */
 .hv5-emotes { grid-area: emo; margin-top: 32px; display: flex; flex-direction: column; container: hv5emo / inline-size; scroll-margin-top: 72px; }
 .hv5-games { grid-area: games; margin-top: 32px; display: flex; flex-direction: column; container: hv5grk / inline-size; }
-/* a 3-row "Top today" peek under the hero, at every width since desktop took the phone order (B1, 11-11) */
-.hv5-f3-peek { grid-area: peek; margin-top: 12px; }
+/* Top moments today (H1, 11-19): one still list of 5 rows under the chart, in place of the "Top today" peek and the
+   carousel. The Top emotes row sits under Busiest now. */
+.hv5-emr { grid-area: emr; margin-top: 24px; }
+.hv5-tops { grid-area: tops; margin-top: 32px; }
 @media (max-width: 719px) {
-  /* while it waits, the height its rows land in: the 43 px head with its age line and three 53 px rows
+  /* while it waits, the height its rows land in: the 43 px head with its age line and five 53 px rows
      (.hv5-top .hv5-rh in section 3b, .hv5-tm-row and its rule) */
-  .hv5-f3-peek[data-wait] { min-height: 202px; }
+  .hv5-tops[data-wait] { min-height: 308px; }
+  .hv5-emr { margin-top: 20px; }
 }
-/* from 720 px its rows are 45 px (44 + the 1 px rule): 43 + 3 x 45 (B1, 11-11) */
-@media (min-width: 720px) { .hv5-f3-peek[data-wait] { min-height: 178px; } }
+/* from 720 px its rows are 45 px (44 + the 1 px rule): 43 + 5 x 45 */
+@media (min-width: 720px) { .hv5-tops[data-wait] { min-height: 268px; } }
 .hv5-channels { grid-area: chan; margin-top: 32px; scroll-margin-top: 72px; }
 .hv5-dis { grid-area: meas; margin-top: 32px; }
 .hv5-sec { min-width: 0; }
@@ -157,11 +161,11 @@
     background: var(--fma-bg);
   }
 }
-/* B1 (11-11): desktop takes the phone's order, in the two columns 720 px already used; only Top emotes and Where chat is share a row */
+/* B1 (11-11): desktop takes the phone's order, in the two columns 720 px already used; only the emote map and Where chat is share a row */
 @media (min-width: 720px) {
   .hub-v5.hub-d3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "tops tops" "rail rail" "emo games" "chan chan" "meas meas";
   }
 }
 @media (max-width: 719px) {
@@ -175,7 +179,7 @@
    380 px right column (L1, 11-16). Channels fills its row: its table keeps the numbers in fixed columns with a line
    under every row. */
 @media (min-width: 720px) {
-  .hv5-f3-peek, .hv5-latest { max-width: 720px; }
+  .hv5-tops, .hv5-latest { max-width: 720px; }
 }
 
 /* ---------- section heads and controls (shared.css) ---------- */
@@ -1181,6 +1185,8 @@
 .hv5-bzv-cue i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .hv5-bzv-cue[data-cue="live"] i { background: var(--hv5-live); }
 .hv5-bzv-cue[data-cue="stale"] i { box-shadow: inset 0 0 0 1.5px var(--sp-degraded); }
+/* first load: the (i) and a "Live" cue hold their room, so the line beside them does not move when they arrive */
+.hv5-bzv-rh [data-wait] { visibility: hidden; }
 @container hv5bzv (max-width: 639px) {
   .hv5-bzv-rh { row-gap: 0; }
   .hv5-bzv-rh::after { content: ""; order: 8; flex-basis: 100%; }
@@ -1309,7 +1315,7 @@
   object-fit: cover;
 }
 @container hv5bzv (max-width: 559px) {
-  .hv5-bzt-cap { padding: 16px 6px 5px; }
+  .hv5-bzt-cap { padding: 16px 6px 5px; --hv5-face: 16px; }
   .hv5-bzt-cap.hf { column-gap: 5px; }
   .hv5-bzv-av { width: 16px; height: 16px; }
   .hv5-bzt-nm { font-size: 12px; line-height: 15px; }
@@ -1324,6 +1330,8 @@
   }
   .hv5-bzt-cat, .hv5-bzv-av { display: none; }
   .hv5-bzt-cap.hf { grid-template-columns: minmax(0, 1fr); }
+  /* while the live picture is checked, the small face's room (7 + face + 15 + 2), the name already at the foot */
+  .hv5-bzt-cap.hf-wait { min-height: calc(var(--hv5-face, 20px) + 24px); align-content: end; }
   .hv5-bzt-nm { font-size: 12px; line-height: 15px; }
 }
 /* the pager: position and ‹ › in the header */
@@ -1473,81 +1481,15 @@
   .hub-v5 .hv5-mast .hv5-fol-go { transition: none; }
 }
 
-/* ---------- 2b. Featured stream (picks I1 and I1b, 10-30; board artifacts/session-hub-gaps-20261030): the featured stream under Busiest now ---------- */
-.hv5-most { grid-area: most; margin-top: 12px; }
-/* its own row under Busiest now, only while the card is on the page; without it the templates above apply */
-.hub-v5.hub-d3:has(> .hv5-most) {
-  grid-template-areas: "mast" "fol" "peek" "busy" "most" "act" "intv" "rail" "emo" "games" "chan" "meas";
-}
-@media (min-width: 720px) {
-  .hub-v5.hub-d3:has(> .hv5-most) {
-    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
-  }
-}
-/* the base rules the other sections get */
-.hub-v5 .hv5-most :is(*, *::before, *::after) { box-sizing: border-box; }
-.hub-v5 .hv5-most :is(h2, p) { margin: 0; }
-.hub-v5 .hv5-most img { display: block; }
-.hub-v5 .hv5-most .hv5-mst-lb {
-  font: 500 12px/16px var(--sp-font);
-  color: var(--sp-text-3);
-}
-.hv5-mst-rw {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 6px;
-  padding: 8px 0;
-  border-top: 1px solid var(--sp-line);
-}
-/* long names and emotes wrap inside the card, never past a 360 px phone */
-.hv5-mst-tx { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.hv5-mst-l1,
-.hv5-mst-l2 { display: block; }
-.hv5-mst-l2 { margin-top: 2px; }
-.hv5-mst-nm { font-weight: 600; color: var(--sp-text-1); }
-.hv5-mst-m { font-size: 12px; color: var(--sp-text-3); }
-.hv5-mst-x {
-  font-weight: 600;
-  color: var(--hv5-accent);
-  font-variant-numeric: tabular-nums;
-}
-.hub-v5 .hv5-most a.hv5-mst-open {
-  flex: none;
-  font: 500 13px/16px var(--sp-font);
-  color: var(--hv5-accent);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.hub-v5 .hv5-most a.hv5-mst-open:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.hub-v5 .hv5-most .hv5-mst-note {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--sp-text-3);
-  overflow-wrap: anywhere;
-}
-/* a moment moves to the next line whole, unless it is wider than the line */
-.hv5-mst-mo { display: inline-block; max-width: 100%; }
-/* while Busiest now holds its place (pick K1): one grey block the size of a one-line card, as Busiest now's own */
-.hv5-mst-wait {
-  border-radius: 8px;
-  background: linear-gradient(90deg, var(--sp-raised), var(--sp-panel));
-}
-.hv5-mst-wait > * { visibility: hidden; }
-
 /* ---------- 3. The rail's frame, chips and Picking up (from the live feed v3, hub-live.css: R5-10 rail, R5-20 v2, v3) ---------- */
 .hub-v5 .hv5-mo-all { font-weight: 500; white-space: nowrap; }
 /* F2's picked game names the link ("Elden Ring moments →"): the name takes the room the age line leaves, then ellipses */
 .hv5-feed .hv5-rh .hv5-end { flex: 1 1 0; justify-content: flex-end; }
 .hv5-mo-all.hv5-mo-game { display: grid; grid-template-columns: minmax(0, max-content) auto; min-width: 0; }
 .hv5-mo-gm { overflow: hidden; text-overflow: ellipsis; }
-.hv5-feed .hv5-rh,
-.hv5-f3-peek .hv5-rh { flex-wrap: nowrap; }
+.hv5-feed .hv5-rh { flex-wrap: nowrap; }
 .hv5-feed .hv5-rh h2,
-.hv5-f3-peek .hv5-rh h2 { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.hv5-tops .hv5-rh h2 { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 /* steady; the dot greys once the data is over 2 minutes old */
 .hv5-fd-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--hv5-live); }
 /* R1 (11-13): a row or card that arrived in the last refresh, until the next one; no motion */
@@ -1556,11 +1498,11 @@
 /* a live section whose "as of" is over 2 min old, or a list kept while its counts don't load, reads greyed:
    the rows lose their colour and only the pictures (avatars, game covers, emotes) fade, so the text keeps
    its full contrast (G1, 11-02). No fixed-position descendant sits in these lists (the hover cards are portaled). */
-.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old { filter: grayscale(1); transition: filter .2s; }
-.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono) { opacity: .55; transition: opacity .2s; }
+.hv5-f2-stale :is(.hv5-fd-list, .hv5-tm-list), .hv5-up-old { filter: grayscale(1); transition: filter .2s; }
+.hv5-f2-stale :is(.hv5-fd-list, .hv5-tm-list) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono) { opacity: .55; transition: opacity .2s; }
 @media (prefers-reduced-motion: reduce) {
-  .hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old,
-  .hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono) { transition: none; }
+  .hv5-f2-stale :is(.hv5-fd-list, .hv5-tm-list), .hv5-up-old,
+  .hv5-f2-stale :is(.hv5-fd-list, .hv5-tm-list) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono) { transition: none; }
 }
 .hv5-f2-fresh {
   min-width: 0;
@@ -1619,7 +1561,7 @@
 }
 .hv5-fd-gn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hub-v5 .hv5-feed .hv5-fd-list { list-style: none; margin: 0; padding: 0; }
-.hub-v5 .hv5-f3-peek .hv5-fd-quiet { margin: 6px 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
+.hub-v5 .hv5-tops .hv5-fd-quiet { margin: 6px 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
 
 /* a Picking up row: the faces · what / "1.8× more chat" · game (52 px) */
 .hub-v5 .hv5-feed .hv5-fd {
@@ -2462,12 +2404,12 @@
   .hub-v5 :is(#latest, .hv5-tm-it) { scroll-margin-top: 112px; }
 }
 /* Under 400 px, as Picking up, a Top today row's time drops to a line of its own at the right, so the name and its
-   emote keep their room (Z08 words, 11-14). The row is a fixed 61 px (5 + 34 + 2 + 15 + 5), and the peek waits in
-   that height: 43 + 3 x (61 + 1) = 229 px. */
+   emote keep their room (Z08 words, 11-14). The row is a fixed 61 px (5 + 34 + 2 + 15 + 5), and the list waits in
+   that height: 43 + 5 x (61 + 1) = 353 px. */
 @media (max-width: 399px) {
   .hub-v5 .hv5-top .hv5-tm-row { flex-wrap: wrap; row-gap: 2px; min-height: 61px; }
   .hub-v5 .hv5-top .hv5-tm-t { flex-basis: 100%; }
-  .hv5-f3-peek[data-wait] { min-height: 229px; }
+  .hv5-tops[data-wait] { min-height: 353px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hub-v5 .hv5-top .hv5-tm-list { transition: none; }
@@ -2476,18 +2418,17 @@
 /* A1: pair the two adjacent existing sections without changing B1's DOM order. From 1200 px since W1 (11-13), as at 1440.
    Each fills its own column, so no hole opens between the pair on a wide screen (11-16). */
 @media (min-width: 1200px) {
-  .hub-v5.hub-d3 { grid-template-areas: "mast mast" "fol fol" "peek busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas"; }
-  .hub-v5.hub-d3:has(> .hv5-most) { grid-template-areas: "mast mast" "fol fol" "peek busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas"; }
-  .hv5-f3-peek, .hv5-busiest { margin-top: 12px; width: 100%; max-width: none; }
+  .hub-v5.hub-d3 { grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "tops rail" "emo games" "chan chan" "meas meas"; }
+  .hv5-busiest { margin-top: 12px; }
+  .hv5-tops, .hv5-latest { width: 100%; max-width: none; }
 }
 /* L1 (11-16): from 1536 px Picking up now is the column on the right again, as on 11-08 before B1 (11-11) moved it under
    the chart. It runs from Busiest now down and stays in view while the page scrolls; under 1536 px B1's order stays. */
 @media (min-width: 1536px) {
   .hub-v5.hub-d3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px;
-    grid-template-areas: "mast mast mast" "fol fol fol" "peek busy rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy rail" "emr emr rail" "act act rail" "intv intv rail" "tops tops rail" "emo games rail" "chan chan rail" "meas meas rail";
   }
-  .hub-v5.hub-d3:has(> .hv5-most) { grid-template-areas: "mast mast mast" "fol fol fol" "peek busy rail" "most most rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail"; }
   .hv5-latest { position: sticky; top: 72px; align-self: start; margin-top: 12px; }
   /* the whole list is in the column and scrolls inside the window (scrollbar hidden), its last rows fading while more is
      below (data-more) */
@@ -2499,4 +2440,75 @@
 @media (max-width: 719px) {
   .hv5-channels, .hv5-fol, .hv5-fol h2, .hv5-fol-go,
   .hub-v5 :is(#latest, .hv5-tm-it) { scroll-margin-top: 16px; }
+}
+
+/* ---------- H1 (11-19): the Top emotes row, Top moments today as a still list, and one line for a counts outage ---------- */
+/* .hub-v5 .hv5-emr: it outranks the hub's list reset (margin: 0), so the chips land 8 px under the head, where the
+   placeholder held them */
+.hub-v5 .hv5-emr .hv5-emr-list {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 0 0 2px;
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.hv5-emr-list::-webkit-scrollbar { display: none; }
+.hv5-emr-list > li { flex: none; }
+/* position: relative holds the chip's hidden label (.hv5-vh, absolute) inside the chip, so the scroller clips it; without
+   it the label escapes to the page and a phone lays the hub out about 1,300 px wide */
+.hub-v5 .hv5-emr button.hv5-emr-c {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--sp-line-strong);
+  border-radius: 9px;
+  background: var(--sp-raised);
+  color: var(--sp-text-1);
+  font: 500 13px/1 var(--sp-font);
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.hub-v5 .hv5-emr button.hv5-emr-c:hover { background: var(--sp-panel); border-color: var(--hv5-emotes, var(--sp-line-strong)); }
+/* inset, as the hub's other rows in a scroller have it: the list's overflow would clip a ring drawn outside the chip */
+.hub-v5 .hv5-emr button.hv5-emr-c:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }
+.hv5-emr-c img, .hv5-emr-pic { flex: none; width: 28px; height: 28px; object-fit: contain; }
+.hv5-emr-nm { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
+.hv5-emr-n { color: var(--sp-text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* the row's height while it waits, and its one line, so nothing under it moves when the answer lands: the chips' 44 px
+   and the list's 2 px under them */
+.hv5-emr-wait { height: 44px; margin: 8px 0 2px; border-radius: 9px; background: var(--sp-raised); }
+.hub-v5 .hv5-emr .hv5-emr-q { display: flex; align-items: center; min-height: 44px; margin: 8px 0 2px; font: 500 13px/1.4 var(--sp-font); color: var(--sp-text-2); }
+
+/* a row is a link to its moment now: the section's link underline is not for it */
+.hub-v5 .hv5-tops a.hv5-tm-row { text-decoration: none; }
+/* the game chips, as the carousel had them (M1, 11-02): the section's button reset would strip them */
+.hub-v5 .hv5-tops .hv5-fd-games { margin: 4px 0 0; }
+.hub-v5 .hv5-tops .hv5-fd-games button { padding: 0 9px 0 3px; border: 1px solid var(--sp-line-strong); border-radius: 8px; font: 500 12px/1 var(--sp-font); }
+.hub-v5 .hv5-tops .hv5-fd-games .hv5-fd-gall { padding: 0 10px; }
+/* phones: the heading and its (i) on the first line, the age and "All moments →" on the second */
+@media (max-width: 719px) {
+  .hub-v5 .hv5-tops .hv5-rh { display: grid; grid-template-columns: auto 1fr auto; column-gap: 8px; row-gap: 0; }
+  .hv5-tops .hv5-rh h2 { grid-area: 1 / 1; }
+  .hv5-tops .hv5-rh .hub-tip { grid-area: 1 / 2; justify-self: start; }
+  .hv5-tops .hv5-rh .hv5-f2-fresh { grid-area: 2 / 1 / 3 / 3; margin-left: 0; }
+  .hv5-tops .hv5-rh .hv5-end { grid-area: 2 / 3; }
+}
+
+/* A counts outage (H1, 11-19): Busiest now says it once, and Picking up now and Where chat is step aside, so no empty
+   column or half row is left. Equal specificity at each width, so the later width wins. */
+.hub-v5 .hv5-busiest .hv5-bzv-down { margin-top: 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-2); }
+.hub-v5.hub-d3[data-counts-down] {
+  grid-template-areas: "mast" "fol" "busy" "emr" "act" "intv" "tops" "emo" "chan" "meas";
+}
+@media (min-width: 720px) {
+  .hub-v5.hub-d3[data-counts-down] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "tops tops" "emo emo" "chan chan" "meas meas";
+  }
 }

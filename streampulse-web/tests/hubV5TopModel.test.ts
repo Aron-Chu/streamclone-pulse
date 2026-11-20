@@ -328,7 +328,7 @@ describe('Top moments today: the busiest-minute fill (board 2A, 11-02)', () => {
 
   it('says what it is, never a ×', () => {
     const [row] = busiestFillRows([m('kaicenat', 1204, { at: NOW - 13 * MIN })], [], new Map(), NOW)
-    expect(topRowAria(row!, 4, NOW)).toMatch(/^4\. KAICENAT, Busiest minute, 1,204 chat a minute, Just Chatting, 13 min ago at .+\. Open it in Top moments below\.$/)
+    expect(topRowAria(row!, 4, NOW)).toMatch(/^4\. KAICENAT, Busiest minute, 1,204 chat a minute, Just Chatting, 13 min ago at .+\. Opens the moment\.$/)
   })
 })
 
@@ -339,8 +339,8 @@ describe('Top moments today row words', () => {
 
   it('says the rank, who, what rose, the game and when, then what a click does', () => {
     // the phone peek's rows bring their card to the front of the carousel below
-    expect(topRowAria(hubRow!, 1, now)).toMatch(/^1\. ALPHA, KEKW, 12 times more emotes, Chess, 13 min ago at .+\. Open it in Top moments below\.$/)
-    expect(topRowAria(feedRow, 2, NOW)).toMatch(/^2\. .+ Open it in Top moments below\.$/)
+    expect(topRowAria(hubRow!, 1, now)).toMatch(/^1\. ALPHA, KEKW, 12 times more emotes, Chess, 13 min ago at .+\. Opens the moment\.$/)
+    expect(topRowAria(feedRow, 2, NOW)).toMatch(/^2\. .+ Opens the moment\.$/)
   })
 
   it('names the channels folded into a row', () => {

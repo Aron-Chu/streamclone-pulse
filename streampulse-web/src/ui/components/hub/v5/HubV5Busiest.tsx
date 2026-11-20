@@ -16,7 +16,7 @@ import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
 import { ResilientImage } from '../../ResilientImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Icon } from './HubV5Icon'
-import { HUB_BUSIEST_COUNT, HUB_CHAT_COUNTS_DOWN, busiestAria, busiestCue, busiestShowsPictures, busiestTip, hubAvatarTone, hubChatBasis, hubClock, hubMonogram, rankBusiest, screenerDown, type HubBusiestRow } from './hubV5Model'
+import { HUB_BUSIEST_COUNT, HUB_CHAT_COUNTS_DOWN, HUB_COUNTS_DOWN_AVG, HUB_COUNTS_DOWN_REST, busiestAria, busiestCue, busiestShowsPictures, busiestTip, hubAvatarTone, hubChatBasis, hubClock, hubMonogram, rankBusiest, screenerDown, type HubBusiestRow } from './hubV5Model'
 import { useHubStrip } from './useHubStrip'
 
 const H_ID = 'hv5-busy-h'
@@ -60,6 +60,8 @@ export function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusi
   const visible = src != null ? shown : null
   const checking = src != null && src !== shown && src !== failed ? src : null
   const smallFace = visible != null && !!row.avatar && failedSmallFace !== row.avatar
+  // while the first picture is checked, the caption keeps the small face's room (only a phone's narrow tile grows for it)
+  const faceDue = !smallFace && checking != null && visible == null && !!row.avatar && failedSmallFace !== row.avatar
   return (
     <Link className="hv5-bzt-t hv5-bzc-c" to={row.href} tabIndex={tab ? 0 : -1}>
       <span className="hv5-bzv-face" style={{ background: `radial-gradient(120% 90% at 50% 40%, ${hubAvatarTone(row.login)} 0%, #101012 100%)` }}>
@@ -99,7 +101,7 @@ export function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusi
         />
       ))}
       <span className="hv5-bzt-fig" aria-hidden="true"><b>{row.fig}</b> {row.viewersOnly ? (row.viewers === 1 ? 'viewer' : 'viewers') : 'chat/min'}</span>
-      <span className={`hv5-bzt-cap${smallFace ? ' hf' : ''}`} aria-hidden="true">
+      <span className={`hv5-bzt-cap${smallFace ? ' hf' : faceDue ? ' hf-wait' : ''}`} aria-hidden="true">
         {smallFace ? (
           <ResilientImage
             className="hv5-bzv-av"
@@ -126,8 +128,9 @@ export function BusiestTile({ row, total, tab, pictures, nowMs }: { row: HubBusi
 /**
  * `unavailable`: the hub request failed, so an empty list says so rather than that no channel qualifies (INT-02).
  * `windowKey`: the window of the hub answer on screen (the old one while a new range loads); on 30m and 24h a screener outage ranks by the recent average (up to 35 min) (candidate, 10-30).
+ * `countsDown`: the page folded Picking up now and Where chat is for a counts outage (H1, 11-19), so this list says why, once.
  */
-export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false, windowKey }: { live: readonly HubLiveChannel[]; nowMs: number; loading?: boolean; unavailable?: boolean; windowKey?: string }) {
+export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false, windowKey, countsDown = false }: { live: readonly HubLiveChannel[]; nowMs: number; loading?: boolean; unavailable?: boolean; windowKey?: string; countsDown?: boolean }) {
   const set = useMemo(() => rankBusiest(live, HUB_BUSIEST_COUNT, hubChatBasis(live, windowKey)), [live, windowKey])
   // the recent average is never "Live" (candidate, 10-30)
   const avg = set.basis === 'avg_35'
@@ -138,6 +141,8 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
   const { trackRef, pos, prevOff, nextOff, more, rove, page, onTrackKeyDown } = useHubStrip(N, rows.map((row) => row.login).join(' '))
 
   const hasWindow = Number.isFinite(set.windowEnd)
+  // first load: the (i) and a "Live" cue keep their room, hidden, so the line beside them does not move when they arrive
+  const headWait = loading && !N && !hasWindow && !avg
 
   return (
     <section id="busiest" className="hv5-sec hv5-busiest" aria-labelledby={H_ID} data-cue={hasWindow ? cue : avg ? 'stale' : undefined}>
@@ -155,6 +160,14 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
               <i aria-hidden="true" />
               {cue === 'live' ? 'Live' : `Not updated since ${hubClock(set.windowEnd)}`}
             </span>
+          ) : headWait ? (
+            <>
+              <span className="hub-tip" data-wait="" aria-hidden="true" />
+              <span className="hv5-bzv-cue" data-cue="live" data-wait="" aria-hidden="true">
+                <i />
+                Live
+              </span>
+            </>
           ) : null}
           <p className="hv5-bzv-meta">{avg ? 'Chat messages per minute · recent average' : 'Chat messages per minute · last 5 min'}</p>
           {N ? (
@@ -176,8 +189,9 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
             </div>
           ) : null}
         </header>
+        {/* keyed, so the tiles' frame is a new element and not the placeholder moved up 4 px (a layout shift) */}
         {N ? (
-          <div className={`hv5-bzc-vp hv5-bzs-vp${more.l ? ' more-l' : ''}${more.r ? ' more-r' : ''}`}>
+          <div key="strip" className={`hv5-bzc-vp hv5-bzs-vp${more.l ? ' more-l' : ''}${more.r ? ' more-r' : ''}`}>
             <ol ref={trackRef} id={TRACK_ID} className="hv5-bzc-track" aria-labelledby={H_ID} onKeyDown={onTrackKeyDown}>
               {rows.map((row, i) => (
                 <li key={row.login} className="hv5-bzc-it" data-rank={row.rank} data-login={row.login}>
@@ -187,11 +201,12 @@ export function HubV5Busiest({ live, nowMs, loading = false, unavailable = false
             </ol>
           </div>
         ) : loading ? (
-          <div className="hv5-bzs-wait" aria-hidden="true" />
+          <div key="wait" className="hv5-bzs-wait" aria-hidden="true" />
         ) : (
           // our 5-minute read failed, not the channels: say so rather than blame their windows (fix, 10-30)
-          <p className="hv5-bzv-none">{unavailable ? 'Unavailable right now.' : screenerDown(live) ? HUB_CHAT_COUNTS_DOWN : 'No synced channel has a full 5-minute window right now.'}</p>
+          <p className="hv5-bzv-none">{unavailable ? 'Unavailable right now.' : screenerDown(live) ? (countsDown ? `${HUB_CHAT_COUNTS_DOWN} ${HUB_COUNTS_DOWN_REST}` : HUB_CHAT_COUNTS_DOWN) : 'No synced channel has a full 5-minute window right now.'}</p>
         )}
+        {N && countsDown ? <p className="hv5-bzv-down" data-counts-down="">{avg ? HUB_COUNTS_DOWN_AVG : `${HUB_CHAT_COUNTS_DOWN} ${HUB_COUNTS_DOWN_REST}`}</p> : null}
       </div>
     </section>
   )
