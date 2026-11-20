@@ -363,5 +363,5 @@ export function topRowAria(row: TopRowData, rank: number, nowMs: number): string
   const x = topFigureWords(row)
   const t = `${when(row.at, nowMs)}${nowMs - row.at < 60 * 60_000 ? ` at ${clk(row.at)}` : ''}`
   return `${rank}. ${row.name}${row.emote ? `, ${row.emote.name}` : ''}, ${x}${row.game ? `, ${row.game}` : ''}`
-    + `${row.also.length ? `, the same emotes on ${row.also.join(', ')}` : ''}, ${t}. Open it in Top moments below.`
+    + `${row.also.length ? `, the same emotes on ${row.also.join(', ')}` : ''}, ${t}. Opens the moment.`
 }

@@ -113,30 +113,33 @@ for (const surface of ['plot', 'navigator track'] as const) {
   })
 }
 
-test('Scroll zoom leaves Ctrl and Meta wheel events to browser zoom on both surfaces', async ({ page }) => {
+// S1 (11-19): over the hub chart Ctrl+wheel zooms the chart, as a map does (a trackpad pinch arrives as one, so it
+// zooms the chart too). Meta+wheel, and Ctrl+wheel anywhere off the chart, stay the browser's own zoom.
+test('Ctrl+wheel over the hub chart zooms the chart; Meta+wheel and Ctrl+wheel off it stay the browser zoom (S1, 11-19)', async ({ page }) => {
   await installHubUxMock(page)
   await page.goto('/analytics')
   const navigator = page.getByRole('group', { name: 'Chart navigator', exact: true })
   await expect(navigator.getByRole('status')).toContainText('240 of 240 6-min buckets')
   await expect(navigator.getByRole('button', { name: /^Scroll zoom/ })).toHaveAttribute('aria-pressed', 'true')
   const initial = (await navigator.getAttribute('data-hub-chart-navigator-window'))!
+  // A cancellable DOM event shows who owns it without changing the browser's own zoom or the next test's viewport.
+  const consumed = (selector: string, key: 'ctrlKey' | 'metaKey') => page.locator(selector).first().evaluate((element, modifier) => {
+    const rect = element.getBoundingClientRect()
+    const event = new WheelEvent('wheel', {
+      bubbles: true, cancelable: true, deltaY: -100, [modifier]: true,
+      clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+    })
+    element.dispatchEvent(event)
+    return event.defaultPrevented
+  }, key)
   for (const selector of [HUB_PLOT, '.hx-chart-navigator__track']) {
-    for (const modifier of ['ctrlKey', 'metaKey'] as const) {
-      // Dispatch a cancellable DOM event to observe app ownership without
-      // changing the browser's own zoom or the next test's viewport.
-      const consumed = await page.locator(selector).evaluate((element, key) => {
-        const rect = element.getBoundingClientRect()
-        const event = new WheelEvent('wheel', {
-          bubbles: true, cancelable: true, deltaY: -100, [key]: true,
-          clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
-        })
-        element.dispatchEvent(event)
-        return event.defaultPrevented
-      }, modifier)
-      expect(consumed).toBe(false)
-      await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
-    }
+    expect(await consumed(selector, 'metaKey')).toBe(false)
+    await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
   }
+  expect(await consumed('#busiest', 'ctrlKey')).toBe(false)
+  await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
+  expect(await consumed(HUB_PLOT, 'ctrlKey')).toBe(true)
+  await expect(navigator).not.toHaveAttribute('data-hub-chart-navigator-window', initial)
 })
 
 test('on a phone the hub merges its chat bars so each stays readable', async ({ page }) => {
@@ -181,14 +184,14 @@ for (const { width, height, zoom } of responsiveCases) {
     await installHubUxMock(page, TOP_MOMENT)
     await page.goto('/analytics')
     await page.evaluate(value => { document.documentElement.style.zoom = String(value) }, zoom)
-    const big = page.locator('#big-moments')
-    const card = big.locator('.hv5-bm-card[data-pos="0"]')
+    const big = page.locator('#top-moments')
+    const card = big.locator('.hv5-tm-list > .hv5-tm-it').first()
     await expect(card).toBeVisible()
     expect(await card.evaluate(el => {
       const bounds = el.getBoundingClientRect()
-      const stage = el.closest('#big-moments')!.getBoundingClientRect()
-      const foot = el.querySelector('.hv5-bm-foot')!.getBoundingClientRect()
-      return bounds.right <= stage.right + 1 && foot.right <= bounds.right + 1 && foot.left >= bounds.left - 1
+      const stage = el.closest('#top-moments')!.getBoundingClientRect()
+      const time = el.querySelector('.hv5-tm-t')!.getBoundingClientRect()
+      return bounds.right <= stage.right + 1 && time.right <= bounds.right + 1 && time.left >= bounds.left - 1
     })).toBe(true)
     const latest = page.locator('#latest')
     await expect(latest.getByRole('heading', { name: 'Picking up now' })).toBeVisible()
@@ -296,7 +299,7 @@ test('Top moments and Channels render while a legacy successful history reply aw
     const chart = page.locator('.figma-global-activity__hub-chart')
     await expect(chart.getByText('Loading measured activity…', { exact: true })).toBeVisible()
     await expect(chart.locator('.spc-bar')).toHaveCount(0)
-    const rows = page.locator('#big-moments .hv5-bm-card')
+    const rows = page.locator('#top-moments .hv5-tm-list > .hv5-tm-it')
     await expect(rows.first()).toBeVisible()
     const momentsBefore = await rows.allTextContents()
     const count = page.locator('#channels [data-hv5-channel-count]')

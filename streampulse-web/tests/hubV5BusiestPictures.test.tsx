@@ -94,6 +94,32 @@ describe('Busiest now live pictures (mockup §5, 10-31)', () => {
     for (const name of ['loading', 'crossorigin', 'referrerpolicy']) expect(names.indexOf(name)).toBeLessThan(names.indexOf('src'))
   })
 
+  it('keeps the caption’s room for the small face while the picture is checked, and lets it go when the picture fails (F2, 11-19)', async () => {
+    const caption = (view: ReturnType<typeof busiest>) => view.container.querySelector('.hv5-bzt-cap')!
+    const view = busiest(W1)
+    expect(caption(view).className).toBe('hv5-bzt-cap hf-wait')
+    await load(view.pictures()[0]!)
+    expect(caption(view).className).toBe('hv5-bzt-cap hf')
+    // the next 5 minutes are checked under the proven picture: the small face stays
+    view.at(W1 + 5 * MIN)
+    expect(caption(view).className).toBe('hv5-bzt-cap hf')
+    view.unmount()
+
+    const failed = busiest(W1)
+    fireEvent.error(failed.pictures()[0]!)
+    expect(caption(failed).className).toBe('hv5-bzt-cap')
+    failed.unmount()
+
+    // no real profile picture: no small face to wait for
+    const bare = busiest(W1, W1, '')
+    expect(caption(bare).className).toBe('hv5-bzt-cap')
+    bare.unmount()
+
+    // old numbers: faces only, nothing to wait for
+    const old = busiest(W1, W1 + 10 * MIN)
+    expect(caption(old).className).toBe('hv5-bzt-cap')
+  })
+
   it('asks for 640×360 at a pixel ratio of 2 or more', () => {
     vi.stubGlobal('devicePixelRatio', 2)
     const view = busiest(W1)
@@ -219,5 +245,40 @@ describe('Busiest now live pictures (mockup §5, 10-31)', () => {
     view.at(W1 + 5 * MIN)
     expect(view.shown()).toBeNull()
     expect(view.pictures().map((img) => img.getAttribute('src'))).toEqual([preview(W1 + 5 * MIN)])
+  })
+})
+
+describe('Busiest now’s first load keeps the room of what lands (F2, 11-19)', () => {
+  it('holds the (i) and a Live cue unseen, with nothing to press, then shows the real ones', () => {
+    const view = render(<MemoryRouter><HubV5Busiest live={[]} nowMs={W1} loading /></MemoryRouter>)
+    const header = view.container.querySelector('#busiest header')!
+    const held = [...header.querySelectorAll('[data-wait]')]
+    // the pager's room keeps its own convention (.hv5-bzc-pg-wait)
+    expect(held.map((el) => el.className)).toEqual(['hub-tip', 'hv5-bzv-cue'])
+    for (const el of held) expect(el.getAttribute('aria-hidden')).toBe('true')
+    expect(held[1]!.textContent).toBe('Live')
+    expect(header.querySelector('button')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'About Busiest now' })).toBeNull()
+
+    view.rerender(<MemoryRouter><HubV5Busiest live={live(W1)} nowMs={W1} loading /></MemoryRouter>)
+    expect(header.querySelector('[data-wait]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'About Busiest now' })).toBeTruthy()
+    expect(header.querySelector('.hv5-bzv-cue')!.textContent).toBe('Live')
+  })
+
+  it('holds nothing once the read is over', () => {
+    const view = render(<MemoryRouter><HubV5Busiest live={[]} nowMs={W1} unavailable /></MemoryRouter>)
+    expect(view.container.querySelector('#busiest [data-wait]')).toBeNull()
+    expect(view.container.querySelector('#busiest .hv5-bzv-cue')).toBeNull()
+  })
+
+  it('lands the tiles in a new frame, not the placeholder moved up 4 px (a layout shift)', () => {
+    const view = render(<MemoryRouter><HubV5Busiest live={[]} nowMs={W1} loading /></MemoryRouter>)
+    const wait = view.container.querySelector('.hv5-bzs-wait')!
+    view.rerender(<MemoryRouter><HubV5Busiest live={live(W1)} nowMs={W1} loading /></MemoryRouter>)
+    const strip = view.container.querySelector('.hv5-bzc-vp')!
+    expect(strip).not.toBe(wait)
+    expect(wait.isConnected).toBe(false)
+    expect(view.container.querySelector('.hv5-bzs-wait')).toBeNull()
   })
 })

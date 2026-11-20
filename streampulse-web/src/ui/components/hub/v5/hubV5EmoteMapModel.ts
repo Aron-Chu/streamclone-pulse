@@ -14,7 +14,7 @@
  * window, and a selected emote shows them per interval with its busiest one,
  * whose streams one hub/moments read lists.
  */
-import type { HubActivityPoint, HubBucketEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
+import type { HubActivityPoint, HubBucketEmote, HubEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
 import { formatHubInt, hubClockRange } from './hubV5Model'
 
 export interface HubEmoteAgg {
@@ -128,6 +128,49 @@ export function emoteMapData(points: readonly HubActivityPoint[], bucketMinutes:
   }
 }
 
+/**
+ * What emoteMapData reads from the points, in one pass and without sorting:
+ * the closed count, the first and last closed t, the bucket length, and the
+ * summed counts, list lengths and emote totals of the last 3 closed intervals. A poll that
+ * changes none of these (the usual repeat of the same closed buckets) leaves
+ * the map's data as it was, so its layout and tiles skip; a revised or newly
+ * closed interval changes it.
+ */
+export function emoteMapSignature(points: readonly HubActivityPoint[], bucketMinutes: number): string {
+  let n = 0
+  let first = Infinity
+  // the last 3 closed points by t, newest first
+  const last: HubActivityPoint[] = []
+  for (const p of points) {
+    if (!p || !Number.isFinite(p.t) || p.bucketComplete === false || !Array.isArray(p.topEmotes) || p.topEmotes.length === 0) continue
+    n += 1
+    if (p.t < first) first = p.t
+    let i = last.length
+    while (i > 0 && last[i - 1]!.t < p.t) i -= 1
+    if (i < 3) {
+      last.splice(i, 0, p)
+      if (last.length > 3) last.pop()
+    }
+  }
+  let tail = ''
+  for (const p of last) {
+    let sum = 0
+    for (const e of p.topEmotes!) sum += e && Number.isFinite(e.count) ? e.count : 0
+    tail += `|${p.t}:${p.topEmotes!.length}:${sum}:${p.emotes ?? ''}`
+  }
+  return `${n}|${n ? first : ''}|${bucketMinutes}${tail}`
+}
+
+/** emoteMapData, but the previous result while the points' signature is unchanged. */
+export function keepEmoteMapData(
+  prev: { sig: string; data: HubEmoteMapData | null } | null,
+  points: readonly HubActivityPoint[],
+  bucketMinutes: number,
+): { sig: string; data: HubEmoteMapData | null } {
+  const sig = emoteMapSignature(points, bucketMinutes)
+  return prev && prev.sig === sig ? prev : { sig, data: emoteMapData(points, bucketMinutes) }
+}
+
 /* ---------- pace: the last hour against the emote's own pace, as a change chip ---------- */
 
 export interface EmoteChange {
@@ -200,6 +243,29 @@ export function tilePicUrl(url: string | undefined, px: number, play: boolean, a
 
 /** Provider and name: how the hub's top emotes (the ones with an animated flag) match a tile. */
 export const emoteFlagKey = (prov: string | undefined, name: string) => `${prov || 'other'}|${name}`
+
+const FLAG_SEP = '\n'
+
+/**
+ * The hub's animated top emotes as one string (sorted flag keys, one per
+ * line), so a memo keyed on it survives a poll that sends the same flags in
+ * new objects or a new order.
+ */
+export function animatedFlagsKey(top: readonly HubEmote[] | undefined): string {
+  const keys: string[] = []
+  for (const e of top ?? []) if (e?.animated && e.name) keys.push(emoteFlagKey(e.provider, e.name))
+  return keys.sort().join(FLAG_SEP)
+}
+
+/** The set animatedFlagsKey describes. */
+export function animatedFlagsFromKey(key: string): ReadonlySet<string> {
+  return new Set(key ? key.split(FLAG_SEP) : [])
+}
+
+/** The hub's top emotes that move, by emoteFlagKey: the 7TV ones have a still file. */
+export function animatedFlags(top: readonly HubEmote[] | undefined): ReadonlySet<string> {
+  return animatedFlagsFromKey(animatedFlagsKey(top))
+}
 
 /* ---------- squarified treemap (Bruls, Huizing, van Wijk) ---------- */
 
@@ -1011,7 +1077,13 @@ export function nearestTile<T extends Rect>(tiles: readonly T[], from: T, dx: nu
 
 /* ---------- the hero's conveyor (R5-15 at Soft; mockup hub-hero.js) ---------- */
 
-export interface ConveyorEmote { url: string; w: number }
+export interface ConveyorEmote {
+  url: string
+  w: number
+  /** Provider and name, so the conveyor can find the hub's animated flag. */
+  provider?: string
+  name?: string
+}
 
 /**
  * The 120 emotes chat used most over the closed intervals (summed from each
@@ -1019,7 +1091,7 @@ export interface ConveyorEmote { url: string; w: number }
  * more often. Only emotes with a picture; no numbers are shown.
  */
 export function conveyorEmotes(points: readonly HubActivityPoint[], limit = 120): ConveyorEmote[] {
-  const m = new Map<string, { url: string; n: number }>()
+  const m = new Map<string, { url: string; n: number; provider?: string; name: string }>()
   for (const p of points) {
     if (!p || p.bucketComplete === false || !Array.isArray(p.topEmotes)) continue
     for (const e of p.topEmotes) {
@@ -1027,10 +1099,10 @@ export function conveyorEmotes(points: readonly HubActivityPoint[], limit = 120)
       const k = `${e.name}|${e.imageUrl}`
       const o = m.get(k)
       if (o) o.n += e.count
-      else m.set(k, { url: e.imageUrl, n: e.count })
+      else m.set(k, { url: e.imageUrl, n: e.count, provider: e.provider, name: e.name })
     }
   }
-  return [...m.values()].sort((a, b) => b.n - a.n).slice(0, limit).map((e) => ({ url: e.url, w: e.n ** 0.6 }))
+  return [...m.values()].sort((a, b) => b.n - a.n).slice(0, limit).map((e) => ({ url: e.url, w: e.n ** 0.6, provider: e.provider, name: e.name }))
 }
 
 /** Seeded randoms (an LCG), so the rows land the same way on every load. */

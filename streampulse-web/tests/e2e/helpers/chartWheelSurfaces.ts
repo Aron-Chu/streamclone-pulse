@@ -27,6 +27,20 @@ export interface ChartSurface {
   settle: () => Promise<void>
   /** The plot's own visible range, as navigator steps, once settled. */
   plotSteps: () => Promise<number>
+  /**
+   * Arms a plain wheel, with the pointer already over the chart. The hub's wheel zooms only after a
+   * click on its chart (or with Ctrl), until the pointer leaves it (S1, 11-19); the stream chart's
+   * always zooms, so this does nothing there.
+   */
+  arm: () => Promise<void>
+}
+
+/**
+ * The press that arms the hub chart's wheel, without the click that would also pick a bar: the
+ * chart arms on pointerdown anywhere on its wheel surface (hubActivityPanelV5.test.tsx covers a real one).
+ */
+export async function armHubWheel(page: Page) {
+  await page.locator('[data-hub-chart-wheel-surface]').dispatchEvent('pointerdown', { pointerType: 'mouse', isPrimary: true, button: 0 })
 }
 
 export const HUB_BUCKETS = 240
@@ -67,6 +81,7 @@ export async function hubSurface(page: Page): Promise<ChartSurface> {
       const end = Number(await stack.getAttribute('data-hub-chart-viewport-end'))
       return end - start + 1
     },
+    arm: () => armHubWheel(page),
   }
 }
 
@@ -99,6 +114,7 @@ export async function streamSurface(page: Page): Promise<ChartSurface> {
       const end = Number(await plot.getAttribute('data-chart-viewport-end'))
       return Math.round((end - start) / 60) + 1
     },
+    arm: async () => {},
   }
 }
 

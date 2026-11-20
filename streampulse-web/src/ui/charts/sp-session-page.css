@@ -134,15 +134,17 @@
    the read and would slide "Data" and "Updated" across the line (CLS). The slot also keeps the rows the
    full line above wraps to (24 px rows, 2 px gaps), so the stat row under it does not drop when they
    land: three rows below 394 px, two up to 777 px, one from 778 px (measured on an ended stream's full line
-   after C1 put the short Live/Ended badge where the name was, 11-11; the count follows the text). */
+   after C1 put the short Live/Ended badge where the name was, 11-11; the count follows the text).
+   Once the read lands the line shows, and the slot holds while the status and summary reads that can
+   still add to it settle (data-session-meta-settling). */
 .analytics-console .ssp-meta-w[data-session-meta-pending] {
   visibility: hidden;
 }
 @media (max-width: 777px) {
-  .analytics-console .ssp-meta-w[data-session-meta-pending] { min-height: 50px; }
+  .analytics-console .ssp-meta-w:is([data-session-meta-pending], [data-session-meta-settling]) { min-height: 50px; }
 }
 @media (max-width: 393px) {
-  .analytics-console .ssp-meta-w[data-session-meta-pending] { min-height: 76px; }
+  .analytics-console .ssp-meta-w:is([data-session-meta-pending], [data-session-meta-settling]) { min-height: 76px; }
 }
 .analytics-console .ssp-meta {
   display: flex;

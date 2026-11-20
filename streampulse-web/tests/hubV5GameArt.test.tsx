@@ -20,7 +20,7 @@ vi.mock('../../packages/analytics-console/src/utils/twitchBoxArt.ts', async (imp
 
 vi.mock('../src/lib/momentCategoryArtwork', () => ({ loadCategoryArtwork: games.load }))
 
-import { GAME_ART_KEY, GAME_ART_READS, GAME_ART_STREAMS, askGameArt, resetGameArtForTests } from '../src/lib/hubGameArt'
+import { GAME_ART_KEY, GAME_ART_LANES, GAME_ART_READS, GAME_ART_STREAMS, askGameArt, resetGameArtForTests } from '../src/lib/hubGameArt'
 import { GameArt } from '../src/ui/components/hub/v5/HubV5Rack'
 import { HUB_NO_CATEGORY } from '../src/ui/components/hub/v5/hubV5Model'
 
@@ -179,17 +179,24 @@ describe('GameArt for a game Twitch’s by-name covers do not know (11-02)', () 
     expect(games.load).not.toHaveBeenCalled()
   })
 
-  it('reads one at a time, each game once, at most 12 a page load', async () => {
-    let release = () => {}
-    games.load.mockImplementationOnce(() => new Promise((done) => { release = () => done(new Map()) }))
+  it('reads up to 3 games at once, each game once, at most 12 a page load', async () => {
+    expect(GAME_ART_LANES).toBe(3)
+    const held: Array<() => void> = []
+    games.load.mockImplementation(() => new Promise((done) => { held.push(() => done(new Map())) }))
     askGameArt('G0', ['s0'])
     askGameArt('G0', ['s0'])
     askGameArt('G1', ['s1'])
+    askGameArt('G2', ['s2'])
+    askGameArt('G3', ['s3'])
     await flush()
-    expect(games.load).toHaveBeenCalledTimes(1)
-    release()
+    // three lanes: the fourth game waits for the first lane
+    expect(games.load.mock.calls.map((c) => c[0])).toEqual(['s0', 's1', 's2'])
+    held.shift()!()
     await flush()
-    expect(games.load.mock.calls.map((c) => c[0])).toEqual(['s0', 's1'])
+    expect(games.load.mock.calls.map((c) => c[0])).toEqual(['s0', 's1', 's2', 's3'])
+    games.load.mockImplementation(async () => new Map())
+    for (const release of held.splice(0)) release()
+    await flush()
     for (let i = 2; i < 20; i++) askGameArt(`G${i}`, [`s${i}`])
     for (let i = 0; i < 20; i++) await flush()
     expect(games.load).toHaveBeenCalledTimes(GAME_ART_READS)

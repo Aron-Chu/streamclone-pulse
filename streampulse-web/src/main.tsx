@@ -38,9 +38,10 @@ captureAccountConfirmation()
 captureAccountDeviceCode()
 captureAccountRestore()
 captureTwitchFollowsCallback()
-if (!privateLoad) initPortalSentry()
-// Start the first hub read while the analytics chunk downloads.
+// Start the first hub read while the analytics chunk downloads, before Sentry's setup: the read is
+// the hub's slowest step, and it need not wait for error reporting to start (S1, 11-19).
 primePublicHub()
+if (!privateLoad) initPortalSentry()
 
 const queryClient = new QueryClient({
   defaultOptions: {

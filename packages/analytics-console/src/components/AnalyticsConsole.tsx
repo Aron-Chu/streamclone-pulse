@@ -46,7 +46,7 @@ import {
   newerChannelStream,
   resolveChannelActuallyLive,
 } from '../utils/analyticsStreamRow.ts'
-import { analyticsStreamPathSlug, resolveCanonicalLiveSessionTarget, streamHasSyncedMinutes } from '../utils/syncedLiveStream.ts'
+import { analyticsStreamPathSlug, resolveCanonicalLiveSessionTarget } from '../utils/syncedLiveStream.ts'
 import {
   isDateSlugUnresolved,
   recapMatchesStreamIds,
@@ -118,6 +118,29 @@ const MOMENTS_TIP = 'Ranked by how strongly chat reacted, not by clip quality.'
 
 /** (fix, 10-30) VOD-4: the stream list's first, small read; the 100-row read follows it. */
 const STREAMS_FIRST_PAGE = 12
+
+/** A first page shorter than its limit is the channel's whole list. A date route reads the 100 rows anyway. */
+function firstPageIsWholeList(page: { items?: readonly unknown[] } | null | undefined, dateSlugRoute: boolean): boolean {
+  return !dateSlugRoute && Array.isArray(page?.items) && page.items.length < STREAMS_FIRST_PAGE
+}
+
+/**
+ * A live read's stream has viewer and chat minutes. The hosted live read gives the stream's viewer
+ * count but no chat count, so a count it leaves out is judged from the read's own minutes; a count
+ * it gives is taken as given.
+ */
+function liveReadIsMeasured(live: AnalyticsStreamDetail): boolean {
+  const stream = live.stream
+  if (!stream) return false
+  const minutes = (live.rollups ?? []).filter(point => !point.missing)
+  const viewers = stream.viewerSamples != null
+    ? stream.viewerSamples > 0
+    : minutes.some(point => (point.viewerSamples ?? 0) > 0)
+  const chat = stream.chatMessages != null
+    ? stream.chatMessages > 0
+    : minutes.some(point => (point.chatCount ?? 0) > 0)
+  return viewers && chat
+}
 
 /** (fix, 10-30) CX-2: a live summary is re-read only while its newest measured minute is younger than this. */
 const SUMMARY_POLL_STALE_MS = 10 * 60_000
@@ -304,28 +327,49 @@ export function AnalyticsConsole({
   // slug, which must see every stream of that day, so a date route starts it
   // straight away. VOD-7: neither read refetches on a tab return (each one cost
   // the full read again); the channel route still polls the 100 rows.
+  const queryClient = useQueryClient()
+  // A host with a stand-in for a missing session (a reviewed recap above a stream whose data
+  // expired) holds the list and games reads until the session read answers with a session or
+  // fails other than as missing: an expired stream shows only the stand-in. Numeric routes only;
+  // any other slug needs the list to name its stream.
+  const sessionReadState = queryClient.getQueryState<AnalyticsStreamDetail | null>(['analytics-console-detail', streamId, channelLogin])
+  const sessionReadKnown = sessionReadState?.data != null
+    || (sessionReadState?.status === 'error' && (sessionReadState.error as { status?: number } | null)?.status !== 404)
+  const holdForSessionRead = missingSessionFallback != null
+    && isHistoricalRoute
+    && /^\d+$/.test(streamId)
+    && !sessionReadKnown
+    && liveQuery.data?.stream?.streamId !== streamId
   const streamsFirstPageQuery = useQuery({
     queryKey: ['analytics-console-streams', channelLogin, STREAMS_FIRST_PAGE],
     queryFn: () => getAnalyticsStreams(channelLogin, STREAMS_FIRST_PAGE),
-    enabled: Boolean(channelLogin),
+    enabled: Boolean(channelLogin && !holdForSessionRead),
     staleTime: 30_000,
+    // A short list has no 100-row read to poll, so the channel route polls these rows instead.
+    refetchInterval: query => (isLiveRoute && firstPageIsWholeList(query.state.data, isDateSlugRoute) ? 30_000 : false),
     refetchOnWindowFocus: false,
   })
+  // A first page shorter than its limit is the whole list: no 100-row read follows it.
+  const firstPageWholeList = firstPageIsWholeList(streamsFirstPageQuery.data, isDateSlugRoute)
   const streamsQuery = useQuery({
     queryKey: ['analytics-console-streams', channelLogin, 100],
     // A bounded recent channel list (limit 100). It powers both the sidebar and
     // the history used for date-slug resolution.
     queryFn: () => getAnalyticsStreams(channelLogin, 100),
-    enabled: Boolean(channelLogin && (streamsFirstPageQuery.isFetched || isDateSlugRoute)),
+    enabled: Boolean(channelLogin && !holdForSessionRead && !firstPageWholeList && (streamsFirstPageQuery.isFetched || isDateSlugRoute)),
     placeholderData: streamsFirstPageQuery.data,
     staleTime: 30_000,
     refetchInterval: isLiveRoute ? 30_000 : false,
     refetchOnWindowFocus: false,
   })
-  const streamsFullListLoaded = Boolean(streamsQuery.data) && !streamsQuery.isPlaceholderData
-  // What the sidebar lists: the 100 rows once loaded, else the first page (the
-  // placeholder, and still after a failed 100-row read).
-  const streamsData = streamsQuery.data ?? streamsFirstPageQuery.data
+  const streamsFullListLoaded = firstPageWholeList || (Boolean(streamsQuery.data) && !streamsQuery.isPlaceholderData)
+  // What the sidebar lists: the first page while it is the whole list (it is the
+  // read that polls, so a one-off 100-row read never freezes the list), else the
+  // 100 rows once loaded, else the first page (the placeholder, and still after a
+  // failed 100-row read).
+  const streamsData = firstPageWholeList ? streamsFirstPageQuery.data : (streamsQuery.data ?? streamsFirstPageQuery.data)
+  // Refresh and a sync read the list the sidebar shows.
+  const refetchStreams = firstPageWholeList ? streamsFirstPageQuery.refetch : streamsQuery.refetch
   // Only the first page is known and more rows may exist; a first page shorter
   // than its limit is the whole list.
   const streamsPartial = !streamsFullListLoaded
@@ -500,15 +544,56 @@ export function AnalyticsConsole({
     [liveStandInFrame],
   )
 
+  // The status, summary and recap reads, defined once: the session read starts them as it
+  // answers (below), and their queries further down take over the same requests.
+  const statusRead = (id: string) => ({
+    queryKey: ['analytics-console-status', id, channelLogin],
+    queryFn: async () => {
+      if (!id) return null
+      const status = await getStreamStatus(id)
+      // When the status endpoint is unavailable (returns null — e.g. unregistered
+      // hosted route or local routes), don't re-fetch a sparse detail: the full
+      // detail is already loaded by historicalDetailQuery and statusMerged simply
+      // falls back to baseDetail.
+      return status ?? null
+    },
+    staleTime: 30_000,
+    retry: 1,
+  })
+  const summaryRead = (id: string) => ({
+    queryKey: ['analytics-console-summary', id, channelLogin],
+    queryFn: async ({ queryKey }: { queryKey: readonly unknown[] }) => (await getStreamSummary(id, channelLogin))
+      ?? queryClient.getQueryData<StreamSummaryResponse | null>(queryKey)
+      ?? null,
+    staleTime: 30_000,
+  })
+  const recapRead = (id: string) => ({
+    queryKey: ['analytics-console-recap', id],
+    queryFn: () => getPulseStreamRecap(id),
+    staleTime: 120_000,
+    retry: 1,
+  })
+
   const historicalDetailQuery = useQuery({
     queryKey: ['analytics-console-detail', targetQueryStreamId, channelLogin],
-    queryFn: async () => {
+    queryFn: async ({ queryKey }) => {
       if (!targetQueryStreamId) return null
+      const firstRead = queryClient.getQueryData(queryKey) === undefined
       // First load is always full timeline; status polls merge via statusQuery below.
       const session = await getAnalyticsStream(targetQueryStreamId, { sparse: false, channel: channelLogin })
       // The API may ignore `channel` for an explicit stream ID. Never render a
       // different creator's title, measurements, or moments under this URL.
-      return session && streamBelongsToChannel(session, channelLogin) ? session : null
+      const owned = session && streamBelongsToChannel(session, channelLogin) ? session : null
+      // The first answer with a session starts the reads its queries would start once the page
+      // has drawn it, so a slow phone is not waiting on that draw. A missing session starts none.
+      if (owned && firstRead) {
+        void queryClient.prefetchQuery(statusRead(targetQueryStreamId))
+        if (layer2Enabled && (owned.rollups?.some(rollupHasMinuteData) || owned.stream?.streamId)) {
+          void queryClient.prefetchQuery(summaryRead(targetQueryStreamId))
+          void queryClient.prefetchQuery(recapRead(targetQueryStreamId))
+        }
+      }
+      return owned
     },
     enabled: Boolean(
       channelLogin
@@ -546,19 +631,10 @@ export function AnalyticsConsole({
   // wording or "recording" notes.
   const streamSuperseded = Boolean(newerChannelStream(baseDetail?.stream, sidebarStreams))
 
+  const statusReadEnabled = Boolean(isHistoricalRoute && targetQueryStreamId && baseDetail)
   const statusQuery = useQuery({
-    queryKey: ['analytics-console-status', targetQueryStreamId, channelLogin],
-    queryFn: async () => {
-      if (!targetQueryStreamId) return null
-      const status = await getStreamStatus(targetQueryStreamId)
-      // When the status endpoint is unavailable (returns null — e.g. unregistered
-      // hosted route or local routes), don't re-fetch a sparse detail: the full
-      // detail is already loaded by historicalDetailQuery and statusMerged simply
-      // falls back to baseDetail.
-      return status ?? null
-    },
-    enabled: Boolean(isHistoricalRoute && targetQueryStreamId && baseDetail),
-    staleTime: 30_000,
+    ...statusRead(targetQueryStreamId),
+    enabled: statusReadEnabled,
     refetchInterval: (query) => {
       const failureCount = query.state.errorUpdateCount ?? 0
       const backoff = Math.min(120_000, 30_000 * Math.max(1, 2 ** Math.min(failureCount, 2)))
@@ -577,7 +653,6 @@ export function AnalyticsConsole({
       if (vod === 'pending_live' || vod === 'resolving' || vod === 'request_failed') return backoff
       return false
     },
-    retry: 1,
   })
 
   const statusMerged = useMemo(() => {
@@ -596,7 +671,6 @@ export function AnalyticsConsole({
   // time): a fresh read starts a fresh tail. Every poll used to ask after the
   // session read's edge, re-downloading up to 120 minutes (VOD-6), and the rows
   // reached the chart series only.
-  const queryClient = useQueryClient()
   const liveTailReadAt = baseDetail?.updatedAt ?? 0
   const minutesTailQuery = useQuery({
     queryKey: ['analytics-console-minutes-tail', targetQueryStreamId, liveTailReadAt],
@@ -709,7 +783,7 @@ export function AnalyticsConsole({
     queryKey: ['analytics-console-games', targetQueryStreamId],
     queryFn: () => getStreamGameSegments(targetQueryStreamId),
     // Not staged: the moment reel's pictures (the page's largest paint) wait on these segments' box art.
-    enabled: Boolean(showGameSegments && targetQueryStreamId),
+    enabled: Boolean(showGameSegments && targetQueryStreamId && !holdForSessionRead),
     staleTime: 60_000,
     refetchInterval: sessionIsLive ? 75_000 : false,
   })
@@ -733,34 +807,29 @@ export function AnalyticsConsole({
   // the newest measured minute is over 10 min old: a page left open in a visible
   // tab is never told the stream ended. A failed read (null) keeps the last good
   // summary, so the table never flips back to the session read's older counts.
+  const summaryReadEnabled = Boolean(
+    layer2Enabled
+    && targetQueryStreamId
+    && channelLogin
+    && chartDetailReady
+  )
   const summaryQuery = useQuery({
-    queryKey: ['analytics-console-summary', targetQueryStreamId, channelLogin],
-    queryFn: async ({ queryKey }) => (await getStreamSummary(targetQueryStreamId, channelLogin))
-      ?? queryClient.getQueryData<StreamSummaryResponse | null>(queryKey)
-      ?? null,
-    enabled: Boolean(
-      layer2Enabled
-      && targetQueryStreamId
-      && channelLogin
-      && chartDetailReady
-    ),
-    staleTime: 30_000,
+    ...summaryRead(targetQueryStreamId),
+    enabled: summaryReadEnabled,
     refetchInterval: () => {
       const newestMinuteMs = sessionIsLive ? newestMeasuredMinuteMs(detail) : null
       return newestMinuteMs != null && Date.now() - newestMinuteMs <= SUMMARY_POLL_STALE_MS ? 30_000 : false
     },
   })
 
+  const recapReadEnabled = Boolean(
+    layer2Enabled
+    && targetQueryStreamId
+    && chartDetailReady
+  )
   const recapQuery = useQuery({
-    queryKey: ['analytics-console-recap', targetQueryStreamId],
-    queryFn: () => getPulseStreamRecap(targetQueryStreamId),
-    enabled: Boolean(
-      layer2Enabled
-      && targetQueryStreamId
-      && chartDetailReady
-    ),
-    staleTime: 120_000,
-    retry: 1,
+    ...recapRead(targetQueryStreamId),
+    enabled: recapReadEnabled,
   })
 
   const heatmapQuery = useQuery({
@@ -927,7 +996,7 @@ export function AnalyticsConsole({
     setRefreshing(true)
     try {
       const refetches: Array<Promise<unknown>> = [
-        streamsQuery.refetch(),
+        refetchStreams(),
         detailQuery.refetch(),
       ]
       if (layer2Enabled && targetQueryStreamId) {
@@ -945,7 +1014,7 @@ export function AnalyticsConsole({
   }, [
     channelLogin,
     refreshing,
-    streamsQuery,
+    refetchStreams,
     detailQuery,
     gamesQuery,
     syncQuery,
@@ -961,11 +1030,11 @@ export function AnalyticsConsole({
 
   const refetchChartDuringSync = useCallback(async () => {
     await detailQuery.refetch()
-    await streamsQuery.refetch()
+    await refetchStreams()
     if (layer2Enabled) {
       await summaryQuery.refetch()
     }
-  }, [detailQuery, streamsQuery, summaryQuery, layer2Enabled])
+  }, [detailQuery, refetchStreams, summaryQuery, layer2Enabled])
 
   const handleSync = useCallback(
     async (opts?: { viewersOnly?: boolean; forceChat?: boolean }) => {
@@ -1083,17 +1152,20 @@ export function AnalyticsConsole({
   // of "Needs sync" cards, an empty chart and "Updated 1m ago" would read as a
   // tracked channel with a broken feed, so the page says so plainly instead.
   // Public portal only: the panel links to portal routes.
+  // A stream link gets the same panel when its session is missing too (S1, 11-19: a mistyped or old link showed
+  // "Session 123 not found", six dash tiles and an empty sidebar). Only when the host has no stand-in for the
+  // missing session: a reviewed recap's summary is one, so an expired recap never lands here.
+  // A 404 for the stream is an answer, not a failed read.
   const channelNotRecorded = mode === 'public'
-    && isLiveRoute
-    && !sessionLoadFailed
+    && (!sessionLoadFailed || (sessionNotFound && !dateAliasListFailed))
     && !streamsListFailed
-    && liveQuery.isSuccess
-    && liveQuery.data?.state === 'not_collected'
-    && !liveQuery.data?.stream?.streamId
     && Boolean(streamsData)
     && (streamsData?.items ?? []).length === 0
     && !channelIsLive
     && !isActiveLiveCollector
+    && (isLiveRoute
+      ? liveQuery.isSuccess && liveQuery.data?.state === 'not_collected' && !liveQuery.data?.stream?.streamId
+      : sessionNotFound && missingSessionFallback == null)
   // C1 (11-11): the header leads with the channel's name and Twitch picture. Same read
   // and key as the not-recorded panel, so the two share one answer.
   const twitchChannelQuery = useQuery({
@@ -1181,7 +1253,8 @@ export function AnalyticsConsole({
     })
     if (fromList || streamsData) return fromList
     // Until the list answers, an ended or unconfirmed live read opens its own stream when that is
-    // this channel's measured stream (viewer and chat minutes, not a prefetch stub): the loaded list
+    // this channel's measured stream (viewer and chat minutes, not a prefetch stub; the hosted read
+    // carries no chat count, so its minutes show the chat): the loaded list
     // opens the same ID. The session URL must name its read without the list (a numeric ID).
     const live = liveQuery.data
     const liveStream = live?.stream
@@ -1189,7 +1262,7 @@ export function AnalyticsConsole({
       !live
       || !liveStream?.streamId
       || !streamBelongsToChannel(live, channelLogin)
-      || !streamHasSyncedMinutes(liveStream)
+      || !liveReadIsMeasured(live)
       || isSyncPrefetchPlaceholder(liveStream)
       || resolveTargetQueryStreamId(liveStream.streamId, undefined, undefined, true) !== liveStream.streamId
     ) return undefined
@@ -1542,10 +1615,25 @@ export function AnalyticsConsole({
 
   if (sessionNotFound && missingSessionFallback != null) return <>{missingSessionFallback}</>
 
+  // The channel route about to open its session draws the session page's loading state, not the
+  // console it is leaving: the session page then draws once.
   const sessionContentReady = !sessionResolving && !effectiveSessionNotFound && !(detailQuery.isLoading && !detail)
+    && !shouldRedirectLiveRouteToSession
   // The first session read is out: the chart skeleton stands in, and the meta line keeps its slot hidden
   // (its items arrive with the read and would slide across it).
-  const sessionReadPending = sessionResolving || (!effectiveSessionNotFound && detailQuery.isLoading && !detail)
+  const sessionReadPending = sessionResolving || shouldRedirectLiveRouteToSession
+    || (!effectiveSessionNotFound && detailQuery.isLoading && !detail)
+  // "Watch VOD" joins the meta line once a read names the archive: the session read, the recap, or
+  // this stream's row in the channel list (the only one that names it for many ended streams).
+  const sessionListRowKnown = sidebarStreams.some(row => String(row.streamId) === String(targetQueryStreamId ?? ''))
+  const vodLinkPending = !streamVodId && (
+    (recapReadEnabled && recapQuery.isPending) || (!sessionListRowKnown && listsLoading)
+  )
+  // The status, summary and archive reads can still add to the meta line: it stays visible but keeps
+  // the height the phone layouts reserve for it until they settle.
+  const sessionMetaSettling = !sessionReadPending && (
+    (statusReadEnabled && statusQuery.isPending) || (summaryReadEnabled && summaryQuery.isPending) || vodLinkPending
+  )
   // The recap's slot keeps its height until the recap answer settles, so the Moments tabs under it do not
   // jump when it lands. The channel route holds the slot too while it may still open the session page.
   // (fix, 10-30) VOD-4: it waits on the list only until some rows (or the live read's own stream)
@@ -1691,7 +1779,7 @@ export function AnalyticsConsole({
               liveNowMinuteMs={liveNowMinuteMs}
               onPlayOffset={handlePlayRecapOffset}
             />
-          ) : layer2Enabled && momentsRecapPending ? (
+          ) : (layer2Enabled && momentsRecapPending) || shouldRedirectLiveRouteToSession ? (
             <SessionMomentsLoading framed={momentsFramed} />
           ) : recapUnavailable ? (
             <>
@@ -1819,7 +1907,12 @@ export function AnalyticsConsole({
               {headerTitle}
             </SessionHeading>
             {channelNotRecorded ? null : (
-              <div className="ssp-meta-w" data-session-meta data-session-meta-pending={sessionReadPending || undefined}>
+              <div
+                className="ssp-meta-w"
+                data-session-meta
+                data-session-meta-pending={sessionReadPending || undefined}
+                data-session-meta-settling={sessionMetaSettling || undefined}
+              >
                 <div className="ssp-meta">
                   {streamStatePill ? (
                     <span className="mi" data-session-state={streamStatePill}>

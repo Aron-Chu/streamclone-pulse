@@ -28,10 +28,11 @@ function barBottom(): number {
 }
 
 /**
+ * `animated`: the hub's animated top emotes (animatedFlags), so the conveyor asks 7TV for their stills.
  * `foot`: beside the scope line, under the hero's rule (Show my Twitch follows, 11-01). `games` and `emotes`: what the search offers besides channels (3A).
  * `waiting`: the hub's first answer is still on its way, so the Try row and the scope line keep their room and nothing below moves when they land.
  */
-export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emotes, waiting = false }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; foot?: ReactNode; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[]; waiting?: boolean }) {
+export function HubV5Hero({ live, poolSize, points = NO_POINTS, animated, foot, games, emotes, waiting = false }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; animated?: ReadonlySet<string>; foot?: ReactNode; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[]; waiting?: boolean }) {
   const store = useHubV5SearchStore()
   const mastRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
@@ -101,7 +102,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emo
 
   return (
     <header className="hv5-mast" ref={mastRef}>
-      <HubV5Conveyor points={points} refs={conveyorRefs} />
+      <HubV5Conveyor points={points} refs={conveyorRefs} animated={animated} />
       <h1 className="hv5-hero-h" ref={titleRef}>Find your streamer</h1>
       <p className="hv5-hero-sub">Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
       <div className="hv5-hero-field" ref={fieldRef}>

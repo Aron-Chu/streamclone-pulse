@@ -137,16 +137,33 @@ describe('HubActivityPanelV5 wheel zone', () => {
       Object.defineProperty(container.querySelector(selector)!, 'getBoundingClientRect', { configurable: true, value: () => box })
     }
     const navigatorWindow = () => container.querySelector('[data-hub-chart-navigator]')!.getAttribute('data-hub-chart-navigator-window')
-    const wheel = (selector: string) => {
-      const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, clientX: BOX_WIDTH / 2, clientY: 200 })
+    const wheel = (selector: string, init: WheelEventInit = {}) => {
+      const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, clientX: BOX_WIDTH / 2, clientY: 200, ...init })
       act(() => { container.querySelector(selector)!.dispatchEvent(event) })
       return event
     }
-    // The plot first: a wheel the page took would start the scroll-through window.
-    expect(wheel('[data-hub-chart-wheel-surface]').defaultPrevented).toBe(true)
+    const surface = '[data-hub-chart-wheel-surface]'
+    // S1 (11-19): the reader scrolls past this chart, so a plain wheel scrolls the page until a click on the chart,
+    // and says how to zoom.
+    expect(wheel(surface).defaultPrevented).toBe(false)
+    expect(navigatorWindow()).toBe('0:239')
+    expect(container.querySelector('[data-chart-wheel-tip]')!.textContent).toBe('Click to zoom with the wheel')
+    // A click on the chart arms the wheel (even right after the page took one) and hides the tip.
+    act(() => { fireEvent.pointerDown(container.querySelector(surface)!) })
+    expect(container.querySelector('[data-chart-wheel-tip]')).toBeNull()
+    expect(wheel(surface).defaultPrevented).toBe(true)
     expect(navigatorWindow()).not.toBe('0:239')
     act(() => { fireEvent.click(container.querySelector('button[aria-label="Reset zoom"]')!) })
     expect(navigatorWindow()).toBe('0:239')
+    // Leaving the chart disarms it; Ctrl+wheel zooms the chart at once, instead of the browser's zoom.
+    act(() => { fireEvent.pointerLeave(container.querySelector('.hx-plot-stack')!) })
+    expect(wheel(surface).defaultPrevented).toBe(false)
+    expect(navigatorWindow()).toBe('0:239')
+    expect(wheel(surface, { ctrlKey: true }).defaultPrevented).toBe(true)
+    expect(navigatorWindow()).not.toBe('0:239')
+    act(() => { fireEvent.click(container.querySelector('button[aria-label="Reset zoom"]')!) })
+    expect(navigatorWindow()).toBe('0:239')
+    act(() => { fireEvent.pointerDown(container.querySelector(surface)!) })
     for (const selector of ['[data-hub-activity-header] h2', '[data-hub-window-seg] button', '[data-hub-series-chip]', '[data-hub-readout]', '[data-hub-provider-lanes]', '.hub-act']) {
       expect(wheel(selector).defaultPrevented, selector).toBe(false)
       expect(navigatorWindow(), selector).toBe('0:239')

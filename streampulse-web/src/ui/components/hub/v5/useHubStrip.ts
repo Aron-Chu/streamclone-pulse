@@ -96,16 +96,24 @@ export function useHubStrip(N: number, order: string) {
     track.addEventListener('scroll', onScroll, { passive: true })
     track.addEventListener('scrollend', onScrollEnd)
     track.addEventListener('wheel', onWheel, { passive: false })
-    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => update(true))
-    ro?.observe(track)
     return () => {
       cancelAnimationFrame(raf)
       window.clearTimeout(quiet)
       track.removeEventListener('scroll', onScroll)
       track.removeEventListener('scrollend', onScrollEnd)
       track.removeEventListener('wheel', onWheel)
-      ro?.disconnect()
     }
+  }, [N, update])
+
+  // The pager's measure comes from the ResizeObserver, observed before paint: the browser reports the track's size
+  // after its own layout and before that frame paints, so a strip that fits never shows ‹ › for a frame, and a strip
+  // drawn for the first time forces no layout of its own (about 380 ms on a phone while the hub first drew, S1 11-19).
+  useLayoutEffect(() => {
+    const track = trackRef.current
+    if (!track || !N || typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(() => update(!place.current.moving))
+    ro.observe(track)
+    return () => ro.disconnect()
   }, [N, update])
 
   // A read that re-ranks the tiles moves them within the list, and the browser's snapping follows the tile it had
@@ -113,10 +121,12 @@ export function useHubStrip(N: number, order: string) {
   // back to the reader's offset instead (unless it is still moving). A focused tile keeps the tab stop and stays in
   // view by moving the strip alone: scrollIntoView would also scroll the page back up to a strip the reader has
   // scrolled past. All before paint, with the pager's measure, so a strip that fits never shows ‹ › for a frame.
+  // A track seen for the first time is measured by the ResizeObserver above instead.
   useLayoutEffect(() => {
     const track = trackRef.current
     if (!track) return
     const left = place.current
+    if (left.track !== track && typeof ResizeObserver !== 'undefined') return
     if (left.track === track) {
       if (!left.moving && Math.abs(track.scrollLeft - left.left) > 1) track.scrollLeft = left.left
       const focused = document.activeElement

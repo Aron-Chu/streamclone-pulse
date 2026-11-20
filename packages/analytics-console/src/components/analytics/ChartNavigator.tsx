@@ -159,6 +159,13 @@ export interface ChartNavigatorProps {
    */
   scrollZoomEnabled?: boolean
   onScrollZoomChange?: (enabled: boolean) => void
+  /**
+   * A plain wheel zooms only after a click on the chart (until the pointer
+   * leaves it), or while Ctrl is held; until then it scrolls the page, and a
+   * wheel that lands on the chart from a resting page shows "Click to zoom
+   * with the wheel". For a chart the reader scrolls past (the hub's, S1 11-19).
+   */
+  armWheel?: boolean
   onChange: (range: ChartNavigatorRange, animate?: boolean) => void
   onDragStart?: () => ChartNavigatorRange
   onReset: () => void
@@ -252,6 +259,9 @@ const WHEEL_GESTURE_GAP_MS = 1500
  * Smaller high-resolution and touchpad deltas add up exactly instead.
  */
 const WHEEL_NOTCH_MIN_PX = 50
+
+/** How long "Click to zoom with the wheel" stays after an unarmed wheel over an armWheel chart. */
+export const WHEEL_TIP_MS = 1800
 
 /**
  * The wheel surface and the navigator can both hear one event (the stream
@@ -655,6 +665,7 @@ export function ChartNavigator({
   minVisibleCount = 2,
   scrollZoomEnabled: scrollZoomProp,
   onScrollZoomChange: onScrollZoomChangeProp,
+  armWheel = false,
   onChange,
   onDragStart,
   onReset,
@@ -954,6 +965,21 @@ export function ChartNavigator({
   /** This navigator's layout reads for the current wheel gesture. */
   const wheelLayoutRef = useRef<WheelLayoutCache | null>(null)
   wheelLayoutRef.current ??= createWheelLayoutCache()
+  // armWheel: a click on the chart arms the wheel until the pointer leaves the chart.
+  const armedRef = useRef(false)
+  const [wheelTip, setWheelTip] = useState(false)
+  const wheelTipTimer = useRef<number | undefined>(undefined)
+  const flashWheelTip = useCallback(() => {
+    setWheelTip(true)
+    window.clearTimeout(wheelTipTimer.current)
+    wheelTipTimer.current = window.setTimeout(() => setWheelTip(false), WHEEL_TIP_MS)
+  }, [])
+  const armWheelNow = useCallback(() => {
+    armedRef.current = true
+    window.clearTimeout(wheelTipTimer.current)
+    setWheelTip(false)
+  }, [])
+  useEffect(() => () => window.clearTimeout(wheelTipTimer.current), [])
   const handleWheel = (
     event: WheelEvent,
     inZone: (x: number, y: number) => boolean,
@@ -965,7 +991,9 @@ export function ChartNavigator({
     if (event.defaultPrevented || handledWheelEvents.has(event)) return
     // An open bucket card over or beside the plot keeps its own wheel.
     if (isChartWheelExempt(event.target)) return noteWheelOutcome(event, 'pass:exempt')
-    if (event.ctrlKey || event.metaKey) return noteWheelOutcome(event, 'pass:browser-zoom')
+    // Ctrl+wheel is the browser's zoom, except over an armWheel chart, where it zooms the chart (as a map does).
+    const ctrlZoom = armWheel && event.ctrlKey && !event.metaKey
+    if ((event.ctrlKey || event.metaKey) && !ctrlZoom) return noteWheelOutcome(event, 'pass:browser-zoom')
     if (maxIndex <= 1) return noteWheelOutcome(event, 'pass:no-range')
     // By the pointer's position, not the event target.
     if (!anchor || !inZone(event.clientX, event.clientY)) return noteWheelOutcome(event, 'pass:outside-chart')
@@ -975,12 +1003,18 @@ export function ChartNavigator({
     const deltaY = wheelDeltaPixels(event.deltaY, event.deltaMode)
     const horizontalIntent = Math.abs(deltaX) > Math.abs(deltaY)
     const shouldPan = event.shiftKey || horizontalIntent
-    if (!shouldPan && !scrollZoomEnabled && !event.altKey) return noteWheelOutcome(event, 'pass:off')
+    if (!shouldPan && !scrollZoomEnabled && !event.altKey && !ctrlZoom) return noteWheelOutcome(event, 'pass:off')
     const deltaPixels = shouldPan ? (event.shiftKey ? (deltaY || deltaX) : deltaX) : deltaY
     if (deltaPixels === 0) return noteWheelOutcome(event, 'pass:limit')
-    // A page scroll sweeping the plot under the pointer keeps scrolling.
-    if (!shouldPan && !event.altKey && scrollingThrough(event.timeStamp)) {
+    // A page scroll sweeping the plot under the pointer keeps scrolling (a click on an armWheel chart says otherwise).
+    const armed = armWheel && armedRef.current
+    if (!shouldPan && !event.altKey && !ctrlZoom && !armed && scrollingThrough(event.timeStamp)) {
       return noteWheelOutcome(event, 'pass:scroll-through')
+    }
+    // Not armed: the page scrolls. A wheel that starts on the chart (the page was still) shows how to zoom.
+    if (armWheel && !shouldPan && !event.altKey && !ctrlZoom && !armed) {
+      flashWheelTip()
+      return noteWheelOutcome(event, 'pass:unarmed')
     }
 
     const inputRange = readInputRange()
@@ -1030,6 +1064,8 @@ export function ChartNavigator({
   wheelHandlerRef.current = handleWheel
   const wheelAnchorRef = useRef(wheelAnchor)
   wheelAnchorRef.current = wheelAnchor
+  const armWheelRef = useRef(armWheel)
+  armWheelRef.current = armWheel
 
   useEffect(() => {
     installScrollThroughGuard()
@@ -1053,8 +1089,17 @@ export function ChartNavigator({
       )
     }
     navigator.addEventListener('wheel', onWheel, { passive: false })
-    return () => navigator.removeEventListener('wheel', onWheel)
-  }, [])
+    const onDown = () => { if (armWheelRef.current) armWheelNow() }
+    // with a wheel surface, leaving the surface disarms (the navigator sits inside it)
+    const onLeave = () => { if (!boundSurfaceRef.current) armedRef.current = false }
+    navigator.addEventListener('pointerdown', onDown)
+    navigator.addEventListener('pointerleave', onLeave)
+    return () => {
+      navigator.removeEventListener('wheel', onWheel)
+      navigator.removeEventListener('pointerdown', onDown)
+      navigator.removeEventListener('pointerleave', onLeave)
+    }
+  }, [armWheelNow])
 
   // The chart surface can be swapped by its chart; rebind only when it is.
   const boundSurfaceRef = useRef<{ surface: HTMLElement; release: () => void } | null>(null)
@@ -1079,6 +1124,11 @@ export function ChartNavigator({
       )
     }
     surface.addEventListener('wheel', onWheel, { passive: false })
+    // armWheel: a click anywhere on the chart arms the wheel; leaving the chart disarms it.
+    const onDown = () => { if (armWheelRef.current) armWheelNow() }
+    const onLeave = () => { armedRef.current = false }
+    surface.addEventListener('pointerdown', onDown)
+    surface.addEventListener('pointerleave', onLeave)
     // A card that changes size (a lane opens, the page reflows) re-measures.
     const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(bumpWheelLayout) : null
     resizeObserver?.observe(surface)
@@ -1086,6 +1136,8 @@ export function ChartNavigator({
       surface,
       release: () => {
         surface.removeEventListener('wheel', onWheel)
+        surface.removeEventListener('pointerdown', onDown)
+        surface.removeEventListener('pointerleave', onLeave)
         resizeObserver?.disconnect()
       },
     }
@@ -1138,7 +1190,9 @@ export function ChartNavigator({
   const touchOnly = useTouchOnlyScreen()
   const scrollHint = touchOnly
     ? TOUCH_HINT
-    : scrollZoomEnabled
+    : scrollZoomEnabled && armWheel
+      ? 'Click the chart, then scroll to zoom (or hold Ctrl and scroll) · Shift + scroll to pan · Drag the purple bar to pick a span'
+      : scrollZoomEnabled
       ? 'Scroll over the chart to zoom · Shift + scroll to pan · Drag the purple bar to pick a span'
       : 'Scroll zoom is off: the wheel scrolls the page · Hold Alt and scroll to zoom · Shift + scroll to pan'
   const hint = <small className="hx-chart-navigator__hint">{scrollHint}</small>
@@ -1175,6 +1229,8 @@ export function ChartNavigator({
       onPointerCancel={(event) => finishPointerDrag(event, true)}
       onLostPointerCapture={(event) => finishPointerDrag(event, true)}
     >
+      {/* Pointer-only and passing: the hint the group points to says the same for every reader. */}
+      {armWheel && wheelTip ? <span className="hx-chart-navigator__wheel-tip" data-chart-wheel-tip aria-hidden="true">Click to zoom with the wheel</span> : null}
       <div ref={barRef} className="hx-chart-navigator__bar">
         <div ref={trackShellRef} className="hx-chart-navigator__track-shell">
           <div

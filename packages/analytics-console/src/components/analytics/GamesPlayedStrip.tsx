@@ -9,6 +9,7 @@ import {
   resolveGamesPlayedTimelineRange,
   type ChartGameSegment,
 } from '@streampulse/pulse-charts'
+import { boxArtAtSize } from '../../utils/boxArtSize.ts'
 import { isIdBuiltBoxArt, isTwitchPlaceholderBoxArt, twitchBoxArtByName } from '../../utils/twitchBoxArt.ts'
 import { hms } from './sessionSpChartModel.ts'
 
@@ -207,13 +208,23 @@ function twitchNameArtUrl(gameName: string | undefined, igdb = false): string | 
   return twitchBoxArtByName(igdb ? `${normalized}_IGDB` : normalized, 144, 192)
 }
 
+/**
+ * The games answer's own cover at the 144x192 size every other cover here uses (the
+ * payload carries 210x280), so the strip and the moment reel ask for one file.
+ * Only a sized Twitch box-art URL is rewritten (boxArtAtSize).
+ */
+function sentGameArtUrl(boxArtUrl: string | undefined): string | null {
+  const explicit = safeGameArtUrl(boxArtUrl)
+  return explicit ? boxArtAtSize(explicit, 144, 192) : null
+}
+
 export function gameArtCandidates(
   boxArtUrl: string | undefined,
   categoryId: string | undefined,
   gameName?: string,
 ): string[] {
   const candidates: string[] = []
-  const explicit = safeGameArtUrl(boxArtUrl)
+  const explicit = sentGameArtUrl(boxArtUrl)
   if (explicit) {
     candidates.push(explicit)
     const alternate = twitchIgdbVariant(explicit)
@@ -296,8 +307,8 @@ function GameArt({
   // until checked, and a proven placeholder falls through to the next candidate
   // or the initials. The backend's own cover is checked only when it is that id
   // cover (its fallback when the Twitch name lookup fails); its _IGDB or
-  // looked-up cover loads as before.
-  const sentArt = useMemo(() => safeGameArtUrl(boxArtUrl), [boxArtUrl])
+  // looked-up cover loads as before, in the reel's mode, so the two share one file.
+  const sentArt = useMemo(() => sentGameArtUrl(boxArtUrl), [boxArtUrl])
   const checkArt = resolved != null && (resolved !== sentArt || isIdBuiltBoxArt(resolved))
   const [checkedArt, setCheckedArt] = useState<string | null>(null)
   const nextCandidate = (index: number) => candidates.findIndex((candidate, at) =>

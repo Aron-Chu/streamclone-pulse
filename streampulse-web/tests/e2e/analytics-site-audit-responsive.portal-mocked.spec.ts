@@ -99,20 +99,22 @@ for (const width of [320, 390]) {
   })
 }
 
-test('at 1440px the capped Top today and next existing section share a row', async ({ page }, testInfo) => {
+test('at 1440px Top moments today and Picking up now share the row under the chart (H1, 11-19)', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await installHubUxMock(page)
   await page.goto('/analytics')
-  const peek = page.locator('.hv5-f3-peek')
-  const busy = page.locator('.hv5-busiest')
-  await expect(peek).toBeVisible()
-  await expect(busy).toBeVisible()
-  const left = (await peek.boundingBox())!, right = (await busy.boundingBox())!
-  expect(left.width).toBeLessThanOrEqual(720)
-  expect(right.width).toBeLessThanOrEqual(720)
-  expect(Math.abs(left.y - right.y)).toBeLessThanOrEqual(1)
-  expect(left.x + left.width).toBeLessThan(right.x)
-  expect(await peek.evaluate((node, nextClass) => Boolean(node.compareDocumentPosition(document.querySelector(nextClass)!) & Node.DOCUMENT_POSITION_FOLLOWING), '.hv5-busiest')).toBe(true)
+  const tops = page.locator('#top-moments')
+  const rail = page.locator('#latest')
+  await expect(tops).toBeVisible()
+  await expect(rail).toBeVisible()
+  await expect(async () => {
+    const left = (await tops.boundingBox())!, right = (await rail.boundingBox())!
+    expect(left.width).toBeLessThanOrEqual(720)
+    expect(right.width).toBeLessThanOrEqual(720)
+    expect(Math.abs(left.y - right.y)).toBeLessThanOrEqual(1)
+    expect(left.x + left.width).toBeLessThan(right.x)
+  }).toPass({ timeout: 10_000 })
+  expect(await tops.evaluate((node) => Boolean(node.compareDocumentPosition(document.querySelector('#latest')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
   await page.screenshot({ path: testInfo.outputPath('adjacent-existing-hub-sections.png') })
 })
