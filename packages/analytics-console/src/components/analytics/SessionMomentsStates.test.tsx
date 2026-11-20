@@ -98,7 +98,20 @@ describe('stream edge tags (E1, SESSION-MOMENTS-7/8)', () => {
     expect(momentRowEdgeLabel({ offsetSeconds: 3600, streamEdge: 'closing' })).toBe('Stream end')
   })
 
-  it('keeps a recap figure in the opening edge, with a quiet tag beside it', () => {
+  // P20 (11-20): a recap figure says "Stream start" only when its time reads 0, not across the whole opening edge.
+  it('keeps a recap figure in the opening edge, with a quiet tag beside it only at 0', () => {
+    const atZero = render(
+      <StreamRecapPanel
+        recap={{ streamId: 's1', topMoments: [{ offsetSeconds: 600, score: 40 }], biggestChatSpike: { offsetSeconds: 0, chatPerMin: 900 } }}
+        streamEdges={{ openingUntil: 300, closingFrom: -1 }}
+        onJumpToOffset={() => {}}
+      />,
+    )
+    expect(atZero.container.textContent).toContain('900 chat/min')
+    expect(atZero.container.querySelector('[data-stream-recap-edge]')?.textContent).toBe('Stream start')
+    expect(screen.getByRole('button', { name: /^Biggest spike at about 0:00:00, Stream start, 900 chat messages a minute/ })).toBeTruthy()
+    atZero.unmount()
+
     const { container } = render(
       <StreamRecapPanel
         recap={{ streamId: 's1', topMoments: [{ offsetSeconds: 600, score: 40 }], biggestChatSpike: { offsetSeconds: 120, chatPerMin: 900 } }}
@@ -107,7 +120,7 @@ describe('stream edge tags (E1, SESSION-MOMENTS-7/8)', () => {
       />,
     )
     expect(container.textContent).toContain('900 chat/min')
-    expect(container.querySelector('[data-stream-recap-edge]')?.textContent).toBe('Stream start')
-    expect(screen.getByRole('button', { name: /^Biggest spike at about 0:02:00, Stream start, 900 chat messages a minute/ })).toBeTruthy()
+    expect(container.querySelector('[data-stream-recap-edge]')).toBeNull()
+    expect(screen.getByRole('button', { name: /^Biggest spike at about 0:02:00, 900 chat messages a minute/ })).toBeTruthy()
   })
 })

@@ -1,8 +1,8 @@
 import { useMemo, type MouseEvent, type ReactNode } from 'react'
 import {
-  formatMomentClock,
   formatMomentOffset,
   momentClockDisplay,
+  reactionAnalyticalOffset,
   streamEdgeKind,
   streamEdgeLabel,
   type MomentClockDisplay,
@@ -45,8 +45,10 @@ export function StreamRecapPanel({
   /** The session's stream edges (sessionStreamEdges): a figure there keeps its place and gets a quiet tag (E1, 11-13). */
   streamEdges?: StreamEdges
 }) {
-  const edgeTag = (offsetSeconds: number) => {
-    const kind = streamEdges ? streamEdgeKind(streamEdges, offsetSeconds) : undefined
+  const edgeTag = (fields: ReactionIdentityFields) => {
+    const kind = streamEdges ? streamEdgeKind(streamEdges, fields.offsetSeconds) : undefined
+    // "Stream start" only when the figure's time reads 0 (P20, 11-20); the closing edge keeps its tag.
+    if (kind === 'opening' && recapFigureSecond(fields) !== 0) return null
     return kind ? streamEdgeLabel(kind) : null
   }
   const topMoments = recap.topMoments ?? []
@@ -79,6 +81,10 @@ export function StreamRecapPanel({
       ? { ...recap.funniestEmoteBurst }
       : { offsetSeconds: burstOffsetSeconds } // the busiest rollup minute: minute-only
     : null
+  const spikeClock = spikeFields ? recapFigureClock(spikeFields) : null
+  const burstClock = burstFields ? recapFigureClock(burstFields) : null
+  const spikeEdge = spikeFields ? edgeTag(spikeFields) : null
+  const burstEdge = burstFields ? edgeTag(burstFields) : null
 
   // No totals, no highlight rows and no emotes: the card would be a bare title. Its moments are not listed here (the
   // Pulse Moments list below has them), so a recap with moments only draws no card either.
@@ -133,9 +139,7 @@ export function StreamRecapPanel({
               offsetSeconds={recap.biggestChatSpike.offsetSeconds}
               onJumpToOffset={onJumpToOffset}
               onPreviewOffset={onPreviewOffset}
-              ariaLabel={`Biggest spike at ${formatMomentClock(spikeFields!)}${
-                edgeTag(recap.biggestChatSpike.offsetSeconds) ? `, ${edgeTag(recap.biggestChatSpike.offsetSeconds)}` : ''
-              }${
+              ariaLabel={`Biggest spike at ${recapClockWords(spikeClock!)}${spikeEdge ? `, ${spikeEdge}` : ''}${
                 recap.biggestChatSpike.chatPerMin != null ? `, ${count(recap.biggestChatSpike.chatPerMin)} chat messages a minute` : ''
               }`}
               vodLink={(
@@ -151,13 +155,13 @@ export function StreamRecapPanel({
                 Biggest spike at{' '}
                 <RecapOffsetTimestamp
                   offsetSeconds={recap.biggestChatSpike.offsetSeconds}
-                  clock={momentClockDisplay(spikeFields!)}
+                  clock={spikeClock!}
                   vodId={vodId}
                   vodAlignSeconds={vodAlignSeconds}
                   vodDurationSeconds={vodDurationSeconds}
                   plain={canJump}
                 />
-                <RecapEdgeTag label={edgeTag(recap.biggestChatSpike.offsetSeconds)} />
+                <RecapEdgeTag label={spikeEdge} />
               </span>
               {recap.biggestChatSpike.chatPerMin != null ? (
                 <>{' · '}<span className="whitespace-nowrap">{count(recap.biggestChatSpike.chatPerMin)} chat/min</span></>
@@ -170,9 +174,7 @@ export function StreamRecapPanel({
               offsetSeconds={burstOffsetSeconds}
               onJumpToOffset={onJumpToOffset}
               onPreviewOffset={onPreviewOffset}
-              ariaLabel={`Emote burst at ${formatMomentClock(burstFields!)}${
-                edgeTag(burstOffsetSeconds) ? `, ${edgeTag(burstOffsetSeconds)}` : ''
-              }${burstCode ? `, ${burstCode}` : ''}${
+              ariaLabel={`Emote burst at ${recapClockWords(burstClock!)}${burstEdge ? `, ${burstEdge}` : ''}${burstCode ? `, ${burstCode}` : ''}${
                 burstCount != null ? `, ${count(burstCount)} uses` : ''
               }`}
               vodLink={(
@@ -188,13 +190,13 @@ export function StreamRecapPanel({
                 Emote burst at{' '}
                 <RecapOffsetTimestamp
                   offsetSeconds={burstOffsetSeconds}
-                  clock={momentClockDisplay(burstFields!)}
+                  clock={burstClock!}
                   vodId={vodId}
                   vodAlignSeconds={vodAlignSeconds}
                   vodDurationSeconds={vodDurationSeconds}
                   plain={canJump}
                 />
-                <RecapEdgeTag label={edgeTag(burstOffsetSeconds)} />
+                <RecapEdgeTag label={burstEdge} />
               </span>
               {/* Same source as the time: the rollup peak may replace the
                   backend burst when it is bigger. */}
@@ -229,6 +231,29 @@ export function StreamRecapPanel({
           four places at once. */}
     </section>
   )
+}
+
+/**
+ * The stream second a recap figure's time shows. A minute-only figure shows the second its VOD link seeks to (before
+ * any VOD alignment), never that minute's floor (P20, 11-20); an onset at second precision stays exact (K1, 11-13).
+ */
+function recapFigureSecond(fields: ReactionIdentityFields): number {
+  return momentClockDisplay(fields).approximate
+    ? Math.max(0, Math.floor(fields.offsetSeconds))
+    : reactionAnalyticalOffset(fields)
+}
+
+/** A recap figure's time, with the quiet "about" of a minute-only time (K1, 11-13). */
+function recapFigureClock(fields: ReactionIdentityFields): MomentClockDisplay {
+  return {
+    text: formatMomentOffset(recapFigureSecond(fields)),
+    approximate: momentClockDisplay(fields).approximate,
+  }
+}
+
+/** The figure's time as the button's label reads it ("about 0:00:32"). */
+function recapClockWords(clock: MomentClockDisplay): string {
+  return clock.approximate ? `about ${clock.text}` : clock.text
 }
 
 /** The quiet "Stream start" / "Stream end" tag beside a recap figure in a stream's edge (E1, 11-13). */
