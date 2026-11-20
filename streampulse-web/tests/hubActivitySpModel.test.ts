@@ -144,6 +144,41 @@ describe('buildHubActivitySpModel', () => {
     expect(barViewerChannels(model, 0, 4)).toEqual({ live: 73, roster: 100, members: 4 })
   })
 
+  it('shows a viewer-only bucket (no chat rollup flag) as unmeasured chat, and Now skips it', () => {
+    const viewerOnly = { chat: 0, emotes: 0, seventv: 0, hasChatRollup: undefined }
+    const points = series(10, 6, (index) => (index >= 8 ? viewerOnly : index === 5 ? viewerOnly : {}))
+    const model = buildHubActivitySpModel(points, 60, { bucketMinutes: 6 })!
+    for (const index of [5, 8, 9]) {
+      expect(Number.isNaN(model.data.chat[index]!)).toBe(true)
+      expect(Number.isNaN(model.data.emotes[index]!)).toBe(true)
+      expect(Number.isNaN(model.sevenTv[index]!)).toBe(true)
+      expect(Number.isNaN(model.other[index]!)).toBe(true)
+      expect(model.data.viewers[index]).toBe(points[index]!.viewers)
+    }
+    expect(model.latest!.index).toBe(7)
+    expect(model.latest!.t).toBe(points[7]!.t)
+  })
+
+  it('keeps a measured zero (chat rollup flagged, no chat) as a real zero', () => {
+    const points = series(10, 6, (index) => (index === 9 ? { chat: 0, emotes: 0, seventv: 0, hasChatRollup: true } : {}))
+    const model = buildHubActivitySpModel(points, 60, { bucketMinutes: 6 })!
+    expect(model.data.chat[9]).toBe(0)
+    expect(model.data.emotes[9]).toBe(0)
+    expect(model.latest!.index).toBe(9)
+    expect(model.latest!.chat).toBe(0)
+  })
+
+  it('keeps a 7TV and a BTTV emote with the same name apart over a bar', () => {
+    const points = series(2, 6, (index) => ({
+      topEmotes: [index === 0 ? { name: 'Hehe', provider: '7tv', count: 30 } : { name: 'Hehe', provider: 'bttv', count: 20 }],
+    }))
+    const model = buildHubActivitySpModel(points, 12, { bucketMinutes: 6 })!
+    expect(barTopEmotes(model, 0, 2, 3)).toEqual([
+      { name: 'Hehe', provider: '7tv', count: 30 },
+      { name: 'Hehe', provider: 'bttv', count: 20 },
+    ])
+  })
+
   it('returns null without a closed served bucket', () => {
     expect(buildHubActivitySpModel([], 1440, { bucketMinutes: 6 })).toBeNull()
     expect(buildHubActivitySpModel(series(1, 6, () => ({ bucketComplete: false })), 1440, { bucketMinutes: 6 })).toBeNull()
