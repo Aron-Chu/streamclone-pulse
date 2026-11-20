@@ -268,8 +268,13 @@ for (const width of [360, 390, 768, 1024, 1440]) {
     await installHubUxMock(page)
     await page.goto('/analytics')
     await expect(page.locator('.analytics-topnav')).toBeVisible()
-    // Add to Chrome is hidden at 720px and below, so only a shown one is measured.
-    const targets = await page.locator('.analytics-topnav__links a, .analytics-topnav__install:visible').all()
+    // Only shown targets are measured: Add to Chrome hides at 720px and below, and below 720px
+    // the page links move into the Navigation menu, whose button takes their place on the bar.
+    const targets = await page.locator([
+      '.analytics-topnav__links a:visible',
+      '.analytics-topnav__install:visible',
+      '.analytics-topnav__more-trigger:visible',
+    ].join(', ')).all()
     expect(targets.length).toBeGreaterThan(0)
     for (const target of targets) {
       const box = await target.boundingBox()
