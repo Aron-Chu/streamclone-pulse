@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
 import { installNewsroomMock, newsroomFixture } from './helpers/newsroomMock'
 import portalTimingFixture from '../fixtures/portal_vod_timing_v1.json' with { type: 'json' }
@@ -72,7 +72,8 @@ test('a deep-linked detection outside recent results restores exact recap reacti
   } }))
   await page.goto('/analytics/moments?login=xqc&stream=s1&offset=17058')
   const detail = page.locator('.moments-detail')
-  await expect(detail.getByRole('heading', { name: 'Emote spike', exact: true })).toBeVisible()
+  // With no row above it, the detail is named "<channel> · <reason>" (C1, 10-22).
+  await expect(detail.getByRole('heading', { name: 'xqc · Emote spike', exact: true })).toBeVisible()
   await expect(detail.getByText('GTAB', { exact: true })).toBeVisible()
   await expect(detail.getByText('7TV', { exact: true })).toBeVisible()
   await expect(detail.getByText('32 uses', { exact: true })).toBeVisible()
@@ -319,14 +320,16 @@ test('exact moment source, device save, reload and legacy session link', async (
   await expect(page.getByRole('tablist', { name: 'Moment views' })).toBeVisible()
 })
 
+// The games row on top picks a category (it replaced the Category menu in #229).
+const gameCover = (page: Page, name: string) => page.getByRole('list', { name: 'Games, busiest first' }).getByRole('button', { name: new RegExp(`^${name}: `) })
+
 test('category survives detail and browser back; retired Sessions bookmarks reach Moments', async ({ page }) => {
   await page.goto('/analytics/moments')
-  await page.getByRole('combobox', { name: 'Category', exact: true }).click()
-  await page.getByRole('option', { name: 'Minecraft', exact: true }).click()
+  await gameCover(page, 'Minecraft').click()
   await expect(page.locator('.moments-result')).toHaveCount(1)
   await page.locator('.moments-result').getByRole('button', { name: 'Open moment' }).click()
   await page.goBack()
-  await expect(page.getByRole('combobox', { name: 'Category', exact: true })).toHaveText('Minecraft')
+  await expect(gameCover(page, 'Minecraft')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.moments-result')).toHaveCount(1)
   await expect(page.locator('.moments-result').getByRole('button', { name: 'Open moment' })).toBeFocused()
   await page.goto('/analytics/moments?view=sessions&window=7d')
@@ -337,8 +340,7 @@ test('category survives detail and browser back; retired Sessions bookmarks reac
 test('creator links open the channel while History is hidden; a History creator link and Back keep browse filters', async ({ page }) => {
   await page.route('**/v1/public/discovery/ranked?*', route => route.fulfill({ status: 404, json: {} }))
   await page.goto('/analytics/moments')
-  await page.getByRole('combobox', { name: 'Category', exact: true }).click()
-  await page.getByRole('option', { name: 'Minecraft', exact: true }).click()
+  await gameCover(page, 'Minecraft').click()
   await expect(page.locator('.moments-result')).toHaveCount(1)
   // History is not offered while ranked is not deployed: the creator opens their broadcasts.
   await expect(page.locator('.moments-result').getByRole('link', { name: /^All .+ broadcasts$/ })).toHaveAttribute('href', '/analytics/xqc')
@@ -348,7 +350,7 @@ test('creator links open the channel while History is hidden; a History creator 
   await expect(page.getByRole('heading', { name: 'History unavailable' })).toBeVisible()
   await expect(page.locator('.moments-detail')).toHaveCount(0)
   await page.goBack()
-  await expect(page.getByRole('combobox', { name: 'Category', exact: true })).toHaveText('Minecraft')
+  await expect(gameCover(page, 'Minecraft')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.moments-result')).toHaveCount(1)
 })
 
@@ -491,38 +493,54 @@ test('moment cards keep background, keyboard, Save, analytics, and emote interac
   await expect(primary).not.toHaveAttribute('aria-pressed')
   await expect(first.locator('.moments-row-emotes')).toHaveCount(1)
   const emote = first.locator('.moments-row-emotes > span').first()
+  // A closed detail stays in the DOM (inert, aria-hidden) for its 200 ms collapse, and a
+  // press made while Close is still stepping back in history waits for it. So wait on the
+  // row's own state, never on `.moments-detail` being visible: that can be the closing copy.
+  const detail = page.getByRole('region', { name: /^Selected moment: / })
+  const isOpen = async () => {
+    await expect(primary).toHaveAttribute('aria-expanded', 'true')
+    await expect(detail).toBeVisible()
+  }
+  const closeDetail = async () => {
+    await detail.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(primary).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.locator('.moments-detail')).toHaveCount(0)
+  }
   await emote.hover()
   await expect(emote).toHaveAttribute('title', /DinoDance/)
   await emote.click()
-  await expect(page.locator('.moments-detail')).toBeVisible()
+  await isOpen()
   await expect(primary).toHaveAttribute('aria-current', 'true')
-  await expect(primary).toHaveAttribute('aria-expanded', 'true')
   // Pressed again, the open row closes its moment, and its name says so.
   await expect(primary).toHaveAccessibleName('Twitch emote spike — Close moment for xQc at about 0:07:00 into broadcast')
   await expect(first.locator('.moments-row-emotes')).toHaveCount(1)
-  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await closeDetail()
 
   await first.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(first.getByRole('button', { name: 'Saved', exact: true })).toBeVisible()
   await expect(page.locator('.moments-detail')).toHaveCount(0)
+  await expect(primary).toHaveAttribute('aria-expanded', 'false')
 
   const evidence = await first.locator('.moments-result-evidence').boundingBox()
   expect(evidence).not.toBeNull()
   await page.mouse.click(evidence!.x + evidence!.width / 2, evidence!.y + evidence!.height / 2)
-  await expect(page.locator('.moments-detail')).toBeVisible()
-  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await isOpen()
+  await closeDetail()
 
   await primary.focus()
   await page.keyboard.press('Enter')
-  await expect(page.locator('.moments-detail')).toBeVisible()
+  await isOpen()
   // The same key closes it again; the button keeps focus.
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('region', { name: /^Selected moment: / })).toHaveCount(0)
+  await expect(detail).toHaveCount(0)
+  await expect(primary).toHaveAttribute('aria-expanded', 'false')
   await expect(primary).toBeFocused()
   await expect(primary).toHaveAccessibleName('Twitch emote spike — Open moment for xQc at about 0:07:00 into broadcast')
+  await expect(page.locator('.moments-detail')).toHaveCount(0)
   await primary.focus()
   await page.keyboard.press('Space')
-  await expect(page.locator('.moments-detail')).toBeVisible()
-  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await isOpen()
+  await closeDetail()
 
   const analytics = first.getByRole('link', { name: /^Stream analytics/ })
   await expect(analytics).toHaveAttribute('href', '/analytics/xqc/s1#t=420')

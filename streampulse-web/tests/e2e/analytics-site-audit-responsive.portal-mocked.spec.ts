@@ -64,6 +64,10 @@ for (const width of [320, 390]) {
     await page.mouse.wheel(0, 650)
     await expect.poll(async () => { const box = (await bar.boundingBox())!; return box.y + box.height }).toBeLessThan(0)
     await expect(search).toHaveAttribute('data-docked', '')
+    // The pinned button drops in over 320 ms (hv5-dock-drop). Mid-drop it carries a fractional translate, and
+    // Playwright's boundingBox() maps the box through that transform in 32-bit floats, so the 44 px button reads
+    // 43.999998 at 320 px. The CSS height is exactly 44: measure the tap target once it has settled.
+    await search.evaluate(button => Promise.allSettled(button.getAnimations().map(animation => animation.finished)))
     const box = await search.boundingBox()
     if (!box) throw new Error('no reachable search action')
     expect(box.y).toBeGreaterThanOrEqual(0)

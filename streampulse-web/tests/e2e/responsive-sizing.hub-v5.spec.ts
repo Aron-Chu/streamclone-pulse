@@ -38,9 +38,10 @@ test('the landing tour reflows on short viewports and restores animation on resi
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')
-  // The tour mounts when its section is in view (its code may already be prefetched).
-  await page.locator('#demo').scrollIntoViewIfNeeded()
+  // The demo mounts only once its section scrolls into view (DeferredDemo in Landing.tsx).
+  await page.locator('#demo .sl-demo-placeholder').scrollIntoViewIfNeeded()
   const tour = page.locator('.sl-xtour')
+  await expect(tour).toBeAttached()
   await expect(tour).not.toHaveAttribute('data-static')
   await page.setViewportSize({ width: 1440, height: 450 })
   await expect(tour).toHaveAttribute('data-static', '')
