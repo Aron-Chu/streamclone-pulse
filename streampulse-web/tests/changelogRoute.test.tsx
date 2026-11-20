@@ -102,7 +102,7 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     expect(document.body.textContent).not.toContain('Next version')
     const firstSection = screen.getByTestId('changelog-page').querySelector('section')
     expect(firstSection?.id).toBe(`v${released[0].version}`)
-    expect(screen.getByRole('link', { name: 'StreamPulse Support' }).getAttribute('href')).toBe('/support')
+    expect(within(screen.getByTestId('changelog-page')).getByRole('link', { name: 'Help' }).getAttribute('href')).toBe('/help')
     // The page itself makes no claim about which build the Chrome Web Store lists, and
     // does not say Chrome-only: the extension is also built for Edge and Firefox.
     expect(screen.getByText('What changed in each version of the StreamPulse extension.')).toBeTruthy()

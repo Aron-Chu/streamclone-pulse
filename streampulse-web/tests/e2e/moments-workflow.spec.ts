@@ -354,12 +354,12 @@ test('creator links open the channel while History is hidden; a History creator 
 
 test('in-page Back does not leave a detail entry that browser Back reopens', async ({ page }) => {
   await page.goto('/analytics')
-  await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'All moments', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'Moments', exact: true }).click()
   await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
   await expect(page.locator('.moments-detail')).toBeVisible()
   // Revisit this detail after unmounting the page: its return origin must be
   // stored on the history entry, not only in a component ref.
-  await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'Analytics', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'Hub', exact: true }).click()
   await page.goBack()
   await expect(page.locator('.moments-detail')).toBeVisible()
   await page.getByRole('button', { name: 'Close', exact: true }).click()

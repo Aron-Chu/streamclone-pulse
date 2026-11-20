@@ -26,10 +26,13 @@
   scroll-margin-top: 4rem;
 }
 
+/* Side gutters only: the stats band's own top and bottom padding
+   (.sl-streamer-stats) now arrives in a separate stylesheet that can load
+   before this one, and a padding shorthand here would zero it. */
 .sl-container {
   width: min(var(--sl-shell, 1120px), 100%);
   margin: 0 auto;
-  padding: 0 1.5rem;
+  padding-inline: 1.5rem;
 }
 
 .sl-fx {
@@ -1135,94 +1138,15 @@
     0 16px 40px -22px rgba(var(--xp-rgb), 0.7);
 }
 
-.sl-footer {
+/* The shared site footer (SiteFooter) sits above the fixed chat backdrop; the
+   page's link colour rule would otherwise also cancel its hover. */
+.sp-landing .app-footer {
   position: relative;
   z-index: 1;
-  border-top: 1px solid hsl(var(--sc-border));
-  padding: 2.4rem 0;
 }
 
-/* Brand on the left, then Product, Help and Legal columns (B1). */
-.sl-foot {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr);
-  gap: 1.6rem 2rem;
-  align-items: start;
-}
-
-.sl-foot__brand p {
-  margin: 0.6rem 0 0;
-  color: hsl(var(--sc-muted-foreground));
-  font-size: 0.86rem;
-}
-
-.sl-foot__cols {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.2rem;
-}
-
-.sl-foot__links {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.65rem;
-}
-
-.sl-foot__head {
-  color: hsl(var(--sc-foreground));
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.sl-foot__links a {
-  color: hsl(var(--sc-muted-foreground));
-  text-decoration: none;
-  font-size: 0.86rem;
-  font-weight: 600;
-  transition: color 0.15s ease;
-}
-
-.sl-foot__links a:hover,
-.sl-foot__links a:focus-visible {
-  color: hsl(var(--sc-foreground));
-}
-
-.sl-foot__links a.sl-foot__discord {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.sl-foot small {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  /* Top-aligned, so an open Analytics preferences panel grows down, not around the line beside it. */
-  align-items: flex-start;
-  gap: 0.4rem 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid hsl(var(--sc-border));
-  color: hsl(var(--sc-muted-foreground));
-  text-align: center;
-}
-
-.sl-foot small .analytics-preferences__body { text-align: left; }
-
-@media (max-width: 719px) {
-  .sl-foot { grid-template-columns: minmax(0, 1fr); }
-  .sl-foot__links { gap: 0; }
-  .sl-foot__head { display: flex; align-items: center; min-height: 32px; }
-  .sl-foot__links a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-  }
-}
-
-@media (max-width: 420px) {
-  .sl-foot__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sp-landing .app-footer__links a:hover {
+  color: #fff;
 }
 
 /* Static / reduced-motion / no-JS / mobile: native panel scroll */

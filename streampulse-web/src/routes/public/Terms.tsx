@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { FoldedSections } from '../../ui/components/FoldedSections'
-import { FEEDBACK_PATH, PRIVACY_PATH, REFUNDS_PATH, SECURITY_REPORT_URL, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_PATH } from '../../lib/externalLinks'
+import { HELP_FEEDBACK_PATH, PRIVACY_PATH, REFUNDS_PATH, SECURITY_REPORT_URL, STRIPE_CUSTOMER_PORTAL_LOGIN_URL, SUPPORTER_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 import { PrelaunchNotice } from './PrelaunchNotice'
 import { SUPPORTER_WITHDRAWAL_PATH, supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
@@ -228,7 +228,7 @@ export default function Terms() {
         <p data-testid="terms-contact">
           Billing, account and legal questions:{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>. Product
-          questions and bug reports: send <Link to={FEEDBACK_PATH}>private feedback</Link>
+          questions and bug reports: send <Link to={HELP_FEEDBACK_PATH}>private feedback</Link>
           {discord ? <>{' '}or join the{' '}
             <a href={discord} target="_blank" rel="noopener noreferrer" aria-label="Discord (opens in a new tab)">Discord</a></> : null}.
           Security reports go privately through{' '}

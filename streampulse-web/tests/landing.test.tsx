@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import Landing from '../src/routes/public/Landing'
@@ -75,10 +75,10 @@ function renderLanding() {
   )
 }
 
-/** Answers matchMedia as a screen at least 961px wide (or not); restored after each test. */
-function stubWideScreen(wide: boolean) {
+/** Answers matchMedia as a screen at least 961px wide (or not), allowing motion (or not); restored after each test. */
+function stubWideScreen(wide: boolean, motion = false) {
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string): MediaQueryList => ({
-    matches: wide && query === '(min-width: 961px)',
+    matches: (wide && query === '(min-width: 961px)') || (motion && query === '(prefers-reduced-motion: no-preference)'),
     media: query,
     onchange: null,
     addListener: () => {},
@@ -110,8 +110,9 @@ describe('landing page', () => {
     ])
     expect(screen.queryByRole('heading', { name: 'Look up a streamer' })).toBeNull()
     expect(document.querySelector('[data-cta="chrome-install-closing"]')).toBeNull()
+    // The shared site footer: the destinations, then site information.
     const footer = screen.getByRole('navigation', { name: 'Footer' })
-    for (const name of ['Privacy', 'Terms', 'Refunds', 'Supporter']) {
+    for (const name of ['Hub', 'Moments', 'Help', 'Status', 'Changelog', 'Privacy', 'Terms']) {
       expect(within(footer).getByRole('link', { name })).toBeTruthy()
     }
     expect(screen.getByText(/not affiliated with twitch/i)).toBeTruthy()
@@ -181,7 +182,6 @@ describe('landing page', () => {
     await screen.findByRole('heading', { name: /actually reacted to/i })
     const samples = container.querySelectorAll('details.sl-optional-demo')
     expect(samples).toHaveLength(0)
-    expect(container.querySelector('.sl-fx')).not.toBeNull()
     expect(container.querySelector('main > section:nth-child(2)')?.id).toBe('demo')
     expect(container.querySelector('#analysis')).toBeNull()
     expect(container.querySelector('#roadmap')).toBeNull()
@@ -212,23 +212,24 @@ describe('landing page', () => {
     stubWideScreen(false)
     const narrow = renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
-    expect(narrow.container.querySelector('.sl-fx')).not.toBeNull()
     expect(narrow.container.querySelector('.sl-chatbg')).toBeNull()
   })
 
-  it('keeps the chat backdrop and the removed sections out of the prerendered page', () => {
-    stubWideScreen(true)
+  it('keeps the emote rain, the chat backdrop and the removed sections out of the prerendered page', () => {
+    stubWideScreen(true, true)
     const html = prerenderPublicPage('/')
-    expect(html).toContain('sl-fx')
+    expect(html).not.toContain('sl-fx')
     expect(html).not.toContain('sl-chatbg')
     expect(html).not.toContain('id="roadmap"')
     expect(html).not.toContain('id="analysis"')
     expect(html).not.toContain('class="lsg')
   })
 
-  it('rains 1x emote files without the three wide emotes', async () => {
+  it('rains 1x emote files without the three wide emotes, once the first screen is in', async () => {
+    stubWideScreen(false, true)
     const { container } = renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
+    await waitFor(() => expect(container.querySelectorAll('.sl-em img')).toHaveLength(18), { timeout: 5000 })
     const sources = [...container.querySelectorAll<HTMLImageElement>('.sl-em img')].map((img) => img.getAttribute('src') ?? '')
     expect(sources).toHaveLength(18)
     for (const src of sources) {

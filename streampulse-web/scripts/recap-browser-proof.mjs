@@ -53,8 +53,8 @@ try {
   }
   assert.ok(reachedGuide, 'Keyboard traversal must reach the real install guide')
   await page.keyboard.press('Enter')
-  await page.waitForURL('**/docs#extension')
-  await page.getByRole('heading', { name: '1. Install the StreamPulse extension' }).waitFor()
+  await page.waitForURL('**/help#install')
+  await page.getByRole('heading', { name: 'Install', exact: true }).waitFor()
   checks.push('Tab and Enter reach the existing install guide')
   await page.goBack()
   await page.locator('[data-reviewed-recap-mounted]').waitFor({ state: 'visible' })
@@ -101,8 +101,8 @@ try {
   checks.push('Unapproved deep path remains a noindexed fallback without another page snapshot')
   if (captureProof) {
     assert.equal(captures.length, 2, 'Unknown channel paths remain excluded')
-    await page.goto(new URL('/tools/twitch-vod-timestamp-link?campaign=private-proof', base).toString())
-    await page.getByRole('heading', { name: 'Twitch VOD timestamp link builder', exact: true }).waitFor()
+    await page.goto(new URL('/guides/twitch-vod-timestamps?campaign=private-proof', base).toString())
+    await page.getByRole('heading', { name: 'Twitch VOD timestamp links', exact: true }).waitFor()
     await page.waitForFunction(() => document.querySelector('.analytics-preferences')?.textContent.includes('analytics are on'))
     await expect.poll(() => captures.length).toBe(3)
     assert.equal(captures[2].properties.page_category, 'tool')
@@ -114,8 +114,8 @@ try {
     const preferences = page.locator('.analytics-preferences')
     await preferences.locator('summary').click()
     await preferences.getByRole('button', { name: 'Turn analytics off', exact: true }).click()
-    await page.goto(new URL('/guides/twitch-vod-timestamps', base).toString())
-    await page.getByRole('heading', { name: 'Twitch VOD availability and timestamps explained', exact: true }).waitFor()
+    await page.goto(new URL('/guides/find-twitch-moments', base).toString())
+    await page.getByRole('heading', { name: 'Find and bookmark Twitch moments chat reacted to', exact: true }).waitFor()
     assert.equal(captures.length, 3, 'Withdrawal stops later page events')
     for (const event of captures) {
       assert.deepEqual(Object.keys(event.properties).sort(), ['$geoip_disable', '$process_person_profile', ...(event.properties.cta ? ['cta'] : []), 'page_category'].sort())

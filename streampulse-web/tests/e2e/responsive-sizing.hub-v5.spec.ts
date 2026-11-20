@@ -7,7 +7,7 @@ test('public and analytics route shells reflow across desktop and zoom-sized vie
   const measurements: unknown[] = []
   for (const width of [1440, 1024, 768, 560, 375]) {
     await page.setViewportSize({ width, height: width === 768 ? 450 : 900 })
-    for (const route of ['/docs', '/privacy', '/terms', '/refunds', '/support', '/status', '/supporter', '/account/sign-in', '/analytics/moments', '/analytics/xqc']) {
+    for (const route of ['/help', '/privacy', '/terms', '/refunds', '/guides/twitch-vod-timestamps', '/status', '/supporter', '/account/sign-in', '/analytics/moments', '/analytics/xqc']) {
       await page.goto(route)
       await expect(page.locator('h1').first()).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
@@ -38,6 +38,8 @@ test('the landing tour reflows on short viewports and restores animation on resi
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')
+  // The tour mounts when its section is in view (its code may already be prefetched).
+  await page.locator('#demo').scrollIntoViewIfNeeded()
   const tour = page.locator('.sl-xtour')
   await expect(tour).not.toHaveAttribute('data-static')
   await page.setViewportSize({ width: 1440, height: 450 })

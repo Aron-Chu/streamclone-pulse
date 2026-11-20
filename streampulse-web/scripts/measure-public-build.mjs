@@ -10,7 +10,7 @@ const browser = await chromium.launch()
 const records = []
 try {
   for (const width of [390, 1440]) {
-    for (const routePath of process.env.PERF_ANALYTICS_ONLY === '1' ? ['/analytics'] : ['/', '/docs', '/analytics']) {
+    for (const routePath of process.env.PERF_ANALYTICS_ONLY === '1' ? ['/analytics'] : ['/', '/help', '/analytics']) {
       const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce', serviceWorkers: 'block' })
       const page = await context.newPage()
       const bodies = []

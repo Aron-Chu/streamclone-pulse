@@ -10,7 +10,7 @@ export default function NotFound() {
         <p className="public-document__actions">
           <Link to="/">Return home</Link>
           <Link to="/analytics">Open the Hub</Link>
-          <Link to="/support">Support</Link>
+          <Link to="/help">Help</Link>
         </p>
       </section>
     </PublicLayout>

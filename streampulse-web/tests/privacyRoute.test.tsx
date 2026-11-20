@@ -88,14 +88,15 @@ describe('privacy route', () => {
     const contact = await screen.findByTestId('privacy-contact')
     expect(contact.querySelector('a[href="mailto:privacy@streampulse.stream"]')).toBeTruthy()
     expect(contact.textContent).toMatch(/privacy@streampulse\.stream/i)
-    expect(screen.getByRole('link', { name: /support page/i }).getAttribute('href')).toBe('/support')
+    expect(screen.getByRole('link', { name: /help page/i }).getAttribute('href')).toBe('/help')
   })
 
-  it('exposes Privacy and Support links from the public layout', async () => {
+  it('exposes Help in the header and Privacy in the footer', async () => {
     renderPath('/privacy')
-    expect((await screen.findByRole('link', { name: /^privacy$/i })).getAttribute('href')).toBe('/privacy')
+    const footer = await screen.findByRole('navigation', { name: 'Footer' })
+    expect(within(footer).getByRole('link', { name: /^privacy$/i }).getAttribute('href')).toBe('/privacy')
     const navigation = screen.getByRole('navigation', { name: /main navigation/i })
-    expect(within(navigation).getByRole('link', { name: /^support$/i }).getAttribute('href')).toBe('/support')
+    expect(within(navigation).getByRole('link', { name: /^help$/i }).getAttribute('href')).toBe('/help')
   })
 })
 
