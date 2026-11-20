@@ -27,6 +27,7 @@ import {
   selectHubChartActivityInputs,
 } from "../../../lib/hubChartActivityModel";
 import { HubActivityChart, type HubActivityBars } from "../hub/HubActivityChartV5";
+import { hubEmoteImageMap } from "../hub/hubActivitySpModel";
 import { measuredFacts } from "../hub/v5/hubV5Model";
 import { ActivityViewerSanityBanner } from "./ActivityViewerSanityBanner";
 import {
@@ -157,13 +158,7 @@ export function HubActivityPanelV5({
     resolveHubActivityChartWindowMinutes(hub.activity),
   );
 
-  const emoteImages = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const emote of topEmotes) {
-      if (emote.imageUrl) map.set(emote.name.toLowerCase(), emote.imageUrl);
-    }
-    return map;
-  }, [topEmotes]);
+  const emoteImages = useMemo(() => hubEmoteImageMap(topEmotes), [topEmotes]);
 
   // Chart inputs ignore trust-line / refresh metadata — only activity fields + live pool sum.
   const chartInputs = selectHubChartActivityInputs(hub);
