@@ -214,8 +214,7 @@ if (remaining > 0) {
 }
 if (viteSentryDsn) {
   console.log(`Sentry source maps uploaded for ${portalRelease}; removed ${removed} local .map files`)
-  // The plugin stamps each chunk with a debug ID; a chunk without one has stack
-  // frames Sentry cannot resolve. Every JS chunk is checked, not only the entry.
+  // Every JS chunk, not only the entry; see check-sentry-debug-ids.mjs.
   try {
     console.log(assertEveryChunkHasDebugId(join(webRoot, 'dist', 'assets')))
   } catch (error) {

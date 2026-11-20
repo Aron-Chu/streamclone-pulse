@@ -5,7 +5,7 @@
 // and images carry no debug ID and are not checked.
 //
 // Usage: node scripts/check-sentry-debug-ids.mjs [dist/assets]
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -14,10 +14,10 @@ const DEBUG_ID = /sentry-dbid-[0-9a-f]{8}-[0-9a-f]{4}-/i
 
 function listJsChunks(dir) {
   const out = []
-  for (const name of readdirSync(dir)) {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) out.push(...listJsChunks(path))
-    else if (JS_CHUNK.test(name)) out.push(path)
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) out.push(...listJsChunks(path))
+    else if (JS_CHUNK.test(entry.name)) out.push(path)
   }
   return out
 }

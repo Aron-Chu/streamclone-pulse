@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { assertEveryChunkHasDebugId, findChunksWithoutDebugIds } from './check-sentry-debug-ids.mjs'
 
 const script = join(dirname(fileURLToPath(import.meta.url)), 'check-sentry-debug-ids.mjs')
 const stamp = (id) => `var n=(new e.Error).stack;n&&(e._sentryDebugIdIdentifier="sentry-dbid-${id}");`
@@ -22,6 +23,7 @@ function assetsFixture(t, files) {
   return assets
 }
 
+/** The CLI path: exit code and output. Other cases call the module in-process. */
 const runCheck = (assets) => spawnSync(process.execPath, [script, assets], { encoding: 'utf8' })
 
 test('fails when any JS chunk, not only the entry, has no debug ID', (t) => {
@@ -55,9 +57,7 @@ test('does not take a bare "sentry-dbid-" without an ID for a stamp', (t) => {
     'index-AbC123.js': `${stamp('11111111-1111-4111-8111-111111111111')}console.log(1)`,
     'route-Mno345.js': 'const label = "sentry-dbid-";export{label}',
   })
-  const result = runCheck(assets)
-  assert.equal(result.status, 1)
-  assert.match(result.stderr, /route-Mno345\.js/)
+  assert.deepEqual(findChunksWithoutDebugIds(assets).missing, ['route-Mno345.js'])
 })
 
 test('exempts a whitespace-only JS chunk, which the plugin leaves unstamped', (t) => {
@@ -65,8 +65,7 @@ test('exempts a whitespace-only JS chunk, which the plugin leaves unstamped', (t
     'index-AbC123.js': `${stamp('11111111-1111-4111-8111-111111111111')}console.log(1)`,
     'empty-Pqr678.js': '\n  \n',
   })
-  const result = runCheck(assets)
-  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(findChunksWithoutDebugIds(assets), { checked: 2, missing: [] })
 })
 
 test('runs as a CLI when reached through a symlinked folder', (t) => {
@@ -87,13 +86,10 @@ test('runs as a CLI when reached through a symlinked folder', (t) => {
 
 test('fails loudly on an assets folder with no JS chunks', (t) => {
   const assets = assetsFixture(t, { 'index-AbC123.css': 'body{margin:0}' })
-  const result = runCheck(assets)
-  assert.equal(result.status, 1)
-  assert.match(result.stderr, /no JS chunks/)
+  assert.throws(() => assertEveryChunkHasDebugId(assets), /no JS chunks/)
 })
 
 test('fails on a missing assets folder', (t) => {
   const assets = assetsFixture(t, {})
-  const result = runCheck(join(assets, 'missing'))
-  assert.equal(result.status, 1)
+  assert.throws(() => assertEveryChunkHasDebugId(join(assets, 'missing')), /no assets folder/)
 })

@@ -79,8 +79,9 @@ const sum = (values: readonly number[]) => values.reduce((total, value) => total
 
 // The backend omits hasChatRollup when false and sets it only when chat or
 // emotes are above 0, so a bucket without the flag is unmeasured, not zero.
-const goodChat = (p: HubActivityPoint) => p.hasChatRollup === true && !p.gapKind && finite(p.chat)
-const goodEmotes = (p: HubActivityPoint) => p.hasChatRollup === true && !p.gapKind && finite(p.emotes)
+const chatRollup = (p: HubActivityPoint) => p.hasChatRollup === true && !p.gapKind
+const goodChat = (p: HubActivityPoint) => chatRollup(p) && finite(p.chat)
+const goodEmotes = (p: HubActivityPoint) => chatRollup(p) && finite(p.emotes)
 
 const PROVIDER_FIELDS = ['seventv', 'twitch', 'bttv', 'ffz', 'other'] as const
 
