@@ -104,6 +104,12 @@ describe('buildHubV5BarCard (L1, bar-lock board 11-01)', () => {
     expect(m.providers).toBeNull()
   })
 
+  it('is a gap for a viewer-only bar whose buckets carry no chat rollup flag', () => {
+    const m = card({ points: [point(0, { chat: 0, emotes: 0, seventv: 0, topEmotes: undefined, hasChatRollup: undefined })] })!
+    expect(m.gap).toBe(true)
+    expect(m.reason).toBe('No chat or emote counts for this bar.')
+  })
+
   it('ranks the top three emotes per minute and marks a minimum with ≥', () => {
     const m = card({
       points: [

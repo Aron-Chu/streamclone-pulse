@@ -71,6 +71,7 @@ export default defineConfig({
       'scripts/destination-pages-smoke.test.mjs',
       'scripts/check-switch-routes.test.mjs',
       'scripts/sitemap-lastmod.test.mjs',
+      'scripts/check-sentry-debug-ids.test.mjs',
       'tests/e2e/**',
       'node_modules/**',
     ],

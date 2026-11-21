@@ -11,7 +11,7 @@
 import type { SpLayer, SpLayerContext } from '@streampulse/pulse-charts/spchart'
 import { emoteDisplaySrc } from '../../../lib/emoteAssetUrl'
 import { formatHubCardInt } from '../../../lib/hubBucketCardModel'
-import type { HubActivitySpModel } from './hubActivitySpModel'
+import { hubEmoteImage, type HubActivitySpModel } from './hubActivitySpModel'
 
 /** The stamp stays this far inside the plot edges (d3-v2 hub.js / chart.js). */
 const STAMP_EDGE_PX = 30
@@ -50,7 +50,7 @@ export function hubStampLayer(model: HubActivitySpModel, emoteImages?: ReadonlyM
   const stamp = model.stamp
   if (!stamp) return null
   const { emote } = stamp
-  const imageUrl = emote.imageUrl || emoteImages?.get(emote.name.toLowerCase()) || null
+  const imageUrl = hubEmoteImage(emote, emoteImages) || null
   const stampSrc = imageUrl ? emoteDisplaySrc(imageUrl, STAMP_PICTURE_PX) : undefined
   return {
     id: 'hub-stamp',

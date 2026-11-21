@@ -1,11 +1,12 @@
 /**
  * The hub's two pieces of the analytics top bar (11-01 board). The docked search: once the hero's
  * search has scrolled under the bar, the bar shows its own box with the same typed text (from
- * 1100 px a field between the links and the buttons, narrower a search button that opens a full row
- * under the bar). It stays while you type in it. The install button: hidden while the hero's
- * install card is on screen, so the page shows one at a time.
+ * 1100 px a field on the bar's middle between the links and the buttons, narrower a search button
+ * that opens a full row under the bar). It stays while you type in it. The front page's header
+ * docks the same box (Landing). The install button: hidden while the hero's install card is on
+ * screen, so the page shows one at a time.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { HubLiveChannel } from '../../../../lib/publicHub'
 import { InstallCta } from '../../InstallCta'
 import { HubV5Icon } from './HubV5Icon'
@@ -14,6 +15,42 @@ import type { HubSearchEmote, HubSearchGame } from './hubV5Model'
 import { useHubV5Search, useHubV5SearchStore } from './hubV5SearchStore'
 
 const LEAVE_MS = 200
+
+/** The bar the dock sits in: its parent, past a wrapper that only groups (display: contents, as the front page's). */
+function barOf(slot: HTMLElement): HTMLElement | null {
+  let bar = slot.parentElement
+  while (bar && getComputedStyle(bar).display === 'contents') bar = bar.parentElement
+  return bar
+}
+
+/**
+ * The field on the bar's middle (11-18). Its slot is the room between the links and the buttons,
+ * which is rarely centred, so the field moves toward the bar's centre line as far as the slot
+ * allows, and sits right on it where the bar is wide enough. Written as --hv5-dock-shift on the
+ * slot; the bars' CSS applies it. A full-width row has no room to move, so it reads 0 there.
+ */
+function useBarCentre(slotRef: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const slot = slotRef.current
+    const bar = slot ? barOf(slot) : null
+    if (!slot || !bar) return undefined
+    const place = () => {
+      const field = slot.firstElementChild
+      if (!(field instanceof HTMLElement)) return
+      const b = bar.getBoundingClientRect()
+      const s = slot.getBoundingClientRect()
+      const room = Math.max(0, (s.width - field.offsetWidth) / 2)
+      const want = b.left + b.width / 2 - (s.left + s.width / 2)
+      slot.style.setProperty('--hv5-dock-shift', `${Math.round(Math.max(-room, Math.min(room, want)))}px`)
+    }
+    place()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(place)
+    ro.observe(bar)
+    ro.observe(slot)
+    return () => ro.disconnect()
+  }, [slotRef])
+}
 
 export function HubV5DockSearch({ live, games, emotes }: { live: readonly HubLiveChannel[]; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[] }) {
   const store = useHubV5SearchStore()
@@ -24,6 +61,7 @@ export function HubV5DockSearch({ live, games, emotes }: { live: readonly HubLiv
   const fieldRef = useRef<HTMLDivElement>(null)
   const blurTimer = useRef<number | undefined>(undefined)
   const shown = docked || focused
+  useBarCentre(fieldRef)
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return undefined

@@ -111,6 +111,27 @@ export function sortedTopEmotes(point: HubActivityPoint | null | undefined): Hub
   return list.filter((emote) => emote && typeof emote.name === 'string' && finite(emote.count)).slice().sort((a, b) => b.count - a.count)
 }
 
+type EmoteIdentity = Pick<HubBucketEmote, 'name' | 'provider' | 'imageUrl'>
+
+/** An emote's identity: a 7TV and a BTTV emote can share a name, and they are different emotes. */
+export function hubEmoteKey(emote: Pick<HubBucketEmote, 'name' | 'provider'>): string {
+  return `${emote.provider ?? ''}\u0000${emote.name}`
+}
+
+/** Picture fallbacks for bucket emotes that come without their own picture, from the hub's top emotes. */
+export function hubEmoteImageMap(emotes: readonly EmoteIdentity[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const emote of emotes) {
+    if (emote.imageUrl) map.set(hubEmoteKey(emote).toLowerCase(), emote.imageUrl)
+  }
+  return map
+}
+
+/** An emote's own picture, else its fallback from {@link hubEmoteImageMap} (same provider and name). */
+export function hubEmoteImage(emote: EmoteIdentity, images?: ReadonlyMap<string, string> | null): string | undefined {
+  return emote.imageUrl || images?.get(hubEmoteKey(emote).toLowerCase())
+}
+
 export function buildHubActivitySpModel(
   points: readonly HubActivityPoint[],
   windowMinutes: number,
@@ -151,7 +172,11 @@ export function buildHubActivitySpModel(
     if (!point) continue
     if (point.providerCountsLowerBound === true) anyCountsLowerBound = true
     const gap = isActivityGapMarker(point)
-    const chatMeasured = !gap && point.hasChatRollup !== false && finite(point.chat)
+    // Chat is measured only when the bucket says so. The backend omits
+    // hasChatRollup when false and sets it only when chat or emotes are above 0,
+    // so the hub aggregate cannot tell a measured zero from a missing rollup: a
+    // viewer-only bucket is drawn as a chat gap, not as zero chat.
+    const chatMeasured = !gap && point.hasChatRollup === true && finite(point.chat)
     const viewerState = point.viewerCoverage ?? point.viewerCoverageDetail?.state
     const viewerShown = !gap && viewerState != null && hasViewerSample(point) && finite(point.viewers)
     if (chatMeasured) {
@@ -226,17 +251,18 @@ export function buildHubActivitySpModel(
   }
 }
 
-/** Top emotes over a bar's buckets (bucket totals summed by name), busiest first. */
+/** Top emotes over a bar's buckets (bucket totals summed by provider and name), busiest first. */
 export function barTopEmotes(model: HubActivitySpModel, fromIndex: number, toIndex: number, limit = 3): HubBucketEmote[] {
-  const byName = new Map<string, HubBucketEmote>()
+  const byKey = new Map<string, HubBucketEmote>()
   for (let index = Math.max(0, fromIndex); index < Math.min(model.count, toIndex); index += 1) {
     for (const emote of sortedTopEmotes(model.points[index])) {
-      const known = byName.get(emote.name)
+      const key = hubEmoteKey(emote)
+      const known = byKey.get(key)
       if (known) known.count += emote.count
-      else byName.set(emote.name, { ...emote })
+      else byKey.set(key, { ...emote })
     }
   }
-  return [...byName.values()].sort((a, b) => b.count - a.count).slice(0, limit)
+  return [...byKey.values()].sort((a, b) => b.count - a.count).slice(0, limit)
 }
 
 /** True when any bucket of [fromIndex, toIndex) has an emote total that is only a minimum. */
