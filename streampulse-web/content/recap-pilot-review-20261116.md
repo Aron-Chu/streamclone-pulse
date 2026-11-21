@@ -14,7 +14,7 @@ The unchanged zackrawrr / 319604372055 and hasanabi / 320795920348 entries retai
 
 ## Supply results
 
-49 sessions have no recorded end; 80 ended sessions fail the 30-minute end check; 19 sessions have no measured 7TV uses. Reasons overlap. Other identity/duration/measurement failures are listed below. No end was shortened and no absolute score threshold was introduced. The existing pulse-core ranker and opening/closing-edge rules were used. A minute with a measured zero count remains measured; no-data minutes are not treated as quiet.
+49 sessions have no recorded end; 80 ended sessions fail the 30-minute end check; 19 sessions have no measured 7TV uses. Reasons overlap. The three xqc sessions that pass the end check fail the README emote-share rule: emote uses are 6-7% of measured messages, all Twitch, against 129% (mostly 7TV) for the published Caedrel session; totals summed from /streams/<id>/minutes on 2026-11-21. Other identity/duration/measurement failures are listed below. No end was shortened and no absolute score threshold was introduced. The existing pulse-core ranker and opening/closing-edge rules were used. A minute with a measured zero count remains measured; no-data minutes are not treated as quiet.
 
 ## Every examined session
 
@@ -142,12 +142,12 @@ The unchanged zackrawrr / 319604372055 and hasanabi / 320795920348 entries retai
 | tarik | 321349379680 | 2026-11-13T19:58:56Z | n/a | No recorded end; not an eligible finished-stream snapshot |
 | tarik | 321059243742 | 2026-11-12T18:42:38Z | n/a | No recorded end; not an eligible finished-stream snapshot |
 | tarik | 321045377118 | 2026-11-11T18:14:53Z | n/a | No recorded end; not an eligible finished-stream snapshot |
-| xqc | 322415416923 | 2026-11-14T22:41:41Z | -98 | No measured 7TV emotes |
+| xqc | 322415416923 | 2026-11-14T22:41:41Z | -98 | Emote share fails: 10,356 emote uses in 150,875 measured messages (6.9%), all Twitch, no measured 7TV emotes |
 | xqc | 321351357280 | 2026-11-13T22:03:50Z | 27610 | Recorded end 460 minutes after last measured minute; skip without shortening; No measured 7TV emotes |
 | xqc | 322370055771 | 2026-11-11T21:55:14Z | 21108 | Recorded end 352 minutes after last measured minute; skip without shortening; No measured 7TV emotes |
-| xqc | 321094008540 | 2026-11-09T20:18:25Z | -84 | No measured 7TV emotes |
+| xqc | 321094008540 | 2026-11-09T20:18:25Z | -84 | Emote share fails: 10,274 emote uses in 165,720 measured messages (6.2%), all Twitch, no measured 7TV emotes |
 | xqc | 321235278944 | 2026-11-07T23:00:46Z | 42815 | Recorded end 714 minutes after last measured minute; skip without shortening; No measured 7TV emotes |
-| xqc | 322168009690 | 2026-11-06T22:43:54Z | 284 | No measured 7TV emotes |
+| xqc | 322168009690 | 2026-11-06T22:43:54Z | 284 | Emote share fails: 8,537 emote uses in 134,510 measured messages (6.3%), all Twitch, no measured 7TV emotes |
 | zackrawrr | 317899116151 | 2026-11-16T18:44:45Z | n/a | No recorded end; not an eligible finished-stream snapshot |
 | zackrawrr | 317891873527 | 2026-11-15T18:45:09Z | n/a | No recorded end; not an eligible finished-stream snapshot |
 | zackrawrr | 317884045303 | 2026-11-14T18:41:14Z | n/a | No recorded end; not an eligible finished-stream snapshot |
