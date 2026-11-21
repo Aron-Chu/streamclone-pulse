@@ -84,6 +84,7 @@ describe('Chrome Web Store listing copy (0.2.7)', () => {
     expect(scripting).toContain('content/supporter-card.js')
     expect(scripting).toContain('content/moment-frames.js')
     expect(scripting).toContain('content/catch-me-up.js')
+    expect(scripting).toContain('content/quick-settings.js')
     expect(scripting).toContain('channel avatar')
     expect(scripting).toContain('does not need this permission')
   })

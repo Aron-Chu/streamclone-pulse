@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { theme } from './theme.ts'
+import { theme, tone } from './theme.ts'
 
 export interface PulseSectionCardProps {
   title?: string
@@ -66,8 +66,8 @@ export function PulseSectionCard({
 
 const styles: Record<string, CSSProperties> = {
   card: {
-    background: 'rgba(9, 9, 11, 0.6)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: tone('rgba(9, 9, 11, 0.6)'),
+    border: `1px solid ${tone('rgba(255, 255, 255, 0.1)')}`,
     borderRadius: 12,
     display: 'grid',
     gap: 12,

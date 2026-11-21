@@ -150,6 +150,7 @@ Only on Twitch tabs, using code packaged in the extension:
 - content/supporter-card.js: Supporter card preview.
 - content/moment-frames.js: small player stills while Moment pictures is on, kept in tab memory; saved moments keep one picture in this browser. Nothing is uploaded.
 - content/catch-me-up.js: the top of a stream recap.
+- content/quick-settings.js: the panel's Quick settings view.
 4. Popup: reads the channel avatar Twitch shows and checks whether the panel is showing.
 The Pulse panel is the declared content script and does not need this permission.
 ```

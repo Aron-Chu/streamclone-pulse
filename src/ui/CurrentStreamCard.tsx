@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
-import { theme } from './theme.ts'
+import { ink, theme, tone } from './theme.ts'
 
 export interface CurrentStreamCardProps {
   onFromStart: () => void
@@ -33,7 +33,7 @@ const styles: Record<string, CSSProperties> = {
     background: 'rgba(220, 38, 38, 0.18)',
     border: '1px solid rgba(248, 113, 113, 0.35)',
     borderRadius: 999,
-    color: '#fecaca',
+    color: ink('#fecaca'),
     fontSize: 9,
     fontWeight: 900,
     letterSpacing: '0.04em',
@@ -45,15 +45,15 @@ const styles: Record<string, CSSProperties> = {
     background: 'rgba(139, 92, 246, 0.22)',
     border: '1px solid rgba(167, 139, 250, 0.45)',
     borderRadius: 8,
-    color: '#ede9fe',
+    color: ink('#ede9fe'),
     cursor: 'pointer',
     fontSize: 11,
     fontWeight: 800,
     padding: '8px 12px',
   },
   action: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    background: tone('rgba(255, 255, 255, 0.05)'),
+    border: `1px solid ${tone('rgba(255, 255, 255, 0.12)')}`,
     borderRadius: 8,
     color: theme.textSecondary,
     cursor: 'pointer',

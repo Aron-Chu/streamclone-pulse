@@ -5,7 +5,7 @@ import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
 import { formatMomentMetricsLine } from './momentActivity.ts'
 import { overlayGhostChipButton, overlayTextLinkButton } from './momentReasonStyles.ts'
-import { theme } from './theme.ts'
+import { ink, theme, tone } from './theme.ts'
 
 function formatInspectorActivity(args: {
   chatCount?: number
@@ -210,15 +210,15 @@ export function ChatActivityInspector({
 
 const styles: Record<string, CSSProperties> = {
   panel: {
-    background: 'rgba(24, 24, 31, 0.92)',
+    background: tone('rgba(24, 24, 31, 0.92)'),
     border: '1px solid rgba(167, 139, 250, 0.28)',
     borderRadius: 10,
     marginTop: 8,
     overflow: 'hidden',
   },
   panelCompact: {
-    background: 'rgba(255, 255, 255, 0.025)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: tone('rgba(255, 255, 255, 0.025)'),
+    border: `1px solid ${tone('rgba(255, 255, 255, 0.08)')}`,
     borderRadius: 8,
     display: 'flex',
     marginTop: 6,
@@ -269,8 +269,8 @@ const styles: Record<string, CSSProperties> = {
   },
   compactChip: {
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: tone('rgba(255, 255, 255, 0.04)'),
+    border: `1px solid ${tone('rgba(255, 255, 255, 0.08)')}`,
     borderRadius: 4,
     display: 'inline-flex',
     padding: 1,
@@ -303,7 +303,7 @@ const styles: Record<string, CSSProperties> = {
   },
   panelOverlay: {
     backdropFilter: 'blur(8px)',
-    background: 'rgba(13, 13, 18, 0.94)',
+    background: tone('rgba(13, 13, 18, 0.94)'),
     border: '1px solid rgba(167, 139, 250, 0.35)',
     borderRadius: 8,
     bottom: 4,
@@ -354,8 +354,8 @@ const styles: Record<string, CSSProperties> = {
   },
   overlayChip: {
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: tone('rgba(255, 255, 255, 0.04)'),
+    border: `1px solid ${tone('rgba(255, 255, 255, 0.08)')}`,
     borderRadius: 8,
     display: 'inline-flex',
     flexShrink: 0,
@@ -363,7 +363,7 @@ const styles: Record<string, CSSProperties> = {
     padding: '3px 6px',
   },
   overlayChipCount: {
-    color: '#c4b5fd',
+    color: ink('#c4b5fd'),
     fontSize: 10,
     fontVariantNumeric: 'tabular-nums',
     fontWeight: 800,
@@ -382,8 +382,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 4,
   },
   overlayActionGhost: {
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: tone('rgba(255, 255, 255, 0.04)'),
+    border: `1px solid ${tone('rgba(255, 255, 255, 0.1)')}`,
     borderRadius: 6,
     color: theme.textSecondary,
     cursor: 'pointer',
@@ -396,7 +396,7 @@ const styles: Record<string, CSSProperties> = {
     background: 'rgba(139, 92, 246, 0.18)',
     border: '1px solid rgba(167, 139, 250, 0.35)',
     borderRadius: 6,
-    color: '#ddd6fe',
+    color: ink('#ddd6fe'),
     cursor: 'pointer',
     fontSize: 9,
     fontWeight: 800,
@@ -415,7 +415,7 @@ const styles: Record<string, CSSProperties> = {
   },
   header: {
     alignItems: 'flex-start',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    borderBottom: `1px solid ${tone('rgba(255,255,255,0.06)')}`,
     display: 'flex',
     gap: 8,
     justifyContent: 'space-between',
@@ -453,7 +453,7 @@ const styles: Record<string, CSSProperties> = {
   rank: { color: theme.textMuted, fontSize: 10, fontWeight: 800, textAlign: 'right' },
   img: { display: 'block', objectFit: 'contain' },
   name: { color: theme.textPrimary, fontSize: 12, fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  count: { color: '#c4b5fd', fontSize: 11, fontVariantNumeric: 'tabular-nums', fontWeight: 800 },
+  count: { color: ink('#c4b5fd'), fontSize: 11, fontVariantNumeric: 'tabular-nums', fontWeight: 800 },
   empty: { color: theme.textMuted, fontSize: 10, fontWeight: 600, margin: '8px 10px 0', padding: 0 },
   actions: {
     display: 'flex',
@@ -465,7 +465,7 @@ const styles: Record<string, CSSProperties> = {
     background: 'rgba(139, 92, 246, 0.22)',
     border: '1px solid rgba(167, 139, 250, 0.45)',
     borderRadius: 8,
-    color: '#ede9fe',
+    color: ink('#ede9fe'),
     cursor: 'pointer',
     fontSize: 11,
     fontWeight: 800,

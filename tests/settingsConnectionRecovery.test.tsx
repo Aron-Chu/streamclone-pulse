@@ -4,7 +4,8 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendBackgroundMessage } from '../src/content/bridge.ts'
 import { usePulseHealth } from '../src/ui/usePulseHealth.ts'
-import { OpenAllSettingsButton, PulseSettingsPanel } from '../src/ui/PulseSettingsPanel.tsx'
+import { PulseSettingsPanel } from '../src/ui/PulseSettingsPanel.tsx'
+import { OpenAllSettingsButton } from '../src/ui/OpenAllSettingsButton.tsx'
 
 vi.mock('../src/content/bridge.ts', () => ({ sendBackgroundMessage: vi.fn() }))
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true

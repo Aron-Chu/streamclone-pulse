@@ -13,6 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
 const contentBundle = resolve(root, 'dist/content/twitch.js')
 const chatBadgesChunk = resolve(root, 'dist/content/chat-badges.js')
+const quickSettingsChunk = resolve(root, 'dist/content/quick-settings.js')
 
 /** Keep the opt-in chat decorator separate from the existing Twitch bundle. */
 export const CHAT_BADGES_CHUNK_MAX_GZIP = 8_000
@@ -25,6 +26,28 @@ export function checkChatBadgesChunk(chunkPath = chatBadgesChunk, contentPath = 
   if (gzip > CHAT_BADGES_CHUNK_MAX_GZIP) errors.push(`chat-badges.js gzip ${gzip} > cap ${CHAT_BADGES_CHUNK_MAX_GZIP}`)
   if (existsSync(contentPath) && readFileSync(contentPath, 'utf8').includes('sp-cb-')) errors.push('twitch.js contains the chat badge decorator')
   return { ok: errors.length === 0, errors, raw: raw.length, gzip, maxGzip: CHAT_BADGES_CHUNK_MAX_GZIP }
+}
+
+/**
+ * Quick settings ships in its own injected script and renders with the content
+ * script's React (src/shared/quickSettingsContract.ts). It must stay out of
+ * twitch.js and must never bundle a second React.
+ */
+export const QUICK_SETTINGS_CHUNK_MAX_GZIP = 8_000
+const QUICK_SETTINGS_MARKER = 'Docking needs Sidebar placement'
+const REACT_COPY_MARKERS = ['react.transitional.element', '__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE']
+
+export function checkQuickSettingsChunk(chunkPath = quickSettingsChunk, contentPath = contentBundle) {
+  if (!existsSync(chunkPath)) return { ok: false, errors: [`missing ${chunkPath} — run npm run build first`] }
+  const raw = readFileSync(chunkPath)
+  const gzip = gzipSync(raw, { level: 9 }).length
+  const source = raw.toString('utf8')
+  const errors = []
+  if (gzip > QUICK_SETTINGS_CHUNK_MAX_GZIP) errors.push(`quick-settings.js gzip ${gzip} > cap ${QUICK_SETTINGS_CHUNK_MAX_GZIP}`)
+  if (!source.includes(QUICK_SETTINGS_MARKER)) errors.push('quick-settings.js does not carry the Quick settings view')
+  if (REACT_COPY_MARKERS.some(marker => source.includes(marker))) errors.push('quick-settings.js bundles its own React')
+  if (existsSync(contentPath) && readFileSync(contentPath, 'utf8').includes(QUICK_SETTINGS_MARKER)) errors.push('twitch.js contains the Quick settings view')
+  return { ok: errors.length === 0, errors, raw: raw.length, gzip, maxGzip: QUICK_SETTINGS_CHUNK_MAX_GZIP }
 }
 
 /** Accepted parent baseline (bytes) from clean `npm run build` — headroom ≤10%. */
@@ -74,8 +97,10 @@ function main() {
   )
   const chat = checkChatBadgesChunk()
   console.log(JSON.stringify({ path: 'dist/content/chat-badges.js', raw: chat.raw, gzip: chat.gzip, maxGzip: chat.maxGzip, ok: chat.ok }, null, 2))
-  if (!result.ok || !chat.ok) {
-    for (const e of [...result.errors, ...chat.errors]) console.error(`bundle-budget: ${e}`)
+  const quickSettings = checkQuickSettingsChunk()
+  console.log(JSON.stringify({ path: 'dist/content/quick-settings.js', raw: quickSettings.raw, gzip: quickSettings.gzip, maxGzip: quickSettings.maxGzip, ok: quickSettings.ok }, null, 2))
+  if (!result.ok || !chat.ok || !quickSettings.ok) {
+    for (const e of [...result.errors, ...chat.errors, ...quickSettings.errors]) console.error(`bundle-budget: ${e}`)
     process.exit(1)
   }
 }

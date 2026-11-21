@@ -6,7 +6,7 @@ import {
   defaultWebAnalyticsBaseUrlForApi,
   openAnalyticsHref,
 } from '../shared/analyticsLinks.ts'
-import { theme } from './theme.ts'
+import { ink, theme } from './theme.ts'
 
 export interface RecapAnalyticsNavProps {
   backendUrl: string
@@ -86,7 +86,7 @@ const styles: Record<string, CSSProperties> = {
   hubLink: {
     background: 'transparent',
     border: 0,
-    color: '#c4b5fd',
+    color: ink('#c4b5fd'),
     cursor: 'pointer',
     fontSize: 12,
     fontWeight: 800,

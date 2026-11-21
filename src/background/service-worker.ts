@@ -46,6 +46,7 @@ import { injectSupporterCard } from './supporterCardScript.ts'
 import { chatBadgeList, chatBadgeOptIn, installChatBadges, reconcileChatBadges } from './chatBadgeRuntime.ts'
 import { injectMomentFrames } from './momentFramesScript.ts'
 import { injectCatchMeUp } from './catchMeUpScript.ts'
+import { injectQuickSettings } from './quickSettingsScript.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
@@ -1048,6 +1049,10 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
         }
         case 'CATCH_ME_UP_SCRIPT': {
           sendResponse({ type: 'CATCH_ME_UP_SCRIPT', ok: await injectCatchMeUp(chrome.scripting, sender) } satisfies BackgroundResponse)
+          return
+        }
+        case 'QUICK_SETTINGS_SCRIPT': {
+          sendResponse({ type: 'QUICK_SETTINGS_SCRIPT', ok: await injectQuickSettings(chrome.scripting, sender) } satisfies BackgroundResponse)
           return
         }
         case 'TWITCH_SIGN_IN': {

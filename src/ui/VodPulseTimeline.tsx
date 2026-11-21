@@ -2,7 +2,7 @@ import type { CSSProperties, MouseEvent } from 'react'
 import { formatMomentOffset } from '@streampulse/pulse-core'
 import type { VodTimelinePoint } from '../types/vodPulseTypes.ts'
 import { normalizeTimelineValues, seekOffsetFromGraphClick, timelineYValue } from '../vod/vodCurrentMoment.ts'
-import { theme } from './theme.ts'
+import { theme, tone } from './theme.ts'
 
 export interface VodPulseTimelineProps {
   points: VodTimelinePoint[]
@@ -113,8 +113,8 @@ const styles: Record<string, CSSProperties> = {
   },
   peakLabel: { color: theme.textSecondary },
   empty: {
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px dashed rgba(255,255,255,0.1)',
+    background: tone('rgba(255,255,255,0.03)'),
+    border: `1px dashed ${tone('rgba(255,255,255,0.1)')}`,
     borderRadius: 8,
     color: theme.textMuted,
     fontSize: 11,
