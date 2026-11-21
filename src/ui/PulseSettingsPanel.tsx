@@ -1,7 +1,7 @@
 import { PulseBannerBackdrop, PulseBannerLoadError, usePulseBanner } from './PulseBanner.tsx'
 import { openCommunity } from './AnalyticsHubCta.tsx'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { getMomentPicturesEnabled, getVodJumpChartPinEnabled, setMomentPicturesEnabled, setVodJumpChartPinEnabled, type PulseBannerPreference } from '../shared/storage.ts'
+import { getMomentPicturesEnabled, getVodJumpChartPinEnabled, setMomentPicturesEnabled, setVodJumpChartPinEnabled } from '../shared/storage.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { readTwitchChannelAvatarUrl } from '../content/twitch.ts'
 import { ACCENT_THEME_OPTIONS } from './overlayTheme.ts'
@@ -40,7 +40,7 @@ export interface QuickSettingsChannel {
   surface: PulsePanelSurfaceState
 }
 
-const RAIN_OPTIONS = [{ value: 'off', label: 'Off' }, { value: 'still', label: 'Still' }, { value: 'rain', label: 'Rain' }] as const
+const BACKDROP_OPTIONS = [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }] as const
 const PAINT_OPTIONS = [{ value: 'default', label: 'Default' }, { value: 'glass', label: 'Glass' }, { value: 'etched', label: 'Etched' }, { value: 'halo', label: 'Halo' }] as const
 type Paint = typeof PAINT_OPTIONS[number]['value']
 
@@ -339,37 +339,41 @@ function QuickGroup({ title, children }: { title: ReactNode; children: ReactNode
 }
 
 /**
- * Emote rain and paint, tried on a strip of the panel header. It starts from
- * what the panel draws. A Supporter's Emote rain saves at once, like the other
- * quick settings; anyone else only tries it here, and closing the drawer
- * undoes the try. Paint is only tried here: the worker takes account changes
- * from extension pages alone, so it is equipped in all settings.
+ * Backdrop and paint, tried on a strip of the panel header. It starts from
+ * what the panel draws. A Supporter's backdrop saves at once, like the other
+ * quick settings, still or drifting with their motion; anyone else only tries
+ * it here, and closing the drawer undoes the try. Paint is only tried here: the
+ * worker takes account changes from extension pages alone, so it is equipped in
+ * all settings. A Supporter's crest shows under any paint.
  */
 export function QuickLook({ appearance, disabled, onOpen }: { appearance: SupporterAppearance | null; disabled?: boolean; onOpen: () => void }) {
   const banner = usePulseBanner()
   const perks = appearance?.perks === true
-  const [rain, setRain] = useState<PulseBannerPreference['mode']>()
+  const [backdrop, setBackdrop] = useState<'off' | 'on'>()
   const [tried, setTried] = useState<Paint>()
   const worn = appearance?.finish ?? 'default'
   const paint = tried ?? worn
   const finish = paint === 'default' ? null : paint
-  const mode = perks ? banner.value.mode : rain ?? 'off'
+  const on = perks ? banner.value.mode !== 'off' : backdrop === 'on'
+  // A backdrop that is on keeps how it moves; one turned on moves with the motion.
+  const moving = banner.value.mode !== 'off' ? banner.value.mode : appearance?.paint?.sheen === 'none' ? 'still' : 'rain'
+  const mode = on ? moving : 'off'
   const title = banner.value.title || 'Stream Pulse'
   return (
     <QuickGroup title={<>Your look{perks ? null : <span className="pulse-quick-chip">Supporter · preview</span>}</>}>
       <div className="pulse-settings-control-block">
         <div className="pulse-quick-look" aria-hidden="true">
-          <PulseBannerBackdrop value={{ ...banner.value, mode }} perks />
-          {finish ? <i className="pulse-crest" data-tenure={appearance?.tenure ?? 'new'} /> : null}
+          <PulseBannerBackdrop value={{ ...banner.value, mode }} finish={finish} perks />
+          {appearance || finish ? <i className="pulse-crest" data-tenure={appearance?.tenure ?? 'new'} /> : null}
           <strong className={finish ? 'pulse-paint' : undefined} data-finish={finish ?? undefined} data-wave={appearance?.paint?.wave} data-sheen={appearance?.paint?.sheen} data-text={title}>{title}</strong>
         </div>
       </div>
       <div className="pulse-settings-field pulse-settings-control-block" aria-busy={perks && (!banner.ready || banner.saving) || undefined}>
-        <span className="pulse-settings-label">Emote rain</span>
-        <ChoicePicker kind="look" variant="compact" groupLabel="Emote rain" options={RAIN_OPTIONS} value={mode}
+        <span className="pulse-settings-label">Backdrop</span>
+        <ChoicePicker kind="look" variant="compact" groupLabel="Backdrop" options={BACKDROP_OPTIONS} value={on ? 'on' : 'off'}
           onChange={next => {
-            if (!perks) setRain(next)
-            else if (banner.ready && !banner.saving) void banner.save({ ...banner.value, mode: next })
+            if (!perks) setBackdrop(next)
+            else if (banner.ready && !banner.saving) void banner.save({ ...banner.value, mode: next === 'on' ? moving : 'off' })
           }} />
         {banner.loadError ? <PulseBannerLoadError onRetry={() => void banner.reload()} /> : null}
         {banner.status && banner.status !== 'Saved' ? <span role="status">{banner.status}</span> : null}
@@ -379,7 +383,7 @@ export function QuickLook({ appearance, disabled, onOpen }: { appearance: Suppor
         <ChoicePicker kind="look" variant="compact" groupLabel="Paint" options={PAINT_OPTIONS} value={paint} onChange={setTried} />
       </div>
       <button type="button" className="pulse-link-btn pulse-settings-control-block" disabled={disabled} onClick={onOpen}>
-        {perks && paint !== worn ? `Equip ${PAINT_OPTIONS.find(option => option.value === paint)?.label} in all settings ↗` : 'Wave, sheen and crest in all settings ↗'}
+        {perks && paint !== worn ? `Equip ${PAINT_OPTIONS.find(option => option.value === paint)?.label} in all settings ↗` : 'Motion and saved looks in all settings ↗'}
       </button>
     </QuickGroup>
   )

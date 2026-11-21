@@ -119,7 +119,7 @@ async function privateState(worker: WorkerExecution) {
           nextPoll: journey.restore.nextPoll, expiresAt: journey.restore.expiresAt } : null,
         restoreResult: journey?.restoreResult ?? null, accountId: account?.accountId ?? null,
         restoredTokenMatches: account?.token === 'd'.repeat(64), finishIntentPresent: Boolean(intent),
-        finishIntent: intent ? { finish: intent.finish, setAt: intent.setAt } : null,
+        finishIntent: intent ? { finish: intent.finish, setAt: intent.setAt, ...(intent.look ? { look: intent.look } : {}) } : null,
         revisions: await chrome.storage.local.get(['pulseAccountRevision', 'pulseSupporterRevision']) }
     } finally { db.close() }
   })
@@ -385,15 +385,17 @@ test('a stopped packaged worker resumes Checkout cooldown and applies the chosen
     await expect(extension.page.locator('[data-journey-state="stripe-open"]')).toBeVisible()
     await extension.page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
     const beforeChoice = Date.now()
-    await extension.page.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
+    await extension.page.getByRole('button', { name: 'Use this look when Supporter starts', exact: true }).click()
     await expect(extension.page.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
     const choice = await extension.page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_FINISH_INTENT' }))
     expect(choice).toMatchObject({ type: 'SUPPORTER_FINISH_INTENT', finish: 'halo', setAt: expect.any(Number) })
     expect(choice.setAt).toBeGreaterThanOrEqual(beforeChoice)
     expect(choice.setAt).toBeLessThanOrEqual(Date.now())
-    expect(Object.keys(choice).sort()).toEqual(['finish', 'setAt', 'type'])
+    expect(Object.keys(choice).sort()).toEqual(['finish', 'look', 'setAt', 'type'])
+    // The motion and backdrop shown with Halo travel with the choice.
+    expect(choice.look).toEqual({ motion: expect.stringMatching(/^(still|shimmer|drift)$/), backdrop: expect.any(Boolean), intensity: expect.any(Number) })
     const persistedChoice = (await privateState(extension.serviceWorker)).finishIntent
-    expect(persistedChoice).toEqual({ finish: 'halo', setAt: choice.setAt })
+    expect(persistedChoice).toEqual({ finish: 'halo', setAt: choice.setAt, look: choice.look })
     trace.checks.savedChoice = { response: choice, persisted: persistedChoice }
     await extension.page.screenshot({ path: info.outputPath('before-worker-stop.png'), fullPage: true })
     await extension.page.goto('about:blank')

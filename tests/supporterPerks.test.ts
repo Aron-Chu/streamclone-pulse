@@ -22,13 +22,13 @@ describe('Supporter perks (emote rain) use the cosmetics rule', () => {
 
   it('tells Twitch tabs about perks and the earned crest even when no finish is equipped, and renews them like a finish', async () => {
     const readPaint = vi.fn().mockResolvedValue(paint)
-    expect(await supporterAppearanceReply(member('active'), readPaint)).toStrictEqual({ type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 45_000, tenure: '12m', perks: true })
+    expect(await supporterAppearanceReply(member('active'), readPaint)).toStrictEqual({ type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 45_000, tenure: '12m', paint, perks: true })
     // The crest follows the server's support count, so the Supporter card's Tenure Climb stops at it.
     for (const [periods, tenure] of [[0, 'new'], [3, '3m'], [7, '6m'], [12, '12m'], [30, '24m']] as const) {
       expect((await supporterAppearanceReply(member('active', { supportPeriods: periods }), readPaint)).tenure, `${periods} periods`).toBe(tenure)
     }
-    // Wave and sheen still only travel with a verified finish.
-    expect(readPaint).not.toHaveBeenCalled()
+    // The motion travels with the perks, so Quick settings keeps Still under Default paint.
+    expect(readPaint).toHaveBeenCalled()
   })
 
   it('carries the finish, crest and paint with the perks for an equipped Supporter in grace', async () => {

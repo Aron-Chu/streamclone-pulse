@@ -10,15 +10,15 @@ import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
  */
 describe('Supporter perk list', () => {
   it('names every perk the extension gives, in order', () => {
-    expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', 'Emote rain', 'Supporter card'])
+    expect(SUPPORTER_PERKS.names).toEqual(['Title paint', 'Tenure crest', 'Backdrop', 'Supporter card'])
     expect(Object.keys(SUPPORTER_PERKS.details)).toEqual(SUPPORTER_PERKS.names)
   })
 
   it('pins what each perk is', () => {
     expect(SUPPORTER_PERKS.details).toEqual({
-      'Title paint': 'your Pulse panel title in Glass, Etched or Halo paint, with the wave and sheen you pick.',
-      'Tenure crest': 'a crest beside your painted title. It levels up at 3, 6, 12 and 24 months.',
-      'Emote rain': '7TV emotes behind your Pulse panel header, still or falling. This is the 7TV header backdrop.',
+      'Title paint': 'your Pulse panel title in Glass, Etched or Halo paint, still, shimmering or drifting.',
+      'Tenure crest': 'a crest beside your Pulse panel title, under any paint. It levels up at 3, 6, 12 and 24 months.',
+      'Backdrop': "original StreamPulse art behind your Pulse panel header, in your paint's colours, still or drifting.",
       'Supporter card': 'your crest and paint on your Supporter card in settings.',
     })
     expect(SUPPORTER_PERKS.onlyYou).toBe('Only you see these, in your own StreamPulse extension. Nothing is added to Twitch chat.')

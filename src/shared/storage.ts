@@ -1,5 +1,6 @@
 import { normalizeLogin } from './login.ts'
 import { SUPPORTER_PAINT_KEY, normalizeSupporterPaintStyle, type SupporterPaintStyle } from './supporterPaint.ts'
+import { SUPPORTER_LOOKS_KEY, lookExtras, lookStorage, normalizeSupporterLooks, type SupporterLook, type SupporterLookExtras } from './supporterLook.ts'
 import type {
   ProtectChannelSyncStatus,
   ProtectSyncOperation,
@@ -646,6 +647,16 @@ export async function setSupporterPaintStyle(value: SupporterPaintStyle): Promis
   await syncStorageSet({ [SUPPORTER_PAINT_KEY]: normalizeSupporterPaintStyle(value) })
 }
 
+/** A Supporter's saved looks (at most four), synced with their other settings. */
+export async function getSupporterLooks(): Promise<SupporterLook[]> {
+  const stored = await syncStorageGet(SUPPORTER_LOOKS_KEY)
+  return normalizeSupporterLooks(stored[SUPPORTER_LOOKS_KEY])
+}
+
+export async function setSupporterLooks(looks: SupporterLook[]): Promise<void> {
+  await syncStorageSet({ [SUPPORTER_LOOKS_KEY]: normalizeSupporterLooks(looks) })
+}
+
 export async function getPulseBanner(): Promise<PulseBannerPreference> {
   const stored = await syncStorageGet(PULSE_BANNER_KEY)
   return normalizePulseBanner(stored[PULSE_BANNER_KEY])
@@ -653,6 +664,23 @@ export async function getPulseBanner(): Promise<PulseBannerPreference> {
 
 export async function setPulseBanner(value: PulseBannerPreference): Promise<void> {
   await syncStorageSet({ [PULSE_BANNER_KEY]: normalizePulseBanner(value) })
+}
+
+/**
+ * Equip a look's motion and backdrop in one write, so both save or neither
+ * does. It starts from what is stored at that moment: a panel title renamed
+ * meanwhile is kept, and so are wave and sheen when the motion is unchanged.
+ */
+/** This profile's motion and backdrop as stored now. */
+export async function getSupporterLookExtras(): Promise<SupporterLookExtras> {
+  const [paint, banner] = await Promise.all([getSupporterPaintStyle(), getPulseBanner()])
+  return lookExtras(paint, banner)
+}
+
+export async function setSupporterLookExtras(extras: SupporterLookExtras): Promise<void> {
+  const [paint, banner] = await Promise.all([getSupporterPaintStyle(), getPulseBanner()])
+  const next = lookStorage(extras, paint, banner)
+  await syncStorageSet({ [SUPPORTER_PAINT_KEY]: normalizeSupporterPaintStyle(next.paint), [PULSE_BANNER_KEY]: normalizePulseBanner(next.banner) })
 }
 
 export async function getDensityPreference(): Promise<DensityPreference> {
