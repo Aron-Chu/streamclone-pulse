@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
 import {
   assertWithinBudget,
+  checkQuickSettingsChunk,
   CONTENT_BUNDLE_BASELINE,
   measureContentBundle,
+  QUICK_SETTINGS_CHUNK_MAX_GZIP,
 } from '../scripts/check-extension-bundle-budget.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -84,5 +86,28 @@ describe('extension content bundle budget', () => {
     expect(result.ok, result.errors.join('; ')).toBe(true)
     expect(result.maxRaw).toBeLessThanOrEqual(Math.ceil(CONTENT_BUNDLE_BASELINE.raw * 1.1))
     expect(result.maxGzip).toBeLessThanOrEqual(Math.ceil(CONTENT_BUNDLE_BASELINE.gzip * 1.1))
+  })
+
+  it('checks that Quick settings stays in its own script, under its cap, without a second React', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pulse-quick-settings-fixture-'))
+    try {
+      const chunk = join(dir, 'quick-settings.js')
+      const content = join(dir, 'twitch.js')
+      const view = 'globalThis.__pulseQuickSettings=()=>"Docking needs Sidebar placement."'
+      writeFileSync(content, 'globalThis.__pulseQuickSettingsHost={}')
+      expect(checkQuickSettingsChunk(join(dir, 'missing.js'), content).ok).toBe(false)
+      writeFileSync(chunk, view)
+      expect(checkQuickSettingsChunk(chunk, content)).toMatchObject({ ok: true, errors: [] })
+      writeFileSync(chunk, `${view};Symbol.for("react.transitional.element")`)
+      expect(checkQuickSettingsChunk(chunk, content).errors).toEqual(['quick-settings.js bundles its own React'])
+      writeFileSync(chunk, view)
+      writeFileSync(content, view)
+      expect(checkQuickSettingsChunk(chunk, content).errors).toEqual(['twitch.js contains the Quick settings view'])
+      // Numbers that barely repeat, so the file stays over the cap once gzipped.
+      writeFileSync(chunk, `${view}${Array.from({ length: QUICK_SETTINGS_CHUNK_MAX_GZIP / 2 }, (_, i) => `/*${(i * 2654435761) % 1000003}*/`).join('')}`)
+      expect(checkQuickSettingsChunk(chunk, join(dir, 'none.js')).errors.some(e => e.startsWith('quick-settings.js gzip'))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

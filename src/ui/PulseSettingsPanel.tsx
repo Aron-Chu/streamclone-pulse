@@ -1,7 +1,6 @@
 import { PulseBannerBackdrop, PulseBannerLoadError, usePulseBanner } from './PulseBanner.tsx'
 import { openCommunity } from './AnalyticsHubCta.tsx'
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { backgroundErrorMessage, EXTENSION_RECONNECT_MESSAGE } from '../shared/backgroundResponse.ts'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { getMomentPicturesEnabled, getVodJumpChartPinEnabled, setMomentPicturesEnabled, setVodJumpChartPinEnabled, type PulseBannerPreference } from '../shared/storage.ts'
 import { sendBackgroundMessage } from '../content/bridge.ts'
 import { readTwitchChannelAvatarUrl } from '../content/twitch.ts'
@@ -12,12 +11,20 @@ import { AUTO_UPDATE_LABEL, DENSITY_LABEL, DOCK_LABEL, LIVE_SETTINGS_TITLE, PLAC
 import { usePulseHealth } from './usePulseHealth.ts'
 import { usePulsePreferences } from './usePulsePreferences.ts'
 import { useSupporterAppearanceDetails, type SupporterAppearance } from './useSupporterAppearance.ts'
-import { SettingsGearIcon } from './SettingsGearIcon.tsx'
+import { useSettingsHostOpener } from './OpenAllSettingsButton.tsx'
 import { formatCount } from './mostReacted.ts'
 import type { PulsePanelSurfaceState } from './pulsePanelLayout.ts'
-import type { SettingsHostTarget } from '../shared/messages.ts'
 import type { SupporterCardOptions } from '../supporter/cardContract.ts'
 import { names as SUPPORTER_PERK_NAMES } from '../shared/supporter-perks.json'
+
+/**
+ * Quick settings, the panel's settings view. It ships in
+ * content/quick-settings.js (src/content/quickSettings.ts), never in
+ * content/twitch.js: the worker injects it when the panel is first hovered,
+ * focused or asked for its settings, and the overlay switches views once it is
+ * here (src/ui/quickSettings.ts). It shares React and every module that keeps
+ * state with the content script (src/shared/quickSettingsContract.ts).
+ */
 
 const RELEASE_PREVIEW = __EXTENSION_RELEASE_PREVIEW__
 
@@ -31,49 +38,6 @@ export interface QuickSettingsChannel {
   viewerCount?: number | null
   startedAt?: string | null
   surface: PulsePanelSurfaceState
-}
-
-function useSettingsHostOpener() {
-  const [error, setError] = useState<string | null>(null)
-  const [opening, setOpening] = useState(false)
-  async function open(section: SettingsHostTarget): Promise<void> {
-    setOpening(true)
-    setError(null)
-    try {
-      const response = await sendBackgroundMessage({ type: 'OPEN_SETTINGS_HOST', section })
-      const failure = backgroundErrorMessage(response, EXTENSION_RECONNECT_MESSAGE)
-      if (failure || !response || !('type' in response) || response.type !== 'OPEN_SETTINGS_HOST') setError(failure ?? EXTENSION_RECONNECT_MESSAGE)
-    } catch {
-      setError(EXTENSION_RECONNECT_MESSAGE)
-    } finally { setOpening(false) }
-  }
-  return { error, opening, open }
-}
-
-/**
- * Pinned where the Pulse view keeps its Settings bar, so the way out to the
- * full settings page sits in the same place on both views.
- */
-export function OpenAllSettingsButton({ style }: { style?: CSSProperties }) {
-  const { error, opening, open } = useSettingsHostOpener()
-  return (
-    <>
-      {error ? <p className="pulse-settings-hint pulse-settings-footer-error" role="alert">{error}</p> : null}
-      <button
-        type="button"
-        className="pulse-settings-bottom-bar"
-        data-settings-host-cta="pulse"
-        style={style}
-        title="Open all settings in a new tab"
-        disabled={opening}
-        onClick={() => void open('pulse')}
-      >
-        <SettingsGearIcon size={16} />
-        <span>{opening ? 'Opening settings…' : 'Open all settings'}</span>
-        <span aria-hidden="true">↗</span>
-      </button>
-    </>
-  )
 }
 
 const RAIN_OPTIONS = [{ value: 'off', label: 'Off' }, { value: 'still', label: 'Still' }, { value: 'rain', label: 'Rain' }] as const

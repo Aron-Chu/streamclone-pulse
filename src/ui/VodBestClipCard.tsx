@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 import { formatMomentOffset } from '@streampulse/pulse-core'
 import type { VodClipCandidate } from '../types/vodPulseTypes.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
-import { theme } from './theme.ts'
+import { theme, tone } from './theme.ts'
 import { safeImageUrl } from '../shared/safeUrl.ts'
 
 export function VodBestClipCard({
@@ -60,8 +60,8 @@ const styles: Record<string, CSSProperties> = {
     textTransform: 'uppercase',
   },
   body: {
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: tone('rgba(255,255,255,0.04)'),
+    border: `1px solid ${tone('rgba(255,255,255,0.1)')}`,
     borderRadius: 10,
     display: 'flex',
     gap: 10,

@@ -130,10 +130,19 @@ let overlayHostReconcileTimer: ReturnType<typeof setTimeout> | null = null
 let twitchThemeObserver: MutationObserver | null = null
 let nativeChatFocusHandoff: NativeChatFocusHandoff | null = null
 
-/** The panel host carries the theme too, ready for a later light panel. */
+/**
+ * Both hosts carry Twitch's theme and the Pulse accent: the light stylesheet in
+ * content/shadow.css keys its rules and accent inks on them.
+ */
 function syncTwitchTheme(): void {
-  const theme = twitchTheme(document.documentElement)
-  for (const host of [tabsHostEl, panelHostEl]) if (host) host.dataset.twitchTheme = theme
+  const root = document.documentElement
+  const theme = twitchTheme(root)
+  for (const host of [tabsHostEl, panelHostEl]) {
+    if (host) {
+      host.dataset.twitchTheme = theme
+      host.dataset.pulseAccent = root.dataset.pulseAccent ?? ''
+    }
+  }
 }
 
 function installOverlayDiagnosticsOnce(): void {
@@ -700,7 +709,7 @@ export function mountOverlay(
   if (!twitchThemeObserver) {
     // <html> class only, never the subtree: Twitch toggles it on theme switch.
     twitchThemeObserver = new MutationObserver(syncTwitchTheme)
-    twitchThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    twitchThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-pulse-accent'] })
   }
   syncTwitchTheme()
 

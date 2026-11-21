@@ -261,6 +261,12 @@ select {
   background: var(--bg-elevated);
 }
 
+/* A narrow panel centred on its own, e.g. the crash panel. */
+.panel--centered {
+  margin: 2rem auto;
+  max-width: 480px;
+}
+
 .public-document {
   line-height: 1.65;
 }

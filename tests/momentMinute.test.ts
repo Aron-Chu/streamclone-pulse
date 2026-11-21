@@ -54,7 +54,7 @@ describe('momentContextFromMinutes', () => {
     expect(context.coverage).toBe('partial')
     expect(context.samples[7].messages).toBeNull() // absent
     expect(context.samples[12].messages).toBeNull() // flagged missing
-    expect(context.samples[14].messages).toBeNull() // the API omits a zero count
+    expect(context.samples[14].messages).toBeNull() // legacy response without a count
   })
 
   it('says nothing when the moment’s own minute is missing, absent or from another broadcast', () => {
@@ -69,6 +69,15 @@ describe('momentContextFromMinutes', () => {
   it('reports a minute without counts as not available rather than zero', () => {
     const context = shape(payload([rowAt(0, { chatCount: undefined })]))!
     expect(context).toMatchObject({ selectedMessages: null, selectedEmotes: null, selectedViewers: null, topEmotes: [] })
+  })
+
+  it('reports a measured zero and keeps viewers available in a chat gap', () => {
+    expect(shape(payload([rowAt(0, { chatCount: 0 })]))?.selectedMessages).toBe(0)
+    const context = shape(payload([rowAt(0, {
+      chatCount: 9, chatMissing: true, viewerAvg: 30, viewerSamples: 1,
+    })]))
+    expect(context).toMatchObject({ coverage: 'partial', selectedMessages: null, selectedViewers: 30 })
+    expect(shape(payload([rowAt(0, { missing: true, viewerAvg: 30, viewerSamples: 1 })]))).toBeNull()
   })
 
   it('starts the strip at go-live and ends it at the newest minute', () => {

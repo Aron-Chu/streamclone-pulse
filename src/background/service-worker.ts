@@ -46,6 +46,7 @@ import { injectSupporterCard } from './supporterCardScript.ts'
 import { chatBadgeList, chatBadgeOptIn, installChatBadges, reconcileChatBadges } from './chatBadgeRuntime.ts'
 import { injectMomentFrames } from './momentFramesScript.ts'
 import { injectCatchMeUp } from './catchMeUpScript.ts'
+import { injectQuickSettings } from './quickSettingsScript.ts'
 import { twitchSignIn } from './twitchSignInRuntime.ts'
 import {
   EXTENSION_DIAGNOSTICS_INGEST_ENABLED,
@@ -1050,6 +1051,10 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
           sendResponse({ type: 'CATCH_ME_UP_SCRIPT', ok: await injectCatchMeUp(chrome.scripting, sender) } satisfies BackgroundResponse)
           return
         }
+        case 'QUICK_SETTINGS_SCRIPT': {
+          sendResponse({ type: 'QUICK_SETTINGS_SCRIPT', ok: await injectQuickSettings(chrome.scripting, sender) } satisfies BackgroundResponse)
+          return
+        }
         case 'TWITCH_SIGN_IN': {
           sendResponse((message.action === 'status'
             ? await twitchSignIn.status()
@@ -1421,6 +1426,9 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   return true
 })
 
+// Start legacy credential migration even if the user never opens settings.
+void getDeviceCredential()
+
 // A worker restarted while a link request waited picks the wait back up.
 void resumePendingLink()
 
@@ -1445,8 +1453,7 @@ chrome.runtime.onInstalled.addListener(details => {
 // No import() in this worker: Chromium forbids it in extension service workers,
 // and Vite's preload helper throws on `document`. storage.local also stays open
 // to content scripts for now (the VOD analytics bridge and the panel's consent
-// and debug reads use it); restrictCredentialStorageAccess waits until those
-// reads go through worker messages.
+// and debug reads use it). Device and account bearers live in extension-origin IndexedDB.
 
 installBackgroundDiagnosticsEmitters()
 installChatBadges()

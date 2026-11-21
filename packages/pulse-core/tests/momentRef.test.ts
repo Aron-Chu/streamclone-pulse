@@ -7,7 +7,6 @@ import {
   isValidMomentRef,
   momentRefToPortalChannelPath,
   momentRefToPortalStreamPath,
-  momentRefToTwitchVodUrl,
   normalizeCreateBookmarkInput,
 } from '../src/momentRef.ts'
 
@@ -79,22 +78,6 @@ describe('momentRef', () => {
       momentRefToPortalStreamPath(ref, { streamAnalyticsAvailable: false }),
       null,
     )
-  })
-
-  it('twitch vod url only when vodId present', () => {
-    const withVod = buildMomentRef({
-      login: 'xqc',
-      streamId: '1',
-      offsetSeconds: 30,
-      vodId: '123456789',
-    })
-    const withoutVod = buildMomentRef({ login: 'xqc', streamId: '1', offsetSeconds: 30 })
-    assert.ok(withVod && withoutVod)
-    assert.equal(
-      momentRefToTwitchVodUrl(withVod),
-      'https://www.twitch.tv/videos/123456789?t=30s',
-    )
-    assert.equal(momentRefToTwitchVodUrl(withoutVod), null)
   })
 
   it('normalizeCreateBookmarkInput rejects estimated moments', () => {

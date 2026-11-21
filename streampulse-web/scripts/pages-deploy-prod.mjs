@@ -29,12 +29,13 @@
  * Portal release is always streampulse-portal@<full git SHA>.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, unlinkSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, unlinkSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { verifyHostedAnalyticsRoutes, verifyHostedAccountRoutes } from './hosted-analytics-route-smoke.mjs'
 import { MIGRATION_PAGES_PROJECT, assertProductionPagesTarget, assertApexTargetForWorker, assertDeploySourceIsOriginMaster, assertEdgeFreeze, assertRemotePolicyFresh, describeEdgeFreeze } from './check-edge-freeze.mjs'
 import { checkProductionBuildEnv, describeWaivedInputs } from './pages-deploy-env.mjs'
+import { assertEveryChunkHasDebugId } from './check-sentry-debug-ids.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const webRoot = join(root, '..')
@@ -213,14 +214,11 @@ if (remaining > 0) {
 }
 if (viteSentryDsn) {
   console.log(`Sentry source maps uploaded for ${portalRelease}; removed ${removed} local .map files`)
-  // The plugin stamps each chunk with a debug ID; without one, production stack
-  // traces would not resolve. Report yes/no only.
-  const assetsDir = join(webRoot, 'dist', 'assets')
-  const entryChunks = readdirSync(assetsDir).filter(name => /^index-.+\.js$/.test(name))
-  const hasDebugIds = entryChunks.some(name => readFileSync(join(assetsDir, name), 'utf8').includes('sentry-dbid-'))
-  console.log(`Sentry debug IDs in the entry bundle: ${hasDebugIds ? 'yes' : 'no'}`)
-  if (!hasDebugIds) {
-    console.error('pages:deploy:prod: the entry bundle has no Sentry debug IDs; refusing to deploy unresolvable stack traces')
+  // Every JS chunk, not only the entry; see check-sentry-debug-ids.mjs.
+  try {
+    console.log(assertEveryChunkHasDebugId(join(webRoot, 'dist', 'assets')))
+  } catch (error) {
+    console.error(`pages:deploy:prod: ${error instanceof Error ? error.message : String(error)}; refusing to deploy unresolvable stack traces`)
     process.exit(1)
   }
 }

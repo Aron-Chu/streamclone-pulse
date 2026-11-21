@@ -1044,6 +1044,43 @@ describe('streamcloneAnalytics adapter', () => {
   })
 
   describe('portalMinutesToRollups plot series', () => {
+    it('includes quiet minutes with omitted counts in the live chart and chat rate', async () => {
+      const { portalMinutesToRollups } = await import('../src/lib/streamcloneAnalytics')
+      const { buildChartSeries } = await import('@streampulse/pulse-charts')
+      const { buildSessionBarStrip } = await import('../../packages/analytics-console/src/utils/sessionBarStrip')
+      const startedAt = '2026-07-13T18:00:00.000Z'
+      const { rollups } = portalMinutesToRollups(startedAt, [
+        { offsetSeconds: 0, chatCount: 5 },
+        { offsetSeconds: 60 },
+        { offsetSeconds: 120 },
+        { offsetSeconds: 180, chatCount: 7 },
+        { offsetSeconds: 240 },
+        { offsetSeconds: 300, chatCount: 3 },
+      ])
+      const chat = buildChartSeries(rollups, new Set()).find(series => series.key === 'chat')
+      const strip = buildSessionBarStrip({
+        startedAt, rollups, span: { startSec: 0, endSec: 360, levelMinutes: 6 },
+        vodLinkState: { status: 'live', label: 'Live', detail: '' },
+      })
+      expect.soft(chat?.values).toEqual([5, 0, 0, 7, 0, 3])
+      expect(strip.figures.find(figure => figure.key === 'chat')?.value).toBe(3)
+    })
+
+    it('plots measured chat zero and preserves viewers at a chat gap', async () => {
+      const { portalMinutesToRollups } = await import('../src/lib/streamcloneAnalytics')
+      const { buildChartSeries, rollupHasMinuteData } = await import('@streampulse/pulse-charts')
+      const { rollups } = portalMinutesToRollups('2026-07-13T18:00:00.000Z', [
+        { offsetSeconds: 0, chatCount: 0 },
+        { offsetSeconds: 60, viewerAvg: 30, viewerSamples: 1, chatMissing: true, chatCount: 99 },
+        { offsetSeconds: 120, missing: true, chatMissing: true },
+        { offsetSeconds: 180, viewerAvg: 45, viewerSamples: 1 },
+      ])
+      const series = buildChartSeries(rollups, new Set())
+      expect(rollups.map(rollupHasMinuteData)).toEqual([false, true, false, true])
+      expect(series.find(({ key }) => key === 'chat')?.values).toEqual([0, null, null, 0])
+      expect(series.find(({ key }) => key === 'viewers')?.values).toEqual([null, 30, null, 45])
+    })
+
     it('keeps mid-rank stream-top emotes plottable (EDM-style)', async () => {
       const { portalMinutesToRollups, alignRollupEmoteKeys } = await import(
         '../src/lib/streamcloneAnalytics'

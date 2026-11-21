@@ -61,7 +61,7 @@ describe('moment minute window', () => {
   })
 
   it('keeps a flagged-missing or absent minute empty, and a row with no chat count is no chat recorded, not a measured zero', () => {
-    const minutes = [row(-4, { chatCount: 0 }), row(-3, { chatCount: 50 }), row(-2, { missing: true }), row(-1), row(0, { chatCount: 393 }), row(2, { chatCount: 80 })]
+    const minutes = [row(-4, { chatCount: 0 }), row(-3, { chatCount: 50 }), row(-2, { missing: true }), row(-1), row(0, { chatCount: 393 }), row(2, { chatCount: 80 }), row(3, { chatCount: 50, chatMissing: true })]
     const window = momentMinuteWindowFromMinutes(moment, payload(minutes), NOW)!
     const at = (relative: number) => window.slots[relative + 30]
     expect(at(-2)).toEqual({ relative: -2, state: 'unmeasured', chatPerMin: null })
@@ -71,10 +71,11 @@ describe('moment minute window', () => {
     expect(at(-4)).toEqual({ relative: -4, state: 'measured', chatPerMin: 0 })
     expect(at(1)).toEqual({ relative: 1, state: 'unmeasured', chatPerMin: null })
     // Nothing returned after +2 yet: those minutes are outside the data, not gaps.
-    expect(at(3).state).toBe('outside')
+    expect(at(3)).toEqual({ relative: 3, state: 'unrecorded', chatPerMin: null })
+    expect(at(4).state).toBe('outside')
     expect(window.complete).toBe(false)
     expect(window.measuredMinutes).toBe(4)
-    expect(window.unrecordedMinutes).toBe(1)
+    expect(window.unrecordedMinutes).toBe(2)
   })
 
   it('is complete only once a minute past the window has arrived', () => {

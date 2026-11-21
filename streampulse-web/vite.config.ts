@@ -5,7 +5,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { extensionUiShimsPlugin } from './src/plugins/extensionUiShims'
 import { rewriteReactRouterLocalhostPlugin } from './src/plugins/rewriteReactRouterLocalhost'
-import { assertBuildOnlyBracesRuntimeBoundary } from '../scripts/ci-portal-npm-audit-disposition.mjs'
+import { assertBuildOnlyAuditRuntimeBoundary } from '../scripts/ci-portal-npm-audit-disposition.mjs'
+import { sentrySourceMapGatePlugin } from './scripts/check-sentry-debug-ids.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Extension checkout root (sibling of streampulse-web/) — landing showcase reuses overlay UI. */
@@ -30,9 +31,9 @@ function publicEntryBoundaryPlugin(): Plugin {
     name: 'streampulse-public-entry-boundary',
     apply: 'build',
     generateBundle(_options, bundle) {
-      // The exact braces advisory disposition is limited to build tooling.
+      // The exact picomatch advisory disposition is limited to build tooling.
       // Cover every emitted chunk, including lazy routes, before publication.
-      assertBuildOnlyBracesRuntimeBoundary(bundle)
+      assertBuildOnlyAuditRuntimeBoundary(bundle)
       const visited = new Set<string>()
       const forbidden = new Set<string>()
       const visit = (fileName: string, into = visited) => {
@@ -119,6 +120,8 @@ const plugins = [
 // Sentry Vite plugin must be last. Upload only when production DSN + auth + release are set.
 if (viteSentryDsn && sentryAuth && sentryRelease) {
   plugins.push(
+    // Checks the in-memory bundle, before the Sentry plugin deletes the maps.
+    sentrySourceMapGatePlugin(),
     sentryVitePlugin({
       org: sentryOrg,
       project: sentryProject,
