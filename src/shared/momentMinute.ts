@@ -9,6 +9,7 @@ const MAX_ROWS = 240
 interface MinuteRow {
   offsetSeconds?: unknown
   chatCount?: unknown
+  chatMissing?: boolean
   totalEmoteCount?: unknown
   viewerAvg?: unknown
   viewerLatest?: unknown
@@ -77,9 +78,8 @@ function viewers(row: MinuteRow): number | null {
  * the minute it falls in, and chat per minute either side of it.
  *
  * A minute the API flags missing, or never returns, stays a gap rather than
- * zero. The API omits a zero count, so a row without one is "not available",
- * never a measured zero. Returns null when the payload is for another
- * broadcast or the moment's own minute has no rollup.
+ * zero. An absent count or a chat-only gap stays unmeasured while any viewers
+ * and emotes in that minute remain available.
  */
 export function momentContextFromMinutes(
   payload: unknown,
@@ -111,9 +111,9 @@ export function momentContextFromMinutes(
   let gaps = 0
   for (let relative = first; relative <= last; relative += 1) {
     const row = rows.get(relative)
-    if (!row || row.missing === true) gaps += 1
-    samples.push({ offsetSeconds: Math.max(0, moment.offsetSeconds + relative * 60),
-      messages: row && row.missing !== true && isCount(row.chatCount) ? row.chatCount : null })
+    const messages = row && row.missing !== true && row.chatMissing !== true && isCount(row.chatCount) ? row.chatCount : null
+    if (messages == null) gaps += 1
+    samples.push({ offsetSeconds: Math.max(0, moment.offsetSeconds + relative * 60), messages })
   }
   return {
     provenance: 'snapshot',
@@ -122,7 +122,7 @@ export function momentContextFromMinutes(
     coverage: gaps ? 'partial' : 'complete',
     windowLabel: `±${MOMENT_MINUTE_SPAN} min`,
     samples,
-    selectedMessages: isCount(selected.chatCount) ? selected.chatCount : null,
+    selectedMessages: selected.chatMissing !== true && isCount(selected.chatCount) ? selected.chatCount : null,
     selectedEmotes: isCount(selected.totalEmoteCount) ? selected.totalEmoteCount : null,
     selectedViewers: viewers(selected),
     topEmotes: topEmotes(selected.topEmotes, options.emoteImage),

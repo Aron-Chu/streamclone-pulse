@@ -12,6 +12,7 @@ function build24hActivityPoints(now: number): Array<{
   viewerContributors: number
   viewerExpectedContributors: number
   viewerCoverage: 'complete'
+  hasChatRollup: true
   bucketComplete: boolean
 }> {
   const bucketMs = 6 * 60_000
@@ -28,6 +29,7 @@ function build24hActivityPoints(now: number): Array<{
     viewerContributors: number
     viewerExpectedContributors: number
     viewerCoverage: 'complete'
+    hasChatRollup: true
     bucketComplete: boolean
   }> = []
   for (let i = 0; i < 240; i += 1) {
@@ -44,6 +46,7 @@ function build24hActivityPoints(now: number): Array<{
       viewerContributors: 14,
       viewerExpectedContributors: 14,
       viewerCoverage: 'complete',
+      hasChatRollup: true,
       bucketComplete: true,
     })
   }
@@ -64,7 +67,7 @@ function build7dDiurnalActivityPoints(now: number) {
       // the historical series so the 7d screenshot cannot silently crop it.
       viewers: index === 700 || index === 1007 ? 1_200_000 : Math.max(100_000, Math.min(700_000, viewers)),
       emotes: 40 + (index % 80), viewerContributors: 14, viewerExpectedContributors: 14,
-      viewerCoverage: 'complete' as const, bucketComplete: true,
+      viewerCoverage: 'complete' as const, hasChatRollup: true as const, bucketComplete: true,
     }
   })
 }

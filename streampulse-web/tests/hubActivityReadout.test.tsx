@@ -1,10 +1,11 @@
 import { act, render } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { emoteDisplaySrc } from '../src/lib/emoteAssetUrl'
 import { createSpHoverStore, type SpBar, type SpHit } from '@streampulse/pulse-charts/spchart'
 import type { HubActivityPoint } from '../src/lib/publicHub'
 import { formatHubCardInt, hubCardClock, hubCardClockRange } from '../src/lib/hubBucketCardModel'
 import { HubActivityReadout, hubReadoutView } from '../src/ui/components/hub/HubActivityReadout'
-import { buildHubActivitySpModel } from '../src/ui/components/hub/hubActivitySpModel'
+import { buildHubActivitySpModel, hubEmoteImageMap } from '../src/ui/components/hub/hubActivitySpModel'
 
 const MIN = 60_000
 const END = Date.UTC(2026, 9, 13, 18, 0, 0)
@@ -187,6 +188,41 @@ describe('HubActivityReadout', () => {
     expect(container.querySelector('.tm .l1')!.textContent).toBe('Saved')
     act(() => hover.set(hit(bar(5, 6))))
     expect(container.querySelector('.tm .l1')!.textContent).not.toBe('Saved')
+  })
+
+  it('keeps a 7TV and a BTTV emote with the same name apart: own key, own picture or own fallback', () => {
+    const sevenTv = 'https://cdn.7tv.app/emote/01FAKESEVENTVHEHE/1x.webp'
+    const sevenTvHub = 'https://cdn.7tv.app/emote/01FAKESEVENTVHUB0/1x.webp'
+    const bttvHub = 'https://cdn.betterttv.net/emote/fakebttvhehe0001/1x.webp'
+    const rows = points().map((point, index) => (index === 3
+      ? { ...point, topEmotes: [
+          { name: 'Hehe', provider: '7tv', imageUrl: sevenTv, count: 30 },
+          // No picture of its own: it takes the BTTV fallback, never the 7TV one.
+          { name: 'Hehe', provider: 'bttv', count: 20 },
+        ] }
+      : point))
+    const twin = buildHubActivitySpModel(rows, 120, { bucketMinutes: 6 })!
+    const emoteImages = hubEmoteImageMap([
+      { name: 'Hehe', provider: 'bttv', imageUrl: bttvHub },
+      { name: 'Hehe', provider: '7tv', imageUrl: sevenTvHub },
+    ])
+    const errors: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { errors.push(args.map(String).join(' ')) })
+    try {
+      const hover = createSpHoverStore()
+      const { container } = render(
+        <HubActivityReadout model={twin} hover={hover} series={{ chat: true, emotes: true, viewers: true }} emoteImages={emoteImages} />,
+      )
+      act(() => hover.set(hit(bar(3, 4))))
+      const pictures = [...container.querySelectorAll('.te .l1 img')].map((img) => img.getAttribute('src'))
+      expect(pictures).toEqual([emoteDisplaySrc(sevenTv, 24), emoteDisplaySrc(bttvHub, 24)])
+      act(() => hover.set(hit(bar(2, 3))))
+      act(() => hover.set(hit(bar(3, 4))))
+      expect([...container.querySelectorAll('.te .l1 img')].map((img) => img.getAttribute('src'))).toEqual(pictures)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(errors.filter((message) => /same key/i.test(message))).toEqual([])
   })
 
   it('dims a series that is switched off without moving the row', () => {

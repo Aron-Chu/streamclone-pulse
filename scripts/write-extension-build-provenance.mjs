@@ -22,6 +22,7 @@ export const buildInputs = [
   'vite.supporterCard.config.ts',
   'vite.momentFrames.config.ts',
   'vite.catchMeUp.config.ts',
+  'vite.quickSettings.config.ts',
   'package.json',
   'package-lock.json',
   'scripts/ensure-packages-built.mjs',

@@ -42,16 +42,6 @@ export function buildWatchChannelRequest(baseUrl: string, login: string): Record
   }
 }
 
-export function buildCoverageRequest(baseUrl: string, login: string): RecordedHttpCall {
-  const root = baseUrl.replace(/\/$/, '')
-  const normalized = normalizeExtensionLogin(login)
-  return {
-    method: 'GET',
-    url: `${root}/v1/extension/coverage/channels/${encodeURIComponent(normalized)}`,
-    login: normalized,
-  }
-}
-
 /** Parse login + window from a recorded pulse channel URL. */
 export function parsePulseChannelUrl(url: string): { login: string; window: PulseHttpWindow } | null {
   const match = url.match(/\/v1\/extension\/pulse\/channels\/([^/?]+)(\?window=full)?/)

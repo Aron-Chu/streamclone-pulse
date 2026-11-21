@@ -15,6 +15,7 @@ export type MessageType =
   | 'MOMENT_FRAMES_SCRIPT'
   | 'MOMENT_PICTURE'
   | 'CATCH_ME_UP_SCRIPT'
+  | 'QUICK_SETTINGS_SCRIPT'
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
   | 'SUPPORTER_DEVICES'
@@ -324,6 +325,8 @@ export type BackgroundRequest =
   | import('./momentPictureMessages.ts').MomentPictureRequest
   /** Injects the stream recap's Catch me up script into the sender's own Twitch tab. */
   | { type: 'CATCH_ME_UP_SCRIPT' }
+  /** Injects the panel's Quick settings script into the sender's own Twitch tab. */
+  | { type: 'QUICK_SETTINGS_SCRIPT' }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -848,6 +851,7 @@ export type BackgroundResponse =
   | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
   | { type: 'MOMENT_PICTURE'; wants?: import('./momentFramesContract.ts').MomentPictureWant[]; ok?: boolean; vod?: import('./vodPictures.ts').VodPictures | null; frame?: import('../background/vodFrameInject.ts').VodFrame | { error: string } | null }
   | { type: 'CATCH_ME_UP_SCRIPT'; ok: boolean }
+  | { type: 'QUICK_SETTINGS_SCRIPT'; ok: boolean }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   /** `device`: saved without an account; these rows never leave this browser. */

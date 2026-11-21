@@ -22,6 +22,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'MOMENT_FRAMES_SCRIPT',
   'MOMENT_PICTURE',
   'CATCH_ME_UP_SCRIPT',
+  'QUICK_SETTINGS_SCRIPT',
   'SUPPORTER_BILLING',
   'SUPPORTER_RESTORE',
   'SUPPORTER_DEVICES',
@@ -385,6 +386,7 @@ export function parseBackgroundRequest(raw: unknown): BackgroundRequest | null {
     case 'SUPPORTER_CARD_SCRIPT':
     case 'MOMENT_FRAMES_SCRIPT':
     case 'CATCH_ME_UP_SCRIPT':
+    case 'QUICK_SETTINGS_SCRIPT':
       return Object.keys(raw).length === 1 ? { type } : null
     case 'GET_DEVICE_AUTH_STATUS':
     case 'ROTATE_DEVICE':

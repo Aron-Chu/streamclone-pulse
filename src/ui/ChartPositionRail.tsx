@@ -14,7 +14,7 @@ import {
   viewportDurationSeconds,
   type ChartViewport,
 } from './chartViewport.ts'
-import { theme } from './theme.ts'
+import { theme, tone } from './theme.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
 
 export interface ChartPositionRailProps {
@@ -625,7 +625,7 @@ const styles: Record<string, CSSProperties> = {
     userSelect: 'none',
   },
   track: {
-    background: 'rgba(255, 255, 255, 0.04)',
+    background: tone('rgba(255, 255, 255, 0.04)'),
     border: `1px solid ${theme.border}`,
     borderRadius: 6,
     margin: '6px 0',
@@ -659,7 +659,7 @@ const styles: Record<string, CSSProperties> = {
     zIndex: 1,
   },
   selectionMarker: {
-    background: 'rgba(251, 191, 36, 0.95)',
+    background: tone('rgba(251, 191, 36, 0.95)'),
     bottom: 0,
     boxShadow: '0 0 5px rgba(251, 191, 36, 0.6)',
     pointerEvents: 'none',

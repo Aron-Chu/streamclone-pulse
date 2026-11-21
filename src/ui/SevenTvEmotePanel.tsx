@@ -9,7 +9,7 @@ import {
 import { emoteChartColor } from './chartTheme.ts'
 import { PulseEmoteImg } from './PulseEmoteImg.tsx'
 import { formatCount } from './mostReacted.ts'
-import { theme } from './theme.ts'
+import { theme, tone } from './theme.ts'
 
 const INITIAL_VISIBLE_EMOTES = 12
 
@@ -289,7 +289,7 @@ const styles: Record<string, CSSProperties> = {
     transition: 'grid-template-rows .22s cubic-bezier(.2,0,0,1), opacity .18s cubic-bezier(.2,0,0,1), padding .22s cubic-bezier(.2,0,0,1), border-color .22s cubic-bezier(.2,0,0,1), transform .18s cubic-bezier(.2,0,0,1)',
   },
   bodyExpanded: {
-    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+    borderTop: `1px solid ${tone('rgba(255, 255, 255, 0.06)')}`,
     gap: 7,
     gridTemplateRows: '1fr',
     opacity: 1,
