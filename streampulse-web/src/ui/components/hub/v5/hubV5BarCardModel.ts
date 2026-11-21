@@ -77,8 +77,11 @@ export interface HubV5BarCardInput {
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0)
 
-const goodChat = (p: HubActivityPoint) => p.hasChatRollup !== false && !p.gapKind && finite(p.chat)
-const goodEmotes = (p: HubActivityPoint) => p.hasChatRollup !== false && !p.gapKind && finite(p.emotes)
+// The backend omits hasChatRollup when false and sets it only when chat or
+// emotes are above 0, so a bucket without the flag is unmeasured, not zero.
+const chatRollup = (p: HubActivityPoint) => p.hasChatRollup === true && !p.gapKind
+const goodChat = (p: HubActivityPoint) => chatRollup(p) && finite(p.chat)
+const goodEmotes = (p: HubActivityPoint) => chatRollup(p) && finite(p.emotes)
 
 const PROVIDER_FIELDS = ['seventv', 'twitch', 'bttv', 'ffz', 'other'] as const
 
