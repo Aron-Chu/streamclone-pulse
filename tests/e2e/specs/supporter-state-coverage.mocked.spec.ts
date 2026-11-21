@@ -282,19 +282,19 @@ for (const state of CASES) {
           await expect(studio.locator('.pulse-account-link-actions')).toHaveCount(0)
           await expect(studio.locator('[data-supporter-finish-intent]')).toHaveCount(0)
           await expect(studio.locator('[data-chip]')).toHaveCount(0)
-          await expect(studio.locator('.pulse-supporter-wave-disclosure')).toHaveJSProperty('open', false)
+          await expect(studio.locator('.pulse-supporter-look-row > legend', { hasText: /^Motion$/ })).toHaveCount(1)
           await expect(studio.getByText(/^(Trying|Sample look)$/)).toHaveCount(0)
         }
         if (expectedJourney === 'membership-unknown') {
           await page.getByText('Preview Supporter looks', { exact: true }).click()
-          for (const name of ['Paint', 'Wave', 'Sheen', 'Emote rain']) {
+          for (const name of ['Looks', 'Paint', 'Motion', 'Backdrop']) {
             const group = studio.getByRole('group', { name, exact: true })
             await expect(group).toHaveJSProperty('disabled', true)
             for (const control of await group.locator('input, button').all()) await expect(control).toBeDisabled()
           }
-          await expect(studio.locator('[data-supporter-perk="emote-rain"]')).toHaveCount(0)
+          await expect(studio.locator('[data-supporter-perk="backdrop"]')).toHaveCount(0)
           await expect(studio.locator('[data-chip]')).toHaveCount(0)
-          await expect(studio.getByRole('button', { name: /Equip paint|Save for when|Use .*when Supporter starts|Clear choice/ })).toHaveCount(0)
+          await expect(studio.getByRole('button', { name: /Equip look|Save for when|Use .*when Supporter starts|Clear choice/ })).toHaveCount(0)
         }
       }
       const views: Array<Record<string, unknown>> = []

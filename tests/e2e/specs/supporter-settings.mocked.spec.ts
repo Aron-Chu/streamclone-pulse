@@ -46,7 +46,7 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   // The real crest art, from the stylesheet, at ladder size.
   await expect(ladder.locator('.pulse-crest').first()).toHaveCSS('width', '22px')
   await expect(ladder.locator('.pulse-crest[data-tenure="24m"]')).toHaveCSS('background-image', /^url\("data:image\/svg\+xml/)
-  // Emote rain across the card's top, on the card itself: no gradient layer.
+  // The backdrop across the card's top, on the card itself: no gradient layer.
   const top = card.locator('.pulse-supporter-card-banner')
   await expect(top).toHaveCSS('background-image', 'none')
   await expect(top.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
@@ -70,7 +70,7 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   const preview = page.locator('[data-supporter-preview]')
   await expect(preview).toHaveCSS('position', 'sticky')
   await expect(preview.locator('.pulse-supporter-preview-badge')).toHaveText('Preview · only you see this')
-  await expect(preview.locator('[data-supporter-perk-names="true"]')).toHaveText('Title paint · Tenure crest · Emote rain · Supporter card')
+  await expect(preview.locator('[data-supporter-perk-names="true"]')).toHaveText('Title paint · Tenure crest · Backdrop · Supporter card')
   await expect(preview).toContainText('Everyone else on Twitch sees normal chat.')
   await expect(page.getByText('Concept · not built')).toHaveCount(0)
   await expect(preview.getByText('Sample look', { exact: true })).toHaveCount(0)
@@ -80,27 +80,29 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(studio.locator('.pulse-account-link-actions')).toHaveCount(0)
   await expect(studio.locator('[data-chip]')).toHaveCount(0)
   await expect(studio.locator('[data-supporter-finish-intent]')).toHaveCount(0)
-  const waveDisclosure = studio.locator('.pulse-supporter-wave-disclosure')
-  await expect(waveDisclosure).toHaveJSProperty('open', false)
-  await expect(page.getByRole('group', { name: 'Wave' })).not.toBeVisible()
+  // One look draft: Looks, Paint, Motion and Backdrop, with no separate wave or sheen controls.
+  await expect(studio.locator('.pulse-supporter-look-row > legend')).toHaveText(['Looks', 'Paint', 'Motion', 'Backdrop'])
+  await expect(page.getByRole('group', { name: 'Wave' })).toHaveCount(0)
 
   await page.screenshot({ path: info.outputPath('supporter-settings.png'), fullPage: true, animations: 'disabled' })
 
-  // Paint, wave, sheen and Emote rain stay local while closed (proved after reload).
+  // Paint, motion and the backdrop stay local while closed (proved after reload).
   await page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
   await expect(preview.locator('.pulse-paint').first()).toHaveAttribute('data-finish', 'halo')
   await expect(preview.getByText('Trying', { exact: true })).toHaveCount(0)
-  await waveDisclosure.getByText('Wave and sheen', { exact: true }).click()
-  await page.getByRole('group', { name: 'Wave' }).getByRole('radio', { name: 'Ripple wave', exact: true }).check()
-  await page.getByRole('group', { name: 'Sheen' }).getByRole('radio', { name: 'Glint sheen', exact: true }).check()
-  await expect(preview.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-wave', 'ripple')
-  await expect(preview.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-sheen', 'glint')
-
-  const rain = page.getByRole('group', { name: 'Emote rain' })
-  await expect(rain.getByRole('button')).toHaveCount(3)
-  await rain.getByRole('button', { name: 'Still', exact: true }).click()
-  await expect(rain.getByRole('button', { name: 'Still', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  // The motion pills carry a live sample over the 1px radio, so click the pill like a person does.
+  await page.getByRole('group', { name: 'Motion' }).locator('label', { hasText: 'Still' }).click()
+  await expect(page.getByRole('group', { name: 'Motion' }).getByRole('radio', { name: 'Still motion', exact: true })).toBeChecked()
+  await expect(preview.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-wave', 'smooth')
+  await expect(preview.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-sheen', 'none')
+  // Still motion stills the backdrop too.
   await expect(preview.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'still')
+
+  const rain = page.getByRole('group', { name: 'Backdrop' })
+  await expect(rain.getByRole('button')).toHaveCount(2)
+  await rain.getByRole('button', { name: 'Off', exact: true }).click()
+  await expect(rain.getByRole('button', { name: 'Off', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(preview.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'off')
   // Scrolled to the last control, the preview is still in view above it.
   await rain.scrollIntoViewIfNeeded()
   await page.mouse.wheel(0, 400)
@@ -124,11 +126,9 @@ test('packaged supporter settings stay local, accessible and responsive', async 
   await expect(page.locator('[data-supporter-preview-disclosure]')).toHaveJSProperty('open', false)
   await page.getByText('Preview Supporter looks', { exact: true }).click()
   await expect(page.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Etched', exact: true })).toBeChecked()
-  await expect(page.locator('.pulse-supporter-wave-disclosure')).toHaveJSProperty('open', false)
-  await page.getByText('Wave and sheen', { exact: true }).click()
-  await expect(page.getByRole('group', { name: 'Wave' }).getByRole('radio', { name: 'Smooth wave', exact: true })).toBeChecked()
-  await expect(page.getByRole('group', { name: 'Sheen' }).getByRole('radio', { name: 'Sweep sheen', exact: true })).toBeChecked()
-  await expect(page.getByRole('group', { name: 'Emote rain' }).getByRole('button', { name: 'Rain', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  // Nothing tried was kept: the sample look's drift motion and backdrop are back.
+  await expect(page.getByRole('group', { name: 'Motion' }).getByRole('radio', { name: 'Drift motion', exact: true })).toBeChecked()
+  await expect(page.getByRole('group', { name: 'Backdrop' }).getByRole('button', { name: 'On', exact: true })).toHaveAttribute('aria-pressed', 'true')
   expect(await page.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_FINISH_INTENT' }))).toEqual({ type: 'SUPPORTER_FINISH_INTENT', finish: null })
   const after = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get(null))
   expect(after).toEqual(before)
@@ -159,18 +159,14 @@ test('Your look tiles work from the keyboard and show where focus is', async ({ 
   const tile = (radio: Locator) => radio.locator('xpath=ancestor::label[contains(concat(" ", @class, " "), " pulse-supporter-tile ")][1]')
   const you = page.locator('[data-supporter-preview]')
   const paint = page.getByRole('group', { name: 'Paint' })
-  const wave = page.getByRole('group', { name: 'Wave' })
-  const sheen = page.getByRole('group', { name: 'Sheen' })
+  const motion = page.getByRole('group', { name: 'Motion' })
   const etched = paint.getByRole('radio', { name: 'Etched', exact: true })
-  const smooth = wave.getByRole('radio', { name: 'Smooth wave', exact: true })
-  const waveDisclosure = page.locator('.pulse-supporter-wave-disclosure')
-  const showWave = waveDisclosure.getByText('Wave and sheen', { exact: true })
-  await expect(waveDisclosure).toHaveJSProperty('open', false)
+  const drift = motion.getByRole('radio', { name: 'Drift motion', exact: true })
   await expect(etched).toBeChecked()
   await expect(tile(etched)).toHaveCSS('outline-style', 'none')
 
-  // The closed disclosure is the next Tab stop after the checked Paint tile.
-  await showWave.focus()
+  // Motion's checked pill is the next Tab stop after the checked Paint tile.
+  await drift.focus()
   await page.keyboard.press('Shift+Tab')
   await expect(etched).toBeFocused()
   await expect(tile(etched)).toHaveCSS('outline-style', 'solid')
@@ -184,28 +180,19 @@ test('Your look tiles work from the keyboard and show where focus is', async ({ 
   await expect(you.locator('.pulse-paint').first()).toHaveAttribute('data-finish', 'halo')
   await expect(you.getByText('Trying', { exact: true })).toHaveCount(0)
 
-  // Open the native disclosure with the keyboard, then reach Wave and Sheen.
+  // Tab reaches the checked Motion pill; an arrow key moves it and the preview follows.
   await page.keyboard.press('Tab')
-  await expect(showWave).toBeFocused()
-  await page.keyboard.press('Space')
-  await expect(waveDisclosure).toHaveJSProperty('open', true)
-  await expect(smooth).toBeChecked()
-  await page.keyboard.press('Tab')
-  await expect(smooth).toBeFocused()
-  await expect(tile(smooth)).toHaveCSS('outline-style', 'solid')
-  await page.keyboard.press('Tab')
-  const sweep = sheen.getByRole('radio', { name: 'Sweep sheen', exact: true })
-  await expect(sweep).toBeChecked()
-  await expect(sweep).toBeFocused()
-  await expect(tile(sweep)).toHaveCSS('outline-style', 'solid')
-  await expect(you.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-sheen', 'sweep')
-  await page.keyboard.press('ArrowRight')
-  const glint = sheen.getByRole('radio', { name: 'Glint sheen', exact: true })
-  await expect(glint).toBeChecked()
-  await expect(glint).toBeFocused()
-  await expect(tile(glint)).toHaveCSS('outline-style', 'solid')
-  await expect(tile(sweep)).toHaveCSS('outline-style', 'none')
+  await expect(drift).toBeChecked()
+  await expect(drift).toBeFocused()
+  await expect(tile(drift)).toHaveCSS('outline-style', 'solid')
   await expect(you.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-sheen', 'glint')
+  await page.keyboard.press('ArrowLeft')
+  const shimmer = motion.getByRole('radio', { name: 'Shimmer motion', exact: true })
+  await expect(shimmer).toBeChecked()
+  await expect(shimmer).toBeFocused()
+  await expect(tile(shimmer)).toHaveCSS('outline-style', 'solid')
+  await expect(tile(drift)).toHaveCSS('outline-style', 'none')
+  await expect(you.locator('.pulse-supporter-chat-line .pulse-paint')).toHaveAttribute('data-sheen', 'sweep')
 })
 
 /** Record what the page asks the browser to open, then open it as usual. */
@@ -263,15 +250,15 @@ test('unmounted account backend produces a clear unavailable state', async ({ ex
   await expect(extension.page.getByRole('button', { name: 'Connect tester account', exact: true })).toHaveCount(0)
 })
 
-test('a Supporter’s emote rain choice keeps keyboard focus through its save', async ({ extension, prepare }) => {
+test('a Supporter’s Equip look keeps keyboard focus through its save', async ({ extension, prepare }) => {
   await prepare()
   await linkDevice(extension.serviceWorker)
   await serveMembership(extension.context, () => supporterBody('active', 2))
   const page = extension.page
   await page.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
-  const rain = page.getByRole('group', { name: 'Emote rain' })
-  await expect(rain).toHaveAttribute('data-supporter-perks', 'on')
-  const status = rain.getByRole('status')
+  const backdrop = page.getByRole('group', { name: 'Backdrop' })
+  await expect(backdrop).toHaveAttribute('data-supporter-perks', 'on')
+  const status = page.locator('.pulse-supporter-studio .pulse-supporter-save-status')
   await expect(status).toHaveText('')
   // Hold each write long enough for Chromium to run its focus fixup, as a slow sync write would.
   await page.evaluate(() => {
@@ -279,23 +266,24 @@ test('a Supporter’s emote rain choice keeps keyboard focus through its save', 
     chrome.storage.sync.set = ((items: Record<string, unknown>) => new Promise(resolve => setTimeout(resolve, 400)).then(() => original(items))) as typeof chrome.storage.sync.set
   })
   const focused = () => page.evaluate(() => document.activeElement?.tagName === 'BUTTON' ? document.activeElement.textContent : document.activeElement?.tagName)
-  for (const [name, previous] of [['Still', 'Off'], ['Rain', 'Still']] as const) {
-    await rain.getByRole('button', { name: previous, exact: true }).focus()
-    await page.keyboard.press('Tab')
-    expect(await focused()).toBe(name)
+  const equip = page.getByRole('button', { name: /^(Equip look|Saving\.\.\.)$/ })
+  for (const [name, mode] of [['On', 'rain'], ['Off', 'off']] as const) {
+    await backdrop.getByRole('button', { name, exact: true }).click()
+    await equip.focus()
     await page.keyboard.press('Space')
-    // While it saves: nothing is disabled, focus stays put, and the old result is cleared.
-    await expect(rain).toHaveAttribute('aria-busy', 'true')
+    // While it saves: Equip look stays reachable, focus stays put, and the old result is cleared.
+    await expect(equip).toHaveAttribute('aria-busy', 'true')
     await expect(status).toHaveText('')
-    // Read at once, not retried: a row disabled for the save is enabled again once it ends.
-    expect(await rain.evaluate(group => group.querySelectorAll('button:disabled').length)).toBe(0)
-    expect(await focused()).toBe(name)
-    await expect(status).toHaveText('Emote rain saved.')
-    await expect(rain.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'true')
-    expect(await focused()).toBe(name)
+    // Read at once, not retried: the button itself is never disabled, only the rows above it pause.
+    expect(await equip.evaluate(button => (button as HTMLButtonElement).disabled)).toBe(false)
+    expect(await focused()).toBe('Saving...')
+    await expect(status).toHaveText(/^Equipped: /)
+    // The buttons leave once the look is worn: focus moves to the look now worn, not the page.
+    await expect(equip).toHaveCount(0)
+    expect(await page.evaluate(() => document.activeElement === document.querySelector('.pulse-supporter-look input:checked'))).toBe(true)
+    await expect(backdrop.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'true')
+    expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))).toMatchObject({ pulseBanner: { mode } })
   }
-  const stored = await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))
-  expect(stored).toMatchObject({ pulseBanner: { mode: 'rain' } })
 })
 
 test('Manage on Stripe keeps keyboard focus while it opens and reports a failure beside it', async ({ extension, prepare }) => {

@@ -7,13 +7,14 @@ type AppearanceReply = Extract<BackgroundResponse, { type: 'SUPPORTER_APPEARANCE
 /**
  * What Twitch tabs and settings may draw for this membership.
  *
- * `perks` follows the same rule as the finish controls, so emote rain is on for
- * exactly the members who may equip a finish, whether or not they equipped one.
- * The crest follows the server's support count and travels with the perks, so
- * the Supporter card can climb to it with or without a finish; wave and sheen
- * are this profile's presentation choice and only travel with a verified
- * finish. A non-Supporter's reply is unchanged: no finish, no perks, nothing to
- * renew.
+ * `perks` follows the same rule as the finish controls, so the backdrop is on
+ * for exactly the members who may equip a finish, whether or not they equipped
+ * one. The crest follows the server's support count and travels with the perks,
+ * so the Supporter card can climb to it with or without a finish. Wave and
+ * sheen are this profile's motion and travel with the perks too: under Default
+ * paint they still say whether the backdrop is Still, and surfaces draw them on
+ * a name only with a verified finish. A non-Supporter's reply is unchanged: no
+ * finish, no perks, nothing to renew.
  *
  * A read that failed or is waiting on a renewal proves nothing either way, so
  * it is marked `unverified`: surfaces keep what they last verified until that
@@ -28,6 +29,5 @@ export async function supporterAppearanceReply(
   if (entitlement.state !== 'ready' || !supporterPerksAllowed(entitlement)) return { type: 'SUPPORTER_APPEARANCE', finish: null, validForMs: 0 }
   const finish = entitlement.cosmetics?.enabled ? entitlement.cosmetics.finish : null
   const tenure = supporterTenureForMonths(entitlement.supportPeriods)
-  const paint = finish ? { paint: await readPaint() } : {}
-  return { type: 'SUPPORTER_APPEARANCE', finish, validForMs: entitlement.validForMs ?? 0, tenure, ...paint, perks: true }
+  return { type: 'SUPPORTER_APPEARANCE', finish, validForMs: entitlement.validForMs ?? 0, tenure, paint: await readPaint(), perks: true }
 }

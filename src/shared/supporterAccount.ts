@@ -2,8 +2,8 @@ export type SupporterAccountAction = 'status' | 'start' | 'poll' | 'cancel' | 'd
 export type SupporterCosmetics = { enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
 export type SupporterFinish = SupporterCosmetics['finish']
 
-/** Safe settings projection of an explicit pre-purchase paint choice. */
-export type SupporterFinishIntentDetails = { finish: SupporterFinish; setAt: number }
+/** Safe settings projection of an explicit pre-purchase choice: the paint, and the motion and backdrop chosen with it. */
+export type SupporterFinishIntentDetails = { finish: SupporterFinish; setAt: number; look?: import('./supporterLook.ts').SupporterLookExtras }
 /** A saved pre-purchase choice lasts seven days from its original save time. */
 export const FINISH_INTENT_TTL_MS = 7 * 86_400_000
 

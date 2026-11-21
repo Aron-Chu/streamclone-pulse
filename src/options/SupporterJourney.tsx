@@ -1008,7 +1008,7 @@ export function SupporterJourney({ onEntitlement, onShown, look, twitchStage = T
     </>
     onlyYouSaid = true
     primary = <SupporterActionButton className="pulse-journey-primary" type="button" onClick={showLooks}>Change look</SupporterActionButton>
-    if (banner.ready && banner.value.mode !== 'rain') secondary = [<SupporterActionButton key="rain" type="button" disabled={banner.saving} aria-busy={banner.saving || undefined} onClick={() => void banner.save({ ...banner.value, mode: 'rain' })}>Turn on emote rain</SupporterActionButton>]
+    if (banner.ready && banner.value.mode === 'off') secondary = [<SupporterActionButton key="rain" type="button" disabled={banner.saving} aria-busy={banner.saving || undefined} onClick={() => void banner.save({ ...banner.value, mode: 'rain' })}>Turn on the backdrop</SupporterActionButton>]
   } else if (status === 'active') {
     // One line and one button per state; Stripe is the one door.
     state = 'active'

@@ -60,7 +60,7 @@ for (const explicit of [false, true]) test(`a weeks-old completed checkout clear
   expect(creates).toBe(0)
 })
 
-test('the current crest, equipped name, selected control and header emotes remain accessible', async ({ extension, prepare }) => {
+test('the current crest, equipped name, selected control and header backdrop marks remain accessible', async ({ extension, prepare }) => {
   await prepare()
   await extension.context.route(`${API}/v1/account/installations`, route => route.fulfill({ status: 201, json: credentials() }))
   await extension.context.route(`${API}/v1/billing/supporter`, route => route.fulfill({ json: membership('active') }))
@@ -72,16 +72,16 @@ test('the current crest, equipped name, selected control and header emotes remai
   await expect(page.getByText('Preview Supporter looks', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('radio', { name: 'Default · Equipped', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Default active', exact: true })).toHaveCount(0)
-  const off = page.getByRole('group', { name: 'Emote rain', exact: true }).getByRole('button', { name: 'Off', exact: true })
+  const off = page.getByRole('group', { name: 'Backdrop', exact: true }).getByRole('button', { name: 'Off', exact: true })
   await off.click()
   await expect(off).toHaveCSS('outline-style', 'solid')
   await expect(off).toHaveCSS('outline-color', 'rgb(250, 250, 252)')
   const positions = await page.locator('.pulse-supporter-card-banner').evaluate(header => {
     const bounds = header.getBoundingClientRect(), samples: boolean[] = []
     for (const progress of [0, .25, .5, .75, .99]) {
-      for (const image of header.querySelectorAll('img')) {
-        for (const animation of image.getAnimations()) { animation.pause(); animation.currentTime = Number(animation.effect?.getTiming().duration) * progress }
-        const box = image.getBoundingClientRect()
+      for (const mark of header.querySelectorAll('svg')) {
+        for (const animation of mark.getAnimations()) { animation.pause(); animation.currentTime = Number(animation.effect?.getTiming().duration) * progress }
+        const box = mark.getBoundingClientRect()
         samples.push(box.top >= bounds.top && box.bottom <= bounds.bottom)
       }
     }

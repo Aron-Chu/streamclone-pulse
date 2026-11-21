@@ -3,6 +3,7 @@ import { AccountRequestNotSent, SupporterAccountCoordinator } from '../src/backg
 import { parseBackgroundRequest } from '../src/shared/parseBackgroundRequest.ts'
 import { MESSAGE_SENDER_SCOPE } from '../src/background/pulseBroadcastTargets.ts'
 import { FINISH_INTENT_TTL_MS } from '../src/shared/supporterAccount.ts'
+import type { SupporterLookExtras } from '../src/shared/supporterLook.ts'
 
 const now = Date.parse('2026-09-09T12:00:00Z')
 const iso = (seconds: number) => new Date(now + seconds * 1000).toISOString()
@@ -464,12 +465,14 @@ describe('worker-owned journey completion', () => {
     let clock = now
     const request = vi.fn<(_: string, body?: Record<string, unknown>, bearer?: string) => Promise<{ status: number; body: unknown }>>()
     const projectionChanged = vi.fn(async () => {})
+    const applyLook = vi.fn(async (_look: unknown) => {})
+    const readLook = vi.fn(async (): Promise<SupporterLookExtras> => ({ motion: 'shimmer', backdrop: false, intensity: 40 }))
     const coordinator = new SupporterAccountCoordinator({
       read: async () => value, write: async next => { value = next }, request, now: () => clock,
       identityChanged: async () => {}, projectionChanged,
-      readIntent: async () => saved, writeIntent: async next => { saved = next },
+      readIntent: async () => saved, writeIntent: async next => { saved = next }, applyLook, readLook,
     })
-    return { coordinator, request, projectionChanged, stored: () => value, intent: () => saved, advance: (ms: number) => { clock += ms } }
+    return { coordinator, request, projectionChanged, applyLook, readLook, stored: () => value, intent: () => saved, advance: (ms: number) => { clock += ms } }
   }
   const pending = { kind: 'pending', secret: 'c'.repeat(64), code: 'ABCDE-12345', expiresAt: iso(600), nextPoll: now + 5000 }
 
@@ -553,6 +556,108 @@ describe('worker-owned journey completion', () => {
     f.request.mockResolvedValueOnce(snapshot('active', { cosmetics: { enabled: true, finish: 'halo' } }))
     await f.coordinator.entitlement()
     expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/cosmetics')).toHaveLength(1)
+  })
+
+  it('equips the motion and backdrop chosen with a finish once that finish is applied, and only then', async () => {
+    const look = { motion: 'still', backdrop: true, intensity: 30 }
+    const applied = journey(creds, { finish: 'halo', setAt: now - 1000, look })
+    applied.request.mockResolvedValueOnce(snapshot('active')).mockResolvedValueOnce({ status: 200, body: { enabled: true, finish: 'halo' } })
+    await applied.coordinator.entitlement()
+    expect(applied.applyLook).toHaveBeenCalledExactlyOnceWith(look)
+    expect(applied.intent()).toBeNull()
+
+    const refused = journey(creds, { finish: 'halo', setAt: now - 1000, look })
+    refused.request.mockResolvedValueOnce(snapshot('active')).mockResolvedValueOnce({ status: 403, body: { error: 'supporter_required' } })
+    await refused.coordinator.entitlement()
+    expect(refused.applyLook).not.toHaveBeenCalled()
+    expect(refused.intent()).toMatchObject({ finish: 'halo', look })
+
+    const equipped = journey(creds, { finish: 'halo', setAt: now - 1000, look })
+    equipped.request.mockResolvedValueOnce(snapshot('active', { cosmetics: { enabled: true, finish: 'etched' } }))
+    await equipped.coordinator.entitlement()
+    expect(equipped.applyLook).not.toHaveBeenCalled()
+    expect(equipped.intent()).toBeNull()
+
+    const unpaid = journey(creds, { finish: 'halo', setAt: now - 1000, look })
+    unpaid.request.mockResolvedValueOnce(snapshot('none', { features: {} }))
+    await unpaid.coordinator.entitlement()
+    expect(unpaid.applyLook).not.toHaveBeenCalled()
+  })
+
+  it('keeps the applied finish when its motion and backdrop cannot be written here, and puts them on at a later read', async () => {
+    const look = { motion: 'drift', backdrop: false, intensity: 35 }
+    const before: SupporterLookExtras = { motion: 'shimmer', backdrop: true, intensity: 40 }
+    const f = journey(creds, { finish: 'halo', setAt: now - 1000, look })
+    f.readLook.mockResolvedValue(before)
+    f.applyLook.mockRejectedValueOnce(new Error('sync quota'))
+    f.request.mockResolvedValueOnce(snapshot('active')).mockResolvedValueOnce({ status: 200, body: { enabled: true, finish: 'halo' } })
+    expect(await f.coordinator.entitlement()).toMatchObject({ state: 'ready', cosmetics: { enabled: true, finish: 'halo' } })
+    expect(f.intent()).toMatchObject({ finish: 'halo', look, pending: before })
+    // Halo is on, so settings no longer show a choice waiting to be made.
+    expect(await f.coordinator.finishIntentDetails()).toBeNull()
+    f.advance(61_000)
+    f.request.mockResolvedValueOnce(snapshot('active', { cosmetics: { enabled: true, finish: 'halo' } }))
+    await f.coordinator.entitlement()
+    expect(f.applyLook).toHaveBeenCalledTimes(2)
+    expect(f.applyLook).toHaveBeenLastCalledWith(look)
+    expect(f.intent()).toBeNull()
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/cosmetics')).toHaveLength(1)
+  })
+
+  it('backs off a failed retry of the waiting motion and backdrop without losing them', async () => {
+    const look = { motion: 'drift', backdrop: false, intensity: 35 }
+    const before: SupporterLookExtras = { motion: 'shimmer', backdrop: true, intensity: 40 }
+    const record = { finish: 'halo', setAt: now - 1000, accountId: creds.accountId, look, pending: before }
+    const f = journey(creds, record)
+    f.readLook.mockResolvedValue(before)
+    f.applyLook.mockRejectedValueOnce(new Error('sync quota')).mockRejectedValueOnce(new Error('sync quota'))
+    f.request.mockResolvedValue(snapshot('active', { cosmetics: { enabled: true, finish: 'halo' } }))
+    await f.coordinator.entitlement()
+    expect(f.intent()).toEqual(record)
+    f.advance(61_000)
+    await f.coordinator.entitlement()
+    expect(f.applyLook).toHaveBeenCalledTimes(2)
+    // Two failures: the next try waits two minutes, past the next read.
+    f.advance(61_000)
+    await f.coordinator.entitlement()
+    expect(f.applyLook).toHaveBeenCalledTimes(2)
+    expect(f.intent()).toEqual(record)
+    f.advance(61_000)
+    await f.coordinator.entitlement()
+    expect(f.applyLook).toHaveBeenCalledTimes(3)
+    expect(f.intent()).toBeNull()
+    expect(f.request.mock.calls.filter(([path]) => path === '/v1/billing/cosmetics')).toHaveLength(0)
+  })
+
+  it('drops the waiting motion and backdrop once this profile changes its look or another finish is worn', async () => {
+    const look = { motion: 'drift', backdrop: false, intensity: 35 }
+    const before: SupporterLookExtras = { motion: 'shimmer', backdrop: true, intensity: 40 }
+    const record = { finish: 'halo', setAt: now - 1000, accountId: creds.accountId, look, pending: before }
+    const changed = journey(creds, record)
+    changed.readLook.mockResolvedValue({ motion: 'still', backdrop: true, intensity: 40 })
+    changed.request.mockResolvedValueOnce(snapshot('active', { cosmetics: { enabled: true, finish: 'halo' } }))
+    await changed.coordinator.entitlement()
+    expect(changed.applyLook).not.toHaveBeenCalled()
+    expect(changed.intent()).toBeNull()
+    for (const cosmetics of [{ enabled: true, finish: 'etched' }, { enabled: false, finish: 'halo' }]) {
+      const f = journey(creds, record)
+      f.readLook.mockResolvedValue(before)
+      f.request.mockResolvedValueOnce(snapshot('active', { cosmetics }))
+      await f.coordinator.entitlement()
+      expect(f.applyLook, JSON.stringify(cosmetics)).not.toHaveBeenCalled()
+      expect(f.intent()).toBeNull()
+      expect(f.request.mock.calls.map(([path]) => path)).toEqual(['/v1/billing/supporter'])
+    }
+  })
+
+  it('saves and reads back the look chosen with a finish, and ignores a malformed one', async () => {
+    const look = { motion: 'shimmer', backdrop: true, intensity: 45 }
+    const f = journey(creds)
+    expect(await f.coordinator.setFinishIntent('glass', look)).toBe('glass')
+    expect(f.intent()).toMatchObject({ finish: 'glass', look })
+    expect(await f.coordinator.finishIntentDetails()).toEqual({ finish: 'glass', setAt: now, look })
+    const malformed = journey(creds, { finish: 'glass', setAt: now - 1000, look: { motion: 'sparkle', backdrop: true, intensity: 45 } })
+    expect(await malformed.coordinator.finishIntentDetails()).toEqual({ finish: 'glass', setAt: now - 1000 })
   })
 
   it('never equips a choice without verified paid access, for another account, or long after it was made', async () => {
@@ -654,6 +759,12 @@ describe('worker-owned journey completion', () => {
     expect(parseBackgroundRequest({ type: 'SUPPORTER_FINISH_INTENT', finish: null })).toEqual({ type: 'SUPPORTER_FINISH_INTENT', finish: null })
     for (const invalid of [{ finish: 'aurora' }, { finish: 'halo', enabled: true }, { finish: 'halo', accountId: creds.accountId }, { finish: 1 }]) {
       expect(parseBackgroundRequest({ type: 'SUPPORTER_FINISH_INTENT', ...invalid })).toBeNull()
+    }
+    // A look rides only with a finish being chosen, in its exact shape.
+    const look = { motion: 'still', backdrop: true, intensity: 30 }
+    expect(parseBackgroundRequest({ type: 'SUPPORTER_FINISH_INTENT', finish: 'halo', look })).toEqual({ type: 'SUPPORTER_FINISH_INTENT', finish: 'halo', look })
+    for (const invalid of [{ look }, { finish: null, look }, { finish: 'halo', look: null }, { finish: 'halo', look: { ...look, title: 'x' } }, { finish: 'halo', look: { ...look, intensity: 90 } }]) {
+      expect(parseBackgroundRequest({ type: 'SUPPORTER_FINISH_INTENT', ...invalid }), JSON.stringify(invalid)).toBeNull()
     }
     expect(MESSAGE_SENDER_SCOPE.SUPPORTER_FINISH_INTENT).toBe('extension-page')
   })

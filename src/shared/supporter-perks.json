@@ -3,19 +3,19 @@
   "names": [
     "Title paint",
     "Tenure crest",
-    "Emote rain",
+    "Backdrop",
     "Supporter card"
   ],
   "details": {
-    "Title paint": "your Pulse panel title in Glass, Etched or Halo paint, with the wave and sheen you pick.",
-    "Tenure crest": "a crest beside your painted title. It levels up at 3, 6, 12 and 24 months.",
-    "Emote rain": "7TV emotes behind your Pulse panel header, still or falling. This is the 7TV header backdrop.",
+    "Title paint": "your Pulse panel title in Glass, Etched or Halo paint, still, shimmering or drifting.",
+    "Tenure crest": "a crest beside your Pulse panel title, under any paint. It levels up at 3, 6, 12 and 24 months.",
+    "Backdrop": "original StreamPulse art behind your Pulse panel header, in your paint's colours, still or drifting.",
     "Supporter card": "your crest and paint on your Supporter card in settings."
   },
   "onlyYou": "Only you see these, in your own StreamPulse extension. Nothing is added to Twitch chat.",
   "seenInChat": {
     "name": "Seen in chat",
     "detail": "optional: your crest beside your name and your paint on it in Twitch chat, for other StreamPulse viewers. Off until you turn it on.",
-    "onlyYou": "Title paint, emote rain and the Supporter card show only in your own StreamPulse extension. Seen in chat is the one exception, and only if you turn it on: then other StreamPulse viewers see your crest and paint in chat. People without StreamPulse always see normal Twitch chat."
+    "onlyYou": "Title paint, the backdrop and the Supporter card show only in your own StreamPulse extension. Seen in chat is the one exception, and only if you turn it on: then other StreamPulse viewers see your crest and paint in chat. People without StreamPulse always see normal Twitch chat."
   }
 }

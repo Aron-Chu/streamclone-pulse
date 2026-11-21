@@ -3,9 +3,9 @@ import { openTwitchChannel } from '../helpers/mockTwitch.ts'
 import { waitForPulseRoot } from '../helpers/assertions.ts'
 import { linkDevice, serveMembership, supporterBody, type MembershipStatus } from '../helpers/supporterMembership.ts'
 
-test('a Supporter banner: preferences persist, rain pauses, and narrow layout stays contained', async ({ extension, prepare }, info) => {
+test('a Supporter banner: preferences persist, the backdrop pauses, and narrow layout stays contained', async ({ extension, prepare }, info) => {
   await prepare({ storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
-  // Emote rain is a Supporter perk.
+  // The backdrop is a Supporter perk.
   await linkDevice(extension.serviceWorker)
   await serveMembership(extension.context, () => supporterBody('active', 2))
   await extension.context.route('https://api.streampulse.stream/v1/channels/*/clips?*', async route => {
@@ -16,21 +16,28 @@ test('a Supporter banner: preferences persist, rain pauses, and narrow layout st
   await waitForPulseRoot(extension.page)
   const page = extension.page
   const root = page.locator('#streamclone-pulse-root')
-  // A Supporter's quick settings strip wears their saved rain, with no "try free" chip.
+  // A Supporter's quick settings strip wears their saved backdrop, with no "try free" chip.
   await root.getByRole('button', { name: 'Open settings', exact: true }).click()
   await expect(root.locator('.pulse-quick-look .pulse-banner-art')).toHaveAttribute('data-mode', 'off')
   await expect(root.locator('.pulse-quick-chip')).toHaveCount(0)
-  // The background editor (the free panel title) lives under Pulse in all settings.
+  // The panel title (free) lives under Pulse in all settings; the backdrop is part of Your look.
   const settings = await extension.context.newPage()
   await settings.goto(`chrome-extension://${extension.extensionId}/options/index.html#pulse-background`)
-  // It lands on Pulse with Background & motion already open and in view.
+  // It lands on Pulse with Panel title already open and in view.
   expect(settings.url()).toContain('#pulse-background')
   await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
   await expect(settings.locator('.pulse-banner-customize summary')).toBeInViewport()
+  await expect(settings.locator('.pulse-banner-customize').getByRole('button', { name: /^(Still|Rain)$/ })).toHaveCount(0)
   await settings.getByLabel('Panel title').fill('Aron\'s Pulse')
-  await settings.getByRole('button', { name: 'Rain', exact: true }).click()
-  await settings.getByRole('button', { name: 'Save background', exact: true }).click()
+  await settings.getByRole('button', { name: 'Save title', exact: true }).click()
   await expect(settings.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
+  // The backdrop is turned on in Your look and saved with Equip look.
+  await settings.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+  const backdropRow = settings.locator('[data-supporter-perks="on"]')
+  await backdropRow.getByRole('button', { name: 'On', exact: true }).click()
+  await settings.getByRole('button', { name: 'Equip look', exact: true }).click()
+  await expect(settings.locator('.pulse-supporter-save-status')).toContainText('Equipped:')
+  expect((await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))).pulseBanner).toMatchObject({ mode: 'rain', title: 'Aron\'s Pulse' })
   await settings.close()
   await root.getByRole('button', { name: 'Back to Pulse' }).click()
   await expect(root.getByRole('heading', { name: 'Aron\'s Pulse', exact: true })).toBeVisible()
@@ -41,12 +48,14 @@ test('a Supporter banner: preferences persist, rain pauses, and narrow layout st
   await expect.poll(() => carousel.evaluate(element => element.scrollLeft)).toBeGreaterThan(0)
   await expect(root.getByRole('button', { name: /Pause rain|Resume rain/ })).toHaveCount(0)
   await expect(root.locator('.pulse-personal-panel > .pulse-banner-art')).toHaveAttribute('data-running', 'true')
-  await expect.poll(() => root.locator('.pulse-personal-panel > .pulse-banner-art img').evaluateAll(images => images.filter(image => (image as HTMLImageElement).naturalWidth > 0).length)).toBe(6)
+  // Original inline marks: six drawn in place, and no image of any kind requested.
+  await expect(root.locator('.pulse-personal-panel > .pulse-banner-art svg')).toHaveCount(6)
+  await expect(root.locator('.pulse-personal-panel > .pulse-banner-art img')).toHaveCount(0)
   const backdrop = await root.locator('.pulse-personal-panel > .pulse-banner-art').boundingBox()
   expect(backdrop!.height).toBeGreaterThan(500)
   await expect(root.locator('header.pulse-personal-banner')).toHaveCSS('border-top-width', '0px')
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await expect(root.locator('.pulse-personal-panel > .pulse-banner-art img').first()).toHaveCSS('animation-name', 'none')
+  await expect(root.locator('.pulse-personal-panel > .pulse-banner-art svg').first()).toHaveCSS('animation-name', 'none')
   await page.reload()
   await expect(root.getByRole('heading', { name: 'Aron\'s Pulse', exact: true })).toBeVisible()
   for (const width of [1440, 1000]) {
@@ -58,7 +67,7 @@ test('a Supporter banner: preferences persist, rain pauses, and narrow layout st
   }
 })
 
-test('emote rain is a Supporter perk: a saved Rain draws nothing without one, stays saved, and returns in grace', async ({ extension, prepare }, info) => {
+test('the backdrop is a Supporter perk: a saved backdrop draws nothing without one, stays saved, and returns in grace', async ({ extension, prepare }, info) => {
   await prepare({ storage: { overlayPlacement: 'sidebar', sidebarTab: 'pulse', overlayMode: 'expanded' } })
   // Saved earlier, for instance while this profile was a Supporter.
   const saved = { mode: 'rain', intensity: 45, title: 'Lapsed Pulse' }
@@ -77,47 +86,50 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   const backdrop = root.locator('.pulse-personal-panel > .pulse-banner-art')
   await expect(root.getByRole('heading', { name: 'Lapsed Pulse', exact: true })).toBeVisible()
   await expect(backdrop).toHaveAttribute('data-mode', 'off')
-  await expect(backdrop.locator('img')).toHaveCount(0)
+  await expect(backdrop.locator('img, svg')).toHaveCount(0)
   await page.screenshot({ path: info.outputPath('rain-locked-overlay.png'), animations: 'disabled' })
 
   // Quick settings' Your look strip starts on what the overlay draws, not the stored choice.
   await root.getByRole('button', { name: 'Open settings', exact: true }).click()
   const preview = root.locator('.pulse-quick-look')
   await expect(preview.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'off')
-  await expect(preview.locator('img')).toHaveCount(0)
-  // Trying Rain there draws it in the strip only: the overlay and the saved choice stay as they were.
-  await root.getByRole('group', { name: 'Emote rain' }).getByRole('button', { name: 'Rain', exact: true }).click()
+  await expect(preview.locator('img, svg')).toHaveCount(0)
+  // Trying the backdrop there draws it in the strip only: the overlay and the saved choice stay as they were.
+  await root.getByRole('group', { name: 'Backdrop' }).getByRole('button', { name: 'On', exact: true }).click()
   await expect(preview.locator('.pulse-banner-art')).toHaveAttribute('data-mode', 'rain')
+  await expect(preview.locator('.pulse-banner-art img')).toHaveCount(0)
   expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))).toEqual({ pulseBanner: saved })
   // A lapsed member is pitched the lab's Your Line · Anatomy card, not a Supporter's Tenure Climb.
   await expect(root.locator('[data-settings-host-cta="supporter"] .pulse-supporter-stage')).toHaveAttribute('data-mode', 'anatomy')
 
-  // Full settings: the title stays free, Still and Rain are locked with a way to the offer.
-  // The strip's link opens the Your look studio; the background editor lives under Pulse.
+  // Full settings: the strip's link opens the Your look studio, where the backdrop is tried but not saved.
   const opened = extension.context.waitForEvent('page')
-  await root.getByRole('button', { name: 'Wave, sheen and crest in all settings ↗' }).click()
+  await root.getByRole('button', { name: 'Motion and saved looks in all settings ↗' }).click()
   const settings = await opened
   await settings.waitForLoadState('domcontentloaded')
   await expect(settings).toHaveURL(/#supporter$/)
-  await settings.goto(settings.url().replace(/#supporter$/, '#pulse-background'))
-  // Background & motion opens by itself (#pulse-background); a click on its summary would close it.
-  await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
-  const modes = settings.getByRole('group', { name: '7TV backdrop' })
-  await expect(modes.getByRole('button')).toHaveCount(3)
-  await expect(modes.getByRole('button', { name: 'Off', exact: true })).toBeEnabled()
-  await expect(modes.getByRole('button', { name: 'Still', exact: true })).toBeDisabled()
-  await expect(modes.getByRole('button', { name: 'Rain', exact: true })).toBeDisabled()
-  const perk = settings.locator('[data-supporter-perk="emote-rain"]')
+  const perk = settings.locator('[data-supporter-perk="backdrop"]')
   await expect(perk).toContainText('Supporter perk')
-  await expect(perk).toHaveText("Emote rain is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →")
+  await expect(perk).toHaveText("The backdrop is a Supporter perk. Only you see it. Supporter isn't on sale yet. See Supporter →")
   await expect(perk).not.toContainText('moved from free')
+  // A non-member's studio sits in the preview disclosure, closed until chosen.
+  await settings.getByText('Preview Supporter looks', { exact: true }).click()
+  const studioBackdrop = settings.locator('[data-supporter-perks="locked"]')
+  await expect(studioBackdrop.getByRole('button', { name: 'On', exact: true })).toBeEnabled()
+  await studioBackdrop.getByRole('button', { name: 'Off', exact: true }).click()
+  await studioBackdrop.getByRole('button', { name: 'On', exact: true }).click()
+  // Trying it saves nothing: the stored choice is exactly as it was.
+  expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))).toEqual({ pulseBanner: saved })
+  // The title stays free under Pulse, and saving it leaves the Supporter choice as it was.
+  await settings.goto(settings.url().replace(/#supporter$/, '#pulse-background'))
+  // Panel title opens by itself (#pulse-background); a click on its summary would close it.
+  await expect(settings.locator('.pulse-banner-customize')).toHaveJSProperty('open', true)
   await settings.getByLabel('Panel title').fill('Renamed Pulse')
-  await settings.getByRole('button', { name: 'Save background', exact: true }).click()
+  await settings.getByRole('button', { name: 'Save title', exact: true }).click()
   await expect(settings.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
-  // Saving the free title leaves the Supporter choice exactly as it was.
   expect(await extension.serviceWorker.evaluate(() => chrome.storage.sync.get('pulseBanner'))).toEqual({ pulseBanner: { ...saved, title: 'Renamed Pulse' } })
   await settings.screenshot({ path: info.outputPath('rain-locked-settings.png'), fullPage: true, animations: 'disabled' })
-  await perk.getByRole('link', { name: 'See Supporter →', exact: true }).click()
+  await settings.getByRole('link', { name: 'Your look', exact: true }).click()
   await expect(settings).toHaveURL(/#supporter$/)
   await settings.close()
 
@@ -134,13 +146,14 @@ test('emote rain is a Supporter perk: a saved Rain draws nothing without one, st
   await expect(root.getByRole('heading', { name: 'Renamed Pulse', exact: true })).toBeVisible()
   await expect(backdrop).toHaveAttribute('data-mode', 'rain')
   await expect(backdrop).toHaveAttribute('data-running', 'true')
-  await expect(backdrop.locator('img')).toHaveCount(6)
+  await expect(backdrop.locator('svg')).toHaveCount(6)
+  await expect(backdrop.locator('img')).toHaveCount(0)
   await page.screenshot({ path: info.outputPath('rain-grace-overlay.png'), animations: 'disabled' })
 })
 
 
 for (const state of ['checking', 'failed'] as const) {
-  test(`background rain keeps the offer line absent while Supporter is ${state}`, async ({ extension, prepare }) => {
+  test(`the backdrop keeps the offer line absent while Supporter is ${state}`, async ({ extension, prepare }) => {
     await prepare()
     await linkDevice(extension.serviceWorker)
     let reads = 0
@@ -155,19 +168,25 @@ for (const state of ['checking', 'failed'] as const) {
     try {
       await settings.goto(`chrome-extension://${extension.extensionId}/options/index.html#pulse-background`)
       await expect.poll(() => reads).toBeGreaterThan(0)
+      // The free title stays editable whatever the membership read says.
       const background = settings.locator('.pulse-banner-customize')
       await expect(background).toHaveJSProperty('open', true)
       await expect(background.getByLabel('Panel title')).toBeEnabled()
-      const modes = background.getByRole('group', { name: '7TV backdrop' })
-      await expect(modes.getByRole('button', { name: 'Still', exact: true })).toBeDisabled()
-      await expect(modes.getByRole('button', { name: 'Rain', exact: true })).toBeDisabled()
+      // The backdrop lives in Your look, which pauses until the membership is known.
+      await settings.goto(`chrome-extension://${extension.extensionId}/options/index.html#supporter`)
+      await settings.getByText('Preview Supporter looks', { exact: true }).click()
+      const studioBackdrop = settings.locator('[data-supporter-perks="pending"]')
+      await expect(studioBackdrop).toHaveJSProperty('disabled', true)
+      await expect(studioBackdrop.getByRole('button', { name: 'On', exact: true })).toBeDisabled()
       if (state === 'failed') {
         const response = await settings.evaluate(() => chrome.runtime.sendMessage({ type: 'SUPPORTER_ENTITLEMENT' }))
         expect(response).toMatchObject({ type: 'SUPPORTER_ENTITLEMENT', entitlement: { state: 'unavailable' } })
+        await expect(settings.locator('.pulse-supporter-studio').getByText('Supporter status unavailable', { exact: true })).toBeVisible()
       }
-      await expect(background.locator('[data-supporter-perk="emote-rain"]')).toHaveCount(0)
-      await expect(background.getByText("Supporter isn't on sale yet", { exact: false })).toHaveCount(0)
-      await expect(background.getByRole('link', { name: 'See Supporter →', exact: true })).toHaveCount(0)
+      const studio = settings.locator('.pulse-supporter-studio')
+      await expect(studio.locator('[data-supporter-perk="backdrop"]')).toHaveCount(0)
+      await expect(studio.getByText("Supporter isn't on sale yet", { exact: false })).toHaveCount(0)
+      await expect(studio.getByRole('link', { name: 'See Supporter →', exact: true })).toHaveCount(0)
     } finally { release() }
   })
 }

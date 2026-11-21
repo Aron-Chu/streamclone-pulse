@@ -8,15 +8,17 @@ import { SUPPORTER_TENURES, supporterCrestCssUrl } from '../shared/supporterPain
  * colours, `data-wave` its pattern, and `data-sheen` the light that crosses it.
  * The sheen draws on a copy of the text (`data-text`), so a drifting wave and a
  * sweeping light never fight over the same background position. The copy has
- * empty alt text, so screen readers announce the title once.
+ * empty alt text, so screen readers announce the title once. The colours also
+ * reach the backdrop: through its own `data-finish`, or, on the panel, through
+ * the header's `data-supporter-finish`.
  */
 export function supporterPaintCss(): string {
   const crests = SUPPORTER_TENURES.map(({ id }) => `.pulse-crest[data-tenure="${id}"]{background-image:${supporterCrestCssUrl(id)}}`).join('\n')
   return `
   .pulse-crest { background: center / contain no-repeat; display: inline-block; flex: none; height: 20px; width: 20px; }
   ${crests}
+  .pulse-paint, [data-finish], .pulse-personal-panel:has([data-supporter-finish]) { --pulse-paint-base: #78dce8; --pulse-paint-lift: #a5b4fc; --pulse-paint-deep: #2fa4b8; --pulse-paint-core: #e3f8fb; }
   .pulse-paint {
-    --pulse-paint-base: #78dce8; --pulse-paint-lift: #a5b4fc; --pulse-paint-deep: #2fa4b8; --pulse-paint-core: #e3f8fb;
     -webkit-background-clip: text;
     background-clip: text;
     background-image: linear-gradient(100deg, var(--pulse-paint-base), var(--pulse-paint-lift) 40%, var(--pulse-paint-base) 68%, var(--pulse-paint-deep));
@@ -24,8 +26,8 @@ export function supporterPaintCss(): string {
     position: relative;
     -webkit-text-fill-color: transparent;
   }
-  .pulse-paint[data-finish="etched"] { --pulse-paint-base: #efc96a; --pulse-paint-lift: #fff1c2; --pulse-paint-deep: #a87420; --pulse-paint-core: #fdf4dc; }
-  .pulse-paint[data-finish="halo"] { --pulse-paint-base: #e6a9d6; --pulse-paint-lift: #c4b5fd; --pulse-paint-deep: #fcb69f; --pulse-paint-core: #fbeaf6; }
+  [data-finish="etched"], .pulse-personal-panel:has([data-supporter-finish="etched"]) { --pulse-paint-base: #efc96a; --pulse-paint-lift: #fff1c2; --pulse-paint-deep: #a87420; --pulse-paint-core: #fdf4dc; }
+  [data-finish="halo"], .pulse-personal-panel:has([data-supporter-finish="halo"]) { --pulse-paint-base: #e6a9d6; --pulse-paint-lift: #c4b5fd; --pulse-paint-deep: #fcb69f; --pulse-paint-core: #fbeaf6; }
   .pulse-paint[data-wave="ripple"] { background-image: repeating-linear-gradient(100deg, var(--pulse-paint-base) 0, var(--pulse-paint-lift) 0.16em, var(--pulse-paint-deep) 0.34em, var(--pulse-paint-base) 0.5em); }
   .pulse-paint[data-wave="chrome"] { background-image: linear-gradient(180deg, var(--pulse-paint-core) 0%, var(--pulse-paint-base) 47%, var(--pulse-paint-deep) 53%, var(--pulse-paint-lift) 100%); }
   .pulse-paint[data-wave="aurora"] {

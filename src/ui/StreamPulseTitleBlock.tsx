@@ -43,7 +43,7 @@ export const streamPulseHeaderChromeSidebar: CSSProperties = {
 export function StreamPulseTitleBlock({
   title = 'Stream Pulse',
   finish = null,
-  tenure = 'new',
+  tenure,
   paint,
   statusLabel,
   statusTone = 'idle',
@@ -51,7 +51,7 @@ export function StreamPulseTitleBlock({
 }: {
   title?: string
   finish?: SupporterFinishId | null
-  /** The crest earned from the server's support count. Drawn by the stylesheet. */
+  /** The crest earned from the server's support count, under any paint (Default too). Drawn by the stylesheet. */
   tenure?: SupporterTenure
   /** How the paint moves; the finish is its colour. */
   paint?: SupporterPaintStyle
@@ -63,7 +63,7 @@ export function StreamPulseTitleBlock({
   return (
     <>
       <div style={styles.titleRow}>
-        {finish ? <i className="pulse-crest" data-tenure={tenure} aria-hidden="true" /> : null}
+        {tenure || finish ? <i className="pulse-crest" data-tenure={tenure ?? 'new'} aria-hidden="true" /> : null}
         {finish
           ? <h2 className="pulse-paint" data-finish={finish} data-wave={paint?.wave} data-sheen={paint?.sheen} data-text={title} style={styles.paintedTitle}>{title}</h2>
           : <h2 style={styles.plainTitle}>{title}</h2>}
