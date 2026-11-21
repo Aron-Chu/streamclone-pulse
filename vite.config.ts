@@ -35,6 +35,8 @@ function chromeExtensionPlugin() {
       await viteBuild({ configFile: resolve(__dirname, 'vite.momentFrames.config.ts') })
       // A stream recap's Catch me up block, injected with the recap; never part of content/twitch.js.
       await viteBuild({ configFile: resolve(__dirname, 'vite.catchMeUp.config.ts') })
+      // The panel's Quick settings view, injected when the panel is first used; never part of content/twitch.js.
+      await viteBuild({ configFile: resolve(__dirname, 'vite.quickSettings.config.ts') })
 
       const dist = resolve(__dirname, 'dist')
       mkdirSync(dist, { recursive: true })

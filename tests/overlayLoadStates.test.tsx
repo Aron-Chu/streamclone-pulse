@@ -8,6 +8,7 @@ import { shadowStyles } from '../src/ui/theme.ts'
 import { PanelErrorBoundary } from '../src/ui/PanelErrorBoundary.tsx'
 import { StreamRecapSection } from '../src/ui/StreamRecapSection.tsx'
 import { CoverageCard } from '../src/ui/CoverageCard.tsx'
+import { PulseSettingsPanel } from '../src/ui/PulseSettingsPanel.tsx'
 import { sendBackgroundMessage } from '../src/content/bridge.ts'
 import offlinePulse from './e2e/fixtures/api/pulse-offline.json'
 import { EXTENSION_RECONNECT_MESSAGE } from '../src/shared/backgroundResponse.ts'
@@ -61,6 +62,8 @@ describe('Overlay load, error and dock states', () => {
       storage: { sync: storage, local: storage, session: storage, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } },
     })
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+    // As if the worker had already injected content/quick-settings.js.
+    globalThis.__pulseQuickSettings = PulseSettingsPanel
     node = document.createElement('div')
     document.body.append(node)
     root = createRoot(node)
@@ -70,6 +73,8 @@ describe('Overlay load, error and dock states', () => {
     act(() => root.unmount())
     node.remove()
     vi.mocked(sendBackgroundMessage).mockImplementation(async () => ({ ok: false }))
+    delete globalThis.__pulseQuickSettings
+    delete globalThis.__pulseQuickSettingsHost
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
@@ -540,6 +545,58 @@ describe('Overlay load, error and dock states', () => {
       })
       await openSettings()
       expect(node.querySelector('.pulse-settings-channel strong')?.textContent).toBe('fixturechan')
+    })
+  })
+  describe('Quick settings arrives as its own script', () => {
+    const vodRender = {
+      context: VOD,
+      login: 'fixturechan',
+      vodPulse: vodStatus('missing', 'No replay analytics have been indexed for this VOD yet.'),
+      vodPulseLoading: false,
+    } as const
+
+    function settingsEntry(): HTMLButtonElement {
+      const entry = node.querySelector<HTMLButtonElement>('button[data-pulse-settings-entry="bottom-bar"]')
+      expect(entry).not.toBeNull()
+      return entry!
+    }
+
+    const settingsView = () => node.querySelector('.pulse-panel-view-settings')
+
+    it('keeps the Pulse view until the script is in, then switches straight to Quick settings', async () => {
+      delete globalThis.__pulseQuickSettings
+      let inject!: () => void
+      vi.mocked(sendBackgroundMessage).mockImplementation(async message => {
+        if (message.type !== 'QUICK_SETTINGS_SCRIPT') return { ok: false } as never
+        await new Promise<void>(done => { inject = done })
+        globalThis.__pulseQuickSettings = PulseSettingsPanel
+        return { type: 'QUICK_SETTINGS_SCRIPT', ok: true }
+      })
+      await render(vodRender)
+      await act(async () => { settingsEntry().click() })
+      expect(settingsView()).toBeNull()
+      expect(node.querySelector('button[data-pulse-settings-entry="bottom-bar"]')).not.toBeNull()
+      await act(async () => { inject() })
+      expect(settingsView()).not.toBeNull()
+      expect(text()).toContain('Quick settings')
+      expect(node.querySelector('[data-settings-host-cta="pulse"]')).not.toBeNull()
+    })
+
+    it('stays on the Pulse view when the script cannot load, and asks again on the next click', async () => {
+      delete globalThis.__pulseQuickSettings
+      vi.mocked(sendBackgroundMessage).mockImplementation(async message => (
+        message.type === 'QUICK_SETTINGS_SCRIPT' ? { type: 'QUICK_SETTINGS_SCRIPT', ok: false } : { ok: false }
+      ) as never)
+      await render(vodRender)
+      await act(async () => { settingsEntry().click() })
+      expect(settingsView()).toBeNull()
+      vi.mocked(sendBackgroundMessage).mockImplementation(async message => {
+        if (message.type !== 'QUICK_SETTINGS_SCRIPT') return { ok: false } as never
+        globalThis.__pulseQuickSettings = PulseSettingsPanel
+        return { type: 'QUICK_SETTINGS_SCRIPT', ok: true }
+      })
+      await act(async () => { settingsEntry().click() })
+      expect(settingsView()).not.toBeNull()
     })
   })
 })

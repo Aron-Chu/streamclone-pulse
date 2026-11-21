@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { describe, expect, it } from 'vitest'
-import { OpenAllSettingsButton, PulseSettingsPanel, SupporterHero, type QuickSettingsChannel } from '../src/ui/PulseSettingsPanel.tsx'
+import { PulseSettingsPanel, SupporterHero, type QuickSettingsChannel } from '../src/ui/PulseSettingsPanel.tsx'
+import { OpenAllSettingsButton } from '../src/ui/OpenAllSettingsButton.tsx'
 
 const LIVE: QuickSettingsChannel = {
   login: 'xqc',

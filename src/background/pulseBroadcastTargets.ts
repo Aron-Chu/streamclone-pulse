@@ -72,6 +72,8 @@ export const MESSAGE_SENDER_SCOPE: Record<BackgroundRequest['type'], MessageSend
   MOMENT_PICTURE: 'twitch-any',
   // A Twitch tab's stream recap asks for the Catch me up script in its own frame only.
   CATCH_ME_UP_SCRIPT: 'twitch-any',
+  // A Twitch tab's panel asks for the Quick settings script in its own frame only.
+  QUICK_SETTINGS_SCRIPT: 'twitch-any',
   ENROLL_DEVICE: 'extension-page',
   GET_DEVICE_AUTH_STATUS: 'extension-page',
   ROTATE_DEVICE: 'extension-page',

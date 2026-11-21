@@ -23,7 +23,7 @@ import { PulseMomentRow, momentRowKey } from './PulseMomentRow.tsx'
 import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { PulseThemedSelect } from './PulseThemedSelect.tsx'
 import { TopMomentCard } from './TopMomentCard.tsx'
-import { theme } from './theme.ts'
+import { theme, tone } from './theme.ts'
 import type { JumpResult } from './jumpMomentAction.ts'
 
 export interface MostReactedSectionProps {
@@ -220,8 +220,8 @@ const styles: Record<string, CSSProperties> = {
   momentCount: { color: theme.textMuted, fontSize: 11, fontVariantNumeric: 'tabular-nums', marginRight: 6 },
   momentList: { display: 'grid', gap: 4 },
   status: {
-    background: 'rgba(255, 255, 255, 0.035)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: tone('rgba(255, 255, 255, 0.035)'),
+    border: `1px solid ${tone('rgba(255, 255, 255, 0.08)')}`,
     borderRadius: 8,
     display: 'grid',
     gap: 4,

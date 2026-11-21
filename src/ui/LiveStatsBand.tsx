@@ -66,7 +66,7 @@ import { PulseSectionCard } from './PulseSectionCard.tsx'
 import { resolveMostReactedHeat, sortLiveHeatPoints } from './mostReacted.ts'
 import { SevenTvEmotePanel } from './SevenTvEmotePanel.tsx'
 import { StreamActivityChartHeader } from './StreamActivityChartHeader.tsx'
-import { theme } from './theme.ts'
+import { ink, theme, tone } from './theme.ts'
 import { resolveCoverageStartHint } from './coverageStartHint.ts'
 import { useChartExpansion } from './motion/useChartExpansion.ts'
 import { prefersReducedMotion } from './motion/useSmoothedScalar.ts'
@@ -142,22 +142,22 @@ const CONFIDENCE_STYLES: Record<
   Synced: {
     background: 'rgba(16, 185, 129, 0.15)',
     border: 'rgba(52, 211, 153, 0.3)',
-    color: '#6ee7b7',
+    color: ink('#6ee7b7'),
   },
   Collecting: {
     background: 'rgba(139, 92, 246, 0.15)',
     border: 'rgba(167, 139, 250, 0.3)',
-    color: '#c4b5fd',
+    color: ink('#c4b5fd'),
   },
   'Waiting for first minute': {
     background: 'rgba(245, 158, 11, 0.15)',
     border: 'rgba(251, 191, 36, 0.3)',
-    color: '#fcd34d',
+    color: ink('#fcd34d'),
   },
   'Stats only': {
-    background: 'rgba(113, 113, 122, 0.15)',
-    border: 'rgba(161, 161, 170, 0.3)',
-    color: '#a78bfa',
+    background: tone('rgba(113, 113, 122, 0.15)'),
+    border: tone('rgba(161, 161, 170, 0.3)'),
+    color: ink('#a78bfa'),
   },
 }
 
@@ -236,7 +236,7 @@ function AnimatedMetric({
 }
 
 function TrendArrow({ trend }: { trend: TrendDirection }) {
-  const color = trend === 'up' ? '#34d399' : trend === 'down' ? '#f87171' : theme.textMuted
+  const color = trend === 'up' ? ink('#34d399') : trend === 'down' ? ink('#f87171') : theme.textMuted
   return (
     <span style={{ ...styles.trendArrow, color }} aria-hidden>
       {trendArrowGlyph(trend)}
@@ -668,9 +668,9 @@ export function LiveStatsBand({
   const emoteAvg5m = emoteAveragesFromRollups(rollups, 5)
   const emoteSyncStyle =
     emoteSyncTone === 'ok'
-      ? { color: '#6ee7b7' }
+      ? { color: ink('#6ee7b7') }
       : emoteSyncTone === 'warn'
-        ? { color: '#fcd34d' }
+        ? { color: ink('#fcd34d') }
         : { color: theme.textMuted }
 
   const emoteSyncLabel = emoteSyncStatusLabel(payload.emoteSync)
@@ -1214,7 +1214,7 @@ export function LiveStatsBand({
             <LiveMetricIcon kind="viewers" />
             <AnimatedMetric value={viewerMetricValue} format={formatNumber} valueStyle={sidebarFill ? styles.metricValueSidebar : undefined} />
           </span>
-          <span style={{ ...styles.metricMeta, color: stats.viewerState === 'stale' ? '#fcd34d' : theme.textMuted }}>
+          <span style={{ ...styles.metricMeta, color: stats.viewerState === 'stale' ? ink('#fcd34d') : theme.textMuted }}>
             {viewerMetricMeta}
           </span>
         </div>
@@ -1654,7 +1654,7 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   timelineHintWarn: {
-    color: '#fcd34d',
+    color: ink('#fcd34d'),
   },
   timelineHintSep: { color: theme.textMuted },
   streamStartLink: {
@@ -1696,8 +1696,8 @@ const styles: Record<string, CSSProperties> = {
   },
   overlayLegendChipImg: {
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.04)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: tone('rgba(255, 255, 255, 0.04)'),
+    border: `1px solid ${tone('rgba(255, 255, 255, 0.1)')}`,
     borderRadius: 6,
     display: 'inline-flex',
     flexShrink: 0,
@@ -1717,8 +1717,8 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'flex-end',
   },
   expandButton: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    background: tone('rgba(255, 255, 255, 0.05)'),
+    border: `1px solid ${tone('rgba(255, 255, 255, 0.12)')}`,
     borderRadius: 8,
     color: theme.textSecondary,
     cursor: 'pointer',
@@ -1730,6 +1730,6 @@ const styles: Record<string, CSSProperties> = {
   expandButtonActive: {
     background: 'rgba(139, 92, 246, 0.12)',
     border: '1px solid rgba(167, 139, 250, 0.35)',
-    color: '#ddd6fe',
+    color: ink('#ddd6fe'),
   },
 }

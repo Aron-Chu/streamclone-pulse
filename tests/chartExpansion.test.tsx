@@ -12,7 +12,7 @@ import {
 import { LiveStatsBand } from '../src/ui/LiveStatsBand.tsx'
 import { PulseOverviewChart } from '../src/ui/PulseOverviewChart.tsx'
 import { RecapTimelineChart } from '../src/ui/RecapTimelineChart.tsx'
-import { shadowStyles } from '../src/ui/theme.ts'
+import { shadowStyles, tone } from '../src/ui/theme.ts'
 import { ChartViewportControls } from '../src/ui/ChartViewportControls.tsx'
 import { panelRule } from './helpers/panelRule.ts'
 import { panelComponentCss } from '../src/ui/panelComponentStyles.ts'
@@ -490,7 +490,7 @@ describe('interactive chart controls', () => {
       expect(button.getAttribute('aria-expanded')).toBe('false')
       expect(button.getAttribute('aria-label')).toBe('Expand stream activity chart')
       expect(button.classList.contains('pulse-chart-expand-btn-active')).toBe(false)
-      if (inline) expect(button.style.background).toBe('rgba(255, 255, 255, 0.05)')
+      if (inline) expect(button.style.background).toBe(tone('rgba(255, 255, 255, 0.05)'))
     }
   })
 })
