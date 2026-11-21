@@ -709,7 +709,8 @@ export function portalMinutesToRollups(
   const rollups = [...byOffset.values()].map((minute) => {
     const minuteMs = startMs + Math.max(0, minute.offsetSeconds) * 1000
     const seventv = minute.seventvEmoteCount ?? 0
-    const chat = minute.missing || minute.chatMissing ? undefined : minute.chatCount
+    // Older live responses omit chatCount for a quiet minute.
+    const chat = minute.missing || minute.chatMissing ? undefined : (minute.chatCount ?? 0)
     const viewerLatest = minute.viewerLatest ?? minute.viewerMax ?? minute.viewerAvg ?? 0
     const emotes: Record<string, number> = {}
     // Prefer authoritative totalEmoteCount from portal minutes when present.
