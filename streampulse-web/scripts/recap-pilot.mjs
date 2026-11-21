@@ -26,8 +26,12 @@ function date(value, label) {
   if (typeof value !== 'string' || !ISO.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 19) !== value.slice(0, 19)) fail(`${label} must be a UTC timestamp`)
 }
 
-/** The draft gate: 60 stream minutes or 30 measured ones, honest coverage, and the stream's own top 3 moments. */
-export function validatePilot(input, { now = new Date() } = {}) {
+/**
+ * The draft gate: 60 stream minutes or 30 measured ones, honest coverage, and the stream's own top 3 moments.
+ * A page whose review window has ended is still validated, then left out with a warning: it falls back to the
+ * noindex deep-link page until someone reviews it again. An expiry must not fail every later build of the site.
+ */
+export function validatePilot(input, { now = new Date(), warn = message => console.warn(`Recap pilot: ${message}`) } = {}) {
   record(input, 'manifest', ['schemaVersion', 'pages'])
   if (input.schemaVersion !== 1 || !Array.isArray(input.pages) || input.pages.length > 20) fail('expected schemaVersion 1 and at most 20 pilot pages')
   const paths = new Set()
@@ -72,7 +76,7 @@ export function validatePilot(input, { now = new Date() } = {}) {
     if (page.review.approved !== true) fail(`${label}: manual review is required`)
     date(page.review.reviewedAt, 'reviewedAt')
     date(page.review.expiresAt, 'review expiresAt')
-    if (Date.parse(page.review.reviewedAt) > now.getTime() || Date.parse(page.review.expiresAt) <= now.getTime() || Date.parse(page.review.expiresAt) <= Date.parse(page.review.reviewedAt)) fail(`${label}: review is future-dated or expired`)
+    if (Date.parse(page.review.reviewedAt) > now.getTime() || Date.parse(page.review.expiresAt) <= Date.parse(page.review.reviewedAt)) fail(`${label}: review is future-dated or ends before it starts`)
     text(page.review.notes, 'review notes')
     const source = new URL(page.review.sourceUrl)
     const sourcePath = page.kind === 'stream' ? `/v1/portal/analytics/streams/${page.streamId}/recap` : `/v1/portal/analytics/channels/${page.login}/live`
@@ -91,10 +95,14 @@ export function validatePilot(input, { now = new Date() } = {}) {
     const path = `/analytics/${page.login}${page.kind === 'stream' ? `/${page.streamId}` : ''}`
     if (paths.has(path) || summaries.has(page.summary.trim()) || titles.has(page.title.trim()) || descriptions.has(page.description.trim())) fail(`${label}: duplicate path or explanatory summary`)
     paths.add(path); summaries.add(page.summary.trim()); titles.add(page.title.trim()); descriptions.add(page.description.trim())
+    if (Date.parse(page.review.expiresAt) <= now.getTime()) {
+      warn(`${label} ${path}: review expired at ${page.review.expiresAt}; left out until it is reviewed again`)
+      return null
+    }
     const replay = page.replay?.state === 'available' && Date.parse(page.replay.expiresAt) > now.getTime() ? page.replay : null
     return { ...page, path, replay }
   })
-  return pages.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+  return pages.filter(Boolean).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
 }
 
 export function readPilot(path, options) { return validatePilot(JSON.parse(readFileSync(path, 'utf8')), options) }

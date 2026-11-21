@@ -17,14 +17,46 @@ test('uses canonical draft OR alternatives and honest partial coverage', () => {
   assert.throws(() => validate(fixture({ durationSeconds: 1000, nonMissingRollupMinutes: 30 })), /exceed/)
 })
 
-test('fails closed for fewer than three moments, unknown coverage and unapproved or expired review', () => {
+test('fails closed for fewer than three moments, unknown coverage and an unapproved, future-dated or inverted review', () => {
   assert.throws(() => validate(fixture({ moments: [{ offsetSeconds: 100, score: 90 }, { offsetSeconds: 200, score: 80 }] })), /top 3/)
   assert.throws(() => validate(fixture({ moments: [] })), /top 3/)
   assert.throws(() => validate(fixture({ moments: Array.from({ length: 21 }, (_, i) => ({ offsetSeconds: i * 60, score: 50 })) })), /top 3/)
   assert.throws(() => validate(fixture({ coverage: { state: 'unknown', description: 'Unknown.' } })), /coverage/)
-  for (const review of [{ ...fixture().review, approved: false }, { ...fixture().review, expiresAt: now.toISOString() }, { ...fixture().review, reviewedAt: '2026-11-01T17:00:00Z' }]) {
-    assert.throws(() => validate(fixture({ review })), /review/)
+  for (const review of [{ ...fixture().review, approved: false }, { ...fixture().review, reviewedAt: '2026-11-01T17:00:00Z' }, { ...fixture().review, reviewedAt: '2026-10-31T17:00:00Z', expiresAt: '2026-10-31T17:00:00Z' }]) {
+    assert.throws(() => validatePilot({ schemaVersion: 1, pages: [fixture({ review })] }, { now, warn() {} }), /review/)
   }
+})
+
+// A second, distinct reviewed page, so one can expire while the other stays.
+function second() {
+  return fixture({ streamId: '124', title: 'Second fixture recap — StreamPulse', description: 'A second synthetic aggregate fixture for the expiry tests.',
+    summary: 'Second synthetic fixture: a different reviewed summary for the expiry tests.',
+    review: { ...fixture().review, sourceUrl: 'https://api.streampulse.stream/v1/portal/analytics/streams/124/recap' } })
+}
+
+test('an expired review leaves that page out with a warning instead of failing the build', () => {
+  const warnings = []
+  const expired = fixture({ review: { ...fixture().review, expiresAt: now.toISOString() } })
+  const pages = validatePilot({ schemaVersion: 1, pages: [expired, second()] }, { now, warn: message => warnings.push(message) })
+  assert.deepEqual(pages.map(page => page.path), ['/analytics/fixturechan/124'])
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /pages\[0\] \/analytics\/fixturechan\/123: review expired at 2026-10-31T18:00:00/)
+  // Every page expired: an empty pilot, which /recaps already shows as "No reviewed recaps yet".
+  assert.deepEqual(validatePilot({ schemaVersion: 1, pages: [expired] }, { now, warn() {} }), [])
+})
+
+test('an expired page is still fully validated and still counts toward duplicates', () => {
+  const expiredReview = { ...fixture().review, expiresAt: now.toISOString() }
+  assert.throws(() => validatePilot({ schemaVersion: 1, pages: [fixture({ review: expiredReview, rawChat: ['private'] })] }, { now, warn() {} }), /unsupported field/)
+  assert.throws(() => validatePilot({ schemaVersion: 1, pages: [fixture({ review: { ...expiredReview, approved: false } })] }, { now, warn() {} }), /manual review/)
+  assert.throws(() => validatePilot({ schemaVersion: 1, pages: [fixture({ review: expiredReview }), fixture()] }, { now, warn() {} }), /duplicate/)
+})
+
+test('by default the expiry warning goes to the build log', t => {
+  const warn = t.mock.method(console, 'warn', () => {})
+  validatePilot({ schemaVersion: 1, pages: [fixture({ review: { ...fixture().review, expiresAt: now.toISOString() } })] }, { now })
+  assert.equal(warn.mock.callCount(), 1)
+  assert.match(warn.mock.calls[0].arguments[0], /^Recap pilot: pages\[0\] .*review expired.*left out until it is reviewed again/)
 })
 
 test('a stream qualifies on its own top 3, whatever their absolute scores (owner decision 2026-11-05)', () => {
