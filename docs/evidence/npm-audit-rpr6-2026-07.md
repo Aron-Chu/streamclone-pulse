@@ -2,7 +2,9 @@
 
 At the original disposition, portal (`streampulse-web`) and root workspace
 audits reported **two high** findings that resolved to the same advisory.
-The October 2 build-only disposition below records the newly reviewed finding.
+The current build-only exception is the expiring picomatch disposition
+(2026-11-18) near the end of this file. The October 2 braces disposition is
+kept as history; its advisory was withdrawn.
 
 | Package | Severity | Advisory |
 |---------|----------|----------|
@@ -44,6 +46,10 @@ exception. Re-run `npm audit` after lock refresh; do not list nanoid in
 `DISPOSITIONED_HIGHS` unless a future advisory lacks a trivial pin.
 
 ## Build-only disposition (2026-10-02): unpatched `braces` stack exhaustion
+
+**Retired 2026-11-18.** GitHub withdrew this advisory on 2026-10-23 and npm
+no longer reports it. Its five-node graph was removed from the gate; the same
+Tailwind packages are now covered only by the picomatch disposition below.
 
 [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
 was reviewed/updated on October 2 and caused the automatic post-merge portal
@@ -104,6 +110,51 @@ The portal also pins `postcss-selector-parser@7.1.6` for
 [GHSA-rj75-hqrm-r3gf](https://github.com/advisories/GHSA-rj75-hqrm-r3gf),
 which otherwise adds unexpected advisory paths to the exact Tailwind graph.
 The existing five-node braces disposition remains unchanged.
+
+## Build-only disposition (2026-11-18, expires 2026-12-02): unpatched `picomatch` ReDoS
+
+[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
+(npm source `1247710`, high, range `<=4.0.7`) was updated on 2026-11-17 and
+failed both audit steps on every open pull request. An attacker who can
+**supply a glob pattern** such as `+(*)` can make picomatch backtrack
+exponentially. No patched release exists: `picomatch@4.0.7` and `2.3.2` are
+the latest on their lines.
+
+**Disposition: development-only tools, repository-controlled patterns.**
+Every affected lock node is `dev: true`. The packages are Vite, Vitest, the
+React plugin, and (portal only) the Tailwind 3 CSS build. They match globs
+written in this checkout's configs against file paths; no request, account,
+payment, or analytics input becomes a glob pattern. The reviewed configs
+contain no extglob patterns and no `import.meta.glob` calls.
+
+| Lock | High packages for this one advisory |
+|---|---|
+| root (`streamclone-pulse`) | `picomatch@4.0.5`, `fdir`, `tinyglobby`, `vite` (3 nodes), `@vitejs/plugin-react`, `vitest` |
+| portal (`streampulse-web`) | `picomatch` (5 nodes: `2.3.2` and `4.0.5`), `anymatch`, `readdirp`, `micromatch`, `chokidar`, `fast-glob`, `fdir` (3 nodes), `tinyglobby`, `sucrase`, `tailwindcss`, `vite` (3 nodes), `@vitejs/plugin-react`, `vitest` |
+
+`vitest` also carries two moderate advisories through `@vitest/mocker`; the
+gate ignores only edges below high and requires every high edge to be a
+reviewed parent.
+
+**Gate.** `scripts/ci-portal-npm-audit-disposition.mjs` holds one exact graph
+per lock identity: each package's installed nodes, locked versions, `dev`
+flag and high parents, and the exact advisory metadata. The whole graph must
+match, even to clear one leaf. A second high advisory, changed version, extra
+or missing node, production node, unreviewed parent, or the other lock's graph
+fails CI. **From 2026-12-02T00:00Z the exception stops matching** and CI fails
+until it is patched, reviewed again, or removed.
+
+**Browser output.** The portal build plugin now refuses any module of these
+packages in any emitted chunk, lazy routes included. Local proof on master
+`c21d5b37` plus this change: the portal build passed the plugin and its 72
+source maps name none of them; building all six extension configs with the
+same check recorded 390 modules (18 from `node_modules`) and none of them.
+The extension build has no permanent plugin; its lock `dev` flags and the
+expiry bound that gap.
+
+**Removal.** When picomatch publishes fixes, refresh the locks (or add
+`overrides`), rerun both audits, then delete the graphs, the two
+`npm-audit-build-only-picomatch-*` fixtures, and this section.
 
 ## Owner follow-up (optional, separate program)
 

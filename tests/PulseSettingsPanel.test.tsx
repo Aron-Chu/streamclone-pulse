@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import SUPPORTER_PERKS from '../src/shared/supporter-perks.json'
 import { describe, expect, it } from 'vitest'
-import { OpenAllSettingsButton, PulseSettingsPanel, SupporterHero, type QuickSettingsChannel } from '../src/ui/PulseSettingsPanel.tsx'
+import { PulseSettingsPanel, SupporterHero, type QuickSettingsChannel } from '../src/ui/PulseSettingsPanel.tsx'
+import { OpenAllSettingsButton } from '../src/ui/OpenAllSettingsButton.tsx'
 
 const LIVE: QuickSettingsChannel = {
   login: 'xqc',
@@ -37,16 +38,17 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(html).toContain('Dock when chat is closed')
     expect(html).toContain('Reset appearance and layout')
     expect(html).toContain('data-settings-connection="true"')
-    // Your look: a live strip, then Emote rain and Paint, then the way to wave, sheen and crest.
+    // Your look: a live strip, then Backdrop and Paint, then the way to motion and saved looks.
     expect(html).toContain('class="pulse-quick-look"')
-    expect(html).toContain('aria-label="Emote rain"')
+    expect(html).toContain('aria-label="Backdrop"')
     expect(html).toContain('aria-label="Paint"')
-    for (const choice of ['Off', 'Still', 'Rain', 'Default', 'Glass', 'Etched', 'Halo']) expect(html).toContain(`>${choice}<`)
-    expect(html).toContain('Wave, sheen and crest in all settings ↗')
+    for (const choice of ['Off', 'On', 'Default', 'Glass', 'Etched', 'Halo']) expect(html).toContain(`>${choice}<`)
+    expect(html).toContain('Motion and saved looks in all settings ↗')
     // The old background editor link and its long preview label are gone.
     expect(html).not.toContain('Background &amp; motion')
     expect(html).not.toContain('data-banner-editor-cta')
     expect(html).not.toContain('Appearance preview')
+    expect(html).not.toContain('>Rain<')
     expect(html).not.toContain('Panel title')
     // Moments: two switches and the way to My Moments.
     expect(html).toContain('Moment pictures')
@@ -134,9 +136,9 @@ describe('PulseSettingsPanel quick workspace', () => {
   it('gives everyone else the lab’s Your Line · Anatomy copy and an empty stage the card script fills, with no emotes in this bundle', () => {
     const html = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(html).toContain('Explore Supporter')
-    expect(describedCopy(html)).toBe('Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.')
+    expect(describedCopy(html)).toBe('Supporter perks: Title paint, Tenure crest, Backdrop, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.')
     expect(describedCopy(html)).toBe(`Supporter perks: ${SUPPORTER_PERKS.names.join(', ')}. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.`)
-    expect(html).toContain(`title="Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free."`)
+    expect(html).toContain(`title="Supporter perks: Title paint, Tenure crest, Backdrop, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free."`)
     // Only the title row and the stage show; nothing covers the stage.
     expect(html).not.toContain('<small')
     expect(html).toMatch(/<span class="pulse-supporter-cta-head"><strong>Pulse Supporter<\/strong><span>Explore Supporter <span aria-hidden="true">›<\/span><\/span><\/span><span id="[^"]+" hidden="">[^<]*<\/span><span class="pulse-supporter-stage"/)
@@ -151,7 +153,7 @@ describe('PulseSettingsPanel quick workspace', () => {
     expect(verified).toContain('data-finish="etched"')
     expect(verified).toContain('Manage Supporter')
     expect(verified).not.toContain('Explore Supporter')
-    expect(describedCopy(verified)).toBe('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.')
+    expect(describedCopy(verified)).toBe('Your Supporter perks: Title paint, Tenure crest, Backdrop, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.')
     expect(verified).not.toContain('<small')
     const neutral = renderToStaticMarkup(<SupporterHero appearance={null} onOpen={() => {}} />)
     expect(neutral).toContain('Explore Supporter')
@@ -161,7 +163,7 @@ describe('PulseSettingsPanel quick workspace', () => {
     const member = renderToStaticMarkup(<SupporterHero appearance={{ finish: null, tenure: '3m', perks: true }} onOpen={() => {}} />)
     expect(member).toContain('data-supporter-verified="true"')
     expect(member).toContain('Manage Supporter')
-    expect(member).toContain('Your Supporter perks: Title paint, Tenure crest, Emote rain, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.')
+    expect(member).toContain('Your Supporter perks: Title paint, Tenure crest, Backdrop, Supporter card. Only you see them. The chat lines are a preview; Twitch chat doesn&#x27;t change. Core tools stay free.')
     expect(member).not.toContain('Explore Supporter')
     expect(member).not.toContain('data-finish')
   })

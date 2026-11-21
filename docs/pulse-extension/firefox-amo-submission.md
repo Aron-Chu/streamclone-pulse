@@ -175,8 +175,9 @@ selects a floating Node.js release, not a fixed patch version.
   `scripting.executeScript({ files })` into the Twitch tab only while the
   quick-settings Supporter card is open. It is not remote code.
   `content/moment-frames.js` (only while Moment pictures is on; it keeps small
-  player stills in the tab's memory) and `content/catch-me-up.js` (when the
-  panel shows a stream recap) are injected the same way.
+  player stills in the tab's memory), `content/catch-me-up.js` (when the
+  panel shows a stream recap) and `content/quick-settings.js` (the panel's
+  Quick settings view, when the panel is first used) are injected the same way.
 - The background reads Twitch's own page state with
   `scripting.executeScript({ world: "MAIN", func })` to find the current
   stream and VOD ids; the functions are bundled, and their results are only ids.

@@ -79,14 +79,14 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/docs/api':
       return {
         title: 'Documentation — StreamPulse',
-        description: 'Install StreamPulse, understand coverage states, and open public Twitch analytics.',
+        description: 'Install the free StreamPulse extension for Chrome, Edge or Firefox, explore the Hub’s public Twitch chat stats, and read what each coverage state means.',
         canonicalPath: '/docs',
         robots: 'index,follow',
       }
     case '/status':
       return {
         title: 'Service Status — StreamPulse',
-        description: 'Current StreamPulse portal, API, coverage, and corpus status.',
+        description: 'Is StreamPulse working right now? Live status of the website, live Twitch chat tracking and the Twitch panel data, with when it was last checked.',
         canonicalPath: '/status',
         robots: 'index,follow',
       }
@@ -104,7 +104,7 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
     case '/terms':
       return { title: 'Terms of Use — StreamPulse', description: 'Terms of use for the StreamPulse website, the StreamPulse browser extension and the optional Pulse Supporter subscription.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/refunds':
-      return { title: 'Cancellation and Refunds — StreamPulse', description: 'Manage cancellation, paid access, and refund requests for Pulse Supporter.', canonicalPath: normalizedPath, robots: 'index,follow' }
+      return { title: 'Cancellation and Refunds — StreamPulse', description: 'How cancelling the optional Pulse Supporter membership works: no fee or minimum term, access until the paid period ends, and when a charge is refunded.', canonicalPath: normalizedPath, robots: 'index,follow' }
     case '/withdraw':
       return { title: 'Withdraw from your contract — StreamPulse', description: 'Send a withdrawal request for your Pulse Supporter subscription.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/support':
@@ -115,11 +115,11 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
         robots: 'index,follow',
       }
     case '/feedback':
-      return { title: 'Send Feedback — StreamPulse', description: 'Send private feedback to the StreamPulse team. No account needed.', canonicalPath: '/feedback', robots: 'index,follow' }
+      return { title: 'Send Feedback — StreamPulse', description: 'Spotted a problem or have an idea? Send private feedback about the StreamPulse extension or website. No account needed, and nothing is posted publicly.', canonicalPath: '/feedback', robots: 'index,follow' }
     case '/discord':
       return { title: 'Discord — StreamPulse', description: 'Join the public StreamPulse community on Discord.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
     case '/changelog':
-      return { title: 'Release Notes — StreamPulse', description: 'What changed in each version of the StreamPulse extension.', canonicalPath: normalizedPath, robots: 'noindex,nofollow' }
+      return { title: 'Release Notes — StreamPulse', description: 'What changed in each version of the StreamPulse extension.', canonicalPath: normalizedPath, robots: 'index,follow' }
     default: {
       // The retired Explorer only redirects, so it names the page it sends people to.
       if (normalizedPath === '/analytics/moments' || normalizedPath === '/analytics/explore' || /^\/analytics\/explore\/[^/]+$/.test(normalizedPath)) {

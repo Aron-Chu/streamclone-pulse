@@ -8,7 +8,7 @@ import {
   isTriggerVisibleInScrollport,
   listScrollableAncestors,
 } from './pulseSelectPosition.ts'
-import { theme } from './theme.ts'
+import { theme, tone } from './theme.ts'
 
 export interface PulseSelectOption<T extends string = string> {
   value: T
@@ -401,7 +401,7 @@ const styles: Record<string, CSSProperties> = {
   },
   menu: {
     fontFamily: theme.font,
-    background: '#111117',
+    background: tone('#111117'),
     border: `1px solid ${theme.border}`,
     borderRadius: 8,
     boxShadow: '0 12px 28px rgba(0, 0, 0, 0.45)',

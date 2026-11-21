@@ -8,7 +8,7 @@
  * Without a hostname (file://) Play opens the VOD in a new tab instead. A new
  * VOD or Play time puts the picture back.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { formatStripClock } from '../../utils/sessionBarStrip.ts'
 import { buildTwitchVodUrl, formatTwitchVodTimeParam } from '../../utils/twitchVodUrl.ts'
 import { MomentPreviewTile, type MomentPreviewTileProps } from './MomentPreviewTile.tsx'
@@ -49,6 +49,8 @@ export interface MomentVodPanelProps extends Omit<MomentPreviewTileProps, 'playe
    * VOD time plays again, so a lock that settles a moment later still lands on the moment's lead-in.
    */
   autoPlayToken?: number | null
+  /** The VOD's Twitch link (the strip's): it sits with Play, so the two read as one pair (in the page, on Twitch). */
+  link?: ReactNode
 }
 
 export function MomentVodPanel({
@@ -58,6 +60,7 @@ export function MomentVodPanel({
   leadCaption,
   hostname = () => (typeof window === 'undefined' ? '' : window.location.hostname),
   autoPlayToken,
+  link,
   ...tile
 }: MomentVodPanelProps) {
   const validVod = vodId && VOD_ID.test(vodId) ? vodId : null
@@ -122,6 +125,7 @@ export function MomentVodPanel({
         onPlay={playable ? onPlay : undefined}
         player={player}
       />
+      {link ? <div className="mpl-link">{link}</div> : null}
       {leadCaption && playable ? (
         <p className="mpl-cap">
           <span title={vodClockNote(leadCaption.alignSeconds, leadCaption.leadSeconds)}>

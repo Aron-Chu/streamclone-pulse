@@ -26,8 +26,12 @@ function date(value, label) {
   if (typeof value !== 'string' || !ISO.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 19) !== value.slice(0, 19)) fail(`${label} must be a UTC timestamp`)
 }
 
-/** The draft gate: 60 stream minutes or 30 measured ones, honest coverage, and the stream's own top 3 moments. */
-export function validatePilot(input, { now = new Date() } = {}) {
+/**
+ * The draft gate: 60 stream minutes or 30 measured ones, honest coverage, and the stream's own top 3 moments.
+ * A page whose review window has ended is still validated, then left out with a warning: it falls back to the
+ * noindex deep-link page until someone reviews it again. An expiry must not fail every later build of the site.
+ */
+export function validatePilot(input, { now = new Date(), warn = message => console.warn(`Recap pilot: ${message}`) } = {}) {
   record(input, 'manifest', ['schemaVersion', 'pages'])
   if (input.schemaVersion !== 1 || !Array.isArray(input.pages) || input.pages.length > 20) fail('expected schemaVersion 1 and at most 20 pilot pages')
   const paths = new Set()
@@ -72,7 +76,7 @@ export function validatePilot(input, { now = new Date() } = {}) {
     if (page.review.approved !== true) fail(`${label}: manual review is required`)
     date(page.review.reviewedAt, 'reviewedAt')
     date(page.review.expiresAt, 'review expiresAt')
-    if (Date.parse(page.review.reviewedAt) > now.getTime() || Date.parse(page.review.expiresAt) <= now.getTime() || Date.parse(page.review.expiresAt) <= Date.parse(page.review.reviewedAt)) fail(`${label}: review is future-dated or expired`)
+    if (Date.parse(page.review.reviewedAt) > now.getTime() || Date.parse(page.review.expiresAt) <= Date.parse(page.review.reviewedAt)) fail(`${label}: review is future-dated or ends before it starts`)
     text(page.review.notes, 'review notes')
     const source = new URL(page.review.sourceUrl)
     const sourcePath = page.kind === 'stream' ? `/v1/portal/analytics/streams/${page.streamId}/recap` : `/v1/portal/analytics/channels/${page.login}/live`
@@ -91,19 +95,33 @@ export function validatePilot(input, { now = new Date() } = {}) {
     const path = `/analytics/${page.login}${page.kind === 'stream' ? `/${page.streamId}` : ''}`
     if (paths.has(path) || summaries.has(page.summary.trim()) || titles.has(page.title.trim()) || descriptions.has(page.description.trim())) fail(`${label}: duplicate path or explanatory summary`)
     paths.add(path); summaries.add(page.summary.trim()); titles.add(page.title.trim()); descriptions.add(page.description.trim())
+    if (Date.parse(page.review.expiresAt) <= now.getTime()) {
+      warn(`${label} ${path}: review expired at ${page.review.expiresAt}; left out until it is reviewed again`)
+      return null
+    }
     const replay = page.replay?.state === 'available' && Date.parse(page.replay.expiresAt) > now.getTime() ? page.replay : null
     return { ...page, path, replay }
   })
-  return pages.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+  return pages.filter(Boolean).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
 }
 
 export function readPilot(path, options) { return validatePilot(JSON.parse(readFileSync(path, 'utf8')), options) }
 export function metadataForPage(page) {
   return { title: page.title, description: page.description, canonicalPath: page.path, robots: 'index,follow' }
 }
+/** The page heading: the title without the brand suffix, which belongs in the tab title only. */
+export function recapHeading(page) {
+  return page.title.replace(/\s+[—–-]\s+StreamPulse$/, '')
+}
+/** Newest first, for /recaps. */
+export function recapIndex(pages) {
+  return [...pages].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt) || (a.path < b.path ? -1 : 1))
+    .map(page => ({ path: page.path, heading: recapHeading(page), description: page.description }))
+}
 export function writeRuntimeManifests(root, pages) {
   const dir = join(root, 'src', 'generated')
   mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'recap-page-list.json'), `${JSON.stringify(recapIndex(pages), null, 2)}\n`)
   writeFileSync(join(dir, 'recap-page-paths.json'), `${JSON.stringify(pages.map(page => ({ path: page.path, category: page.kind === 'channel' ? 'channel_summary' : 'stream_recap' })), null, 2)}\n`)
   writeFileSync(join(dir, 'recap-page-metadata.json'), `${JSON.stringify(Object.fromEntries(pages.map(page => [page.path, metadataForPage(page)])), null, 2)}\n`)
 }
@@ -121,13 +139,26 @@ export function replayUrl(page, moment) {
   return `https://www.twitch.tv/videos/${page.replay.vodId}?t=${Math.floor(offset)}s`
 }
 
-export function renderRecapSummary(page) {
+/** Up to five other reviewed recaps: this channel's first, then the newest. */
+export function otherRecaps(page, pages) {
+  const sameChannel = other => other.login === page.login ? 0 : 1
+  return pages.filter(other => other.path !== page.path)
+    .sort((a, b) => sameChannel(a) - sameChannel(b) || Date.parse(b.startedAt) - Date.parse(a.startedAt))
+    .slice(0, 5)
+}
+
+export function renderRecapSummary(page, pages = []) {
+  const heading = escapeHtml(recapHeading(page))
+  const separator = '<span class="recap-breadcrumb__sep" aria-hidden="true">›</span>'
+  const breadcrumb = `<nav class="muted public-document__back recap-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a>${separator}<a href="/recaps">Recaps</a>${separator}<span aria-current="page">${heading}</span></nav>`
+  const others = otherRecaps(page, pages)
+  const more = others.length ? `<h2>More recaps</h2><ul>${others.map(other => `<li><a href="${escapeHtml(other.path)}">${escapeHtml(recapHeading(other))}</a></li>`).join('')}</ul>` : ''
   const moments = [...page.moments].sort((a, b) => b.score - a.score).map(moment => {
     const label = timestamp(moment.offsetSeconds)
     const url = replayUrl(page, moment)
     return `<li id="moment-${moment.offsetSeconds}">${url ? `<a href="${escapeHtml(url)}" rel="noopener noreferrer">${label}: watch the reaction</a>` : `${label}: reaction recorded`} — score ${moment.score}${moment.chatCount === undefined ? '' : `; ${moment.chatCount} chat messages in this minute`}${moment.emoteCount === undefined ? '' : `; ${moment.emoteCount} emote uses`}</li>`
   }).join('')
-  return `<article class="public-document panel" data-recap-summary><a href="/">StreamPulse</a><h1>${escapeHtml(page.title)}</h1><p>${escapeHtml(page.summary)}</p><p>Stream started ${escapeHtml(page.startedAt)}. Recorded duration: ${timestamp(page.durationSeconds)}.</p><p>Game/category: ${page.game === undefined ? 'not available in this reviewed snapshot' : escapeHtml(page.game)}.</p><h2>Coverage</h2><p>${escapeHtml(page.coverage.state)}: ${escapeHtml(page.coverage.description)}</p><p>Reviewed ${escapeHtml(page.review.reviewedAt)}. This is a reviewed snapshot; the interactive page shows current availability.</p><h2>Top chat reactions</h2><ol>${moments}</ol>${page.replay ? `<p>Replay availability was checked ${escapeHtml(page.replay.checkedAt)}. Twitch may remove or restrict it.</p>` : '<p>Archive summary: no verified replay is currently available. Reaction measurements remain below; replay links are disabled.</p>'}<h2>Most-used emotes in the measured data</h2><ul>${page.topEmotes.map(emote => `<li>${escapeHtml(emote.code)}: ${emote.count} uses</li>`).join('')}</ul><p><a href="/docs#extension">Get StreamPulse for tracked Twitch streams</a> · <a href="/analytics">Explore tracked channels</a></p></article>`
+  return `<article class="public-document panel" data-recap-summary>${breadcrumb}<h1>${heading}</h1><p>${escapeHtml(page.summary)}</p><p>Stream started ${escapeHtml(page.startedAt)}. Recorded duration: ${timestamp(page.durationSeconds)}.</p><p>Game/category: ${page.game === undefined ? 'not available in this reviewed snapshot' : escapeHtml(page.game)}.</p><h2>Coverage</h2><p>${escapeHtml(page.coverage.state)}: ${escapeHtml(page.coverage.description)}</p><p>Reviewed ${escapeHtml(page.review.reviewedAt)}. This is a reviewed snapshot; the interactive page shows current availability.</p><h2>Top chat reactions</h2><ol>${moments}</ol>${page.replay ? `<p>Replay availability was checked ${escapeHtml(page.replay.checkedAt)}. Twitch may remove or restrict it.</p>` : '<p>Archive summary: no verified replay is currently available. Reaction measurements remain below; replay links are disabled.</p>'}<h2>Most-used emotes in the measured data</h2><ul>${page.topEmotes.map(emote => `<li>${escapeHtml(emote.code)}: ${emote.count} uses</li>`).join('')}</ul>${more}<p><a href="/docs#extension">Get StreamPulse for tracked Twitch streams</a> · <a href="/analytics">Explore tracked channels</a></p></article>`
 }
 
 export function recapStructuredData(page) {
@@ -135,6 +166,11 @@ export function recapStructuredData(page) {
     '@context': 'https://schema.org', '@type': 'WebPage',
     name: page.title, description: page.description, url: `${SITE_ORIGIN}${page.path}`,
     dateModified: page.review.reviewedAt,
+    breadcrumb: { '@type': 'BreadcrumbList', itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_ORIGIN}/` },
+      { '@type': 'ListItem', position: 2, name: 'Recaps', item: `${SITE_ORIGIN}/recaps` },
+      { '@type': 'ListItem', position: 3, name: recapHeading(page), item: `${SITE_ORIGIN}${page.path}` },
+    ] },
     mainEntity: { '@type': 'ItemList', name: 'Measured chat reactions',
       itemListElement: [...page.moments].sort((a, b) => b.score - a.score).map((moment, index) => ({
         '@type': 'ListItem', position: index + 1, name: `Reaction at ${timestamp(moment.offsetSeconds)}; score ${moment.score}`,
@@ -145,7 +181,7 @@ export function recapStructuredData(page) {
 }
 
 /** Reuse the real built analytics document (assets/CSP), replacing only its public snapshot. */
-export function renderRecapDocument(shell, page) {
+export function renderRecapDocument(shell, page, pages = []) {
   let html = shell.replace(/<title>[\s\S]*?<\/title>/i, () => `<title>${escapeHtml(page.title)}</title>`)
   const canonical = `${SITE_ORIGIN}${page.path}`
   const meta = (attribute, key, value) => {
@@ -162,7 +198,7 @@ export function renderRecapDocument(shell, page) {
   html = html.replace(/<link\s+rel="canonical"[^>]*>/i, () => canonicalTag)
   const boundary = /<!--public-root:start-->[\s\S]*?<!--public-root:end-->/
   if (!boundary.test(html)) fail('missing public root markers in the built document')
-  const summary = renderRecapSummary(page)
+  const summary = renderRecapSummary(page, pages)
   html = html.replace(boundary, () => `<!--public-root:start--><div id="root" data-prerendered>${summary}</div><!--public-root:end--><template id="reviewed-recap-summary" data-canonical-path="${page.path}">${summary}</template>`)
   return html.replace('</head>', () => `<script type="application/ld+json">${recapStructuredData(page)}</script></head>`)
 }
@@ -174,9 +210,10 @@ export function recapRedirects(source, pages) {
   const rules = pages.flatMap(page => {
     const target = `/_recap-pages/${page.login}${page.kind === 'stream' ? `/${page.streamId}` : ''}/`
     const legacy = `/s/${page.login}${page.kind === 'stream' ? `/${page.streamId}` : ''}`
-    const aliases = [page.path, `${page.path}/`, legacy, `${legacy}/`]
-    if (page.kind === 'stream') aliases.push(`/analytics/${page.login}/s/${page.streamId}`, `/analytics/${page.login}/s/${page.streamId}/`)
-    return aliases.map(path => `${path} ${target} 200`)
+    const aliases = [page.path, legacy]
+    if (page.kind === 'stream') aliases.push(`/analytics/${page.login}/s/${page.streamId}`)
+    // One URL per recap: the trailing-slash forms redirect to it instead of serving a second copy.
+    return [...aliases.map(path => `${path} ${target} 200`), ...aliases.map(path => `${path}/ ${page.path} 301`)]
   })
   return source.replace(marker, `${marker}\n${rules.join('\n')}`)
 }

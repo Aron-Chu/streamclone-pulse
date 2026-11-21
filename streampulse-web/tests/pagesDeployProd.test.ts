@@ -51,8 +51,8 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     const paths = [...sitemap.matchAll(/<loc>https:\/\/streampulse\.stream(\/[^<]*)<\/loc>/g)].map(match => match[1])
     expect(paths.length).toBeGreaterThan(0)
     for (const path of paths) expect(resolvePageMetadata(path).robots, path).toBe('index,follow')
-    // Kept out of search on purpose: the Discord page only forwards to the invite, the changelog documents the extension.
-    for (const path of ['/changelog', '/discord']) {
+    // Kept out of search on purpose: the Discord page only forwards to the invite.
+    for (const path of ['/discord']) {
       expect(resolvePageMetadata(path).robots).toBe('noindex,nofollow')
       expect(paths).not.toContain(path)
     }

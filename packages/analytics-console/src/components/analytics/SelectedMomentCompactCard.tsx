@@ -3,24 +3,27 @@
  * session-original `.bkc--below`, bucket-card.js + card-model.js sessionBar).
  *
  * In the page's flow under the chart at every width, so nothing covers the
- * plot: the bar's picture (a VOD storyboard frame, or a plain dark box with
+ * plot. Read like the hub's bar lock (L1): one header row (the bucket's size,
+ * its actions and close), no boxed tiles, no capitals. Under it, the time and
+ * game on the left with the bar's picture (a VOD storyboard frame, or Play and
  * the reason; the game's sharp cover sits by the title, candidate 10-30,
- * PIC-2) with Play over its time and game on the left; its figures, top
- * emotes, moments (the locked one marked) and the VOD link on the right.
- * Under 600 px the picture is a 128 px thumbnail beside the time and the rest
- * stacks. Twitch's player loads only when the viewer presses Play.
+ * PIC-2) and the VOD link beside Play; its figures, top emotes and moments
+ * (the locked one marked) on the right. Under 600 px the picture is a 128 px
+ * thumbnail beside the time and the rest stacks. Twitch's player loads only
+ * when the viewer presses Play.
  *
  * Still the single owner of the selected-moment detail
  * (check-analytics-overlap.mjs), still `[data-selected-moment-card]`.
  * Styles: WEB/src/ui/charts/sp-session-strip.css.
  */
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { recapMomentAnalyticalOffset, type StreamEdges } from '@streampulse/pulse-core'
 import { useConsoleMotion } from '../../hooks/useConsoleMotion.ts'
 import type { AnalyticsMinuteRollup, AnalyticsTopEmote, PulseRecapMoment } from '../../apiTypes.ts'
 import type { ReplayHeatmapDetailPoint, ReplayHeatmapPoint } from '../../types/heatmap.ts'
 import {
   buildSessionBarStrip,
+  formatStripClock,
   resolveBarSpan,
   STRIP_MAX_EMOTES,
   STRIP_MAX_MOMENTS,
@@ -83,6 +86,8 @@ export interface SelectedMomentCompactCardProps {
   playRequest?: { offsetSeconds: number; token: number } | null
   /** The page's stream edges (the Moments list's), so a closing-edge row says "Stream end" (E1, round 2). */
   streamEdges?: StreamEdges
+  /** The host's actions for the selected minute (the portal's Save and View saved moments): in the header row. */
+  actions?: ReactNode
 }
 
 const ICON = {
@@ -113,6 +118,7 @@ function slashBreak(label: string) {
   return parts.map((part, i) => (i === 0 ? part : <span key={i}>/<wbr />{part}</span>))
 }
 
+/** The bar's three figures as plain figures (no tiles, L1); the sub line ("peak N") only where one says something. */
 function Figures({ model }: { model: SessionBarStripModel }) {
   return (
     <div className="bkc-fg">
@@ -121,7 +127,7 @@ function Figures({ model }: { model: SessionBarStripModel }) {
           <div key={fig.key} className="bkc-fig" title={fig.tip ?? undefined} data-strip-figure={fig.key}>
             <span className={`bkc-n${fig.value == null ? ' na' : ''}`}>{stripInt(fig.value)}</span>
             <span className="bkc-fl"><i className={`sw ${fig.key}`} aria-hidden="true" /><span>{slashBreak(fig.label)}</span></span>
-            <span className="bkc-u"><span className="bkc-ut">{fig.third ?? ' '}</span></span>
+            {fig.third ? <span className="bkc-u"><span className="bkc-ut">{fig.third}</span></span> : null}
           </div>
         ))}
       </div>
@@ -129,13 +135,17 @@ function Figures({ model }: { model: SessionBarStripModel }) {
   )
 }
 
+/** Top emotes, with the provider split (the hub lock's quiet line, L1) on the label line, for the whole row. */
 function TopEmotes({ model }: { model: SessionBarStripModel }) {
   const unit = model.span.levelMinutes === 1 ? 'minute' : 'bar'
   const list = model.topEmotes.slice(0, STRIP_MAX_EMOTES)
   if (!list.length) {
     return (
       <div className="bkc-emo">
-        <p className="bkc-sl"><span>Top emotes</span><span className="r">{model.topEmotesNote}</span></p>
+        <div className="bkc-eh">
+          <p className="bkc-sl"><span>Top emotes</span><span className="r">{model.topEmotesNote}</span></p>
+          <Providers model={model} />
+        </div>
       </div>
     )
   }
@@ -143,7 +153,10 @@ function TopEmotes({ model }: { model: SessionBarStripModel }) {
   const mk = exact ? '' : '≥'
   return (
     <div className="bkc-emo">
-      <p className="bkc-sl"><span>Top emotes</span><span className="r">per min{exact ? '' : ' · ≥ = at least'}</span></p>
+      <div className="bkc-eh">
+        <p className="bkc-sl"><span>Top emotes</span><span className="r">per min{exact ? '' : ' · ≥ = at least'}</span></p>
+        <Providers model={model} />
+      </div>
       <ul className="bkc-el" aria-label="Top emotes in this bar">
         {list.map((emote) => (
           <li key={emote.key}
@@ -230,20 +243,14 @@ function Moments({
   )
 }
 
+/** 7TV and other (= total - 7TV), per minute: one quiet line, as the hub's lock writes it (`.hbk-prov`). */
 function Providers({ model }: { model: SessionBarStripModel }) {
   const p = model.providers
   if (!p) return null
   return (
-    <div className="bkc-pv" title="The minutes data splits out 7TV only. Twitch, BTTV and FFZ are in other.">
-      <p className="bkc-sl">
-        <span>By provider, per min</span>
-        <span className="r">
-          <span>7TV <b>{stripInt(p.sevenTv)}</b></span>
-          <span aria-hidden="true">·</span>
-          <span>other <b>{stripInt(p.other)}</b></span>
-        </span>
-      </p>
-    </div>
+    <p className="bkc-pv" title="The minutes data splits out 7TV only. Twitch, BTTV and FFZ are in other.">
+      7TV <b>{stripInt(p.sevenTv)}</b> · other <b>{stripInt(p.other)}</b> per min
+    </p>
   )
 }
 
@@ -396,6 +403,7 @@ export function SelectedMomentCompactCard({
   onZoomToBar,
   playRequest,
   streamEdges,
+  actions,
 }: SelectedMomentCompactCardProps) {
   const titleId = useId()
   const hostRef = useRef<HTMLDivElement>(null)
@@ -553,9 +561,21 @@ export function SelectedMomentCompactCard({
   useEffect(() => setSaid(summary), [summary])
 
   const unitEyebrow = model.gap ? 'Bucket selected' : `Bucket selected · ${model.span.levelMinutes} min`
+  // what the heading says to screen readers, in one hidden line (two spans would read "0:04:00 , 1 min")
+  const heard = model.gap ? `Bucket selected: ${model.title}` : `Bucket selected: ${model.title}, ${model.span.levelMinutes} min`
   const when = [model.clockLabel, model.zone].filter(Boolean).join(' ')
   const sw = model.category ? model.categorySwitch : null
   const unit = model.span.levelMinutes === 1 ? 'minute' : 'bar'
+  const zoom = !model.gap && onZoomToBar ? onZoomToBar : null
+  // Play says the VOD time, so its Twitch link beside it doesn't say it again; screen readers still hear it.
+  const vodLink = !model.gap && vod.open ? (
+    <a className="bkc-vod" href={vod.open.href} target="_blank" rel="noopener noreferrer" data-strip-vod-link>
+      {vod.playAt != null
+        ? <>Open VOD{' '}<span className="sr-only">at {formatStripClock(vod.playAt)}</span></>
+        : vod.open.label}
+      {ICON.ext}
+    </a>
+  ) : null
 
   return (
     <div ref={hostRef} className="bkc-below-host" data-selected-moment-card
@@ -564,19 +584,33 @@ export function SelectedMomentCompactCard({
         <div className="bkc-in">
           <header className="bkc-h">
             <div className="bkc-top">
-              <p className="bkc-s">{unitEyebrow}</p>
+              {/* the heading below says "Bucket selected: <time>, <n> min" to screen readers (and names the
+                  region), so the visible state line is not read a second time */}
+              <p className="bkc-s" aria-hidden="true">{unitEyebrow}</p>
+              {zoom || actions ? (
+                <div className="bkc-hact">
+                  {zoom ? (
+                    <button type="button" className="bkc-qb bkc-zoom" onClick={zoom}>{ICON.zoom}Zoom to bucket</button>
+                  ) : null}
+                  {actions}
+                </div>
+              ) : null}
               {onClear ? (
                 <button type="button" className="bkc-ib bkc-x" onClick={onClear} aria-label="Clear selected moment" title="Close (Esc)">
                   {ICON.x}
                 </button>
               ) : null}
             </div>
+          </header>
+          {/* the time and the figures (or the gap's line): the picture's right-hand column from 600 px
+              (sp-session-strip.css) */}
+          <div className="bkc-body">
             <div className="bkc-id">
               {model.category ? <BoxArt src={shownArt} onFail={setFailedArt} /> : null}
               <div className="bkc-hl">
                 <h2 className="bkc-t" id={titleId}>
-                  <span className="sr-only">Bucket selected:</span>{' '}
-                  <span data-selected-moment-time>{model.title}</span>
+                  <span className="sr-only">{heard}</span>
+                  <span aria-hidden="true" data-selected-moment-time>{model.title}</span>
                 </h2>
                 {when ? <p className="bkc-m"><span className="bkc-d bkc-dc">{when}</span></p> : null}
                 {model.category ? (
@@ -589,10 +623,19 @@ export function SelectedMomentCompactCard({
                 ) : null}
               </div>
             </div>
-          </header>
+            {model.gap ? (
+              <div className="bkc-gap">
+                <span className="bkc-gapm" aria-hidden="true">{HATCH}</span>
+                <div><p className="bkc-gt">Not measured</p></div>
+              </div>
+            ) : (
+              <Figures model={model} />
+            )}
+          </div>
           {model.gap ? null : (
             <div className="bkc-pvw">
               <MomentVodPanel
+                link={vodLink}
                 vodId={vod.vodId}
                 playAt={vod.playAt}
                 playVerb={vod.playVerb}
@@ -608,33 +651,12 @@ export function SelectedMomentCompactCard({
               />
             </div>
           )}
-          <div className="bkc-body">
-            {model.gap ? (
-              <div className="bkc-gap">
-                <span className="bkc-gapm" aria-hidden="true">{HATCH}</span>
-                <div><p className="bkc-gt">Not measured</p></div>
-              </div>
-            ) : (
-              <>
-                <Figures model={model} />
-                <TopEmotes model={model} />
-                <Moments model={model} onLockMoment={onLockMoment} onShowMoreMoments={onShowMoreMoments} />
-                <Providers model={model} />
-              </>
-            )}
-          </div>
-          {!model.gap && (vod.open || onZoomToBar) ? (
-            <div className="bkc-act">
-              {vod.open ? (
-                <a className="bkc-btn bkc-vod" href={vod.open.href} target="_blank" rel="noopener noreferrer" data-strip-vod-link>
-                  {vod.open.label}{ICON.ext}
-                </a>
-              ) : null}
-              {onZoomToBar ? (
-                <button type="button" className="bkc-qb bkc-zoom" onClick={onZoomToBar}>{ICON.zoom}Zoom to bucket</button>
-              ) : null}
-            </div>
-          ) : null}
+          {/* the emotes and the moments are rows of their own under the picture and the body, so the emotes'
+              chips and the moments take the card's width (sp-session-strip.css) */}
+          {model.gap ? null : <TopEmotes model={model} />}
+          {model.gap ? null : (
+            <Moments model={model} onLockMoment={onLockMoment} onShowMoreMoments={onShowMoreMoments} />
+          )}
         </div>
       </section>
       <p className="sr-only" aria-live="polite" aria-atomic="true">{said}</p>

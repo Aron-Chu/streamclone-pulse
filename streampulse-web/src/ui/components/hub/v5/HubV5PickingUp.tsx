@@ -5,17 +5,20 @@
  * minutes ran at least 1.5× its own usual, strongest × first, with how many more
  * messages a minute beside it (hubV5FeedModel). Each row opens the stream page.
  *
- * At every width (desktop took the phone order, B1 11-11) the first 6 show and
- * "Show all N" opens the rest in place.
+ * Under 1536 px (desktop took the phone order, B1 11-11) the first 6 show and
+ * "Show all N" opens the rest in place. From 1536 px it is the sticky column on
+ * the right again (L1, 11-16, as on 11-08): the whole list is in it and scrolls
+ * inside it, its bottom fading while more is below.
  *
  * H01 (11-13): once its data is over 15 minutes old, when the carousel's LIVE
  * badges go too (TOP_KEEP_MS), the old rows go: in their place it says it
  * can't tell, with the time it last knew, and shows no count (nor "Show all N").
  * Z06 (11-13): the × reads in pulse-core's words, "6.0× more chat".
  */
-import { useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatLiftRatio } from '@streampulse/pulse-core'
+import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { HubToggletip } from '../d3/HubToggletip'
 import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
@@ -26,7 +29,7 @@ import { channelHref, hubSavedClock } from './hubV5Model'
 import { TOP_KEEP_MS } from './hubV5TopModel'
 
 const H_ID = 'hv5-up-h'
-/** Rows before "Show all N". */
+/** Rows under 1536 px before "Show all N". */
 export const UP_FIRST = 6
 const SEP = <span className="hv5-fd-sep" aria-hidden="true">·</span>
 
@@ -45,7 +48,7 @@ const upAria = (x: FeedUpRow) => `${x.name}, ${formatLiftRatio(x.x)} times more 
 function UpItem({ x, art }: { x: FeedUpRow; art: string | null }) {
   return (
     <li>
-      <Link className="hv5-fd" to={channelHref({ login: x.login, streamId: x.streamId })} aria-label={upAria(x)}>
+      <Link className="hv5-fd" to={channelHref({ login: x.login, streamId: x.streamId })}>
         <span className="hv5-fd-av"><HubV5Avatar login={x.login} name={x.name} src={x.avatar} size={28} /></span>
         <span className="hv5-fd-tx" aria-hidden="true">
           <span className="hv5-fd-l1"><span className="hv5-fd-nm">{x.name}</span></span>
@@ -57,6 +60,8 @@ function UpItem({ x, art }: { x: FeedUpRow; art: string | null }) {
           </span>
         </span>
         {x.cat ? <span className="hv5-up-gm" aria-hidden="true"><GameArt url={art ?? undefined} name={x.cat} w={18} h={24} streamIds={[x.streamId]} /></span> : <span />}
+        {/* Its words for screen readers; an aria-label would not match the row's own text (WCAG 2.5.3). */}
+        <span className="hv5-vh">{upAria(x)}</span>
       </Link>
     </li>
   )
@@ -71,9 +76,27 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
   const { up, upAsOf, upSaved, art } = top
   const rows = up.up
   const n = rows.length
+  // from 1536 px the whole list is in the right column (L1, 11-16)
+  const wide = useMatchMedia('(min-width: 1536px)')
   const [all, setAll] = useState(false)
-  const listed = all ? rows : rows.slice(0, UP_FIRST)
+  const listed = wide || all ? rows : rows.slice(0, UP_FIRST)
   const hidden = n - listed.length
+
+  // the list scrolls inside the column from 1536 px: its bottom fades only while more of it is below (hub-v5.css)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [more, setMore] = useState(false)
+  const measureMore = useCallback(() => {
+    const body = bodyRef.current
+    setMore(!!body && body.scrollHeight - body.scrollTop - body.clientHeight > 1)
+  }, [])
+  useLayoutEffect(() => measureMore())
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!body || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(measureMore)
+    observer.observe(body)
+    return () => observer.disconnect()
+  }, [measureMore])
 
   const none = top.shown?.source === 'none'
   // older than LIVE lasts: it can't tell what is picking up now (S1, 11-13)
@@ -102,7 +125,7 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
           </span>
         ) : null}
       </div>
-      <div className="hv5-tm-body">
+      <div ref={bodyRef} className="hv5-tm-body" data-more={more ? '' : undefined} onScroll={measureMore}>
         {waiting ? (
           <>
             <ol className="hv5-tm-list hv5-tm-wait" aria-busy="true" aria-hidden="true">
@@ -126,7 +149,7 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
         ) : (
           <p className="hv5-tm-q">{none ? UP_UNAVAILABLE : saved ? upSavedNone(saved) : UP_NONE}</p>
         )}
-        {!old && (hidden > 0 || (all && n > UP_FIRST)) ? (
+        {!old && (hidden > 0 || (all && !wide && n > UP_FIRST)) ? (
           <div className="hv5-fd-more">
             <button className="hv5-qb" type="button" aria-expanded={all} onClick={() => setAll((v) => !v)}>
               {all ? 'Show fewer' : `Show all ${n}`}

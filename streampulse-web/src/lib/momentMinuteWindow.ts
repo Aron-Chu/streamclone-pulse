@@ -43,7 +43,7 @@ export interface MomentMinuteWindow {
 }
 
 type WindowMoment = Pick<DiscoveryMoment, 'login' | 'streamId' | 'offsetSeconds' | 'at'>
-interface MinutePointPayload { offsetSeconds?: unknown; chatCount?: unknown; missing?: unknown }
+interface MinutePointPayload { offsetSeconds?: unknown; chatCount?: unknown; chatMissing?: boolean; missing?: unknown }
 interface MinutesPayload { streamId?: unknown; channel?: unknown; startedAt?: unknown; minutes?: unknown }
 
 /**
@@ -82,9 +82,9 @@ function atMinute(at: number | undefined): number | null {
  *
  * Only rollups with a chat count become bars. A minute the API flags missing, or
  * never returns, stays empty rather than being drawn as zero. A present, unflagged
- * row without a chat count is `unrecorded`: the API omits a zero count, but a
- * viewer-only rollup (chat not yet captured for this channel) looks identical, so
- * it is neither drawn nor counted as measured chat. An explicit numeric 0 is a
+ * row without a chat count is `unrecorded`. Older API versions omit recorded
+ * zeros, so omitted counts are neither drawn nor counted as measured chat.
+ * An explicit numeric 0 is a
  * measured zero. Returns null when the payload is for another broadcast or no
  * minute in the window has a chat count.
  */
@@ -114,7 +114,7 @@ export function momentMinuteWindowFromMinutes(moment: WindowMoment, payload: unk
     if (relative < -MOMENT_MINUTES_BEFORE || relative > MOMENT_MINUTES_AFTER) continue
     const chat = row.chatCount
     const value = row.missing === true ? null
-      : chat == null ? 'unrecorded' as const
+      : row.chatMissing === true || chat == null ? 'unrecorded' as const
         : typeof chat === 'number' && Number.isFinite(chat) && chat >= 0 ? chat : null
     // A repeated minute keeps its last row, as the timeline's rollup conversion does.
     values.set(relative, value)
@@ -145,7 +145,7 @@ function keptMinutes(payload: unknown): MinutesPayload | null {
   const { streamId, channel, startedAt, minutes } = payload as MinutesPayload
   return { streamId, channel, startedAt, minutes: Array.isArray(minutes)
     ? (minutes.slice(0, 240) as MinutePointPayload[]).map(row => row && typeof row === 'object'
-      ? { offsetSeconds: row.offsetSeconds, chatCount: row.chatCount, missing: row.missing } : null)
+      ? { offsetSeconds: row.offsetSeconds, chatCount: row.chatCount, chatMissing: row.chatMissing, missing: row.missing } : null)
     : minutes }
 }
 

@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 import { LIVE_HEAT_SUBTITLE } from '@streampulse/pulse-core'
 import type { SupporterPaintStyle, SupporterTenure } from '../shared/supporterPaint.ts'
 import type { SupporterFinishId } from './supporterFinish.ts'
-import { theme } from './theme.ts'
+import { ink, theme } from './theme.ts'
 
 /**
  * The header's identity: recognition mark, title, status pill, lead line.
@@ -43,7 +43,7 @@ export const streamPulseHeaderChromeSidebar: CSSProperties = {
 export function StreamPulseTitleBlock({
   title = 'Stream Pulse',
   finish = null,
-  tenure = 'new',
+  tenure,
   paint,
   statusLabel,
   statusTone = 'idle',
@@ -51,7 +51,7 @@ export function StreamPulseTitleBlock({
 }: {
   title?: string
   finish?: SupporterFinishId | null
-  /** The crest earned from the server's support count. Drawn by the stylesheet. */
+  /** The crest earned from the server's support count, under any paint (Default too). Drawn by the stylesheet. */
   tenure?: SupporterTenure
   /** How the paint moves; the finish is its colour. */
   paint?: SupporterPaintStyle
@@ -63,7 +63,7 @@ export function StreamPulseTitleBlock({
   return (
     <>
       <div style={styles.titleRow}>
-        {finish ? <i className="pulse-crest" data-tenure={tenure} aria-hidden="true" /> : null}
+        {tenure || finish ? <i className="pulse-crest" data-tenure={tenure ?? 'new'} aria-hidden="true" /> : null}
         {finish
           ? <h2 className="pulse-paint" data-finish={finish} data-wave={paint?.wave} data-sheen={paint?.sheen} data-text={title} style={styles.paintedTitle}>{title}</h2>
           : <h2 style={styles.plainTitle}>{title}</h2>}
@@ -83,14 +83,14 @@ const pillBase: CSSProperties = {
 
 const styles: Record<string, CSSProperties> = {
   titleRow: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 8 },
-  plainTitle: { color: '#fafafa', fontSize: 17, fontWeight: 800, letterSpacing: 0, lineHeight: 1.25, margin: 0, overflowWrap: 'anywhere', minWidth: 0 },
+  plainTitle: { color: ink('#fafafa'), fontSize: 17, fontWeight: 800, letterSpacing: 0, lineHeight: 1.25, margin: 0, overflowWrap: 'anywhere', minWidth: 0 },
   paintedTitle: { fontSize: 17, fontWeight: 800, letterSpacing: 0, lineHeight: 1.25, margin: 0, overflowWrap: 'anywhere', minWidth: 0 },
   lead: { color: theme.textSecondary, fontSize: 11, fontWeight: 600, lineHeight: 1.4, margin: '6px 0 0' },
   livePill: {
     ...pillBase,
     background: 'rgba(34, 197, 94, 0.14)',
     border: '1px solid rgba(34, 197, 94, 0.35)',
-    color: 'rgba(187, 247, 208, 0.95)',
+    color: ink('rgba(187, 247, 208, 0.95)'),
   },
   idlePill: {
     ...pillBase,
@@ -106,12 +106,12 @@ const styles: Record<string, CSSProperties> = {
     ...pillBase,
     background: 'rgba(56, 189, 248, 0.14)',
     border: '1px solid rgba(56, 189, 248, 0.4)',
-    color: '#bae6fd',
+    color: ink('#bae6fd'),
   },
   localPill: {
     ...pillBase,
     background: 'rgba(245, 158, 11, 0.14)',
     border: '1px solid rgba(245, 158, 11, 0.4)',
-    color: 'rgba(253, 230, 138, 0.95)',
+    color: ink('rgba(253, 230, 138, 0.95)'),
   },
 }

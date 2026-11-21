@@ -128,9 +128,9 @@ test('one click saves a key, checks availability and opens Checkout; delayed pay
   // The created fixture installation has a ready, explicitly open entitlement.
   // Keep the choice through the real worker rather than a closed try-on control.
   await settings.getByRole('group', { name: 'Paint' }).getByRole('radio', { name: 'Halo', exact: true }).check()
-  await settings.getByRole('button', { name: 'Use Halo when Supporter starts', exact: true }).click()
+  await settings.getByRole('button', { name: 'Use this look when Supporter starts', exact: true }).click()
   await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toBeVisible()
-  await expect(settings.getByText('We keep this choice for 7 days.', { exact: true })).toBeVisible()
+  await expect(settings.locator('[data-supporter-finish-intent="halo"]')).toContainText('We keep this choice for 7 days.')
   expect(await tabs()).toEqual(['https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR'])
   await settings.getByRole('button', { name: 'Return to Stripe checkout', exact: true }).click()
   await expect.poll(tabs).toEqual(['https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR', 'https://checkout.stripe.com/c/pay/cs_test_local_fixture#fidkdWxOYHwnPyd1blppbHNgWmR'])

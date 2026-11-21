@@ -1300,19 +1300,25 @@ describe('change signals and stale reads', () => {
   it.each(['pulseAccountRevision', 'backendUrl', 'localBackendOptIn'])('clears access at once when %s changes and drops the old response', async key => {
     const onEntitlement = vi.fn()
     let finishOld!: (value: SupporterEntitlement) => void
+    let finishFresh!: (value: SupporterEntitlement) => void
     let mode: 'first' | 'slow' | 'fresh' = 'first'
     const view = await mount({
       account: () => linked,
-      entitlement: () => mode === 'first' ? ready('active') : mode === 'slow' ? new Promise(resolve => { finishOld = resolve }) : { state: 'not_linked' },
+      entitlement: () => mode === 'first' ? ready('active') : new Promise(resolve => { if (mode === 'slow') finishOld = resolve; else finishFresh = resolve }),
     }, onEntitlement)
     try {
       mode = 'slow'
       await view.change({ pulseSupporterRevision: { newValue: 'one' } })
       mode = 'fresh'
       await view.change({ [key]: { newValue: 'changed' } })
+      // While the new server's answer is pending, the look studio is paused rather than shown the old access.
       expect(view.text()).not.toContain('Supporter active')
-      expect(onEntitlement).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'not_linked' }))
+      expect(onEntitlement).toHaveBeenLastCalledWith(null)
       await act(async () => finishOld(ready('active')))
+      expect(view.text()).not.toContain('Supporter active')
+      expect(onEntitlement).toHaveBeenLastCalledWith(null)
+      await act(async () => finishFresh({ state: 'not_linked' }))
+      expect(onEntitlement).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'not_linked' }))
       expect(view.text()).not.toContain('Supporter active')
     } finally { view.cleanup() }
   })

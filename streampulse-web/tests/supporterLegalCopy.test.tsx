@@ -119,13 +119,13 @@ describe('Supporter legal copy', () => {
     expect(screen.getByRole('link', { name: 'Cancellation & refunds' }).getAttribute('href')).toBe('/refunds')
   })
 
-  it('Supporter lists the three perks the extension sells: title paint, the tenure crest and emote rain', () => {
+  it('Supporter lists the three perks the extension sells: title paint, the tenure crest and the backdrop', () => {
     render(<MemoryRouter><Supporter /></MemoryRouter>)
     const list = screen.getByRole('heading', { name: 'What you get' }).nextElementSibling!
     const items = [...list.querySelectorAll('li')].map(item => item.textContent ?? '')
     expect(items.some(item => /^Title paint/.test(item))).toBe(true)
     expect(items.some(item => /^Tenure crest/.test(item))).toBe(true)
-    expect(items.some(item => /^Emote rain/.test(item))).toBe(true)
+    expect(items.some(item => /^Backdrop/.test(item))).toBe(true)
     expect(items.join(' ')).not.toMatch(/signature/i)
   })
 
@@ -142,7 +142,7 @@ describe('Supporter legal copy', () => {
 
   it('Terms keeps the backdrop in the perk list without the removed migration claim', () => {
     const body = textOf(Terms, 'terms-of-use')
-    expect(body).toContain('Emote rain: 7TV emotes behind your Pulse panel header, still or falling. This is the 7TV header backdrop.')
+    expect(body).toContain("Backdrop: original StreamPulse art behind your Pulse panel header, in your paint's colours, still or drifting.")
     expect(body).not.toMatch(/moved from free|was free up to|backdrop you saved/i)
     expect(body).not.toMatch(/header accent|overlay finishes|none will be moved/i)
   })

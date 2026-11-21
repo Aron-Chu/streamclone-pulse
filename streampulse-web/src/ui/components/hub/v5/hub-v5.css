@@ -130,7 +130,8 @@
 .hv5-busiest { grid-area: busy; margin-top: 8px; }
 .hv5-activity { grid-area: act; margin-top: 16px; min-width: 0; }
 .hv5-latest { grid-area: rail; margin-top: 32px; }
-.hv5-emotes { grid-area: emo; margin-top: 32px; display: flex; flex-direction: column; }
+/* a size container like Where chat is beside it; the hub search's emote pick lands it clear of the docked bar, as Channels does */
+.hv5-emotes { grid-area: emo; margin-top: 32px; display: flex; flex-direction: column; container: hv5emo / inline-size; scroll-margin-top: 72px; }
 .hv5-games { grid-area: games; margin-top: 32px; display: flex; flex-direction: column; container: hv5grk / inline-size; }
 /* a 3-row "Top today" peek under the hero, at every width since desktop took the phone order (B1, 11-11) */
 .hv5-f3-peek { grid-area: peek; margin-top: 12px; }
@@ -167,9 +168,14 @@
   .hv5-busiest { margin-top: 4px; }
   .hv5-activity { margin-top: 10px; }
 }
-/* A1 (11-12): the row lists stop near 720 px, as they read on a tablet, so a name stays beside its number */
+/* A1 (11-12): in one column the row lists stop near 720 px, as they read on a tablet, so a name stays beside its
+   number. That holds wherever a list has a row to itself, Picking up now included when Top moments today is not on
+   the page (1200 to 1535 px). Side by side (from 1200 px, below) each list fills its own column instead, like Top
+   emotes and Games, so no hole opens between the pair on a wide screen (11-16); from 1536 px Picking up now is the
+   380 px right column (L1, 11-16). Channels fills its row: its table keeps the numbers in fixed columns with a line
+   under every row. */
 @media (min-width: 720px) {
-  .hv5-f3-peek, .hv5-latest, .hv5-channels { max-width: 720px; }
+  .hv5-f3-peek, .hv5-latest { max-width: 720px; }
 }
 
 /* ---------- section heads and controls (shared.css) ---------- */
@@ -779,22 +785,58 @@
 }
 .hv5-hero-install :is(.chrome-mark, .edge-mark, .firefox-mark) { width: 20px; height: 20px; }
 .hv5-hero-install .chrome-mark::after { inset: 5.6px; }
-/* B1 (11-11): above 719 px the promo is one slim line, its title and "Free · no account", with the same Add to Chrome
-   button at its end; the sample stage and the paragraph stay on the phone card's "See how it works" only */
+/* O1 (11-16): above 719 px the original card is back (C1 10-21, P2 10-22), in place of B1's slim line (11-11): the
+   panel's three pictures crossfading beside the title, the line and the same Add to Chrome. The sample stage stays on
+   the phone card's "See how it works" only. */
+.hv5-pr-frames {
+  position: relative;
+  width: 338px;
+  max-width: 100%;
+  aspect-ratio: 338 / 188;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #0e0e11;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+.hub-v5 .hv5-mast .hv5-pr-frames img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left top;
+  opacity: 0;
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.hub-v5 .hv5-mast .hv5-pr-frames img.on { opacity: 1; }
+.hv5-pr-frame-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7px;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+.hv5-pr-frame-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgb(255 255 255 / 0.28); transition: background-color 0.3s; }
+.hv5-pr-frame-dots i.on { background: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-v5 .hv5-mast .hv5-pr-frames img { transition: none; }
+}
 @media (min-width: 720px) {
   .hub-v5 .hv5-mast .hv5-promo {
-    display: flex;
-    align-items: center;
-    width: min(980px, 100%);
-    padding: 8px 8px 8px 20px;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 18px;
+    width: min(760px, 100%);
+    padding: 12px;
     border-radius: 14px;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
   }
-  .hub-v5 .hv5-mast :is(.hv5-pr-stage, .hv5-pr-p) { display: none; }
-  .hv5-pr-copy { flex: 1 1 auto; flex-flow: row wrap; align-items: center; gap: 4px 12px; }
-  .hub-v5 .hv5-mast .hv5-pr-h { font: 700 16px/22px var(--sp-font); letter-spacing: 0; }
-  .hub-v5 .hv5-mast .hv5-pr-free { margin-top: 0; }
-  .hub-v5 .hv5-mast .hv5-promo a.hv5-hero-install { order: 1; margin-left: auto; }
+  .hub-v5 .hv5-mast .hv5-pr-stage { display: none; }
+  .hv5-pr-copy { flex-flow: row wrap; align-items: center; gap: 6px 12px; }
+  .hub-v5 .hv5-mast :is(.hv5-pr-h, .hv5-pr-p) { flex-basis: 100%; }
+  .hub-v5 .hv5-mast .hv5-pr-h { font: 700 17px/22px var(--sp-font); letter-spacing: 0; }
+  .hub-v5 .hv5-mast .hv5-pr-p { margin: 0; font: 500 13px/18px var(--sp-font); }
+  .hub-v5 .hv5-mast :is(.hv5-promo a.hv5-hero-install, .hv5-pr-free) { margin-top: 4px; }
 }
 .hv5-hero-try {
   display: flex;
@@ -951,18 +993,28 @@
 /* the docked search in the top bar (11-01 board; HubV5TopBar). From 1100 px a field between the links and
    the buttons, shown once the hero's field is under the bar; narrower, a search button that opens it as a
    full row under the bar. It keeps its place while hidden, so the bar never shifts. The bar's install
-   button hides while the hero's install card is on screen. */
+   button hides while the hero's install card is on screen.
+   11-18: the field's slot is all the room between the links and the buttons, and the field (380 px at most)
+   sits on the bar's middle, or as near it as that room allows (HubV5TopBar sets --hv5-dock-shift). It rises
+   into the bar as the hero's field goes up under it and sinks back out when that field returns; the install
+   button does the same with the hero's card. */
 .analytics-topnav .hv5-dock {
   position: relative;
-  flex: 3 1 0;
+  flex: 1 1 0;
   min-width: 0;
-  max-width: 380px;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(-6px);
-  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s linear 0.18s;
+  transform: translateY(10px);
+  transition: opacity 140ms ease-in, transform 160ms cubic-bezier(.4, 0, 1, 1), visibility 0s linear 160ms;
 }
 .analytics-topnav .hv5-dock[data-shown] { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+@media (min-width: 1100px) {
+  .analytics-topnav:has(> .hv5-dock) .analytics-topnav__links { flex-grow: 0; }
+  .analytics-topnav .hv5-dock > .hv5-search { width: min(100%, 380px); margin-inline: auto; translate: var(--hv5-dock-shift, 0px) 0; }
+}
+@media (min-width: 1100px) and (prefers-reduced-motion: no-preference) {
+  .analytics-topnav .hv5-dock[data-shown] { transition: opacity 200ms ease-out, transform 320ms cubic-bezier(.16, 1, .3, 1), visibility 0s; }
+}
 .hv5-dock .hv5-search .hv5-field {
   height: 40px;
   padding: 0 8px 0 12px;
@@ -977,8 +1029,8 @@
 .hv5-dock .hv5-sugg { top: 46px; }
 .hv5-dock-btn { display: none; }
 .hv5-bar-install { display: contents; }
-.hv5-bar-install .analytics-topnav__install { transition: opacity 0.2s ease, visibility 0s linear 0s, background-color 140ms ease, color 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1); }
-.hv5-bar-install[data-hidden] .analytics-topnav__install { opacity: 0; visibility: hidden; transition-delay: 0s, 0.2s, 0s, 0s, 0s; }
+.hv5-bar-install .analytics-topnav__install { transition: opacity 200ms ease-out, visibility 0s linear 0s, background-color 140ms ease, color 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 320ms cubic-bezier(.16, 1, .3, 1); }
+.hv5-bar-install[data-hidden] .analytics-topnav__install { opacity: 0; visibility: hidden; translate: 0 8px; transition-duration: 140ms, 0s, 140ms, 140ms, 260ms, 160ms; transition-delay: 0s, 160ms, 0s, 0s, 0s, 0s; transition-timing-function: ease-in, linear, ease, ease, cubic-bezier(.34, 1.56, .64, 1), cubic-bezier(.4, 0, 1, 1); }
 @media (max-width: 1099px) {
   /* The narrow row (2026-11-02). Open, it is a full row under the bar whose height is one grid row (1fr); closed it is
      display none, so the bar never shifts. The clip holds the field inside the row while it grows, then frees the
@@ -1049,6 +1101,31 @@
     scale: .96;
     transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 70ms, 200ms;
   }
+}
+/* 11-18: 721-1099 px, the search button rises in as the hero's field goes under the bar and sinks out as it
+   returns, instead of popping (display is part of the transition, as the row's; the links fill the free room
+   there, so nothing beside it moves while it goes). On phones, where the bar has scrolled away, the pinned
+   button drops in at the top. */
+@media (min-width: 721px) and (max-width: 1099px) and (prefers-reduced-motion: no-preference) {
+  .hv5-dock-btn {
+    transition-property: background-color, border-color, color, box-shadow, opacity, scale, translate, display;
+    transition-duration: 140ms, 140ms, 140ms, 140ms, 200ms, 260ms, 320ms, 0s;
+    transition-timing-function: ease, ease, ease, ease, ease-out, cubic-bezier(.34, 1.56, .64, 1), cubic-bezier(.16, 1, .3, 1), linear;
+    transition-behavior: allow-discrete;
+  }
+  .hv5-dock-btn[hidden] {
+    opacity: 0;
+    translate: 0 8px;
+    transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 260ms, 160ms, 160ms;
+    transition-timing-function: ease, ease, ease, ease, ease-in, cubic-bezier(.34, 1.56, .64, 1), cubic-bezier(.4, 0, 1, 1), linear;
+  }
+  @starting-style {
+    .hv5-dock-btn:not([hidden]) { opacity: 0; translate: 0 8px; }
+  }
+}
+@keyframes hv5-dock-drop { from { opacity: 0; translate: 0 -8px; } }
+@media (max-width: 719px) and (prefers-reduced-motion: no-preference) {
+  .analytics-topnav .hv5-dock-btn[data-docked] { animation: hv5-dock-drop 320ms cubic-bezier(.16, 1, .3, 1); }
 }
 @media (max-width: 1099px) and (prefers-reduced-motion: no-preference) {
   .analytics-topnav .hv5-dock {
@@ -1596,7 +1673,7 @@
 /* "5.0× more emotes" (games first, 10-22: as Moments writes it) */
 .hv5-f2-x { flex: none; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
 .hv5-f2-x b { font-weight: 600; color: var(--hv5-accent); }
-/* Picking up now: the first 6, then Show all N (every width since B1, 11-11) */
+/* Picking up now under 1536 px: the first 6, then Show all N (B1, 11-11); from 1536 the whole list is in the right column (L1, 11-16) */
 .hv5-fd-more { display: flex; justify-content: center; padding: 6px 0 0; }
 @media (max-width: 719px) {
   .hub-v5 .hv5-feed .hv5-fd { height: 56px; }
@@ -1736,6 +1813,15 @@
 @media (max-width: 719px) {
   .hv5-em-find { flex: 1 1 100%; width: auto; height: 32px; }
 }
+/* 600-659 px wide (1280-1366 px screens): a narrower Find keeps the controls on the title's line, as at 1440 */
+@container hv5emo (min-width: 600px) and (max-width: 659px) {
+  .hv5-em-find { width: 120px; }
+}
+/* narrower, the controls take rows of their own: the meta stays under the title, and the controls follow it */
+@container hv5emo (max-width: 599px) {
+  .hv5-em-rh .hv5-end { order: 5; flex-basis: 100%; margin-bottom: 8px; }
+  .hv5-em-meta { order: 4; margin: 2px 0 8px; }
+}
 /* the provider colours (validated for colour-blind separation on dark) */
 :is(.hv5-em-map, .hv5-em-lg) [data-field="twitch"] { --fc: #3987e5; }
 :is(.hv5-em-map, .hv5-em-lg) [data-field="seventv"] { --fc: #d95926; }
@@ -1829,6 +1915,8 @@
 .hv5-em-row .hv5-em-ft { display: flex; align-items: baseline; gap: 6px; width: auto; flex: 1 1 auto; }
 .hv5-em-nm { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 600 13px/18px var(--sp-font); }
 .hv5-em-v { display: block; flex: none; color: var(--sp-text-2); }
+/* on a heated fill the grey share fell to 3.4:1; the name's light keeps it over 4.5:1 */
+.hv5-em-map[data-heat] .hv5-em-v { color: var(--sp-text-1); }
 /* backwards, not both (10-31): a fade held after it ends kept each of ~600 tiles and frames on a GPU layer and slowed the chart */
 @keyframes hv5-em-in { from { opacity: 0; } }
 @keyframes hv5-em-out { to { opacity: 0; } }
@@ -1902,7 +1990,8 @@
 .hv5-el-h b { font: 600 14px/20px var(--sp-font); color: var(--sp-text-1); }
 .hv5-el-ti { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .hub-v5 .hv5-emotes .hv5-el-ti img { width: 24px; height: 24px; object-fit: contain; }
-.hub-v5 .hv5-emotes .hv5-el-clear { margin-left: auto; height: 26px; padding: 0 6px; border-radius: 4px; color: var(--sp-text-2); }
+.hub-v5 .hv5-emotes .hv5-el-clear { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; height: 26px; padding: 0 6px; border-radius: 4px; color: var(--sp-text-2); }
+.hub-v5 .hv5-emotes .hv5-el-clear .hv5-ico { width: 12px; height: 12px; stroke-width: 2; }
 .hub-v5 .hv5-emotes .hv5-el-clear:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 .hv5-el-sub,
 .hv5-el-none { font: 500 12px/16px var(--sp-font); color: var(--sp-text-3); }
@@ -1918,6 +2007,8 @@
   column-gap: 22px;
 }
 .hv5-el-cols > li { min-width: 0; animation: hv5-el-rise 0.35s both; }
+/* a short list (3 streams that drove it, 5 live moments) fills the width in one column, not half of it */
+.hub-v5 .hv5-emotes .hv5-el-cols.hv5-el-one { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
 .hub-v5 .hv5-emotes .hv5-el-r {
   display: grid;
   grid-template-columns: 16px 24px minmax(0, 1fr) auto auto;
@@ -1931,6 +2022,10 @@
   font: 500 13px/18px var(--sp-font);
   text-align: left;
 }
+/* the change chips share one right-aligned column, so the shares beside them line up from row to row;
+   68 px holds every chip up to "↗ +999%" and "↘ −100%" (67 px), so only a rare 4-digit rise nudges its share */
+.hub-v5 .hv5-emotes .hv5-el-pace { grid-template-columns: 16px 24px minmax(0, 1fr) auto minmax(68px, auto); }
+.hub-v5 .hv5-emotes .hv5-el-pace > .hv5-chg { justify-self: end; }
 .hub-v5 .hv5-emotes a.hv5-el-r,
 .hub-v5 .hv5-emotes a.hv5-el-r:hover { color: var(--sp-text-1); text-decoration: none; }
 .hub-v5 .hv5-emotes .hv5-el-r:hover .hv5-el-n { text-decoration: underline; text-underline-offset: 3px; }
@@ -2016,6 +2111,8 @@
 .hv5-layer .hv5-ec-dl dd { margin: 0; color: var(--sp-text-1); font-variant-numeric: tabular-nums; }
 .hv5-ec-dl dd span { color: var(--sp-text-3); }
 .hv5-ec-dl dd .hv5-chg { margin: 0 2px; }
+/* the emote card: "vs its pace" and each "· …" part wrap as one piece, never a word left alone */
+.hv5-emc .hv5-ec-dl dd > span { white-space: nowrap; }
 .hv5-layer .hv5-ec-f { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--sp-line); color: var(--sp-text-3); }
 /* the game card: box art and the busiest chats */
 .hv5-layer.hv5-gp-card { width: 300px; }
@@ -2170,6 +2267,20 @@
 .hv5-ch5 col.k-ct { width: 96px; }
 .hv5-ch5 col.k-vs { width: 112px; }
 .hub-v5 .hv5-ch5 td.c-gm { color: var(--sp-text-2); }
+/* A wide table (11-16): the spare width is shared out across the columns instead of all going to Channel, so a
+   name's game and numbers stay near it. From 800 px, where a 14% number column is as wide as the 112 px one above. */
+@container hv5chan (min-width: 800px) {
+  .hv5-ch5 col.k-ch { width: 30%; }
+  .hv5-ch5 col.k-gm { width: 28%; }
+  .hv5-ch5 col.k-vw,
+  .hv5-ch5 col.k-ct,
+  .hv5-ch5 col.k-vs { width: 14%; }
+  /* with the Game column hidden, the same shares without it */
+  .hv5-ch5.one-game col.k-ch { width: 40%; }
+  .hv5-ch5.one-game col.k-vw,
+  .hv5-ch5.one-game col.k-ct,
+  .hv5-ch5.one-game col.k-vs { width: 20%; }
+}
 .hub-v5 .hv5-ch5-n {
   display: flex;
   align-items: center;
@@ -2259,7 +2370,7 @@
 /* ---------- 3b. Top moments today (D1 C1 F1 O1, 10-30; board artifacts/moments-top-today-20261030): the rail, and the phone peek's rows ---------- */
 /* a game chip's count: the day's moments in that game that hold up */
 .hv5-tm-games small { flex: none; font: 500 10.5px/1 var(--sp-font-mono, ui-monospace, monospace); color: var(--sp-text-3); }
-/* a scroll box: it never shrinks with the head (it did in the old >= 1536 px sticky column, gone since B1, 11-11) */
+/* a scroll box, so in the sticky column (>= 1536 px, L1 11-16) it would shrink with the head when the rows overflow: it doesn't */
 .hv5-tm-games { flex: none; mask-image: linear-gradient(90deg, #000 88%, transparent); }
 /* "Top moments today" leaves no room beside it for the age line (59 px at 1536 px and up, 14 px at 1100), so the line sits
    under the heading, lined up with its words, and keeps its height before the first answer. The head is a whole 43 px
@@ -2329,8 +2440,9 @@
 
 /* the list's last line: nothing to show, that's all (the hub's rows), or unavailable with Try again */
 .hub-v5 .hv5-top .hv5-tm-q { margin: 12px 0 4px; padding: 10px 12px; border: 1px dashed var(--sp-line-strong); border-radius: 9px; background: rgb(255 255 255 / 0.03); font: 500 12.5px/1.4 var(--sp-font); color: var(--sp-text-2); }
-/* Picking up now (M1 + P1, 11-02), the whole rail: a row is the face, "4.2× usual · +340/min · game" and the cover. It has a
-   row of its own at every width since desktop took the phone order (B1, 11-11): the first 6, then "Show all N" */
+/* Picking up now (M1 + P1, 11-02), the whole rail: a row is the face, "4.2× usual · +340/min · game" and the cover. Under
+   1536 px it has a row of its own in the phone's order (B1, 11-11): the first 6, then "Show all N". From 1536 it is the
+   column on the right again (L1, 11-16, below) */
 .hv5-up-n { font: 600 12px/1 var(--sp-font); color: var(--sp-text-3); font-variant-numeric: tabular-nums; }
 .hub-v5 .hv5-up .hv5-fd { grid-template-columns: 28px minmax(0, 1fr) auto; height: 48px; }
 .hv5-up .hv5-fd-av, .hv5-up .hv5-fd-av .hv5-av { width: 28px; height: 28px; }
@@ -2361,11 +2473,28 @@
   .hub-v5 .hv5-top .hv5-tm-list { transition: none; }
 }
 
-/* A1: pair the two adjacent existing sections without changing B1's DOM order. From 1200 px since W1 (11-13), as at 1440. */
+/* A1: pair the two adjacent existing sections without changing B1's DOM order. From 1200 px since W1 (11-13), as at 1440.
+   Each fills its own column, so no hole opens between the pair on a wide screen (11-16). */
 @media (min-width: 1200px) {
   .hub-v5.hub-d3 { grid-template-areas: "mast mast" "fol fol" "peek busy" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas"; }
   .hub-v5.hub-d3:has(> .hv5-most) { grid-template-areas: "mast mast" "fol fol" "peek busy" "most most" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas"; }
-  .hv5-f3-peek, .hv5-busiest { margin-top: 12px; width: 100%; max-width: 720px; }
+  .hv5-f3-peek, .hv5-busiest { margin-top: 12px; width: 100%; max-width: none; }
+}
+/* L1 (11-16): from 1536 px Picking up now is the column on the right again, as on 11-08 before B1 (11-11) moved it under
+   the chart. It runs from Busiest now down and stays in view while the page scrolls; under 1536 px B1's order stays. */
+@media (min-width: 1536px) {
+  .hub-v5.hub-d3 {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px;
+    grid-template-areas: "mast mast mast" "fol fol fol" "peek busy rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+  }
+  .hub-v5.hub-d3:has(> .hv5-most) { grid-template-areas: "mast mast mast" "fol fol fol" "peek busy rail" "most most rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail"; }
+  .hv5-latest { position: sticky; top: 72px; align-self: start; margin-top: 12px; }
+  /* the whole list is in the column and scrolls inside the window (scrollbar hidden), its last rows fading while more is
+     below (data-more) */
+  .hv5-feed.hv5-up { display: flex; flex-direction: column; max-height: calc(100vh - 88px); }
+  .hv5-up .hv5-tm-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+  .hv5-up .hv5-tm-body[data-more] { mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent); }
+  .hv5-up .hv5-tm-body::-webkit-scrollbar { display: none; }
 }
 @media (max-width: 719px) {
   .hv5-channels, .hv5-fol, .hv5-fol h2, .hv5-fol-go,

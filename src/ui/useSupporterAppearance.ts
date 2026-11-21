@@ -7,7 +7,7 @@ import type { supporterFinish } from './supporterFinish.ts'
 type Finish = keyof typeof supporterFinish
 /**
  * A verified membership: its equipped finish (if any), the crest it earns, how
- * this profile wants the paint to move, and whether perks such as emote rain are on.
+ * this profile wants the paint to move, and whether perks such as the backdrop are on.
  */
 export interface SupporterAppearance { finish: Finish | null; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true }
 type AppearanceReply = Awaited<ReturnType<typeof sendBackgroundMessage>> | null | undefined
@@ -48,7 +48,7 @@ export function useSupporterAppearance(request: () => Promise<AppearanceReply> =
 /**
  * The equipped Supporter finish for the header, verified by the worker, with
  * the crest it earns and the profile's wave and sheen. A Supporter who equips
- * no finish still verifies here, with `perks` and no finish, so emote rain
+ * no finish still verifies here, with `perks` and no finish, so the backdrop
  * follows the same membership check as the paint.
  *
  * A verified accent stays until its validity lapses: refreshing never clears

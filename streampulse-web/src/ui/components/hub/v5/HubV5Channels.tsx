@@ -190,9 +190,11 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
             <th className="c-gm" scope="col">Game</th>
             {HUB_CHANNEL_SORTS.map(([key, label]) => (
               <th key={key} className={`r c-${key}`} scope="col" aria-sort={sort === key ? (dir < 0 ? 'descending' : 'ascending') : 'none'}>
-                <button className="hv5-sortb" type="button" data-sort={key} data-on={sort === key ? '' : undefined} onClick={() => onSort(key)} aria-label={key === 'vs' ? 'vs own avg' : label} title={key === 'vs' ? 'vs own avg' : label}>
+                <button className="hv5-sortb" type="button" data-sort={key} data-on={sort === key ? '' : undefined} onClick={() => onSort(key)} title={key === 'vs' ? 'vs own avg' : label}>
                   {label}
                   {sort === key ? <HubV5Icon name={dir < 0 ? 'sortDown' : 'sortUp'} /> : null}
+                  {/* "vs avg" is short for the channel's own average: the rest is said after the visible words (WCAG 2.5.3). */}
+                  {key === 'vs' ? <span className="hv5-vh">(the channel’s own average)</span> : null}
                 </button>
               </th>
             ))}

@@ -14,6 +14,7 @@ const expected = [
   ['tools/twitch-vod-timestamp-link/index.html', 'Twitch VOD Timestamp Link Builder — StreamPulse', 'index,follow', 'https://streampulse.stream/tools/twitch-vod-timestamp-link'],
   ['guides/find-twitch-moments/index.html', 'Find and Bookmark Twitch Reaction Moments — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/find-twitch-moments'],
   ['guides/twitch-vod-timestamps/index.html', 'Twitch VOD Availability and Timestamps — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
+  ['recaps/index.html', 'Twitch Chat Recaps — StreamPulse', 'index,follow', 'https://streampulse.stream/recaps'],
   ['index.html', 'StreamPulse: Twitch Chat Stats & Top Moments', 'index,follow', 'https://streampulse.stream/'],
   ['analytics-fallback/index.html', 'StreamPulse Analytics', 'noindex,nofollow', 'https://streampulse.stream/analytics-fallback'],
   ['analytics/index.html', 'Live Twitch Chat Stats & Top Emotes — StreamPulse', 'index,follow', 'https://streampulse.stream/analytics'],
@@ -29,8 +30,9 @@ const expected = [
   ['support/index.html', 'Support — StreamPulse', 'index,follow', 'https://streampulse.stream/support'],
   ['feedback/index.html', 'Send Feedback — StreamPulse', 'index,follow', 'https://streampulse.stream/feedback'],
   ['discord/index.html', 'Discord — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/discord'],
-  ['changelog/index.html', 'Release Notes — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/changelog'],
-  ['404.html', 'Page not found — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/'],
+  ['changelog/index.html', 'Release Notes — StreamPulse', 'index,follow', 'https://streampulse.stream/changelog'],
+  // The 404 is not a page of its own, so it names no canonical URL.
+  ['404.html', 'Page not found — StreamPulse', 'noindex,nofollow', null],
 ]
 
 for (const page of pilotPages) {
@@ -65,7 +67,8 @@ function linkPreviewFailures(relativePath, html, title, canonical) {
   expectTag('property', 'og:site_name', 'StreamPulse')
   expectTag('property', 'og:title', title)
   expectTag('property', 'og:description', description)
-  expectTag('property', 'og:url', canonical)
+  if (canonical) expectTag('property', 'og:url', canonical)
+  else if (metaContent(html, 'property', 'og:url') !== undefined) out.push(`${relativePath}: og:url on a page with no canonical URL`)
   expectTag('property', 'og:image', SHARE_IMAGE)
   expectTag('property', 'og:image:type', 'image/png')
   expectTag('property', 'og:image:width', '1200')
@@ -106,7 +109,10 @@ for (const [relativePath, title, robots, canonical] of expected) {
   const actualTitle = decodeHtml(/<title>([\s\S]*?)<\/title>/.exec(html)?.[1])
   if (actualTitle !== title) failures.push(`${relativePath}: incorrect title`)
   if (!html.includes(`<meta name="robots" content="${robots}" />`)) failures.push(`${relativePath}: incorrect robots policy`)
-  if (!html.includes(`<link rel="canonical" href="${canonical}" />`)) failures.push(`${relativePath}: incorrect canonical URL`)
+  if (canonical ? !html.includes(`<link rel="canonical" href="${canonical}" />`) : /<link\s+rel="canonical"/i.test(html)) failures.push(`${relativePath}: incorrect canonical URL`)
+  // A prerendered page's trailing-slash twin redirects to it (scripts/prerender.mjs slashRedirects).
+  const folder = /^(?!_recap-pages\/|analytics-fallback\/)(.+)\/index\.html$/.exec(relativePath)?.[1]
+  if (folder && existsSync(join(dist, '_redirects')) && !readFileSync(join(dist, '_redirects'), 'utf8').split(/\r?\n/).includes(`/${folder}/ /${folder} 301`)) failures.push(`${relativePath}: /${folder}/ does not redirect to /${folder}`)
   failures.push(...linkPreviewFailures(relativePath, html, title, canonical))
   if (!textContainsHostedApiOrigin(html)) failures.push(`${relativePath}: hosted API CSP missing`)
   if (!/<div id="root"[^>]*>[\s\S]*?<h1\b/.test(html)) failures.push(`${relativePath}: missing meaningful prerendered heading`)

@@ -81,7 +81,7 @@ describe('billing membership copy', () => {
     const includes = label.nextElementSibling?.textContent ?? ''
     expect(includes).toMatch(/Title paint/)
     expect(includes).toMatch(/Tenure crest/)
-    expect(includes).toMatch(/Emote rain/)
+    expect(includes).toMatch(/Backdrop/)
     expect(includes).not.toMatch(/signature/i)
   })
 

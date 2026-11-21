@@ -91,7 +91,9 @@ describe('0.2.6 release notes', () => {
   it('name the Supporter perks from the one perk list', async () => {
     const perks = (await import('../src/shared/supporter-perks.json')).default
     const supporterLine = entry('0.2.6').new!.find(line => line.startsWith('A Supporter preview'))!
-    for (const name of perks.names) expect(supporterLine.toLowerCase()).toContain(name.toLowerCase())
+    // 0.2.6 shipped this line when the backdrop perk was called "Emote rain"; shipped history is not rewritten.
+    const shippedName: Record<string, string> = { Backdrop: 'Emote rain' }
+    for (const name of perks.names) expect(supporterLine.toLowerCase()).toContain((shippedName[name] ?? name).toLowerCase())
   })
 
   it('keep the quick-settings preview no larger than it was when numbered 0.2.2, for the content-script budget', () => {

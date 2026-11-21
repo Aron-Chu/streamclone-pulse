@@ -9,7 +9,7 @@ import {
   type PulseCoverageSource,
 } from './missedMoments.ts'
 import { formatPulseApiError } from './pulseApiErrors.ts'
-import { theme } from './theme.ts'
+import { ink, theme, tone } from './theme.ts'
 
 export interface CoverageCardProps {
   source: PulseCoverageSource & { tracking?: boolean; streamId?: string; helixEnabled?: boolean }
@@ -142,7 +142,7 @@ const styles: Record<string, CSSProperties> = {
     margin: '0 0 6px',
   },
   progressTrack: {
-    background: 'rgba(255, 255, 255, 0.08)',
+    background: tone('rgba(255, 255, 255, 0.08)'),
     borderRadius: 999,
     height: 4,
     overflow: 'hidden',
@@ -169,7 +169,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 0,
   },
   error: {
-    color: '#fca5a5',
+    color: ink('#fca5a5'),
     fontSize: 11,
     lineHeight: 1.4,
     margin: '6px 0 0',

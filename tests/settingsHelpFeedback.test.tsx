@@ -177,7 +177,8 @@ describe('settings page: Community card', () => {
     const hover = hostRule('.pulse-host-community-link:hover')
     const discord = hostRule('.pulse-host-community-link[data-community-link="discord"]')
     const discordHover = hostRule('.pulse-host-community-link[data-community-link="discord"]:hover')
-    const muted = hostRule('.pulse-host-community-copy small').color
+    // Theme inks carry a Twitch-light var() over the dark literal; this page has no light mode, so the literal renders.
+    const muted = hostRule('.pulse-host-community-copy small').color.replace(/^var\(--[\w-]+, (.+)\)$/, '$1')
     const onBlurple = hostRule('.pulse-host-community-link[data-community-link="discord"] .pulse-host-community-copy small').color
     expect(muted).toMatch(/^#[0-9a-f]{6}$/i)
     expect(onBlurple).toBe('#fff')

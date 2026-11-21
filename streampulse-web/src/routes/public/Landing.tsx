@@ -23,6 +23,7 @@ import { capturePublicCta } from '../../lib/productAnalytics'
 import type { HubLiveChannel } from '../../lib/publicHub'
 // The hub's own search: the same suggestions and Enter rules, styled for this page in landing.css.
 import { HubV5SearchBox } from '../../ui/components/hub/v5/HubV5SearchBox'
+import { HubV5DockSearch } from '../../ui/components/hub/v5/HubV5TopBar'
 import { HubV5Avatar } from '../../ui/components/hub/v5/HubV5Avatar'
 import { channelHref, channelsByViewers, formatHubInt, hubCategoryArt, hubSearchEmotes, hubSearchGames, whereChatIs, type HubSearchEmote, type HubSearchGame } from '../../ui/components/hub/v5/hubV5Model'
 import { createHubV5SearchStore, HubV5SearchContext, useHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
@@ -88,7 +89,28 @@ function useHeroButtonsInView(mainRef: RefObject<HTMLElement | null>): boolean {
   return inView
 }
 
-function TopNav({ discord, heroButtons }: { discord: string | null; heroButtons: boolean }) {
+/**
+ * Docks the hero's search in the header once the field has gone up under it, as the hub's
+ * hero does with its bar (HubV5Hero): the header then shows the same box (HubV5DockSearch).
+ */
+function useDockedSearch(fieldRef: RefObject<HTMLElement | null>) {
+  const store = useHubV5SearchStore()
+  useEffect(() => {
+    const field = fieldRef.current
+    if (!field || typeof IntersectionObserver === 'undefined') return undefined
+    const header = Math.round(document.querySelector('.sl-header')?.getBoundingClientRect().bottom ?? 0)
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry) store.set({ docked: !entry.isIntersecting && entry.boundingClientRect.bottom <= header + 1 })
+    }, { rootMargin: `${-header}px 0px 0px 0px` })
+    io.observe(field)
+    return () => {
+      io.disconnect()
+      store.set({ docked: false })
+    }
+  }, [fieldRef, store])
+}
+
+function TopNav({ discord, heroButtons, live, games, emotes }: { discord: string | null; heroButtons: boolean; live: readonly HubLiveChannel[]; games: readonly HubSearchGame[]; emotes: readonly HubSearchEmote[] }) {
   return (
     <header className="sl-header">
       <nav className={discord ? 'sl-nav sl-nav--discord' : 'sl-nav'} aria-label="StreamPulse" data-hero-buttons={heroButtons ? '' : undefined}>
@@ -100,13 +122,18 @@ function TopNav({ discord, heroButtons }: { discord: string | null; heroButtons:
           <a href="#demo">Pulse tab</a>
           <Link to="/docs">Docs</Link>
         </div>
+        {/* The hub's docked search (11-18): from 1100 px a field on the header's middle, 760-1099 px a search button (landing.css). */}
+        <div className="sl-dock">
+          <HubV5DockSearch live={live} games={games} emotes={emotes} />
+        </div>
+        {/* Install first: while it steps back its empty place joins the free room, so Discord and Open the Hub stay together at the end. */}
         <div className="sl-nav__right">
+          <InstallCta className={buttonClass('outline', 'sm', { className: 'sl-nav__install' })} data-cta="chrome-install-nav" icon="mark" />
           {discord ? (
             <a href={discord} target="_blank" rel="noopener noreferrer" className={buttonClass('default', 'sm', { className: 'sl-discord-nav' })} aria-label={DISCORD_LABEL}>
               <DiscordMark size={16} />Discord
             </a>
           ) : null}
-          <InstallCta className={buttonClass('outline', 'sm', { className: 'sl-nav__install' })} data-cta="chrome-install-nav" icon="mark" />
           <Link to="/analytics" className={buttonClass('outline', 'sm', { className: 'sl-nav__analytics' })} onClick={() => capturePublicCta('open_analytics')}>
             Open the Hub
           </Link>
@@ -146,7 +173,7 @@ function TryChannels({ live }: { live: readonly HubLiveChannel[] }) {
   )
 }
 
-/** / and Ctrl/⌘K focus the search box, as on the hub. */
+/** / and Ctrl/⌘K focus the search box on show, as on the hub: the header's once docked (opening its row when narrow), else the hero's. */
 function useSearchShortcut() {
   const store = useHubV5SearchStore()
   useEffect(() => {
@@ -157,8 +184,12 @@ function useSearchShortcut() {
       const slash = event.key === '/' && !inField && !event.metaKey && !event.ctrlKey && !event.altKey
       if (!cmdK && !slash) return
       event.preventDefault()
-      store.inputs.hero?.focus()
-      store.inputs.hero?.select()
+      const { inputs } = store
+      const dock = store.get().docked ? inputs.dock : null
+      if (dock && !dock.getClientRects().length) inputs.openDock?.()
+      const input = dock ?? inputs.hero
+      input?.focus()
+      input?.select()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -183,7 +214,9 @@ function Hero({
   emoteItems: ReturnType<typeof buildEmoteTicker>
   moverItems: ReturnType<typeof buildMoverTicker>
 }) {
+  const searchRef = useRef<HTMLDivElement>(null)
   useSearchShortcut()
+  useDockedSearch(searchRef)
   return (
     <section className="sl-hero sl-hero--stage" aria-labelledby="hero-headline">
       <div className="sl-stage">
@@ -191,7 +224,7 @@ function Hero({
           Find the Twitch moments people <span className="sl-accent">actually reacted to.</span>
         </h1>
         <p>Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
-        <div className="sl-search">
+        <div className="sl-search" ref={searchRef}>
           <HubV5SearchBox live={live} variant="hero" games={games} emotes={emotes} />
         </div>
         <TryChannels live={live} />
@@ -233,6 +266,8 @@ function Footer({ discord }: { discord: string | null }) {
             <Link to="/docs">Extension guide</Link>
             <Link to="/tools/twitch-vod-timestamp-link">Twitch timestamp tool</Link>
             <Link to="/guides/find-twitch-moments">Find Twitch moments</Link>
+            <Link to="/guides/twitch-vod-timestamps">Twitch VOD timestamps</Link>
+            <Link to="/recaps">Stream recaps</Link>
             <Link to="/status">Status</Link>
             <Link to="/changelog">Changelog</Link>
           </div>
@@ -325,7 +360,7 @@ export default function Landing() {
         <EmoteRain />
         <DeferredChatBackdrop />
         <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
-        <TopNav discord={discord} heroButtons={heroButtons} />
+        <TopNav discord={discord} heroButtons={heroButtons} live={live} games={searchGames} emotes={searchEmotes} />
         <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
           <Hero live={live} games={searchGames} emotes={searchEmotes} emoteItems={emoteItems} moverItems={moverItems} />
 

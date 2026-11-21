@@ -77,20 +77,31 @@ for (const [label, featuredSession] of [['with', READY_FEATURED_SESSION], ['with
     }).toPass(SETTLED)
     await noSideScroll(page)
 
-    // desktop takes the phone's order (B1, 11-11): every section full width, only Top emotes and Where chat is side by side
+    // under 1536 px desktop takes the phone's order (B1, 11-11): Picking up now under the chart, in the left column beside
+    // Top moments today from 1200 px (A1). From 1536 px it is the sticky column on the right, from Busiest now down (L1, 11-16)
     for (const [width, height] of [[1440, 900], [1920, 1000]] as const) {
       await page.setViewportSize({ width, height })
+      const column = width >= 1536
+      const flow = column ? order.filter((selector) => selector !== '#latest') : order
       await expect(async () => {
         const tops: number[] = []
-        for (const selector of order) tops.push((await box(page, selector)).y)
+        for (const selector of flow) tops.push((await box(page, selector)).y)
         expect(tops).toEqual([...tops].sort((a, b) => a - b))
-        const [activity, rail, emotes, games] = [await box(page, '#activity'), await box(page, '#latest'), await box(page, '#emotes'), await box(page, '#games')]
-        expect(Math.abs(rail.x - activity.x)).toBeLessThanOrEqual(1)
-        expect(Math.abs(rail.width - activity.width)).toBeLessThanOrEqual(1)
-        expect(emotes.y).toBeGreaterThanOrEqual(rail.y + rail.height - 1)
+        const [busiest, activity, rail, emotes, games] = await Promise.all(['#busiest', '#activity', '#latest', '#emotes', '#games'].map((selector) => box(page, selector)))
+        if (column) {
+          expect(Math.abs(rail.width - 380)).toBeLessThanOrEqual(1)
+          expect(Math.abs(rail.y - busiest.y)).toBeLessThanOrEqual(1)
+          expect(rail.x).toBeGreaterThanOrEqual(activity.x + activity.width + 23)
+          expect(games.x + games.width).toBeLessThanOrEqual(rail.x - 23)
+        } else {
+          expect(Math.abs(rail.x - activity.x)).toBeLessThanOrEqual(1)
+          expect(rail.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
+          expect(emotes.y).toBeGreaterThanOrEqual(rail.y + rail.height - 1)
+        }
         expect(Math.abs(emotes.y - games.y)).toBeLessThanOrEqual(1)
         expect(emotes.x + emotes.width).toBeLessThanOrEqual(games.x + 1)
       }).toPass(SETTLED)
+      await expect(page.locator('#latest')).toHaveCSS('position', column ? 'sticky' : 'static')
       await noSideScroll(page)
     }
   })
@@ -331,10 +342,10 @@ test('Busiest now shows Twitch’s live picture while Live and keeps the face fo
   await expect(tiles.first()).toHaveAttribute('data-login', 'xqc')
   await expect(tiles.first().locator('img.hv5-bzv-prev[data-shown]')).toBeVisible()
   await expect(tiles.first().locator('img.hv5-bzv-prev')).toHaveAttribute('src', /\/previews-ttv\/live_user_xqc-440x248\.jpg\?t=\d+$/)
-  await expect(tiles.first().locator('a')).toHaveAttribute('aria-label', /\. Twitch’s live picture, can be a few minutes old\.$/)
+  await expect(tiles.first().locator('a')).toHaveAccessibleName(/\. Twitch’s live picture, can be a few minutes old\.$/)
   // the second channel's picture is Twitch's offline one: its face stays
   await expect(tiles.nth(1).locator('img.hv5-bzv-prev')).toHaveCount(0)
-  await expect(tiles.nth(1).locator('a')).toHaveAttribute('aria-label', /\. Profile picture\.$/)
+  await expect(tiles.nth(1).locator('a')).toHaveAccessibleName(/\. Profile picture\.$/)
   await noSideScroll(page)
 })
 
@@ -375,6 +386,8 @@ test('Channels sorts, filters, shows more and marks what is not measured', async
   await expect(rows).toHaveCount(10)
 
   const vs = channels.locator('[data-sort="vs"]')
+  // Its name starts with the words it shows, then says what "avg" is.
+  await expect(vs).toHaveAccessibleName('vs avg (the channel’s own average)')
   await vs.click()
   await expect(vs).toBeFocused()
   await expect(channels.locator('th.c-vs')).toHaveAttribute('aria-sort', 'descending')
@@ -528,14 +541,23 @@ test('on a phone the promo opens on See how it works, and Find emote clears with
   await expect(emotes.locator('.hv5-em-ly:not([data-out]) > .hv5-em-t[data-found]')).toHaveCount(0)
   await noSideScroll(page)
 
-  // a desktop gets the slim promo (B1, 11-11): one line and the same install button, no scene, no phone line or button
+  // a desktop gets the original card again (O1, 11-16): the panel's pictures beside the title, the line and the same
+  // install button; no scene, no phone line or button. Reduced motion keeps the first picture and shows no dots.
   await page.setViewportSize({ width: 1440, height: 900 })
+  const frames = promo.locator('.hv5-pr-frames')
+  await expect(frames).toBeVisible()
+  await expect(frames.locator('img')).toHaveCount(3)
+  await expect(frames.locator('img.on')).toHaveCount(1)
+  await expect(frames.locator('img').first()).toHaveClass('on')
+  await expect(frames.locator('.hv5-pr-frame-dots')).toHaveCount(0)
   await expect(promo.locator('.hv5-pr-h')).toBeVisible()
+  await expect(promo.locator('.hv5-pr-p')).toBeVisible()
   await expect(promo.locator('.hv5-hero-install')).toBeVisible()
   await expect(promo.locator('.hv5-hero-install')).toHaveAttribute('data-cta', 'chrome-install-hub-hero')
-  for (const selector of ['.hv5-pr-stage', '.hv5-pr-p', '.hv5-pr-sub']) await expect(promo.locator(selector)).toBeHidden()
+  for (const selector of ['.hv5-pr-stage', '.hv5-pr-sub']) await expect(promo.locator(selector)).toBeHidden()
   await expect(more).toBeHidden()
-  expect((await promo.boundingBox())!.height).toBeLessThanOrEqual(64)
+  expect((await promo.boundingBox())!.height).toBeLessThanOrEqual(216)
+  await noSideScroll(page)
 })
 
 test('a Top moments card on a phone keeps its clock whole; the game and the tail give way first (11-14)', async ({ page }) => {

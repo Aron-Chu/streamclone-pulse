@@ -108,7 +108,8 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     expect(ids().length).toBeLessThanOrEqual(20)
     expect(within(big()!).getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments')
     const chips = within(within(big()!).getByRole('group', { name: 'Show one game' })).getAllByRole('button').slice(1)
-    expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(snap.categories!.map((g) => `${g.name}, ${g.moments} ${g.moments === 1 ? 'moment' : 'moments'} that hold up today`))
+    // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
+    expect(snap.categories!.map((g) => within(big()!).getByRole('button', { name: `${g.name}, ${g.moments} ${g.moments === 1 ? 'moment' : 'moments'} that hold up today` }))).toEqual(chips)
     // the list's (i): ended streams drop out of the list too, until B1
     fireEvent.click(screen.getByRole('button', { name: 'About Top moments today' }))
     const tip = document.querySelector('[data-hub-toggletip-pop]')!.textContent!
@@ -116,7 +117,7 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     expect(tip).toContain('Streams that have ended drop out.')
     fireEvent.click(screen.getByRole('button', { name: 'About Top moments today' }))
     expect(peekRows()).toHaveLength(3)
-    expect(peekRows()[0]!.querySelector('button')!.getAttribute('aria-label')).toMatch(/^1\. .+ Open it in Top moments below\.$/)
+    expect(within(peekRows()[0]!).getByRole('button', { name: /^1\. .+ Open it in Top moments below\.$/ })).toBeTruthy()
     // Picking up has none of the day's rows
     expect(rail().querySelector('.hv5-tm-it')).toBeNull()
   })
@@ -125,7 +126,7 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     render(view({ attempt: 1 }))
     await waitFor(() => expect(peekRows()).toHaveLength(3))
     const third = peekRows()[2]!.querySelector('button')!
-    const name = third.getAttribute('aria-label')!.match(/^3\. ([^,]+),/)![1]
+    const name = third.querySelector(':scope > .hv5-vh')!.textContent!.match(/^3\. ([^,]+),/)![1]
     fireEvent.click(third)
     await waitFor(() => expect(front().querySelector('strong')!.textContent).toBe(name))
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
@@ -169,17 +170,22 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     screenerV1: screener({ multiplier: x, currentPerMin: now, baselinePerMin: usual, absoluteDeltaPerMin: now - usual }),
   }) as unknown as HubLiveChannel
   const hubWith = (channels: HubLiveChannel[]) => ({ ...capture, liveChannels: channels })
+  const wide = (on: boolean) => vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+    matches: on && query.includes('1536px'), media: query, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  }) as MediaQueryList)
 
   it('lists only what is heating up now, strongest × first, with how many more a minute beside it', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
     render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60), hot('bravo', 3, 45, 15), hot('charlie', 1.6, 240, 150)]), nowMs: at }))
     expect(within(rail()).getByRole('heading', { name: 'Picking up now' })).toBeTruthy()
     const links = upRows().map((li) => li.querySelector('a')!)
-    expect(links.map((a) => a.getAttribute('aria-label'))).toEqual([
+    // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
+    expect([
       'BRAVO, 3.0 times more chat, 30 more messages a minute, Overwatch 2. Opens the stream page.',
       'ALPHA, 2.0 times more chat, 60 more messages a minute, Overwatch 2. Opens the stream page.',
       'CHARLIE, 1.6 times more chat, 90 more messages a minute, Overwatch 2. Opens the stream page.',
-    ])
+    ].map((name) => within(rail()).getByRole('link', { name }))).toEqual(links)
     expect(links[0]!.querySelector('.hv5-up-add')!.textContent).toBe('+30/min')
     // the count shows as a number and reads as '3 channels' (a span's aria-label is not read, HUB-LIVE-9)
     expect(rail().querySelector('.hv5-up-n > [aria-hidden]')!.textContent).toBe('3')
@@ -196,17 +202,28 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     expect(strength.map((el) => el.querySelector('b')!.textContent)).toEqual([3, 2, 1.6].map((x) => `${formatLiftRatio(x)}×`))
   })
 
-  it('shows the first 6 and Show all in place at every width (desktop took the phone order, B1 11-11)', () => {
+  it('shows every row in the right column from 1536 px (L1, 11-16); narrower, the first 6 and Show all in place (B1, 11-11)', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
     const many = hubWith(Array.from({ length: 8 }, (_, i) => hot(`c${i}`, 2 + i / 10, 120, 60)))
-    render(view({ attempt: 1, hub: many, nowMs: at }))
-    expect(upRows()).toHaveLength(UP_FIRST)
-    const all = within(rail()).getByRole('button', { name: 'Show all 8' })
-    expect(all.getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(all)
+    const mq = wide(true)
+    const { unmount } = render(view({ attempt: 1, hub: many, nowMs: at }))
     expect(upRows()).toHaveLength(8)
-    fireEvent.click(within(rail()).getByRole('button', { name: 'Show fewer' }))
-    expect(upRows()).toHaveLength(UP_FIRST)
+    expect(within(rail()).queryByRole('button', { name: /^Show / })).toBeNull()
+    unmount()
+    mq.mockRestore()
+    const narrow = wide(false)
+    try {
+      render(view({ attempt: 1, hub: many, nowMs: at }))
+      expect(upRows()).toHaveLength(UP_FIRST)
+      const all = within(rail()).getByRole('button', { name: 'Show all 8' })
+      expect(all.getAttribute('aria-expanded')).toBe('false')
+      fireEvent.click(all)
+      expect(upRows()).toHaveLength(8)
+      fireEvent.click(within(rail()).getByRole('button', { name: 'Show fewer' }))
+      expect(upRows()).toHaveLength(UP_FIRST)
+    } finally {
+      narrow.mockRestore()
+    }
   })
 
   it('says when nothing is picking up, and waits for the hub’s first answer', () => {
@@ -252,12 +269,34 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     expect(within(rail()).queryByText('Loading channels picking up')).toBeNull()
   })
 
-  it('no longer scrolls inside a sticky column, so its bottom never fades', () => {
+  it('fades the list’s bottom only while more of it is below (the sticky column from 1536 px, L1 11-16)', () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
-    render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60)]), nowMs: at }))
-    expect(rail().querySelector('.hv5-tm-body')!.hasAttribute('data-more')).toBe(false)
+    let scrolled = 0
+    const own = (el: Element, n: number) => (el.classList.contains('hv5-tm-body') ? n : 0)
+    const sh = vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockImplementation(function (this: Element) { return own(this, 900) })
+    const ch = vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (this: Element) { return own(this, 600) })
+    const st = vi.spyOn(Element.prototype, 'scrollTop', 'get').mockImplementation(() => scrolled)
+    try {
+      render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60)]), nowMs: at }))
+      const body = rail().querySelector<HTMLElement>('.hv5-tm-body')!
+      expect(body.hasAttribute('data-more')).toBe(true)
+      scrolled = 300
+      fireEvent.scroll(body)
+      expect(body.hasAttribute('data-more')).toBe(false)
+      scrolled = 120
+      fireEvent.scroll(body)
+      expect(body.hasAttribute('data-more')).toBe(true)
+    } finally {
+      sh.mockRestore()
+      ch.mockRestore()
+      st.mockRestore()
+    }
+    // the CSS masks only a body with more below, and only in the column from 1536 px, so the last line never sits in the fade
     const css = readFileSync(resolve(__dirname, '../src/ui/components/hub/v5/hub-v5.css'), 'utf8')
-    expect(css).not.toMatch(/\.hv5-tm-body\[data-more\]/)
+    const column = css.slice(css.indexOf('@media (min-width: 1536px) {'))
+    expect(column.match(/\.hv5-up \.hv5-tm-body \{([^}]*)\}/)![1]).not.toContain('mask-image')
+    expect(column).toMatch(/\.hv5-up \.hv5-tm-body\[data-more\] \{ mask-image: linear-gradient\(180deg/)
+    expect(css.slice(0, css.indexOf('@media (min-width: 1536px) {'))).not.toMatch(/\.hv5-tm-body\[data-more\]/)
   })
 })
 

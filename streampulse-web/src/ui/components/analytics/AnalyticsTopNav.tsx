@@ -65,12 +65,14 @@ export function AnalyticsTopNav({
       <a href="#analytics-main" className="analytics-topnav__skip">
         Skip to analytics content
       </a>
-      <Link to="/analytics" className="analytics-topnav__brand" aria-label="StreamPulse analytics home">
+      {/* Named by its visible words, so speech input can say what it reads. The space between
+          them keeps the words apart for assistive tech; in a flex column it takes no room. */}
+      <Link to="/analytics" className="analytics-topnav__brand" aria-label="StreamPulse Analytics Hub">
         <BrandMark className="analytics-topnav__mark" size={30} />
         <span className="analytics-topnav__brand-copy">
           <strong>
             Stream<span>Pulse</span>
-          </strong>
+          </strong>{' '}
           <small>Analytics Hub</small>
         </span>
       </Link>

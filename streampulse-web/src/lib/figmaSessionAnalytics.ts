@@ -396,6 +396,7 @@ export interface PortalStreamMinutesResponse {
     viewerMax?: number
     viewerLatest?: number
     chatCount?: number
+    chatMissing?: boolean
     seventvEmoteCount?: number
     missing?: boolean
   }>
@@ -413,7 +414,7 @@ export function chatPerMinuteRange(
   minutes: PortalStreamMinutesResponse['minutes'],
 ): { min: number; max: number } | null {
   const values = minutes
-    .filter((minute) => !minute.missing)
+    .filter((minute) => !minute.missing && !minute.chatMissing)
     .map((minute) => minute.chatCount)
     .filter((value): value is number => value != null && Number.isFinite(value) && value >= 0)
   if (!values.length) return null
@@ -427,15 +428,15 @@ export function chartPointsFromMinutes(
   minutes: PortalStreamMinutesResponse['minutes'],
 ): FigmaChartPoint[] {
   if (!minutes.length) return []
-  const maxChat = Math.max(...minutes.map((m) => m.chatCount ?? 0), 1)
+  const maxChat = Math.max(chatPerMinuteRange(minutes)?.max ?? 0, 1)
   const maxViewers = Math.max(...minutes.map((m) => m.viewerLatest ?? m.viewerMax ?? m.viewerAvg ?? 0), 1)
   const maxEmotes = Math.max(...minutes.map((m) => m.seventvEmoteCount ?? 0), 1)
   // Spike-preserving downsample: uniform stride flattens chat/emote peaks on long sessions.
   return downsampleTimeline(minutes, undefined, rollupChartActivityScore).map((minute) => {
-    const chat = minute.chatCount ?? 0
+    const chat = minute.missing || minute.chatMissing ? undefined : minute.chatCount
     const viewers = minute.viewerLatest ?? minute.viewerMax ?? minute.viewerAvg ?? 0
     const emotes = minute.seventvEmoteCount ?? 0
-    const chatNorm = normalizeChartValue(chat, maxChat)
+    const chatNorm = normalizeChartValue(chat ?? 0, maxChat)
     const viewersNorm = normalizeChartValue(viewers, maxViewers)
     const emotesNorm = normalizeChartValue(emotes, maxEmotes)
     return {

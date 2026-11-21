@@ -32,6 +32,7 @@ const children = [
   spawnWatch(['build', '--watch', '--config', 'vite.supporterCard.config.ts'], 'supporter-card'),
   spawnWatch(['build', '--watch', '--config', 'vite.momentFrames.config.ts'], 'moment-frames'),
   spawnWatch(['build', '--watch', '--config', 'vite.catchMeUp.config.ts'], 'catch-me-up'),
+  spawnWatch(['build', '--watch', '--config', 'vite.quickSettings.config.ts'], 'quick-settings'),
 ]
 
 function shutdown(code = 0) {

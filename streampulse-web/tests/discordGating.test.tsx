@@ -110,9 +110,9 @@ describe('Discord entry points', () => {
       expect(link.rel).toContain('noopener')
       expect(link.getAttribute('aria-label')).toMatch(/Discord.*opens in a new tab/)
     }
-    // The nav button comes first in the right-hand group.
+    // Install leads the right-hand group (it steps back at the top of the page), so the nav button stays beside Open the Hub (11-18).
     const right = document.querySelector('.sl-nav__right')!
-    expect(right.firstElementChild?.classList.contains('sl-discord-nav')).toBe(true)
+    expect([...right.children].map((el) => [...el.classList].find((c) => c.startsWith('sl-')))).toEqual(['sl-nav__install', 'sl-discord-nav', 'sl-nav__analytics'])
     // Menu stays the only control named "Menu".
     expect(screen.getAllByRole('button', { name: 'Menu' })).toHaveLength(1)
     expect(screen.queryAllByRole('link', { name: /menu/i })).toHaveLength(0)

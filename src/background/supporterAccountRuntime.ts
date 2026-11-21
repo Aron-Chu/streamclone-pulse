@@ -1,4 +1,5 @@
-import { DEFAULT_BACKEND_URL, getBackendUrl } from '../shared/storage.ts'
+import { readPrivateRecord, writePrivateRecord } from './privateExtensionStorage.ts'
+import { DEFAULT_BACKEND_URL, getBackendUrl, getSupporterLookExtras, setSupporterLookExtras } from '../shared/storage.ts'
 import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY } from '../shared/supporterAccount.ts'
 import { TWITCH_SIGNIN_ENABLED, type TwitchSignInMode, type TwitchStepUpResult } from '../shared/twitchSignIn.ts'
 import { AccountRequestNotSent, SupporterAccountCoordinator } from './supporterAccount.ts'
@@ -22,16 +23,6 @@ export async function accountRequestsAllowed(): Promise<boolean> {
   return ACCOUNT_BACKEND_URL !== DEFAULT_BACKEND_URL || await getBackendUrl() === DEFAULT_BACKEND_URL
 }
 
-// Extension-origin IndexedDB is unavailable to Twitch content scripts. Do not
-// move this record to sync storage or send it through a UI message.
-async function database(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('pulse-account-private-v1', 1)
-    request.onupgradeneeded = () => request.result.createObjectStore('account')
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(new Error('account_storage_unavailable'))
-  })
-}
 // The pre-purchase finish choice is not a credential, but a Twitch page must not
 // be able to set it, so it lives beside the account record rather than in
 // storage that content scripts can write.
@@ -42,16 +33,7 @@ async function access(write: boolean, value?: unknown, key: string = DEFAULT_BAC
   // The unpacked local sandbox has no access to the production record or any
   // bootstrap/restore key kept by a development build with the usual origin.
   const privateKey = ACCOUNT_BACKEND_URL === DEFAULT_BACKEND_URL ? key : `${ACCOUNT_BACKEND_URL}:${key}`
-  const db = await database()
-  try {
-    return await new Promise((resolve, reject) => {
-      const transaction = db.transaction('account', write ? 'readwrite' : 'readonly')
-      const store = transaction.objectStore('account')
-      const request = write ? value == null ? store.delete(privateKey) : store.put(value, privateKey) : store.get(privateKey)
-      transaction.oncomplete = () => resolve(request.result)
-      transaction.onerror = transaction.onabort = () => reject(new Error('account_storage_unavailable'))
-    })
-  } finally { db.close() }
+  return write ? writePrivateRecord(privateKey, value) : readPrivateRecord(privateKey)
 }
 
 /**
@@ -75,6 +57,8 @@ export const supporterAccount = new SupporterAccountCoordinator({
   projectionChanged: async () => { await chrome.storage.local.set({ [SUPPORTER_REVISION_KEY]: crypto.randomUUID() }) },
   readIntent: () => access(false, undefined, FINISH_INTENT_KEY),
   writeIntent: async value => { await access(true, value, FINISH_INTENT_KEY) },
+  applyLook: look => setSupporterLookExtras(look),
+  readLook: () => getSupporterLookExtras(),
   readInstallationKey: () => access(false, undefined, INSTALLATION_KEY),
   writeInstallationKey: async value => { await access(true, value, INSTALLATION_KEY) },
   accountForgotten: accountId => accountDataForget?.(accountId),

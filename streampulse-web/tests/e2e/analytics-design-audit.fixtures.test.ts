@@ -10,7 +10,7 @@ const captureHelper = readFileSync(join(here, 'helpers/designAuditCapture.ts'), 
 
 describe('analytics-design-audit fixture lock', () => {
   it('installs local hub and session mocks', () => {
-    expect(analyticsSpec).toContain('installPortalConsoleMock')
+    expect(analyticsSpec).toContain('installPortalAcceptanceHarness')
     expect(analyticsSpec).toContain('installHubUxMock')
     expect(analyticsSpec).toContain('/analytics/${LOGIN}/${STREAM_ID}')
   })

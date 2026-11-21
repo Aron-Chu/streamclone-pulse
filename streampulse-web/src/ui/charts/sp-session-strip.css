@@ -8,7 +8,7 @@
      (prod's series colours, F20, the same as .ssc).
    - Class names keep the mockup's bkc-/mpl- prefixes, except the mockup's
      shared .btn/.qb/.ib, which collide with the site's global .btn
-     (global.css): here they are .bkc-btn/.bkc-qb/.bkc-ib.
+     (global.css): here they are .bkc-qb/.bkc-ib.
    - The font is the console's own (F2); only figures use tabular numerals.
    - The .mpl-* base rules are unscoped so the moment rows (U11) can reuse
      MomentPreviewTile / MomentVodPanel; the strip's sizes sit under .bkc--below. */
@@ -74,17 +74,11 @@
   .bkc.bkc-enter { transform: none; }
 }
 
-/* shared controls (shared.css .ico/.ib/.btn/.qb/.sw), renamed off the site's global .btn */
+/* shared controls (shared.css .ico/.ib/.qb/.sw), renamed off the site's global .btn */
 .bkc .ico { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .bkc-ib { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: var(--sp-r); color: var(--sp-text-2); flex: none; }
 .bkc-ib:hover { background: var(--sp-raised); color: var(--sp-text-1); }
 .bkc-ib .ico { width: 18px; height: 18px; }
-.bkc-btn {
-  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
-  border-radius: var(--sp-r); border: 1px solid var(--sp-line-strong);
-  color: var(--sp-text-1); font-weight: 500; white-space: nowrap;
-}
-.bkc-btn:hover { background: var(--sp-raised); text-decoration: none; }
 .bkc-qb { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px; border-radius: var(--sp-r); color: var(--sp-text-2); font-weight: 500; white-space: nowrap; }
 .bkc-qb:hover { background: var(--sp-raised); color: var(--sp-text-1); text-decoration: none; }
 .bkc .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; }
@@ -92,15 +86,46 @@
 .bkc .sw.emotes { background: var(--sp-emotes); }
 .bkc .sw.viewers { background: var(--sp-viewers); }
 
-/* ---------- header: state line + close, then art | time range / clock / game ---------- */
+/* ---------- header: one row (the hub lock's, L1): state line, the bucket's actions, close; then art | time range / clock / game ---------- */
 .bkc-h { display: block; padding-bottom: 12px; border-bottom: 1px solid var(--sp-line); }
-.bkc-top { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.bkc-top { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+/* sentence case, 12 px, the hub lock's meta voice (.hbk-day): no capitals, no tracking */
 .bkc-s {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
-  color: var(--sp-accent); font-size: 12px; line-height: 16px; font-weight: 700;
-  letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  color: var(--sp-text-3); font-size: 12px; line-height: 16px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .bkc-s::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--sp-accent); flex: none; } /* the chart's locked-bar teal */
+/* the bucket's actions (Zoom to bucket and the host's Save / View saved moments): quiet 12 px buttons, as .hbk-btn
+   (text-2, text-1 on hover, no accent). Each is a 44 px tall target, the size the portal gives every header control
+   (analytics-tailwind.css), set here too so the target never depends on it; the hover shows as the hub's 26 px pill
+   (::before) inside it. Targets sit 6 px apart in a row (so a focus ring, 4 px past its pill, never reaches the next
+   pill) and edge to edge across wrapped rows (the 26 px pill leaves 9 px above and below), so none overlaps another. */
+.bkc-hact { display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; min-width: 0; }
+.bkc-hact .broadcast-save, .bkc-hact .moment-save-control { display: contents; }
+.bkc-below-host .bkc-hact :is(.bkc-qb, .broadcast-save button, .broadcast-save a) {
+  position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 44px; min-height: 44px; padding: 0 7px;
+  border: 0; border-radius: 4px; background: none; color: var(--sp-text-2);
+  font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; text-decoration: none;
+}
+.bkc-below-host .bkc-hact :is(.bkc-qb, .broadcast-save button, .broadcast-save a)::before {
+  content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: 50%; height: 26px; margin-top: -13px; border-radius: 4px;
+}
+.bkc-below-host .bkc-hact .broadcast-save button[aria-pressed="true"] { color: var(--sp-text-1); }
+.bkc-below-host .bkc-hact :is(.bkc-qb, .broadcast-save button, .broadcast-save a):hover { background: none; color: var(--sp-text-1); text-decoration: none; }
+.bkc-below-host .bkc-hact :is(.bkc-qb, .broadcast-save button, .broadcast-save a):hover::before { background: var(--sp-raised); }
+.bkc-hact .ico { width: 14px; height: 14px; }
+/* one focus ring for every control in the card: 2 px teal (--sp-focus) 2 px out, never the console's 3 px ring
+   (analytics-console.css) or the portal's violet header ring (analytics-tailwind.css, header :is(a, button)
+   :focus-visible). The header's buttons draw it round what they show (::before: the actions' 26 px pills and
+   close's 26 px square), not round their 44 px targets; the moment rows sit edge to edge in their list, so they
+   draw it inside, as the hub lock's chat rows do (.hbk-r). */
+.bkc-below-host .bkc.bkc--below :is(a, button):focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 2px; }
+.bkc-below-host .bkc.bkc--below header.bkc-h :is(a, button):focus-visible { outline: none; }
+.bkc-below-host .bkc.bkc--below header.bkc-h :is(.bkc-hact a, .bkc-hact button, .bkc-x):focus-visible::before {
+  outline: 2px solid var(--sp-focus); outline-offset: 2px;
+}
+.bkc-below-host .bkc.bkc--below .bkc-mr:focus-visible { outline-offset: -2px; }
 .bkc-id { display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; min-width: 0; }
 .bkc-art { width: 36px; height: 48px; border-radius: 4px; object-fit: cover; flex: none; background: var(--sp-raised); box-shadow: 0 0 0 1px var(--sp-line-strong); }
 .bkc-hl { flex: 1; min-width: 0; }
@@ -114,32 +139,44 @@
 .bkc-cat { display: flex; align-items: center; margin-top: 2px; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--sp-text-1); min-width: 0; }
 .bkc-cat span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bkc-cat.bkc-sw2 span { white-space: normal; } /* "A → B at 0:48:31" may wrap rather than lose its time */
-.bkc-x { position: relative; flex: none; margin: -6px -8px -6px 0; }
-.bkc-x::after { content: ""; position: absolute; inset: -6px; }
+/* close: a 44 px square target (the portal's header size, set here too), so it needs no wider hit area that could
+   reach the actions' row under it. Its hover and focus ring show on a 26 px rounded square centred in it (::before),
+   the height and corners of the actions' pills beside it. */
+.bkc-x { position: relative; isolation: isolate; flex: none; width: 44px; height: 44px; margin: -6px -8px -6px 0; }
+.bkc-below-host .bkc-x::before { content: ""; position: absolute; z-index: -1; inset: 9px; border-radius: 4px; }
+.bkc-below-host .bkc-ib.bkc-x { border-radius: 0; } /* the whole 44 px square takes the tap, corners too */
+.bkc-below-host .bkc-ib.bkc-x:hover { background: none; }
+.bkc-below-host .bkc-ib.bkc-x:hover::before { background: var(--sp-raised); }
 
-/* ---------- three figures: stat tiles (label, value, peak/sampling; never "x usual", F8) ---------- */
-.bkc-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.bkc-fig { display: flex; flex-direction: column; min-width: 0; padding: 8px; border: 1px solid var(--sp-line-strong); border-radius: 6px; background: var(--sp-panel); }
-.bkc-fl { order: 0; display: flex; align-items: center; gap: 5px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bkc-n { order: 1; margin-top: 4px; font-weight: 700; font-size: 18px; line-height: 22px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; color: var(--sp-text-1); }
+/* ---------- three figures, plain (no tiles, L1): label, value, peak/sampling; never "x usual", F8 ---------- */
+/* each figure lends its three rows to the row of figures (subgrid), so the values line up when a label wraps */
+.bkc-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto auto; column-gap: 16px; }
+.bkc-fig { display: grid; grid-row: span 3; grid-template-rows: subgrid; min-width: 0; }
+.bkc-fl { grid-row: 1; align-self: end; display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bkc-n { grid-row: 2; margin-top: 2px; font-weight: 600; font-size: 18px; line-height: 24px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; color: var(--sp-text-1); }
 .bkc-n.na { color: var(--sp-text-3); }
-.bkc-u { order: 2; display: flex; align-items: center; gap: 2px; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--sp-text-2); white-space: nowrap; min-width: 0; }
+.bkc-u { grid-row: 3; display: flex; align-items: center; gap: 2px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); white-space: nowrap; min-width: 0; }
 .bkc-ut { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .bkc-cap { margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
 
-/* ---------- top emotes: one row, each item as wide as its name ---------- */
-.bkc-el { display: flex; align-items: center; gap: 16px; min-width: 0; }
-.bkc-el li { display: grid; grid-template-columns: 28px minmax(0, auto); grid-template-rows: auto auto; column-gap: 8px; align-items: center; min-width: 0; flex: 0 1 auto; }
+/* ---------- top emotes: equal columns, as the hub lock's three chips (.hbk-erows), each name with its own ellipsis,
+   so one long name never squeezes the others (the full name is in the item's title) ---------- */
+.bkc-el { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; align-items: center; min-width: 0; }
+.bkc-el li { display: grid; grid-template-columns: 28px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 8px; align-items: center; min-width: 0; }
 .bkc-el img, .bkc-noimg { grid-row: 1 / span 2; width: 28px; height: 28px; object-fit: contain; }
 .bkc-noimg { display: grid; place-items: center; border: 1px solid var(--sp-line-strong); border-radius: 4px; font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
-.bkc-noimg.sm { width: 20px; height: 20px; font-size: 11px; line-height: 14px; }
+.bkc-noimg.sm { width: 20px; height: 20px; font-size: 12px; line-height: 14px; }
 .bkc-en { font-size: 14px; line-height: 18px; font-weight: 500; color: var(--sp-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bkc-ec { font-size: 12px; line-height: 16px; color: var(--sp-text-2); font-variant-numeric: tabular-nums; }
-.bkc-emo .bkc-sl { margin-bottom: 4px; }
+.bkc-ec { min-width: 0; font-size: 12px; line-height: 16px; color: var(--sp-text-2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the label line: "Top emotes · per min" left, the provider split right, so the split reads as the whole row's */
+.bkc-eh { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 16px; }
+.bkc-emo .bkc-el { margin-top: 6px; }
 
-/* ---------- section label (sentence case, 12 px) ---------- */
-.bkc-sl { display: flex; align-items: center; gap: 8px; min-height: 20px; font-size: 12px; line-height: 16px; color: var(--sp-text-2); font-weight: 600; }
-.bkc-sl .r { margin-left: auto; color: var(--sp-text-2); font-weight: 400; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* ---------- section label: the hub lock's sub line (.hbk-sub, "Top emotes · per min"), its note beside the name ---------- */
+.bkc-sl { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--sp-text-3); }
+.bkc-sl > span:first-child { font-weight: 600; color: var(--sp-text-1); }
+.bkc-sl .r { white-space: nowrap; }
+.bkc-sl .r::before { content: "·"; content: "·" / ""; margin-right: 6px; } /* a separator, not read out */
 
 /* ---------- moments (the locked one marked) ---------- */
 .bkc .bkc-ml { margin: 2px -6px 0; }
@@ -159,17 +196,18 @@ button.bkc-mr:hover { background: var(--sp-raised); }
 button.bkc-more::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; }
 button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 
-/* ---------- provider split: 7TV and other (= total - 7TV) ---------- */
-.bkc-pv .bkc-sl .r { gap: 6px; }
-.bkc-pv .bkc-sl b { font-weight: 500; color: var(--sp-text-1); }
+/* ---------- provider split, 7TV and other (= total - 7TV): one quiet line (.hbk-prov), right on the emotes' label line ---------- */
+.bkc-pv { font-size: 12px; line-height: 16px; color: var(--sp-text-3); }
+.bkc-pv b { font-weight: 600; color: var(--sp-text-2); }
 
-/* ---------- actions ---------- */
-.bkc-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 4px; }
-.bkc-act .ico { width: 14px; height: 14px; }
-.bkc-act .bkc-btn { padding: 0 10px; }
-.bkc-act .bkc-qb { gap: 4px; padding: 0 6px; }
-.bkc-vod { gap: 4px; }
-.bkc-vod .ico { order: 2; color: var(--sp-text-2); }
+/* ---------- the VOD's Twitch link (.mpl-link), Play's partner: Play stays in the page, this opens Twitch ---------- */
+.bkc-vod {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 42px; padding: 0 12px;
+  border-radius: 999px; color: var(--sp-text-2); font-weight: 500; white-space: nowrap;
+}
+.bkc-vod:hover { background: var(--sp-raised); color: var(--sp-text-1); text-decoration: none; }
+.bkc-vod .ico { width: 14px; height: 14px; color: var(--sp-text-3); }
+.bkc-vod:hover .ico { color: currentColor; }
 
 /* ---------- gap (no measurement) ---------- */
 .bkc-gap { display: flex; align-items: center; gap: 12px; }
@@ -178,8 +216,13 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 
 /* ======================================================================================
    below: a strip in the page's flow under the chart, at every width, so nothing covers the
-   plot. The picture over the time range on the left; figures, emotes, moments and actions
-   on the right. Under 600 px the picture is a thumbnail beside the time; the rest stacks.
+   plot. One header row (state line, the bucket's actions, close); then the picture (Play and
+   the VOD link today, the 16:9 frame or the player when there is one) in the left column with
+   the body (the time over the figures) right of it; then the top emotes and the moments, each
+   a row across the card, the emotes as three chips (the hub lock's tablet chips, .hbk-erows)
+   so a name keeps its letters. From 1000 px the picture stops at 420 px and the emotes sit
+   under it, one a row as the hub lock's desktop list, beside the moments. Under 600 px the
+   picture is a 128 px thumbnail beside the time and the rest stacks.
    ====================================================================================== */
 .bkc--below {
   margin-top: 12px;
@@ -195,33 +238,64 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(320px, 1fr);
   column-gap: 24px;
-  grid-template-areas: "top top" "pv body" "id body" "id act";
-  grid-template-rows: auto auto auto 1fr;
+  grid-template-areas: "top top" "pv body" "emo emo" "mom mom";
 }
+/* a gap bar has no picture, emotes or moments: the body takes the row, the time beside the gap's line */
+.bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "body body"; }
 .bkc--below .bkc-h { display: contents; }
 .bkc--below .bkc-top { grid-area: top; }
-.bkc--below .bkc-pvw { grid-area: pv; min-width: 0; margin-top: 8px; container: bkc-pv / inline-size; }
-.bkc--below .bkc-id { grid-area: id; margin-top: 10px; align-self: start; }
-.bkc--below .bkc-body { grid-area: body; min-width: 0; margin-top: 8px; }
-.bkc--below .bkc-body > * + * { margin-top: 12px; }
-.bkc--below .bkc-emo, .bkc--below .bkc-mom { padding-top: 10px; border-top: 1px solid var(--sp-line); }
-.bkc--below .bkc-act { grid-area: act; align-self: end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--sp-line); }
-.bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "id body" ". body" ". act"; }
+.bkc--below .bkc-pvw { grid-area: pv; align-self: start; min-width: 0; margin-top: 12px; container: bkc-pv / inline-size; }
+.bkc--below .bkc-body { grid-area: body; align-self: start; min-width: 0; margin-top: 12px; }
+.bkc--below .bkc-body > .bkc-id { margin-top: 0; }
+.bkc--below .bkc-body > .bkc-fg { min-width: 0; margin-top: 12px; }
+.bkc--below .bkc-body:has(> .bkc-gap) {
+  display: grid; grid-template-columns: minmax(220px, 1fr) minmax(320px, 1fr); column-gap: 24px; align-items: start;
+}
+.bkc--below .bkc-emo { grid-area: emo; min-width: 0; }
+.bkc--below .bkc-mom { grid-area: mom; min-width: 0; }
+/* the emotes' and the moments' rules run the card's width (from 1000 px the two sit side by side, and the moments'
+   rule reaches back across the column gap to meet the emotes', so it is still one line) */
+.bkc--below :is(.bkc-emo, .bkc-mom) { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--sp-line); }
+/* wide: the picture stops at 420 px; the emotes sit under it beside the moments, one a row with the whole name and
+   the rate at the right (the hub lock's desktop list, .hbk-e) */
 @container bkc-below (min-width: 1000px) {
-  .bkc--below > .bkc-in { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); } /* the picture stops growing */
+  .bkc--below > .bkc-in {
+    grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+    grid-template-areas: "top top" "pv body" "emo mom";
+  }
+  .bkc--below .bkc-body:has(> .bkc-gap) { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
+  .bkc--below :is(.bkc-emo, .bkc-mom) { align-self: start; }
+  .bkc--below .bkc-mom { margin-left: -24px; padding-left: 24px; }
+  .bkc--below .bkc-el { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .bkc--below .bkc-el li { grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-rows: none; min-height: 40px; padding: 4px 0; }
+  .bkc--below .bkc-el li + li { border-top: 1px solid var(--sp-line); }
+  .bkc--below .bkc-el :is(img, .bkc-noimg) { grid-row: auto; }
+  .bkc--below .bkc-ec { text-align: right; }
 }
 @container bkc-below (max-width: 599px) {
   .bkc--below { padding: 10px 12px 12px; }
   .bkc--below > .bkc-in {
     grid-template-columns: 128px minmax(0, 1fr);
     column-gap: 12px;
-    grid-template-areas: "top top" "pv id" "body body" "act act";
-    grid-template-rows: auto auto auto auto;
+    grid-template-areas: "top top" "pv id" "figs figs" "emo emo" "mom mom";
   }
-  .bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "id id" "body body" "act act"; }
+  .bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "id id" "figs figs"; }
+  /* the body lends the time and the figures (or the gap's line) to the card's grid: the time beside the 128 px
+     thumbnail, the figures across under them */
+  .bkc--below .bkc-body, .bkc--below .bkc-body:has(> .bkc-gap) { display: contents; }
   /* (candidate, 10-30, PIC-2) the 36x48 cover stays at every width: the box beside it is plain dark, no game art */
-  .bkc--below .bkc-id { margin-top: 8px; align-self: center; }
-  .bkc--below .bkc-body { margin-top: 12px; }
+  .bkc--below .bkc-body > .bkc-id { grid-area: id; align-self: center; min-width: 0; margin-top: 12px; }
+  .bkc--below .bkc-body > :is(.bkc-fg, .bkc-gap) { grid-area: figs; min-width: 0; margin-top: 12px; }
+}
+/* header: under 560 px the actions take a second row, so the state line is never cut and close stays top right */
+@container bkc-below (max-width: 559px) {
+  .bkc--below .bkc-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "s x" "a a"; column-gap: 8px; }
+  .bkc--below .bkc-s { grid-area: s; }
+  .bkc--below .bkc-x { grid-area: x; }
+  .bkc--below .bkc-hact { grid-area: a; margin: 0 -5px; }
+  /* a little less side padding, so the three fit one row from a 400 px phone (at 390 and under, View saved moments
+     takes a third row of its own) */
+  .bkc-below-host .bkc-hact :is(.bkc-qb, .broadcast-save button, .broadcast-save a) { padding: 0 5px; }
 }
 
 /* ======================================================================================
@@ -283,49 +357,96 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 /* the picture in the strip: the same box with or without a frame; the note never takes the click */
 .bkc--below .mpl-cap { min-height: 0; }
 .bkc--below .mpl-note { pointer-events: none; }
+/* no frame, no box, at every width: in the card Play and its link stand on the card itself, with no fill, ring or
+   corner (the moments strip's .mpl-box keeps its own) */
+.bkc--below .mpl-box.nofr { padding: 0; overflow: visible; border-radius: 0; background: none; box-shadow: none; }
+/* The VOD panel in a column of its own (600 px and up, or a phone under 320 px): Play, its VOD link, then the
+   reason. Play stays in the page and the link opens Twitch, so the two sit together as one pair: side by side when
+   the column has room, else the link right under Play. With no frame the box lends its rows and columns to the
+   panel (subgrid), so the link sits between Play and the reason, and the box has no fill or ring. A picture or the
+   player takes the first row, with the link under it. */
+.bkc--below .mpl-link { position: relative; display: flex; min-width: 0; }
+@container bkc-below (min-width: 600px) or (max-width: 319px) {
+  .bkc--below .mpl { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 4px; }
+  .bkc--below .mpl > .mpl-box { grid-column: 1 / -1; grid-row: 1; }
+  .bkc--below .mpl > .mpl-box.nofr {
+    grid-row: 1 / span 3; display: grid; grid-template-columns: subgrid; grid-template-rows: subgrid; gap: normal;
+    padding: 0; overflow: visible; border-radius: 0; background: none; box-shadow: none;
+  }
+  .bkc--below .mpl-box.nofr > :is(.mpl-go, .mpl-msg) { grid-column: 1; grid-row: 1; justify-self: start; }
+  .bkc--below .mpl-box.nofr > .mpl-note { grid-column: 1 / -1; grid-row: 3; margin-top: 6px; }
+  .bkc--below .mpl-link { grid-column: 1; grid-row: 2; margin-top: 4px; }
+  /* under Play, the link's words line up with the column's left edge, as the reason's do */
+  .bkc--below .bkc-vod { padding: 0 8px; margin-left: -8px; }
+  .bkc--below .mpl-cap { grid-column: 1 / -1; grid-row: 4; }
+}
+/* room for both on one line (Play's longest label is about 215 px, the link about 115) */
+@container bkc-pv (min-width: 340px) {
+  .bkc--below .mpl:has(> .mpl-box.nofr) { grid-template-columns: max-content minmax(0, 1fr); }
+  .bkc--below .mpl > .mpl-box.nofr { grid-row: 1 / span 2; }
+  .bkc--below .mpl-box.nofr > .mpl-note { grid-row: 2; }
+  .bkc--below .mpl-box.nofr ~ .mpl-link { grid-column: 2; grid-row: 1; margin-top: 0; }
+  .bkc--below .mpl-box.nofr ~ .mpl-link .bkc-vod { padding: 0 12px; margin-left: 0; }
+}
 /* in a picture under 360 px the note keeps only the frame's timing, so Play stays clear */
 @container bkc-pv (max-width: 359px) {
   .bkc--below .mpl-box.fr .mpl-note > span:first-child { display: none; }
   .bkc--below .mpl-box.fr .mpl-note { padding-top: 18px; }
-  .bkc--below .mpl-box.nofr { gap: 6px; padding: 8px; }
 }
-/* under 600 px: a thumbnail; Play keeps only its icon and the note is read out, not shown;
-   pressing Play gives the player the strip's full width */
+/* under 600 px: pressing Play gives the player the strip's full width */
 @container bkc-below (max-width: 599px) {
   .bkc--below .mpl-box.fr, .bkc--below .mpl-box.on { aspect-ratio: 16 / 9; min-height: 0; padding: 0; gap: 0; }
+  .bkc--below .bkc-in:has(.mpl-box.on) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "pv" "id" "figs" "emo" "mom"; }
+}
+/* 320 to 599 px: a 128 px column beside the time; Play keeps only its icon and the note is read out, not shown;
+   the VOD link sits under Play */
+@container bkc-below (min-width: 320px) and (max-width: 599px) {
+  .bkc--below .mpl { display: block; }
   .bkc--below .mpl .mpl-go { padding: 8px; }
-  /* a compact no-frame row in the 128 px column: icon-only Play, the note read out, not shown */
-  .bkc--below .mpl-box.nofr { padding: 6px; gap: 6px; }
+  .bkc--below .mpl-box.nofr { gap: 6px; }
   .bkc--below .mpl .mpl-go span, .bkc--below .mpl-box .mpl-note {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; padding: 0;
   }
-  .bkc--below .mpl-msg { padding: 0 6px; font-size: 11px; line-height: 14px; }
-  .bkc--below .bkc-in:has(.mpl-box.on) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "pv" "id" "body" "act"; }
+  .bkc--below .mpl-msg { font-size: 12px; line-height: 16px; }
+  .bkc--below .mpl-link { margin-top: 4px; }
+  .bkc--below .bkc-vod { min-height: 32px; padding: 0 8px; margin-left: -8px; }
 }
 /* SESSION-MOMENTS-5 (11-13): the time now says 'about' and the count '120 uses', so a moment row's label wraps
    rather than cutting, at every width (round 2: it cut at 768 too); one line keeps the 28 px row */
 .bkc--below .bkc-mr { height: auto; min-height: 28px; padding-block: 4px; }
 .bkc--below .bkc-mr .lb { white-space: normal; overflow: visible; text-overflow: clip; }
-/* SESSION-MOMENTS-5 (11-13): a 320 or 360 px phone has no room for the 128 px picture column, so the picture takes
-   the strip's width above the time (as it does while playing), and labels, names and moment rows wrap
-   instead of cutting to '0:…' */
+/* SESSION-MOMENTS-5 (11-13): a 320 or 360 px phone has no room for the 128 px picture column, so everything takes
+   the strip's width in the wide layout's order (time, figures, Play and the link), and labels, names and moment
+   rows wrap instead of cutting to '0:…' */
 @container bkc-below (max-width: 319px) {
-  .bkc--below > .bkc-in { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "pv" "id" "body" "act"; }
-  .bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top" "id" "body" "act"; }
-  .bkc--below .bkc-t, .bkc--below .bkc-cat span { white-space: normal; overflow-wrap: anywhere; }
-  .bkc--below .bkc-fig { padding: 8px 6px; }
+  .bkc--below > .bkc-in, .bkc--below .bkc-in:has(.mpl-box:is(.fr, .on)) {
+    grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "id" "figs" "pv" "emo" "mom";
+  }
+  .bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top" "id" "figs"; }
+  .bkc--below .bkc-figs { column-gap: 12px; }
   .bkc--below .bkc-fl { align-items: flex-start; gap: 4px; white-space: normal; }
   .bkc--below .bkc-fl .sw { margin-top: 4px; }
-  .bkc--below .bkc-el { flex-wrap: wrap; row-gap: 8px; }
-  .bkc--below .bkc-el li { flex: none; max-width: 100%; }
-  .bkc--below .bkc-en { white-space: normal; overflow-wrap: anywhere; }
   .bkc--below .bkc-mr { flex-wrap: wrap; row-gap: 2px; white-space: normal; }
   /* the label takes its own line under the time, so it never wraps word by word beside it */
   .bkc--below .bkc-mr .lb { flex: 1 0 100%; order: 1; padding-left: 20px; overflow: visible; }
 }
-/* SESSION-MOMENTS-12 (11-13): the details' moment rows, Open VOD, Zoom and Play reach the 44 px phone goal */
+/* under 600 px (the time beside the 128 px column at 390, or full width under 320) the time range and the game
+   wrap rather than cut ('2:38:00–2…') */
+@container bkc-below (max-width: 599px) {
+  .bkc--below .bkc-t, .bkc--below .bkc-cat span { white-space: normal; overflow-wrap: anywhere; }
+}
+/* under 700 px the provider split goes, as the hub lock's does (.hbk-prov) */
+@container bkc-below (max-width: 699px) {
+  .bkc--below .bkc-pv { display: none; }
+}
+/* under 420 px two emote columns, so a name keeps more than a few letters before its ellipsis; the third goes under */
+@container bkc-below (max-width: 419px) {
+  .bkc--below .bkc-el { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* SESSION-MOMENTS-12 (11-13): the details' moment rows, Open VOD and Play reach the 44 px phone goal (the header's
+   buttons are 44 px targets at every width) */
 @media (max-width: 767px), (pointer: coarse) {
   .bkc--below .bkc-mr { height: auto; min-height: 44px; }
-  .bkc--below .bkc-act .bkc-btn, .bkc--below .bkc-act .bkc-qb { height: 44px; }
+  .bkc--below .bkc-vod { min-height: 44px; }
   .bkc--below .mpl .mpl-go { min-width: 44px; min-height: 44px; justify-content: center; }
 }

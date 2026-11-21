@@ -51,7 +51,7 @@ test.describe('StreamPulse final visual, interaction & failure-state audit', () 
     await expect(chart).toBeVisible()
     await expect.poll(seriesColors).toEqual(semantic)
 
-    // Quick Settings previews the saved appearance (title and Emote rain) in the Your look strip.
+    // Quick Settings previews the saved appearance (title and backdrop) in the Your look strip.
     await extension.page.getByRole('button', { name: 'Open settings' }).click()
     const settingsPanel = extension.page.locator('[data-overlay-settings-panel="true"]')
     await expect(settingsPanel).toBeVisible()

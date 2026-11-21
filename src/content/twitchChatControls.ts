@@ -11,28 +11,11 @@ const CHATTERS_TOGGLE_SELECTORS: readonly string[] = [
   '[data-a-target="community-tab"]',
 ]
 
-const CHATTERS_PANEL_SELECTORS: readonly string[] = [
-  '[data-a-target="chat-viewers-ribbon"]',
-  '[data-a-target="users-in-chat-list"]',
-  '[data-a-target="viewer-list"]',
-  '[data-a-target="community-panel"]',
-  '[data-a-target="chat-viewers-list"]',
-]
-
-const CHATTERS_OPEN_HEADER_TITLES = new Set(['community', 'users in chat'])
-
-const CHATTERS_HEADER_TITLE_SELECTORS: readonly string[] = [
-  '[data-a-target="chat-room-header"] h4',
-  '[data-test-selector="chat-room-header"] h4',
-  'section[data-a-target="chat-theme-dark"] h4',
-]
-
-const CHATTERS_OPEN_REGION_SELECTORS: readonly string[] = [
-  '[role="region"][aria-label="Community"]',
-  '[role="region"][aria-label*="Users in chat" i]',
-]
-
 const CHATTERS_CLOSE_SELECTORS: readonly string[] = [
+  '[data-test-selector="close-viewer-list"]',
+  // Channel pages reuse the toggle without ARIA state. Its return-to-chat icon
+  // identifies list mode even when Twitch keeps the composer behind an error.
+  '[data-test-selector="chat-viewer-list"] path[d="M9 10h2v2H9v-2Zm6 0h-2v2h2v-2Z"]',
   'button[aria-label*="Go back to Chat" i]',
   'button[aria-label*="Go back" i]',
   '[data-a-target="content-overlay-back-button"]',
@@ -95,30 +78,6 @@ function controlExpanded(el: HTMLElement): boolean {
   return el.getAttribute('aria-expanded') === 'true' || el.getAttribute('aria-pressed') === 'true'
 }
 
-function readChatHeaderTitle(doc: Document): string | null {
-  for (const selector of CHATTERS_HEADER_TITLE_SELECTORS) {
-    const title = doc.querySelector(selector)?.textContent?.trim()
-    if (title) return title
-  }
-  return null
-}
-
-function isCommunityPanelVisible(doc: Document): boolean {
-  for (const selector of CHATTERS_OPEN_REGION_SELECTORS) {
-    const el = doc.querySelector(selector)
-    if (!el) continue
-    const rect = el.getBoundingClientRect()
-    if (rect.width > 80 && rect.height > 120) return true
-  }
-  for (const selector of CHATTERS_PANEL_SELECTORS) {
-    const el = doc.querySelector(selector)
-    if (!el) continue
-    const rect = el.getBoundingClientRect()
-    if (rect.width > 80 && rect.height > 120) return true
-  }
-  return false
-}
-
 export function readTwitchCollapseLabel(doc: Document = document): string {
   const el = queryVisibleInDoc(doc, CHAT_HEADER_COLLAPSE_SELECTORS)
   const label = el?.getAttribute('aria-label')?.trim()
@@ -129,9 +88,6 @@ export function readTwitchCollapseLabel(doc: Document = document): string {
 export function isTwitchChattersOpen(doc: Document = document): boolean {
   if (queryVisibleInDoc(doc, CHATTERS_CLOSE_SELECTORS)) return true
 
-  const headerTitle = readChatHeaderTitle(doc)?.toLowerCase()
-  if (headerTitle && CHATTERS_OPEN_HEADER_TITLES.has(headerTitle)) return true
-
   for (const selector of CHAT_VIEWERS_SELECTORS) {
     const el = doc.querySelector(selector)
     if (el && controlExpanded(el as HTMLElement)) return true
@@ -141,7 +97,7 @@ export function isTwitchChattersOpen(doc: Document = document): boolean {
     if (el && controlExpanded(el as HTMLElement)) return true
   }
 
-  return isCommunityPanelVisible(doc)
+  return false
 }
 
 /** Proxy to Twitch's collapse / expand chat column control. */

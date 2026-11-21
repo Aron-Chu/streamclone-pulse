@@ -63,12 +63,16 @@ const coldPages = [
 ] as const
 
 test.describe('public surface audit', () => {
-  test('analytics keeps a readable guide without JavaScript instead of a permanent loading state', async ({ browser, baseURL }) => {
+  test('analytics shows the hub heading and the tracked channels without JavaScript instead of a permanent loading state', async ({ browser, baseURL }) => {
     const context = await browser.newContext({ javaScriptEnabled: false })
     const page = await context.newPage()
     await page.goto(`${baseURL}/analytics`)
-    await expect(page.getByRole('heading', { name: 'StreamPulse Analytics', exact: true })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Read the analytics guide' })).toHaveAttribute('href', '/docs#analytics')
+    await expect(page.getByRole('heading', { level: 1, name: 'Find your streamer', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Twitch chat stats by streamer' })).toBeVisible()
+    await expect(page.getByRole('link', { name: /^HasanAbi/ })).toHaveAttribute('href', '/analytics/hasanabi')
+    await expect(page.getByRole('link', { name: 'How the stats are measured' })).toHaveAttribute('href', '/guides/find-twitch-moments#data-details')
+    // The channel list's "Browse the Hub" link would point at this page.
+    await expect(page.getByRole('link', { name: /Browse the Hub/ })).toHaveCount(0)
     await expect(page.locator('[data-analytics-route-skeleton]')).toBeHidden()
     await context.close()
   })

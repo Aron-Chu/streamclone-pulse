@@ -4,7 +4,7 @@
  * channel that isn't live with its offline picture (HTTP 200), so a proven offline picture or a failed load keeps
  * the face. The picture moves every 5 minutes, and the last proven one stays up while the next is checked under it.
  */
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HubLiveChannel } from '../src/lib/publicHub'
@@ -86,7 +86,7 @@ describe('Busiest now live pictures (mockup §5, 10-31)', () => {
     expect(img!.hasAttribute('data-under')).toBe(false)
     expect(view.shown()).toBeNull()
     expect(view.container.querySelector('img.hv5-bzv-fa')).not.toBeNull()
-    expect(view.tile().getAttribute('aria-label')).toMatch(/\. Profile picture\.$/)
+    expect(screen.getByRole('link', { name: /\. Profile picture\.$/ })).toBe(view.tile())
   })
 
   it('sets lazy loading, CORS and the referrer policy before the address, so the request starts once', () => {
@@ -108,7 +108,8 @@ describe('Busiest now live pictures (mockup §5, 10-31)', () => {
     expect(view.shown()).toBe(img)
     expect(view.container.querySelector('img.hv5-bzv-av')!.getAttribute('src')).toBe(PROFILE_70)
     expect(view.container.querySelector('.hv5-bzt-cap')!.classList.contains('hf')).toBe(true)
-    expect(view.tile().getAttribute('aria-label')).toBe('xQc, 120 chat messages per minute, Just Chatting, rank 1 of 1. Twitch’s live picture, can be a few minutes old.')
+    // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
+    expect(screen.getByRole('link', { name: 'xQc, 120 chat messages per minute, Just Chatting, rank 1 of 1. Twitch’s live picture, can be a few minutes old.' })).toBe(view.tile())
   })
 
   it('keeps the face when the picture is Twitch’s offline picture', async () => {
@@ -117,7 +118,7 @@ describe('Busiest now live pictures (mockup §5, 10-31)', () => {
     await load(view.pictures()[0]!)
     expect(view.pictures()).toEqual([])
     expect(view.container.querySelector('img.hv5-bzv-av')).toBeNull()
-    expect(view.tile().getAttribute('aria-label')).toMatch(/\. Profile picture\.$/)
+    expect(screen.getByRole('link', { name: /\. Profile picture\.$/ })).toBe(view.tile())
   })
 
   it('keeps the face when the picture does not load', () => {
@@ -214,7 +215,7 @@ describe('Busiest now live pictures (mockup §5, 10-31)', () => {
     await load(view.pictures()[0]!)
     view.at(W1, W1 + 4 * MIN)
     expect(view.pictures()).toEqual([])
-    expect(view.tile().getAttribute('aria-label')).toMatch(/\. Profile picture\.$/)
+    expect(screen.getByRole('link', { name: /\. Profile picture\.$/ })).toBe(view.tile())
     view.at(W1 + 5 * MIN)
     expect(view.shown()).toBeNull()
     expect(view.pictures().map((img) => img.getAttribute('src'))).toEqual([preview(W1 + 5 * MIN)])

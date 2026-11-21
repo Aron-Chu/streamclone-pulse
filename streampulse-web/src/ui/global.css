@@ -261,6 +261,12 @@ select {
   background: var(--bg-elevated);
 }
 
+/* A narrow panel centred on its own, e.g. the crash panel. */
+.panel--centered {
+  margin: 2rem auto;
+  max-width: 480px;
+}
+
 .public-document {
   line-height: 1.65;
 }
@@ -392,6 +398,56 @@ h1.public-title {
   margin: 0 0 1rem;
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+/* Reviewed recap pages (scripts/recap-pilot.mjs): the breadcrumb sits where the
+   "StreamPulse" link was, in the policy pages' back-link grey, and takes the same
+   one 1.65rem line, so the heading does not move. A long
+   title ends in an ellipsis rather than wrapping. Its links and the install link
+   under the summary keep a 24px tap target without moving the text. */
+.recap-breadcrumb {
+  display: flex;
+  align-items: center;
+  min-height: 1.65rem;
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* The separators and the current crumb share the links' grey; `nav.` outranks `.muted`, which comes later.
+   The size is set here too (the analytics stylesheet's `.muted` also gives 0.75rem), so the one line
+   stays 1.65rem tall whichever stylesheet loads last. */
+nav.recap-breadcrumb {
+  color: #a1a1aa;
+  font-size: 0.75rem;
+}
+
+.recap-breadcrumb > * {
+  flex: none;
+}
+
+.recap-breadcrumb > [aria-current] {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recap-breadcrumb a,
+[data-reviewed-recap-mounted] a[data-cta="chrome-install"] {
+  display: inline-block;
+}
+
+.recap-breadcrumb a {
+  padding-block: 0.2rem;
+  color: #a1a1aa;
+}
+
+.recap-breadcrumb a:hover {
+  color: #fff;
+}
+
+.recap-breadcrumb__sep {
+  margin-inline: 0.45rem;
 }
 
 /* Privacy "At a glance": plain section under a hairline, no box (audit row 1, 11-02). */

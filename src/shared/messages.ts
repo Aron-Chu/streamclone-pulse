@@ -15,6 +15,7 @@ export type MessageType =
   | 'MOMENT_FRAMES_SCRIPT'
   | 'MOMENT_PICTURE'
   | 'CATCH_ME_UP_SCRIPT'
+  | 'QUICK_SETTINGS_SCRIPT'
   | 'SUPPORTER_BILLING'
   | 'SUPPORTER_RESTORE'
   | 'SUPPORTER_DEVICES'
@@ -308,8 +309,8 @@ export type BackgroundRequest =
   | { type: 'SUPPORTER_ENTITLEMENT' }
   | { type: 'SUPPORTER_COSMETICS'; enabled: boolean; finish: 'glass' | 'etched' | 'halo' }
   | { type: 'SUPPORTER_APPEARANCE' }
-  /** Omit `finish` to read; null clears the pre-purchase choice. */
-  | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null }
+  /** Omit `finish` to read; null clears the pre-purchase choice. `look` rides with a finish only. */
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish?: 'glass' | 'etched' | 'halo' | null; look?: import('./supporterLook.ts').SupporterLookExtras }
   /** Injects the quick-settings Supporter card's stage script into the sender's own Twitch tab. */
   | { type: 'SUPPORTER_CARD_SCRIPT' }
   /** Explicit opt-in/out controls are restricted to extension pages. */
@@ -324,6 +325,8 @@ export type BackgroundRequest =
   | import('./momentPictureMessages.ts').MomentPictureRequest
   /** Injects the stream recap's Catch me up script into the sender's own Twitch tab. */
   | { type: 'CATCH_ME_UP_SCRIPT' }
+  /** Injects the panel's Quick settings script into the sender's own Twitch tab. */
+  | { type: 'QUICK_SETTINGS_SCRIPT' }
   | TrackMessage
   | UntrackMessage
   | GetPulseMessage
@@ -840,7 +843,7 @@ export type BackgroundResponse =
    * `unverified`: the account read failed or is waiting on renewal; keep the last verified state until it expires.
    */
   | { type: 'SUPPORTER_APPEARANCE'; finish: 'glass' | 'etched' | 'halo' | null; validForMs: number; tenure?: SupporterTenure; paint?: SupporterPaintStyle; perks?: true; unverified?: true }
-  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null; setAt?: number }
+  | { type: 'SUPPORTER_FINISH_INTENT'; finish: 'glass' | 'etched' | 'halo' | null; setAt?: number; look?: import('./supporterLook.ts').SupporterLookExtras }
   | { type: 'SUPPORTER_CARD_SCRIPT'; ok: boolean }
   | import('./chatBadges.ts').ChatBadgesReply
   | { type: 'SUPPORTER_CHAT_BADGE'; ok: boolean; listReceived: boolean; keysPinned?: boolean; own?: 'on' | 'off'; login?: string; error?: import('./chatBadges.ts').ChatBadgeActionError }
@@ -848,6 +851,7 @@ export type BackgroundResponse =
   | { type: 'MOMENT_FRAMES_SCRIPT'; ok: boolean }
   | { type: 'MOMENT_PICTURE'; wants?: import('./momentFramesContract.ts').MomentPictureWant[]; ok?: boolean; vod?: import('./vodPictures.ts').VodPictures | null; frame?: import('../background/vodFrameInject.ts').VodFrame | { error: string } | null }
   | { type: 'CATCH_ME_UP_SCRIPT'; ok: boolean }
+  | { type: 'QUICK_SETTINGS_SCRIPT'; ok: boolean }
   | { type: 'DEVICE_AUTH'; status: DeviceAuthStatus }
   | { type: 'PULSE_DEBUG_LOG'; entries: import('./pulseDebug.ts').PulseDebugEntry[] }
   /** `device`: saved without an account; these rows never leave this browser. */

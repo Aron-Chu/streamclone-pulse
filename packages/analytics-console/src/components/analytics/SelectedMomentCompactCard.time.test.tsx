@@ -24,7 +24,7 @@ describe('SelectedMomentCompactCard time', () => {
     // The strip's unpadded h:mm:ss (mockup), still matched by the e2e `(\d+):(\d\d):(\d\d)`.
     expect(container.querySelector('[data-selected-moment-time]')?.textContent).toBe('5:52:07')
     expect(container.textContent).not.toContain('5h52m7s')
-    expect(screen.getByRole('region', { name: 'Bucket selected: 5:52:07' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Bucket selected: 5:52:07, 1 min' })).toBeTruthy()
   })
 
   it('names the pinned minute, not a Pulse moment matched in the next minute', () => {

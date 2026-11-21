@@ -51,9 +51,14 @@ Preparation runs before dev, build and typecheck. It generates two runtime files
   used by consented measurement. Never transmit the path to analytics.
 - src/generated/recap-page-metadata.json: public metadata retained after app boot.
 Commit these generated files with a reviewed manifest change, and regenerate them
-before a release. An expired review fails the next build; production snapshots
-still need a scheduled human/approved build review before their review window
-ends. This static pipeline does not introduce a background expiry service.
+before a release. When a review window ends, the next build leaves that page out
+and prints a "review expired" warning; the build still passes. The page's URL
+then gets the noindex /analytics-fallback/ document and drops out of /recaps, the
+sitemap and the redirects until someone reviews it again and moves its expiry
+forward. An expired entry is still fully validated: a malformed, unapproved or
+duplicate entry fails the build as before. Production snapshots still need a
+scheduled human/approved build review before their review window ends. This
+static pipeline does not introduce a background expiry service.
 
 prerender.mjs emits eligible summaries under /_recap-pages/ and exact public-path
 rewrites ahead of the dynamic fallbacks. This ordering is essential: Cloudflare

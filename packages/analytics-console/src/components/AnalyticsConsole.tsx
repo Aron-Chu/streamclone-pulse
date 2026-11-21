@@ -152,6 +152,10 @@ export interface AnalyticsConsoleProps {
   layer2LoadMode?: 'eager' | 'staged'
   /** When true, use lg breakpoint for 3-col layout (portal Figma shell already consumes sidebar width). */
   shellNested?: boolean
+  /** 2 when the host page already has its own h1 above the console (a reviewed recap's summary). */
+  headingLevel?: 1 | 2
+  /** Replace the console when a historical session is missing and the host has its own content. */
+  missingSessionFallback?: ReactNode
   /** Enable sync / re-sync CTAs (local dev portal; hosted waits for API-008 rate limits). */
   enableSyncActions?: boolean
   buildSessionPath?: (login: string, streamId: string) => string
@@ -203,12 +207,16 @@ export function AnalyticsConsole({
   enableLayoutControls = false,
   layer2LoadMode = 'eager',
   shellNested = false,
+  headingLevel = 1,
+  missingSessionFallback,
   enableSyncActions = false,
   buildSessionPath = defaultSessionPath,
   buildChannelPath = defaultChannelPath,
   suggestChannel,
   renderSelectedMomentActions,
 }: AnalyticsConsoleProps = {}) {
+  // One h1 per page: under a reviewed recap's summary the session heading is a level below it.
+  const SessionHeading = headingLevel === 2 ? 'h2' : 'h1'
   const navigate = useNavigate()
   const location = useLocation()
   const { login = '', streamId = '' } = useParams<{ login: string; streamId?: string }>()
@@ -1532,6 +1540,8 @@ export function AnalyticsConsole({
     )
   }
 
+  if (sessionNotFound && missingSessionFallback != null) return <>{missingSessionFallback}</>
+
   const sessionContentReady = !sessionResolving && !effectiveSessionNotFound && !(detailQuery.isLoading && !detail)
   // The first session read is out: the chart skeleton stands in, and the meta line keeps its slot hidden
   // (its items arrive with the read and would slide across it).
@@ -1801,13 +1811,13 @@ export function AnalyticsConsole({
             {statusHeading == null ? (
               <SessionChannelAvatar name={channelName} src={twitchChannel?.avatar} live={sessionIsLive} />
             ) : null}
-            <h1
+            <SessionHeading
               className="ssp-h1 line-clamp-2 text-2xl font-black leading-[1.08] text-white [overflow-wrap:anywhere] lg:text-[32px]"
               title={headerTitle}
               data-channel-name={statusHeading == null || undefined}
             >
               {headerTitle}
-            </h1>
+            </SessionHeading>
             {channelNotRecorded ? null : (
               <div className="ssp-meta-w" data-session-meta data-session-meta-pending={sessionReadPending || undefined}>
                 <div className="ssp-meta">
@@ -2047,7 +2057,13 @@ export function AnalyticsConsole({
                 momentOffsetInBar={momentOffsetInBar}
                 selectionIsMoment={selectionIsMoment}
                 onExpandedChange={setChartExpanded}
-                selectedDetail={selectedRollup ? (bar: SessionChartBarLock | null) => <><SelectedMomentCompactCard
+                selectedDetail={selectedRollup ? (bar: SessionChartBarLock | null) => <SelectedMomentCompactCard
+                  // the host's actions for the selected minute (Save, View saved moments) sit in the card's header row
+                  actions={canonicalStreamId && selectedOffsetSeconds != null && Number.isFinite(selectedOffsetSeconds) && selectedOffsetSeconds >= 0
+                    ? renderSelectedMomentActions?.({ login: channelLogin, streamId: canonicalStreamId, offsetSeconds: selectedOffsetSeconds,
+                      at: Date.parse(selectedRollup.minuteTs), chatPerMin: selectedRollup.chatCount,
+                      emotesPerMin: selectedRollup.totalEmoteCount, category: selectedGameName || undefined,
+                      label: matchedHeatmapPoint?.reason ? momentScoreReasonLabel(matchedHeatmapPoint.reason) : undefined }) : null}
                   barSpan={bar}
                   barMoments={bar && Number.isFinite(streamStartMs) ? momentsInBar(stripMoments, barSecondsSpan(bar)) : null}
                   lockedMomentOffsetSeconds={bar ? selectedOffsetSeconds : null}
@@ -2070,11 +2086,7 @@ export function AnalyticsConsole({
                   games={chartGames}
                   vodId={streamVodId}
                   onClear={() => handleSelectRollup(null)}
-                />{canonicalStreamId && selectedOffsetSeconds != null && Number.isFinite(selectedOffsetSeconds) && selectedOffsetSeconds >= 0
-                  ? renderSelectedMomentActions?.({ login: channelLogin, streamId: canonicalStreamId, offsetSeconds: selectedOffsetSeconds,
-                    at: Date.parse(selectedRollup.minuteTs), chatPerMin: selectedRollup.chatCount,
-                    emotesPerMin: selectedRollup.totalEmoteCount, category: selectedGameName || undefined,
-                    label: matchedHeatmapPoint?.reason ? momentScoreReasonLabel(matchedHeatmapPoint.reason) : undefined }) : null}</> : null}
+                /> : null}
               />
               {momentsUnderChart ? null : noVodNote}
             </div>

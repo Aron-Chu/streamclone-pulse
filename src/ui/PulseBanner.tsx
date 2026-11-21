@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { DEFAULT_PULSE_BANNER, PULSE_BANNER_KEY, getPulseBanner, normalizePulseBanner, setPulseBanner, type PulseBannerPreference } from '../shared/storage.ts'
-import { ACCOUNT_REVISION_KEY, SUPPORTER_REVISION_KEY, supporterPerksAllowed, type SupporterEntitlement } from '../shared/supporterAccount.ts'
-import { supporterCheckoutAvailability } from '../shared/supporterCheckoutAvailability.ts'
-import type { BackgroundResponse } from '../shared/messages.ts'
 import { StreamPulseTitleBlock, streamPulseHeaderChromeSidebar } from './StreamPulseTitleBlock.tsx'
 import { theme } from './theme.ts'
 
-// The same 7TV culture set used by the portal, with static images so motion is
-// entirely controlled by CSS and respects the user's reduced-motion setting.
-const EMOTES = ['01HM524VE80004SKSHMCZWXH1T', '01FKSDK14G0008TM5NY9QEG0QV', '01GAM8EFQ00004MXFXAJYKA859', '01GB2S7H7000018VJGJ4A9BMFS', '01GAFTZ9K80003DHH026MC7JW0', '01GB2ZJFBG000DTBJYANG8XYFP']
+// Original StreamPulse marks (the pulse line, a spark and a diamond), drawn in
+// the paint's colours. Nothing is fetched, so the backdrop draws even when
+// other sites' images are blocked, and CSS alone moves it.
+const ART = ['M1 10h4l2-6 3 10 2-6h5', 'M9 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2z', 'M9 4l5 5-5 5-5-5z']
 
 const bannerThemeVariables = {
   '--pulse-banner-canvas': theme.bgCanvas,
@@ -80,47 +78,17 @@ export function usePulseBanner() {
 /** Keep retry reachable when the setting's controls are paused after a failed read. */
 export function PulseBannerLoadError({ onRetry }: { onRetry: () => void }) {
   return <p className="pulse-supporter-detail" role="status" data-emote-rain-load-error>
-    Couldn't load your Emote rain setting. <button className="pulse-link-btn" type="button" onClick={onRetry}>Try again</button>
+    Couldn't load your backdrop setting. <button className="pulse-link-btn" type="button" onClick={onRetry}>Try again</button>
   </p>
 }
 
-/** Settings alone can read entitlement; no timer or content-script request is needed. */
-function useBannerCheckoutAvailability(perks: boolean | undefined) {
-  const [entitlement, setEntitlement] = useState<SupporterEntitlement | null>(null)
-  useEffect(() => {
-    if (perks !== false) { setEntitlement(null); return }
-    let alive = true
-    let request = 0
-    const read = async () => {
-      const current = ++request
-      setEntitlement(null)
-      try {
-        const response: BackgroundResponse | undefined = await globalThis.chrome?.runtime?.sendMessage?.({ type: 'SUPPORTER_ENTITLEMENT' })
-        if (alive && current === request && response && 'type' in response && response.type === 'SUPPORTER_ENTITLEMENT') setEntitlement(response.entitlement)
-      } catch { /* An unknown check never claims that Supporter is closed. */ }
-    }
-    const changed = (changes: Record<string, chrome.storage.StorageChange>, area?: string) => {
-      const accountChanged = (!area || area === 'local') && (ACCOUNT_REVISION_KEY in changes || SUPPORTER_REVISION_KEY in changes)
-      const backendChanged = (!area || area === 'sync') && ('backendUrl' in changes || 'localBackendOptIn' in changes)
-      if (accountChanged || backendChanged) void read()
-    }
-    const storage = globalThis.chrome?.storage?.onChanged
-    storage?.addListener(changed)
-    void read()
-    return () => { alive = false; request++; storage?.removeListener(changed) }
-  }, [perks])
-  if (supporterPerksAllowed(entitlement)) return 'unknown'
-  // A browser with no account yet is locked out of the perk, but nothing says Supporter is closed.
-  if (entitlement?.state === 'not_linked') return 'locked'
-  return supporterCheckoutAvailability(entitlement)
-}
-
 /**
- * The 7TV backdrop, Still or Rain, is a Supporter perk. Without verified perks
- * it draws nothing, whatever an older preference saved, and leaves that choice
- * stored so it returns if the person supports again.
+ * The backdrop, Still or drifting (stored as `rain`), is a Supporter perk.
+ * Without verified perks it draws nothing, whatever an older preference saved,
+ * and leaves that choice stored so it returns if the person supports again.
+ * `finish` colours the marks; without one they take the accent.
  */
-export function PulseBannerBackdrop({ value, perks, paused = false }: { value: PulseBannerPreference; perks: boolean; paused?: boolean }) {
+export function PulseBannerBackdrop({ value, perks, finish, paused = false }: { value: PulseBannerPreference; perks: boolean; finish?: string | null; paused?: boolean }) {
   const mode = perks ? value.mode : 'off'
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
@@ -134,30 +102,23 @@ export function PulseBannerBackdrop({ value, perks, paused = false }: { value: P
     document.addEventListener('visibilitychange', visibility)
     return () => { observer.disconnect(); document.removeEventListener('visibilitychange', visibility) }
   }, [])
-  return <>
-    <div ref={ref} className="pulse-banner-art" data-mode={mode} data-running={visible && !paused} aria-hidden="true" style={{ opacity: value.intensity / 100 }}>
-      {mode !== 'off' && EMOTES.map((id, index) => <img key={id} alt="" draggable={false} decoding="async" referrerPolicy="no-referrer"
-        src={`https://cdn.7tv.app/emote/${id}/2x_static.webp`}
-        onError={event => { event.currentTarget.style.visibility = 'hidden' }}
-        style={{ '--i': index, left: `${5 + index * 16}%`, top: `${8 + (index * 17) % 78}%`, animationDelay: `${-index * 5.7}s`, animationDuration: `${24 + index % 3 * 6}s` } as CSSProperties} />)}
-    </div>
-  </>
+  return <div ref={ref} className="pulse-banner-art" data-mode={mode} data-finish={finish ?? undefined} data-running={visible && !paused} aria-hidden="true" style={{ opacity: value.intensity / 100 }}>
+    {mode !== 'off' && [...ART, ...ART].map((d, index) => <svg key={index} viewBox="0 0 18 18"
+      style={{ '--i': index, left: `${5 + index * 16}%`, top: `${8 + (index * 17) % 78}%`, animationDelay: `${-index * 5.7}s`, animationDuration: `${24 + index % 3 * 6}s` } as CSSProperties}><path d={d} /></svg>)}
+  </div>
 }
 
 /**
- * Panel title and the 7TV backdrop. The title is free; Still and Rain are a
- * Supporter perk, so without one they stay locked and the saved choice is kept,
- * untouched (Reset included), for when the person supports again. `perks` is
- * undefined until the membership check answers: the perk controls wait, neutral,
- * rather than flashing the lock at a Supporter.
+ * The panel title, over a preview of the panel header. The backdrop behind the
+ * header is part of Your look in Account & Supporter, so a look is changed in
+ * one place. `perks` is undefined until the membership check answers.
  */
 export function PulseBannerControls({ expanded = false, perks }: { expanded?: boolean; perks: boolean | undefined }) {
   const banner = usePulseBanner()
-  const availability = useBannerCheckoutAvailability(perks)
-  const [draft, setDraft] = useState(banner.value)
+  const [title, setTitle] = useState(banner.value.title)
   const id = useId()
-  useEffect(() => setDraft(banner.value), [banner.value])
-  // "Edit background in all settings" opens #pulse-background: expand this and bring it into view.
+  useEffect(() => setTitle(banner.value.title), [banner.value.title])
+  // "#pulse-background" opens this section: expand this and bring it into view.
   const ref = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
     const details = ref.current
@@ -166,29 +127,20 @@ export function PulseBannerControls({ expanded = false, perks }: { expanded?: bo
     details.scrollIntoView?.({ block: 'start' })
     details.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true })
   }, [])
-  // Without perks, Reset clears only what this person may change: the title.
-  const reset = perks ? DEFAULT_PULSE_BANNER : { ...DEFAULT_PULSE_BANNER, mode: banner.value.mode, intensity: banner.value.intensity }
   return <details ref={ref} className="pulse-banner-customize" open={expanded || undefined} style={bannerThemeVariables} data-supporter-perks={perks ? 'on' : perks === false ? 'locked' : 'pending'}>
-    <summary>Background &amp; motion</summary>
-    <form onSubmit={event => { event.preventDefault(); void banner.save(draft) }}>
+    <summary>Panel title</summary>
+    <form onSubmit={event => { event.preventDefault(); void banner.save({ ...banner.value, title }) }}>
       <div className="pulse-personal-panel pulse-background-preview" data-appearance-preview="true" aria-label="Appearance preview" style={{ ...streamPulseHeaderChromeSidebar, minHeight: 112 }}>
-        <PulseBannerBackdrop value={draft} perks={perks === true} />
-        <div className="pulse-banner-copy"><StreamPulseTitleBlock title={draft.title || undefined} statusLabel="Preview" /></div>
+        <PulseBannerBackdrop value={banner.value} perks={perks === true} />
+        <div className="pulse-banner-copy"><StreamPulseTitleBlock title={title || undefined} statusLabel="Preview" /></div>
       </div>
       <fieldset disabled={!banner.ready || banner.saving}>
         <label htmlFor={`${id}-title`}>Panel title</label>
-        <input id={`${id}-title`} maxLength={40} placeholder="Stream Pulse" value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} />
-        <span id={`${id}-mode`}>7TV backdrop</span>
-        <div className="pulse-banner-modes" role="group" aria-labelledby={`${id}-mode`} aria-busy={perks === undefined || undefined}>
-          {(['off', 'still', 'rain'] as const).map(mode => <button key={mode} type="button" aria-pressed={draft.mode === mode} disabled={!perks && mode !== 'off'} title={!perks && mode !== 'off' ? 'Supporter perk' : undefined} onClick={() => setDraft({ ...draft, mode })}>{mode === 'off' ? 'Off' : mode === 'still' ? 'Still' : 'Rain'}</button>)}
-        </div>
-        {perks !== false || availability === 'unknown' ? null : <p className="pulse-supporter-detail" data-supporter-perk="emote-rain">
-          Emote rain is a Supporter perk. Only you see it.{availability === 'closed' ? " Supporter isn't on sale yet." : ''}{' '}
-          <a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>See Supporter →</a>
-        </p>}
-        <label htmlFor={`${id}-intensity`}>Intensity <output>{draft.intensity}%</output></label>
-        <input id={`${id}-intensity`} type="range" min={10} max={70} step={5} disabled={!perks || draft.mode === 'off'} value={draft.intensity} onChange={event => setDraft({ ...draft, intensity: Number(event.target.value) })} />
-        <div className="pulse-banner-save"><button type="submit">{banner.saving ? 'Saving...' : 'Save background'}</button><button type="button" onClick={() => setDraft(reset)}>Reset</button></div>
+        <input id={`${id}-title`} maxLength={40} placeholder="Stream Pulse" value={title} onChange={event => setTitle(event.target.value)} />
+        <p className="pulse-supporter-detail" data-supporter-perk="backdrop">
+          The backdrop behind the header is part of <a href="#supporter" onClick={() => window.scrollTo?.(0, 0)}>Your look</a>.
+        </p>
+        <div className="pulse-banner-save"><button type="submit">{banner.saving ? 'Saving...' : 'Save title'}</button><button type="button" onClick={() => setTitle('')}>Reset</button></div>
       </fieldset>
       {banner.loadError ? <PulseBannerLoadError onRetry={() => void banner.reload()} /> : null}
       <span role="status">{banner.status}</span>
