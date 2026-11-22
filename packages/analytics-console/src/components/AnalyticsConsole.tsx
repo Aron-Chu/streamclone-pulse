@@ -751,13 +751,23 @@ export function AnalyticsConsole({
     },
   })
 
+  // A session route that names its stream key (any key shape, not a date) has
+  // the recap read beside the session read instead of after it (Moments about
+  // 0.4 s sooner on a production build). The recap is keyed by that full stream
+  // key, never by login. Nothing from it shows before the session read has
+  // confirmed the creator: `recapForStream` waits on `detail`, and the Moments
+  // panel keeps its placeholders until then. A date route still waits, because
+  // only the session list can resolve it to a stream.
+  const recapWithSessionRead = isHistoricalRoute
+    && !isDateSlugRoute
+    && targetQueryStreamId === streamId
   const recapQuery = useQuery({
     queryKey: ['analytics-console-recap', targetQueryStreamId],
     queryFn: () => getPulseStreamRecap(targetQueryStreamId),
     enabled: Boolean(
       layer2Enabled
       && targetQueryStreamId
-      && chartDetailReady
+      && (chartDetailReady || recapWithSessionRead)
     ),
     staleTime: 120_000,
     retry: 1,
@@ -790,7 +800,8 @@ export function AnalyticsConsole({
   const canonicalStreamId = resolveCanonicalStreamId(detail?.stream?.streamId, targetQueryStreamId)
 
   const recapForStream =
-    recapQuery.isSuccess
+    detail
+    && recapQuery.isSuccess
     && recapQuery.data
     && recapMatchesStreamIds(recapQuery.data.streamId, targetQueryStreamId, canonicalStreamId)
       ? recapQuery.data
@@ -1549,9 +1560,10 @@ export function AnalyticsConsole({
   // The recap's slot keeps its height until the recap answer settles, so the Moments tabs under it do not
   // jump when it lands. The channel route holds the slot too while it may still open the session page.
   // (fix, 10-30) VOD-4: it waits on the list only until some rows (or the live read's own stream)
-  // name the session, not on the 100-row read.
+  // name the session, not on the 100-row read. A recap read beside the session read can settle
+  // first; the slot still holds until the session read lands.
   const recapSlotPending = !effectiveSessionNotFound && (layer2Enabled
-    ? !recapRetrying && (recapQuery.isLoading || (recapQuery.isPending && !detail))
+    ? !recapRetrying && (recapQuery.isLoading || !detail)
     : detailQuery.isLoading || (sidebarListLoading && !liveRouteSessionTarget) || shouldRedirectLiveRouteToSession)
 
   // A status heading (never recorded, an unknown date, not found, a failed read) says so in
@@ -1605,9 +1617,10 @@ export function AnalyticsConsole({
   const RightColumn = focusLayout ? 'details' : 'aside'
 
   // L1: the Moments tab's placeholders stand while the recap answer is out (the recap slot's own rule)
-  // A failed session read never starts the recap request (it waits on the chart detail), so it is not
-  // pending: the Moments panel says the read failed instead of loading forever (OP3-DES-011).
-  const momentsRecapPending = !sessionLoadFailed && !recapRetrying && (recapQuery.isLoading || (recapQuery.isPending && !detail))
+  // A failed session read is never pending, even where the recap was read beside it (numeric routes):
+  // the Moments panel says the read failed instead of loading forever, and shows nothing from the recap
+  // (OP3-DES-011). A recap that settles before the session read keeps the placeholders until it lands.
+  const momentsRecapPending = !sessionLoadFailed && !recapRetrying && (recapQuery.isLoading || !detail)
   const momentsFramed = Boolean(streamVodId) && typeof detail?.vodAlignSeconds === 'number'
     && Number.isFinite(detail.vodAlignSeconds)
   // d3-v2 session-original: "Watch VOD" sits in the meta line; only a missing VOD still says why under the chart.

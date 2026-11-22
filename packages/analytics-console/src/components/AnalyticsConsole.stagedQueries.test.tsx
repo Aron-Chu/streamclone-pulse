@@ -151,6 +151,13 @@ afterEach(() => {
   cleanup()
 })
 
+// Waits until the recap read (made beside the session read on a route that
+// names its stream) has answered, so a "never shown" check is not vacuous.
+async function settleRecapRead() {
+  await waitFor(() => expect(api.getPulseStreamRecap).toHaveBeenCalled())
+  await act(() => api.getPulseStreamRecap.mock.results[0]?.value)
+}
+
 describe('AnalyticsConsole staged Layer 2 queries', () => {
   it('never starts live-tail polling or shows a live session when explicit lifecycle is unknown', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
@@ -243,8 +250,11 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     expect(screen.getByRole('heading', { name: `Session ${streamId} not found` })).toBeTruthy()
     expect(screen.queryByText('Other creator broadcast')).toBeNull()
     expect(screen.queryByTestId('analytics-chart')).toBeNull()
-    expect(api.getPulseStreamRecap).not.toHaveBeenCalled()
     expect(api.getStreamSummary).not.toHaveBeenCalled()
+    // The route names its stream, so the recap is read beside the session read;
+    // once it has answered, nothing from it shows for the wrong creator.
+    await settleRecapRead()
+    expect(screen.queryByText('Recap')).toBeNull()
   })
 
   it('accepts the verified creator regardless of login capitalization', async () => {
@@ -272,7 +282,8 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     expect(screen.queryByText('Other creator broadcast')).toBeNull()
     expect(screen.queryByTestId('analytics-chart')).toBeNull()
     expect(api.getAnalyticsStream).not.toHaveBeenCalled()
-    expect(api.getPulseStreamRecap).not.toHaveBeenCalled()
+    await settleRecapRead()
+    expect(screen.queryByText('Recap')).toBeNull()
   })
 
   it('reuses a confirmed-live frame on its session route without reading the session', async () => {
@@ -443,7 +454,10 @@ describe('AnalyticsConsole Stream Recap slot', () => {
 
     await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalled())
     expect(recapSlot()).not.toBeNull()
-    expect(api.getPulseStreamRecap).not.toHaveBeenCalled()
+    // A recap that answers before the session read keeps the slot held, unshown.
+    await settleRecapRead()
+    expect(recapSlot()).not.toBeNull()
+    expect(screen.queryByText('Recap')).toBeNull()
   })
 
   it('keeps the height of a full recap above the tabs until the recap lands in its place', async () => {
