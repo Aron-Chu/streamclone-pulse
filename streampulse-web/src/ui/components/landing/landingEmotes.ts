@@ -34,7 +34,7 @@ export const LANDING_EMOTES: LandingEmote[] = [
   { name: 'ppL', id: '01GGD5PJA8000FH13S498E9D8X', provider: 'sevenTv' },
   { name: 'BillyApprove', id: '01GB2S7H7000018VJGJ4A9BMFS', provider: 'sevenTv' },
   // Twitch globals — used sparingly where they still show up in chat
-  { name: 'Kappa', id: '304894101', provider: 'twitch' },
+  { name: 'Kappa', id: '25', provider: 'twitch' },
   { name: 'LUL', id: '425618', provider: 'twitch' },
   { name: 'PogChamp', id: '305954156', provider: 'twitch' },
   { name: 'OMEGALUL', id: '583989', provider: 'twitch' },
