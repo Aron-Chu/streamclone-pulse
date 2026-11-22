@@ -18,7 +18,6 @@ import { pathToFileURL } from 'node:url'
 
 const AUDIT_REPORT_VERSION = 2
 const SEVERITIES = Object.freeze(['info', 'low', 'moderate', 'high', 'critical'])
-const BELOW_HIGH = Object.freeze(['info', 'low', 'moderate'])
 const ROUTER_ADVISORY = Object.freeze({
   source: 1124282,
   name: 'react-router',
@@ -29,97 +28,27 @@ const ROUTER_ADVISORY = Object.freeze({
   range: '>=7.12.0 <8.3.0',
 })
 
-export const PICOMATCH_GHSA = 'GHSA-fc5q-39xc-vjpf'
-const PICOMATCH_ADVISORY = Object.freeze({
-  source: 1247710,
-  name: 'picomatch',
-  dependency: 'picomatch',
-  title: 'picomatch vulnerable to ReDoS through single-branch repeated extglobs',
-  url: `https://github.com/advisories/${PICOMATCH_GHSA}`,
-  severity: 'high',
-  range: '<=4.0.7',
-})
-
 /**
- * The picomatch exception is temporary: no patched release existed when it was
- * reviewed. From this instant it stops matching and CI fails until the graph is
- * patched, reviewed again, or removed.
+ * Build tools that must never appear in an emitted browser chunk. The portal build
+ * (streampulse-web/vite.config.ts) calls assertBuildOnlyAuditRuntimeBoundary with its
+ * bundle. This list used to back the picomatch audit exception; the guard stays as a
+ * standing check that Vite, Vitest and the Tailwind 3 glob chain do not ship to users.
  */
-export const PICOMATCH_DISPOSITION_EXPIRES = '2026-12-02T00:00:00.000Z'
-
-/**
- * Reviewed development-only graphs, one per lock identity. Each package lists
- * its exact installed nodes (lock path -> locked version) and the audit `via`
- * parents that carry this one advisory. This is not a package-wide waiver: a
- * second high advisory, changed version, production node, missing or extra
- * node, or unreviewed parent needs a new disposition review.
- */
-const PICOMATCH_BUILD_GRAPHS = Object.freeze({
-  // Root lock: the extension's Vite build and Vitest runner.
-  'streamclone-pulse': Object.freeze({
-    picomatch: { nodes: { 'node_modules/picomatch': '4.0.5' }, parents: [] },
-    fdir: { nodes: { 'node_modules/fdir': '6.5.0' }, parents: ['picomatch'] },
-    tinyglobby: { nodes: { 'node_modules/tinyglobby': '0.2.17' }, parents: ['fdir', 'picomatch'] },
-    vite: {
-      nodes: {
-        'node_modules/vite': '8.1.6',
-        'node_modules/vite-node/node_modules/vite': '7.3.7',
-        'node_modules/vitest/node_modules/vite': '7.3.7',
-      },
-      parents: ['fdir', 'picomatch', 'tinyglobby'],
-    },
-    '@vitejs/plugin-react': { nodes: { 'node_modules/@vitejs/plugin-react': '6.0.2' }, parents: ['vite'] },
-    vitest: { nodes: { 'node_modules/vitest': '3.2.7' }, parents: ['picomatch', 'tinyglobby'] },
-  }),
-  // Portal lock: Vite, Vitest and the Tailwind 3 CSS build.
-  'streampulse-web': Object.freeze({
-    picomatch: {
-      nodes: {
-        'node_modules/picomatch': '2.3.2',
-        'node_modules/tinyglobby/node_modules/picomatch': '4.0.5',
-        'node_modules/vite-node/node_modules/picomatch': '4.0.5',
-        'node_modules/vite/node_modules/picomatch': '4.0.5',
-        'node_modules/vitest/node_modules/picomatch': '4.0.5',
-      },
-      parents: [],
-    },
-    anymatch: { nodes: { 'node_modules/anymatch': '3.1.3' }, parents: ['picomatch'] },
-    readdirp: { nodes: { 'node_modules/readdirp': '3.6.0' }, parents: ['picomatch'] },
-    micromatch: { nodes: { 'node_modules/micromatch': '4.0.8' }, parents: ['picomatch'] },
-    chokidar: { nodes: { 'node_modules/chokidar': '3.6.0' }, parents: ['anymatch', 'readdirp'] },
-    'fast-glob': { nodes: { 'node_modules/fast-glob': '3.3.3' }, parents: ['micromatch'] },
-    fdir: {
-      nodes: {
-        'node_modules/tinyglobby/node_modules/fdir': '6.5.0',
-        'node_modules/vite-node/node_modules/fdir': '6.5.0',
-        'node_modules/vitest/node_modules/fdir': '6.5.0',
-      },
-      parents: ['picomatch'],
-    },
-    tinyglobby: { nodes: { 'node_modules/tinyglobby': '0.2.17' }, parents: ['fdir', 'picomatch'] },
-    sucrase: { nodes: { 'node_modules/sucrase': '3.35.1' }, parents: ['tinyglobby'] },
-    tailwindcss: { nodes: { 'node_modules/tailwindcss': '3.4.19' }, parents: ['chokidar', 'fast-glob', 'micromatch'] },
-    vite: {
-      nodes: {
-        'node_modules/vite': '8.1.6',
-        'node_modules/vite-node/node_modules/vite': '7.3.7',
-        'node_modules/vitest/node_modules/vite': '7.3.7',
-      },
-      parents: ['fdir', 'picomatch', 'tinyglobby'],
-    },
-    '@vitejs/plugin-react': { nodes: { 'node_modules/@vitejs/plugin-react': '6.0.2' }, parents: ['vite'] },
-    vitest: { nodes: { 'node_modules/vitest': '3.2.7' }, parents: ['picomatch', 'tinyglobby'] },
-  }),
-})
-
-/** Every package name any reviewed build-only graph may exempt. */
-export const BUILD_ONLY_PACKAGES = Object.freeze(
-  [...new Set(Object.values(PICOMATCH_BUILD_GRAPHS).flatMap((graph) => Object.keys(graph)))].sort(),
-)
-
-const PICOMATCH_REASON =
-  'Exact locked development-only Vite/Vitest/Tailwind graph; the advisory needs an attacker-supplied glob pattern and every pattern here comes from the reviewed checkout. No affected module ships in browser output. No patched picomatch release exists; this exception expires ' +
-  `${PICOMATCH_DISPOSITION_EXPIRES.slice(0, 10)}. See docs/evidence/npm-audit-rpr6-2026-07.md.`
+export const BUILD_ONLY_PACKAGES = Object.freeze([
+  '@vitejs/plugin-react',
+  'anymatch',
+  'chokidar',
+  'fast-glob',
+  'fdir',
+  'micromatch',
+  'picomatch',
+  'readdirp',
+  'sucrase',
+  'tailwindcss',
+  'tinyglobby',
+  'vite',
+  'vitest',
+])
 
 /** @type {ReadonlyArray<{ name: string, ghsa: string, reason: string, parent?: string, advisory: Readonly<Record<string, unknown>> }>} */
 export const DISPOSITIONED_HIGHS = Object.freeze([
@@ -270,60 +199,6 @@ function auditHasExactGhsa(vulns, name, ghsa, parent, severity, advisory) {
   return false
 }
 
-/** The lock's own name, only when its root package agrees with it. */
-function lockIdentity(lock) {
-  if (!isRecord(lock) || !isRecord(lock.packages) || !isRecord(lock.packages[''])) return undefined
-  return typeof lock.name === 'string' && lock.packages[''].name === lock.name ? lock.name : undefined
-}
-
-/** True when the picomatch exception no longer applies at `now`. */
-export function picomatchDispositionExpired(now) {
-  return !(now instanceof Date) || Number.isNaN(now.getTime()) || now.getTime() >= Date.parse(PICOMATCH_DISPOSITION_EXPIRES)
-}
-
-/** A `via` entry that cannot by itself make a package high (a lower advisory or a lower package). */
-function isBelowHighVia(vulns, entry) {
-  if (typeof entry === 'string') return isRecord(vulns[entry]) && BELOW_HIGH.includes(vulns[entry].severity)
-  return isRecord(entry) && BELOW_HIGH.includes(entry.severity)
-}
-
-function matchesBuildOnlyPackage(vulns, name, expected, graph, lock) {
-  const info = vulns[name]
-  if (!isRecord(info) || info.severity !== 'high' || !Array.isArray(info.nodes) || !Array.isArray(info.via)) return false
-  if (info.nodes.length !== Object.keys(expected.nodes).length || new Set(info.nodes).size !== info.nodes.length) return false
-  for (const node of info.nodes) {
-    if (typeof node !== 'string' || !Object.hasOwn(expected.nodes, node)) return false
-    const installed = lock.packages[node]
-    if (!isRecord(installed) || installed.dev !== true || installed.version !== expected.nodes[node]) return false
-  }
-  if (expected.parents.length === 0) {
-    // The advisory package itself carries exactly this one advisory.
-    return info.via.length === 1 && advisoryMetadataMatches(info.via[0], { ...PICOMATCH_ADVISORY, ghsa: PICOMATCH_GHSA }, 'high')
-  }
-  // Lower-severity advisories (vitest's moderate ones) cannot make a package
-  // high. Every high-carrying edge must be one reviewed parent in this graph.
-  const carriers = info.via.filter((entry) => !isBelowHighVia(vulns, entry))
-  return (
-    carriers.length === expected.parents.length &&
-    new Set(carriers).size === carriers.length &&
-    carriers.every((entry) => typeof entry === 'string' && expected.parents.includes(entry) && Object.hasOwn(graph, entry))
-  )
-}
-
-/**
- * Whole-graph check for the build-only picomatch exception. Every reviewed
- * package of this lock must be present and exact, even when only the leaf is
- * being dispositioned; a partial, changed, production, or expired graph and a
- * lock without a reviewed graph never qualify.
- */
-export function auditHasExactBuildOnlyPicomatchGraph(vulns, name, lock, now) {
-  if (picomatchDispositionExpired(now) || !isRecord(vulns)) return false
-  const identity = lockIdentity(lock)
-  const graph = identity && Object.hasOwn(PICOMATCH_BUILD_GRAPHS, identity) ? PICOMATCH_BUILD_GRAPHS[identity] : undefined
-  if (!graph || !Object.hasOwn(graph, name)) return false
-  return Object.entries(graph).every(([pkg, expected]) => matchesBuildOnlyPackage(vulns, pkg, expected, graph, lock))
-}
-
 /** Fail the production build if any reviewed build tool reaches a browser chunk. */
 export function assertBuildOnlyAuditRuntimeBoundary(bundle) {
   const forbidden = new Set()
@@ -340,13 +215,11 @@ export function assertBuildOnlyAuditRuntimeBoundary(bundle) {
 }
 
 /**
- * Decide every high/critical finding. `readLock` is called only when a
- * finding could be covered by a reviewed build-only graph.
+ * Decide every high/critical finding.
  *
  * @param {Record<string, any>} vulns
- * @param {{ readLock: () => unknown, now: Date }} context
  */
-export function evaluateHighs(vulns, { readLock, now }) {
+export function evaluateHighs(vulns) {
   /** @type {Array<{ name: string, severity: string }>} */
   const highs = []
   for (const [name, info] of Object.entries(vulns)) {
@@ -355,22 +228,11 @@ export function evaluateHighs(vulns, { readLock, now }) {
   }
 
   const allowed = new Map(DISPOSITIONED_HIGHS.map((d) => [d.name, d]))
-  const lock = highs.some((hit) => BUILD_ONLY_PACKAGES.includes(hit.name)) ? readLock() : undefined
   /** @type {Array<{ name: string, severity: string, ghsa: string, reason: string }>} */
   const dispositioned = []
   /** @type {string[]} */
   const unexpected = []
   for (const hit of highs) {
-    if (BUILD_ONLY_PACKAGES.includes(hit.name)) {
-      if (auditHasExactBuildOnlyPicomatchGraph(vulns, hit.name, lock, now)) {
-        dispositioned.push({ ...hit, ghsa: PICOMATCH_GHSA, reason: PICOMATCH_REASON })
-      } else if (picomatchDispositionExpired(now)) {
-        unexpected.push(`${hit.severity} ${hit.name} (build-only ${PICOMATCH_GHSA} disposition expired ${PICOMATCH_DISPOSITION_EXPIRES})`)
-      } else {
-        unexpected.push(`${hit.severity} ${hit.name} (disposition requires the exact reviewed build-only ${PICOMATCH_GHSA} graph)`)
-      }
-      continue
-    }
     const disp = allowed.get(hit.name)
     if (!disp) {
       unexpected.push(`${hit.severity} ${hit.name} (no disposition)`)
@@ -427,11 +289,7 @@ function main() {
     throw new Error(`invalid npm audit report:\n  ${schemaErrors.join('\n  ')}`)
   }
 
-  // npm audit is invoked from the package directory in both existing CI jobs.
-  const { highs, dispositioned, unexpected } = evaluateHighs(audit.vulnerabilities, {
-    readLock: () => JSON.parse(readFileSync('package-lock.json', 'utf8')),
-    now: new Date(),
-  })
+  const { highs, dispositioned, unexpected } = evaluateHighs(audit.vulnerabilities)
   const explained = new Set()
   for (const hit of dispositioned) {
     console.log(`dispositioned ${hit.severity} ${hit.name}: ${hit.ghsa}`)

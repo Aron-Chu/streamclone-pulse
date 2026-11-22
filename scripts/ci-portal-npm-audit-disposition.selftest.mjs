@@ -10,9 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join as pathJoin } from 'node:path'
 import {
   BUILD_ONLY_PACKAGES,
-  PICOMATCH_DISPOSITION_EXPIRES,
   assertBuildOnlyAuditRuntimeBoundary,
-  auditHasExactBuildOnlyPicomatchGraph,
   evaluateHighs,
 } from './ci-portal-npm-audit-disposition.mjs'
 
@@ -76,88 +74,26 @@ if (mismatchedMetadata.status === 0 || !String(mismatchedMetadata.stderr).includ
 }
 
 
-// Build-only picomatch exception: exact reviewed graph per lock, before its expiry.
-const beforeExpiry = new Date('2026-11-20T00:00:00.000Z')
-const atExpiry = new Date(PICOMATCH_DISPOSITION_EXPIRES)
-const lockAt = (dir) => JSON.parse(readFileSync(pathJoin(root, dir, 'package-lock.json'), 'utf8'))
-const fixture = (name) => JSON.parse(readFileSync(pathJoin(fixtures, name), 'utf8'))
-const graphs = {
-  root: { audit: fixture('npm-audit-build-only-picomatch-root.json'), lock: lockAt('.') },
-  portal: { audit: fixture('npm-audit-build-only-picomatch-portal.json'), lock: lockAt('streampulse-web') },
+// The picomatch exception was removed when its advisory was withdrawn. The report below is a
+// real audit from while it was live: if the advisory is ever re-published, it is no longer
+// excused and the gate fails closed for every package it reaches.
+const republished = run('npm-audit-picomatch-republished.json', ['--npm-exit-code', '1'])
+assert.notEqual(republished.status, 0, 're-published picomatch advisory must fail the gate')
+for (const name of ['picomatch', 'fdir', 'tinyglobby', 'vite', 'vitest', '@vitejs/plugin-react']) {
+  assert.ok(String(republished.stderr).includes(`high ${name} (no disposition)`), `${name} is unexpected`)
 }
-
-for (const [label, { audit, lock }] of Object.entries(graphs)) {
-  const result = evaluateHighs(audit.vulnerabilities, { readLock: () => lock, now: beforeExpiry })
-  assert.deepEqual(result.unexpected, [], `${label}: real audit is fully covered`)
-  assert.ok(result.dispositioned.length > 0, `${label}: graph exercised`)
-  for (const hit of result.highs) {
-    assert.equal(auditHasExactBuildOnlyPicomatchGraph(audit.vulnerabilities, hit.name, lock, beforeExpiry), true, `${label} ${hit.name}`)
-  }
-  const expired = evaluateHighs(audit.vulnerabilities, { readLock: () => lock, now: atExpiry })
-  assert.equal(expired.dispositioned.length, 0, `${label}: nothing passes at the expiry instant`)
-  assert.ok(expired.unexpected.every((line) => line.includes('disposition expired')), `${label}: expiry is named`)
-  for (const bad of [undefined, new Date('not a date'), '2026-11-20']) {
-    assert.equal(auditHasExactBuildOnlyPicomatchGraph(audit.vulnerabilities, 'picomatch', lock, bad), false, `${label}: invalid clock`)
-  }
-}
-
-// One lock's graph never covers the other lock.
-assert.equal(auditHasExactBuildOnlyPicomatchGraph(graphs.portal.audit.vulnerabilities, 'tailwindcss', graphs.root.lock, beforeExpiry), false, 'portal graph on root lock')
-assert.equal(auditHasExactBuildOnlyPicomatchGraph(graphs.root.audit.vulnerabilities, 'vite', graphs.portal.lock, beforeExpiry), false, 'root graph on portal lock')
-
-// The CLI reads the lock in its working directory, so the portal report fails from the root.
-const portalFromRoot = run('npm-audit-build-only-picomatch-portal.json', ['--npm-exit-code', '1'], root)
-assert.notEqual(portalFromRoot.status, 0, 'portal report against the root lock')
-assert.match(String(portalFromRoot.stderr), /tailwindcss \((?:disposition requires the exact reviewed build-only GHSA-fc5q-39xc-vjpf graph|build-only GHSA-fc5q-39xc-vjpf disposition expired)/)
-
-function rejectChangedPortalGraph(label, change, name = 'tailwindcss') {
-  const vulns = structuredClone(graphs.portal.audit.vulnerabilities)
-  const lock = structuredClone(graphs.portal.lock)
-  change(vulns, lock)
-  assert.equal(auditHasExactBuildOnlyPicomatchGraph(vulns, name, lock, beforeExpiry), false, label)
-}
-const advisory = graphs.portal.audit.vulnerabilities.picomatch.via[0]
-rejectChangedPortalGraph('second advisory on picomatch', (v) => v.picomatch.via.push({ ...advisory, source: 1, url: 'https://github.com/advisories/GHSA-other-xxxx-xxxx' }))
-rejectChangedPortalGraph('lower advisory beside it on picomatch', (v) => v.picomatch.via.push({ ...advisory, severity: 'moderate', url: 'https://github.com/advisories/GHSA-other-xxxx-xxxx' }))
-rejectChangedPortalGraph('wrong advisory', (v) => { v.picomatch.via[0].url = 'https://github.com/advisories/GHSA-other-xxxx-xxxx' })
-rejectChangedPortalGraph('changed advisory range', (v) => { v.picomatch.via[0].range = '<=4.0.8' })
-rejectChangedPortalGraph('changed advisory source', (v) => { v.picomatch.via[0].source = 1247711 })
-rejectChangedPortalGraph('critical severity', (v) => { v.picomatch.severity = 'critical' })
-rejectChangedPortalGraph('missing graph package', (v) => { delete v.chokidar })
-rejectChangedPortalGraph('missing advisory package', (v) => { delete v.picomatch }, 'vite')
-rejectChangedPortalGraph('unreviewed parent', (v) => { v.micromatch.via = ['another-package'] })
-rejectChangedPortalGraph('parent outside this graph', (v) => { v.micromatch.via = ['react-router'] })
-rejectChangedPortalGraph('cycle', (v) => { v.chokidar.via = ['tailwindcss'] })
-rejectChangedPortalGraph('duplicate parent', (v) => { v.tailwindcss.via = ['micromatch', 'micromatch', 'chokidar', 'fast-glob'] })
-rejectChangedPortalGraph('missing parent edge', (v) => { v.tailwindcss.via = ['micromatch', 'chokidar'] })
-rejectChangedPortalGraph('extra high advisory on a parent', (v) => v.micromatch.via.push({ ...advisory, name: 'micromatch', dependency: 'micromatch' }))
-rejectChangedPortalGraph('lower package turned high', (v) => { v['@vitest/mocker'].severity = 'high' }, 'vitest')
-rejectChangedPortalGraph('lower edge to an unknown package', (v) => v.vitest.via.push('unknown-package'), 'vitest')
-rejectChangedPortalGraph('additional installed node', (v) => v.picomatch.nodes.push('node_modules/other/node_modules/picomatch'))
-rejectChangedPortalGraph('duplicate installed node', (v) => { v.tailwindcss.nodes = ['node_modules/tailwindcss', 'node_modules/tailwindcss'] })
-rejectChangedPortalGraph('missing installed node', (v) => { v.vite.nodes = ['node_modules/vite'] })
-rejectChangedPortalGraph('missing lock entry', (_v, l) => { delete l.packages['node_modules/picomatch'] })
-rejectChangedPortalGraph('production dependency', (_v, l) => { l.packages['node_modules/vite/node_modules/picomatch'].dev = false })
-rejectChangedPortalGraph('optional-only flag instead of dev', (_v, l) => { delete l.packages['node_modules/sucrase'].dev; l.packages['node_modules/sucrase'].devOptional = true })
-rejectChangedPortalGraph('new locked version', (_v, l) => { l.packages['node_modules/picomatch'].version = '2.3.3' })
-rejectChangedPortalGraph('root lock lookalike', (_v, l) => { l.name = 'streamclone-pulse'; l.packages[''].name = 'streamclone-pulse' })
-rejectChangedPortalGraph('mismatched lock identity', (_v, l) => { l.packages[''].name = 'streamclone-pulse' })
-rejectChangedPortalGraph('lock name from the prototype', (_v, l) => { l.name = 'constructor'; l.packages[''].name = 'constructor' })
-rejectChangedPortalGraph('name outside the graph', () => {}, 'react-router')
-const leafOnly = { picomatch: graphs.portal.audit.vulnerabilities.picomatch }
-assert.equal(auditHasExactBuildOnlyPicomatchGraph(leafOnly, 'picomatch', graphs.portal.lock, beforeExpiry), false, 'partial graph cannot qualify')
-
-// A lower advisory on vitest (already in the real report) does not block the graph,
-// but a new high finding outside the graph still fails the whole report.
 {
-  const vulns = structuredClone(graphs.portal.audit.vulnerabilities)
-  vulns['some-new-package'] = { name: 'some-new-package', severity: 'high', via: ['picomatch'], nodes: ['node_modules/some-new-package'] }
-  const result = evaluateHighs(vulns, { readLock: () => graphs.portal.lock, now: beforeExpiry })
-  assert.deepEqual(result.unexpected, ['high some-new-package (no disposition)'])
+  const audit = JSON.parse(readFileSync(pathJoin(fixtures, 'npm-audit-picomatch-republished.json'), 'utf8'))
+  const result = evaluateHighs(audit.vulnerabilities)
+  assert.equal(result.dispositioned.length, 0, 'nothing is dispositioned')
+  assert.equal(result.unexpected.length, result.highs.length, 'every high is unexpected')
 }
 
-// No lock read when nothing could be build-only.
-evaluateHighs({}, { readLock: () => { throw new Error('lock read without need') }, now: beforeExpiry })
+// Whatever the date, a high outside the reviewed router entries is unexpected.
+assert.deepEqual(
+  evaluateHighs({ 'some-new-package': { name: 'some-new-package', severity: 'high', via: ['picomatch'] } }).unexpected,
+  ['high some-new-package (no disposition)'],
+)
 
 assert.doesNotThrow(() => assertBuildOnlyAuditRuntimeBoundary({
   'index.js': { type: 'chunk', modules: { '/repo/src/main.tsx': {}, '\0vite/preload-helper.js': {}, '/repo/node_modules/vite-node/dist/x.js': {} } },
