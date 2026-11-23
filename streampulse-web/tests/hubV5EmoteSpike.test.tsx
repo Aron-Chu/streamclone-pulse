@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearBucketMomentsCache, writeBucketMomentsCache } from '../src/lib/bucketMomentsCache'
+import type { HubEmoteDriverMoment, HubEmoteDriversAnswer } from '../src/lib/hubEmoteDrivers'
 import { resetHubIntervalMomentsForTests } from '../src/lib/hubIntervalMoments'
 import type { HubApiWindow } from '../src/lib/hubWindows'
 import { normalizePublicHub, type HubActivityPoint, type HubLivePulseMoment, type PublicHubMomentsResponse } from '../src/lib/publicHub'
@@ -15,6 +16,19 @@ const requestHubBucketMoments = vi.hoisted(() => vi.fn())
 vi.mock('../src/lib/prefetchHubBucketMoments', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/prefetchHubBucketMoments')>()),
   requestHubBucketMoments,
+}))
+
+// hub/emote-drivers: by default a backend without the route, so the map reads hub/moments' top 3s
+const drivers = vi.hoisted(() => ({
+  request: vi.fn(),
+  read: vi.fn(),
+  served: vi.fn(),
+}))
+vi.mock('../src/lib/hubEmoteDrivers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/hubEmoteDrivers')>()),
+  requestHubEmoteDrivers: drivers.request,
+  readHubEmoteDrivers: drivers.read,
+  hubEmoteDriversServed: drivers.served,
 }))
 
 // the page test's hub answer; the map tests above render the map alone
@@ -63,6 +77,14 @@ function answer(bucketT: number, moments: HubLivePulseMoment[]): PublicHubMoment
   }
 }
 
+const driver = (login: string, at: number, emoteUses: number, emoteMinuteUses: number, extra: Partial<HubLivePulseMoment> = {}): HubEmoteDriverMoment => ({
+  ...row(login, at, [['Pog', 'twitch', emoteMinuteUses]], extra),
+  emoteUses,
+  emoteMinuteUses,
+})
+const ready = (rows: HubEmoteDriverMoment[]): HubEmoteDriversAnswer => ({ status: 'ready', rows })
+const UNSERVED: HubEmoteDriversAnswer = { status: 'unserved' }
+
 function renderMap(
   props: { intervalWindow?: HubApiWindow; historyBehind?: string | null } = { intervalWindow: '24h' },
   pts = points(),
@@ -79,6 +101,9 @@ beforeEach(() => {
   clearBucketMomentsCache()
   resetHubIntervalMomentsForTests()
   requestHubBucketMoments.mockReset()
+  drivers.request.mockReset().mockResolvedValue(UNSERVED)
+  drivers.read.mockReset().mockReturnValue(null)
+  drivers.served.mockReset().mockReturnValue(true)
 })
 
 afterEach(() => {
@@ -89,6 +114,7 @@ afterEach(() => {
 describe('a clicked emote (C1, 10-30)', () => {
   it('draws its uses per interval with the busiest one marked', () => {
     requestHubBucketMoments.mockReturnValue(new Promise(() => {}))
+    drivers.request.mockReturnValue(new Promise(() => {}))
     const { container } = renderMap()
     pickPog()
     const bars = container.querySelector('svg.hv5-es-bars')!
@@ -103,7 +129,76 @@ describe('a clicked emote (C1, 10-30)', () => {
     expect(container.querySelector('[aria-busy="true"]')!.textContent).toContain('Loading the streams for that interval.')
   })
 
-  it('lists who drove it from one read of that interval, by provider and name, each row opening its minute in Moments', async () => {
+  it('lists the streams that used it most in that interval, from one hub/emote-drivers read, each row opening its busiest minute', async () => {
+    drivers.request.mockResolvedValue(ready([
+      driver('xqc', SPIKE + 2 * MIN, 120, 20, { category: 'Just Chatting' }),
+      driver('pokimane', SPIKE + 3 * MIN, 65, 40),
+      driver('shroud', SPIKE + MIN, 45, 40),
+      driver('XQC', SPIKE + 4 * MIN, 10, 10),
+    ]))
+    const { container } = renderMap()
+    pickPog()
+    await waitFor(() => expect(container.querySelectorAll('.hv5-es-rows a')).toHaveLength(3))
+    expect(drivers.request).toHaveBeenCalledTimes(1)
+    expect(drivers.request).toHaveBeenCalledWith(
+      { bucketT: SPIKE, activityWindow: '24h', name: 'Pog', provider: 'twitch', limit: 5 },
+      expect.any(AbortSignal),
+    )
+    expect(requestHubBucketMoments).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('Who drove it · streams that used Pog most in that interval')
+    expect(container.textContent).not.toContain('top 3')
+    expect(screen.getByText('The 3 streams that used Pog most in that interval.').getAttribute('role')).toBe('status')
+    const links = [...container.querySelectorAll('.hv5-es-rows a')]
+    // one row a channel, most uses in the interval first
+    expect(links.map((a) => a.querySelector('.hv5-es-uses')!.textContent)).toEqual(['120 uses', '65 uses', '45 uses'])
+    expect(links[0]!.getAttribute('href')).toContain('login=xqc')
+    expect(links[0]!.querySelector('.hv5-es-at')!.textContent).toBe(`▶ ${hubClock(SPIKE + 2 * MIN)}`)
+    expect(screen.getByRole('link', { name: `XQC, Just Chatting, 120 Pog uses in that interval, most in the minute at ${hubClock(SPIKE + 2 * MIN)}. Opens that minute in Moments.` })).toBe(links[0])
+    expect(container.querySelector('.hv5-es-rows')!.classList.contains('hv5-el-one')).toBe(true)
+  })
+
+  it('takes a second column for 4 or 5 streams, and lists no more than 5', async () => {
+    drivers.request.mockResolvedValue(ready(['a', 'b', 'c', 'd', 'e', 'f'].map((login, i) => driver(login, SPIKE + i * MIN, 60 - i, 9))))
+    const { container } = renderMap()
+    pickPog()
+    await waitFor(() => expect(container.querySelectorAll('.hv5-es-rows a')).toHaveLength(5))
+    expect(container.querySelector('.hv5-es-rows')!.classList.contains('hv5-el-one')).toBe(false)
+    expect(screen.getByText('The 5 streams that used Pog most in that interval.')).toBeTruthy()
+  })
+
+  it('says when no stream used it, one did, or the interval is not in yet', async () => {
+    drivers.request.mockResolvedValueOnce({ status: 'empty' })
+    const none = renderMap()
+    pickPog()
+    await waitFor(() => expect(none.container.textContent).toContain('None of the streams in that interval used Pog.'))
+    expect(none.container.textContent).toContain('Who drove it · streams that used Pog most in that interval')
+    none.unmount()
+
+    drivers.request.mockResolvedValueOnce(ready([driver('solo', SPIKE, 7, 7)]))
+    const one = renderMap()
+    pickPog()
+    await waitFor(() => expect(one.container.querySelectorAll('.hv5-es-rows a')).toHaveLength(1))
+    expect(screen.getByText('1 stream used Pog in that interval.')).toBeTruthy()
+    one.unmount()
+
+    drivers.request.mockResolvedValueOnce({ status: 'empty' })
+    const behind = renderMap({ intervalWindow: '24h', historyBehind: '24-hour history is behind right now' })
+    pickPog()
+    await waitFor(() => expect(behind.container.textContent).toContain('The streams for that interval aren’t in yet.'))
+    expect(requestHubBucketMoments).not.toHaveBeenCalled()
+  })
+
+  it('shows a cached hub/emote-drivers read on the first frame without asking again', () => {
+    drivers.read.mockReturnValue(ready([driver('xqc', SPIKE + 2 * MIN, 120, 20)]))
+    const { container } = renderMap()
+    pickPog()
+    expect(container.querySelectorAll('.hv5-es-rows a')).toHaveLength(1)
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull()
+    expect(drivers.request).not.toHaveBeenCalled()
+    expect(requestHubBucketMoments).not.toHaveBeenCalled()
+  })
+
+  it('on a backend without hub/emote-drivers, lists who drove it from one hub/moments read, by provider and name, each row opening its minute in Moments', async () => {
     requestHubBucketMoments.mockResolvedValue(answer(SPIKE, [
       row('pokimane', SPIKE + 3 * MIN, [['KEKW', 'seventv', 90], ['LUL', 'twitch', 50], ['Pog', 'twitch', 12]]),
       row('xqc', SPIKE + 2 * MIN, [['Pog', 'twitch', 41]], { category: 'Just Chatting' }),
@@ -112,6 +207,7 @@ describe('a clicked emote (C1, 10-30)', () => {
     const { container } = renderMap()
     pickPog()
     await waitFor(() => expect(container.querySelectorAll('.hv5-es-rows a')).toHaveLength(2))
+    expect(drivers.request).toHaveBeenCalledTimes(1)
     expect(requestHubBucketMoments).toHaveBeenCalledTimes(1)
     expect(requestHubBucketMoments).toHaveBeenCalledWith(expect.objectContaining({ bucketT: SPIKE, activityWindow: '24h' }))
     expect(container.textContent).toContain('Who drove it · streams in that interval with Pog in their top 3')
@@ -130,7 +226,7 @@ describe('a clicked emote (C1, 10-30)', () => {
     expect(clear.querySelector('svg.hv5-ico')!.getAttribute('aria-hidden')).toBe('true')
   })
 
-  it('says when the read fails, lists nothing, or finds no match; the bars stay', async () => {
+  it('on a backend without hub/emote-drivers, says when the read fails, lists nothing, or finds no match; the bars stay', async () => {
     requestHubBucketMoments.mockRejectedValueOnce(new Error('down'))
     const failed = renderMap()
     pickPog()
@@ -157,17 +253,22 @@ describe('a clicked emote (C1, 10-30)', () => {
     await waitFor(() => expect(behind.container.textContent).toContain('The streams for that interval aren’t in yet.'))
   })
 
-  it('shows a cached read on the first frame without asking again', () => {
+  it('on a backend the tab knows has no hub/emote-drivers, shows a cached hub/moments read on the first frame without asking again', () => {
+    drivers.read.mockReturnValue(UNSERVED)
+    drivers.served.mockReturnValue(false)
     writeBucketMomentsCache(SPIKE, '24h', [], answer(SPIKE, [row('xqc', SPIKE + 2 * MIN, [['Pog', 'twitch', 41]])]))
     const { container } = renderMap()
     pickPog()
     expect(container.querySelectorAll('.hv5-es-rows a')).toHaveLength(1)
+    expect(container.textContent).toContain('Who drove it · streams in that interval with Pog in their top 3')
     expect(container.querySelector('[aria-busy="true"]')).toBeNull()
+    expect(drivers.request).not.toHaveBeenCalled()
     expect(requestHubBucketMoments).not.toHaveBeenCalled()
   })
 
   it('draws no bar where the hub sent no list: an outage, not a quiet emote', () => {
     requestHubBucketMoments.mockReturnValue(new Promise(() => {}))
+    drivers.request.mockReturnValue(new Promise(() => {}))
     const pts = points()
     pts[50] = { ...pts[50]!, topEmotes: [] }
     const { container } = renderMap({ intervalWindow: '24h' }, pts)
@@ -181,12 +282,22 @@ describe('a clicked emote (C1, 10-30)', () => {
     const long = renderMap({ intervalWindow: '1m' })
     pickPog()
     expect(long.container.textContent).toContain('Set the time window to 7 days or less to see streams.')
+    expect(long.container.textContent).toContain('Who drove it · streams that used Pog most in that interval')
     long.unmount()
+    // a backend the tab knows has no hub/emote-drivers keeps the top-3 subtitle there
+    drivers.served.mockReturnValue(false)
+    const old = renderMap({ intervalWindow: '1m' })
+    pickPog()
+    expect(old.container.textContent).toContain('Set the time window to 7 days or less to see streams.')
+    expect(old.container.textContent).toContain('Who drove it · streams in that interval with Pog in their top 3')
+    old.unmount()
+    drivers.served.mockReturnValue(true)
     const bare = renderMap({})
     pickPog()
     expect(bare.container.querySelector('svg.hv5-es-bars')).not.toBeNull()
     expect(bare.container.textContent).not.toContain('Who drove it')
     expect(requestHubBucketMoments).not.toHaveBeenCalled()
+    expect(drivers.request).not.toHaveBeenCalled()
   })
 })
 

@@ -20,8 +20,9 @@
  * Under the map, the ten most used emotes with the last hour against their own
  * pace as a change chip. A click on a tile or a row selects the emote (C1,
  * 10-30 board): the list turns into its uses per interval with the busiest one
- * marked, the streams in that interval that had it in their top 3 (one
- * hub/moments read, cached), then the hub's live moments it led; each row
+ * marked, the streams that used it most in that interval (one hub/emote-drivers
+ * read, cached; on a backend without that route, the streams in that interval
+ * with it in their top 3 from hub/moments), then the hub's live moments it led; each row
  * opens its minute in Moments. Hover (or focus) shows an emote's numbers;
  * arrow keys move to the nearest tile, Home and End to the ends, with one tab
  * stop. The window chips (W1, 10-30 board) re-cut the tiles from the same
@@ -31,7 +32,8 @@ import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMem
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
-import { loadHubIntervalMoments, readHubIntervalMoments, type HubIntervalMomentsState, type HubIntervalRequest } from '../../../../lib/hubIntervalMoments'
+import { hubEmoteDriversServed, readHubEmoteDrivers, requestHubEmoteDrivers, type HubEmoteDriversAnswer, type HubEmoteDriversQuery } from '../../../../lib/hubEmoteDrivers'
+import { hubIntervalBucketTs, loadHubIntervalMoments, planHubInterval, readHubIntervalMoments, type HubIntervalMomentsState, type HubIntervalRequest } from '../../../../lib/hubIntervalMoments'
 import type { HubApiWindow } from '../../../../lib/hubWindows'
 import type { HubActivityPoint, HubEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
@@ -44,7 +46,9 @@ import {
   NO_TILE_FITS,
   clampMapView,
   emoteChange,
+  EMOTE_DRIVER_ROWS,
   emoteDrivers,
+  emoteDriversByUses,
   emoteFlagKey,
   emoteImageAt,
   emoteInWindow,
@@ -449,18 +453,44 @@ function SpikeBars({ spike, label }: { spike: EmoteSpike; label: string }) {
   )
 }
 
-function driverAria(d: EmoteDriver, emote: string): string {
+/** How "Who drove it" was read: by uses over the interval (hub/emote-drivers), or by top 3s (hub/moments). */
+type DriversBy = 'uses' | 'top3'
+
+function driverAria(d: EmoteDriver, emote: string, by: DriversBy): string {
   const name = d.m.displayName || d.m.login
   const when = d.m.at != null ? ` at ${hubClock(d.m.at)}` : ''
-  return `${name}, ${d.m.category || 'game not sent'}, ${formatHubInt(d.uses)} ${emote} uses in its busiest minute${when}. Opens that minute in Moments.`
+  const uses = by === 'uses'
+    ? `${formatHubInt(d.uses)} ${emote} uses in that interval${when ? `, most in the minute${when}` : ''}`
+    : `${formatHubInt(d.uses)} ${emote} uses in its busiest minute${when}`
+  return `${name}, ${d.m.category || 'game not sent'}, ${uses}. Opens that minute in Moments.`
+}
+
+type EmoteDriversState =
+  | { by: 'uses'; s: HubEmoteDriversAnswer | { status: 'loading' } | { status: 'zoom-in' } }
+  | { by: 'top3'; s: HubIntervalMomentsState }
+
+/** The state the tab's caches already hold, or null when it takes a call. */
+function readEmoteDrivers(request: HubIntervalRequest, q: HubEmoteDriversQuery): EmoteDriversState | null {
+  // a long window lists no streams either way; its subtitle follows what this tab knows of the backend
+  if (planHubInterval(request).kind === 'zoom-in') {
+    return hubEmoteDriversServed() ? { by: 'uses', s: { status: 'zoom-in' } } : { by: 'top3', s: { status: 'zoom-in' } }
+  }
+  const answer = readHubEmoteDrivers(q)
+  if (!answer) return null
+  if (answer.status !== 'unserved') return { by: 'uses', s: answer }
+  const s = readHubIntervalMoments(request)
+  return s ? { by: 'top3', s } : null
 }
 
 /**
- * C1's "Who drove it": one hub/moments read for the busiest interval, through
- * the tab cache the chart's interval list shares (30 min), keeping the
- * streams that had the emote in their top 3. Rows carry no ×: they come with no
- * comparison. One status line says each state, so a screen reader hears the
- * rows land or the read fail.
+ * C1's "Who drove it": one hub/emote-drivers read for the busiest interval, the
+ * streams that used the emote most there (one row a channel, its busiest minute
+ * on the ▶), cached in the tab for 30 minutes. A backend without that route
+ * gets today's read instead: hub/moments through the cache the chart's interval
+ * list shares, keeping the streams that had the emote in their top 3, and the
+ * subtitle and lines say so. Rows carry no ×: they come with no comparison. One
+ * status line says each state, so a screen reader hears the rows land or the
+ * read fail.
  */
 function EmoteDrivers({ a, peakT, bucketMinutes, intervalWindow, behind, avatars }: {
   a: HubEmoteAgg
@@ -472,57 +502,80 @@ function EmoteDrivers({ a, peakT, bucketMinutes, intervalWindow, behind, avatars
   avatars?: ReadonlyMap<string, string>
 }) {
   const request = useMemo<HubIntervalRequest>(() => ({ t: peakT, activityWindow: intervalWindow, bucketMinutes }), [peakT, intervalWindow, bucketMinutes])
-  const key = `${intervalWindow}|${bucketMinutes}|${peakT}`
-  // the cache first, so a read from the last 30 minutes shows on the first frame
-  const cached = useMemo(() => readHubIntervalMoments(request), [request])
-  const [got, setGot] = useState<{ key: string; s: HubIntervalMomentsState } | null>(null)
+  const q = useMemo<HubEmoteDriversQuery>(() => ({
+    bucketT: hubIntervalBucketTs(request)[0] ?? peakT,
+    activityWindow: intervalWindow,
+    name: a.e.name,
+    provider: a.prov,
+    limit: EMOTE_DRIVER_ROWS,
+  }), [request, peakT, intervalWindow, a.e.name, a.prov])
+  const key = `${intervalWindow}|${bucketMinutes}|${peakT}|${a.prov}|${a.e.name}`
+  // the caches first, so a read from the last 30 minutes shows on the first frame
+  const cached = useMemo(() => readEmoteDrivers(request, q), [request, q])
+  const [got, setGot] = useState<{ key: string; s: EmoteDriversState } | null>(null)
   const state = got?.key === key ? got.s : cached
   useEffect(() => {
-    if (readHubIntervalMoments(request)) return undefined
+    if (readEmoteDrivers(request, q)) return undefined
     const ctrl = new AbortController()
-    const put = (s: HubIntervalMomentsState) => { if (!ctrl.signal.aborted) setGot({ key, s }) }
-    loadHubIntervalMoments(request, { signal: ctrl.signal, onProgress: put })
-      .then(put, (error: unknown) => put({ status: 'error', error, retryAfterMs: null, bucketsRead: 0, bucketsTotal: 1 }))
+    const put = (s: EmoteDriversState) => { if (!ctrl.signal.aborted) setGot({ key, s }) }
+    const fail = (error: unknown) => put({ by: 'top3', s: { status: 'error', error, retryAfterMs: null, bucketsRead: 0, bucketsTotal: 1 } })
+    const byTop3 = () => loadHubIntervalMoments(request, { signal: ctrl.signal, onProgress: (s) => put({ by: 'top3', s }) })
+      .then((s) => put({ by: 'top3', s }))
+    requestHubEmoteDrivers(q, ctrl.signal)
+      .then((answer) => (answer.status === 'unserved' ? byTop3() : put({ by: 'uses', s: answer })))
+      .catch(fail)
     return () => ctrl.abort()
-  }, [request, key])
+  }, [request, q, key])
 
-  const loading = !state || state.status === 'loading'
-  const drivers = state?.status === 'ready' ? emoteDrivers(state.rows, a) : []
+  // before any answer, the wording follows what this tab knows of the backend
+  const by: DriversBy = state?.by ?? (hubEmoteDriversServed() ? 'uses' : 'top3')
+  const s = state?.s
+  const loading = !s || s.status === 'loading'
+  const drivers = !state || state.s.status !== 'ready' ? []
+    : state.by === 'uses' ? emoteDriversByUses(state.s.rows) : emoteDrivers(state.s.rows, a)
+  const notIn = 'The streams for that interval aren’t in yet.'
   // the page's own window decides the read: a chip can't make it shorter
-  const note = !state || state.status === 'loading' ? null
-    : state.status === 'zoom-in' ? 'Set the time window to 7 days or less to see streams.'
-      : state.status === 'error' || state.status === 'unavailable' ? 'Couldn’t load the streams for that interval.'
-        : state.status === 'empty' ? (behind ? 'The streams for that interval aren’t in yet.' : 'No streams were listed for that interval.')
-          : drivers.length ? null : `None of the busiest chats in that interval had ${a.e.name} in their top 3.`
-  const say = loading
-    ? 'Loading the streams for that interval.'
-    : note ?? `${drivers.length} ${drivers.length === 1 ? 'stream' : 'streams'} in that interval had ${a.e.name} in their top 3.`
+  const note = !s || s.status === 'loading' ? null
+    : s.status === 'zoom-in' ? 'Set the time window to 7 days or less to see streams.'
+      : s.status === 'error' || s.status === 'unavailable' ? 'Couldn’t load the streams for that interval.'
+        : by === 'uses' ? (drivers.length ? null : behind ? notIn : `None of the streams in that interval used ${a.e.name}.`)
+          : s.status === 'empty' ? (behind ? notIn : 'No streams were listed for that interval.')
+            : drivers.length ? null : `None of the busiest chats in that interval had ${a.e.name} in their top 3.`
+  const listed = by === 'uses'
+    ? (drivers.length === 1 ? `1 stream used ${a.e.name} in that interval.` : `The ${drivers.length} streams that used ${a.e.name} most in that interval.`)
+    : `${drivers.length} ${drivers.length === 1 ? 'stream' : 'streams'} in that interval had ${a.e.name} in their top 3.`
+  const say = loading ? 'Loading the streams for that interval.' : note ?? listed
   return (
-    <div aria-busy={loading || undefined}>
-      <p className={note ? 'hv5-el-none' : 'hv5-vh'} role="status">{say}</p>
-      {/* up to 3 rows fill the width in one column; 4 or 5 take the second column */}
-      {loading ? (
-        <ol className="hv5-el-cols hv5-es-rows hv5-el-one" aria-hidden="true">
-          {[0, 1, 2].map((i) => <li key={i} className="hv5-es-ph" />)}
-        </ol>
-      ) : drivers.length ? (
-        <ol className={`hv5-el-cols hv5-es-rows${drivers.length <= 3 ? ' hv5-el-one' : ''}`} key={key}>
-          {drivers.map((d, i) => (
-            <li key={momentRowKey(d.m)} style={{ animationDelay: `${i * 18}ms` }}>
-              <Link to={momentHref(d.m)} className="hv5-el-r">
-                <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
-                <HubV5Avatar login={d.m.login!} name={d.m.displayName || d.m.login!} src={d.m.profileImageUrl || avatars?.get(d.m.login!)} size={24} />
-                <span className="hv5-el-n" aria-hidden="true">{d.m.displayName || d.m.login}<small>{d.m.category || 'No category'}</small></span>
-                <span className="hv5-el-v hv5-es-uses" aria-hidden="true">{formatHubInt(d.uses)} uses</span>
-                <span className="hv5-el-v hv5-es-at" aria-hidden="true">{d.m.at != null ? `▶ ${hubClock(d.m.at)}` : ''}</span>
-                {/* What screen readers hear: the visible parts are hidden from them, so the name never disagrees with them (WCAG 2.5.3). */}
-                <span className="hv5-vh">{driverAria(d, a.e.name)}</span>
-              </Link>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-    </div>
+    <>
+      <p className="hv5-el-sub">
+        <b>Who drove it</b> · {by === 'uses' ? `streams that used ${a.e.name} most in that interval` : `streams in that interval with ${a.e.name} in their top 3`}
+      </p>
+      <div aria-busy={loading || undefined}>
+        <p className={note ? 'hv5-el-none' : 'hv5-vh'} role="status">{say}</p>
+        {/* up to 3 rows fill the width in one column; 4 or 5 take the second column */}
+        {loading ? (
+          <ol className="hv5-el-cols hv5-es-rows hv5-el-one" aria-hidden="true">
+            {[0, 1, 2].map((i) => <li key={i} className="hv5-es-ph" />)}
+          </ol>
+        ) : drivers.length ? (
+          <ol className={`hv5-el-cols hv5-es-rows${drivers.length <= 3 ? ' hv5-el-one' : ''}`} key={key}>
+            {drivers.map((d, i) => (
+              <li key={momentRowKey(d.m)} style={{ animationDelay: `${i * 18}ms` }}>
+                <Link to={momentHref(d.m)} className="hv5-el-r">
+                  <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
+                  <HubV5Avatar login={d.m.login!} name={d.m.displayName || d.m.login!} src={d.m.profileImageUrl || avatars?.get(d.m.login!)} size={24} />
+                  <span className="hv5-el-n" aria-hidden="true">{d.m.displayName || d.m.login}<small>{d.m.category || 'No category'}</small></span>
+                  <span className="hv5-el-v hv5-es-uses" aria-hidden="true">{formatHubInt(d.uses)} uses</span>
+                  <span className="hv5-el-v hv5-es-at" aria-hidden="true">{d.m.at != null ? `▶ ${hubClock(d.m.at)}` : ''}</span>
+                  {/* What screen readers hear: the visible parts are hidden from them, so the name never disagrees with them (WCAG 2.5.3). */}
+                  <span className="hv5-vh">{driverAria(d, a.e.name, by)}</span>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+      </div>
+    </>
   )
 }
 
@@ -1346,18 +1399,15 @@ export function HubV5EmoteMap({
                   </div>
                 ) : null}
                 {spike && busiest && intervalWindow ? (
-                  <>
-                    <p className="hv5-el-sub"><b>Who drove it</b> · streams in that interval with {selected.e.name} in their top 3</p>
-                    <EmoteDrivers
-                      key={`${selected.id}|${spike.peakT}`}
-                      a={selected}
-                      peakT={spike.peakT}
-                      bucketMinutes={data.bucketMinutes}
-                      intervalWindow={intervalWindow}
-                      behind={Boolean(historyBehind)}
-                      avatars={avatars}
-                    />
-                  </>
+                  <EmoteDrivers
+                    key={`${selected.id}|${spike.peakT}`}
+                    a={selected}
+                    peakT={spike.peakT}
+                    bucketMinutes={data.bucketMinutes}
+                    intervalWindow={intervalWindow}
+                    behind={Boolean(historyBehind)}
+                    avatars={avatars}
+                  />
                 ) : null}
                 {/* the live moments it led stay, under the streams, when there are any (C1) */}
                 {spammed.length ? (

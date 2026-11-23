@@ -14,6 +14,7 @@
  * window, and a selected emote shows them per interval with its busiest one,
  * whose streams one hub/moments read lists.
  */
+import type { HubEmoteDriverMoment } from '../../../../lib/hubEmoteDrivers'
 import type { HubActivityPoint, HubBucketEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
 import { formatHubInt, hubClockRange } from './hubV5Model'
 
@@ -938,18 +939,40 @@ export function emotePerMinute(count: number, bucketMinutes: number): string {
   return r > 0 ? '<0.1' : '0'
 }
 
+/** Rows "Who drove it" lists. */
+export const EMOTE_DRIVER_ROWS = 5
+
 export interface EmoteDriver {
   m: HubLivePulseMoment
-  /** The stream's uses of this emote in that minute. */
+  /** The stream's uses of this emote: over the interval (emoteDriversByUses), or in that minute (emoteDrivers). */
   uses: number
 }
 
 /**
- * C1's "Who drove it": of an interval's busiest chats (hub/moments, one row a
- * stream), those with this emote in their top 3, matched by provider and name;
- * most uses first, one row a channel.
+ * C1's "Who drove it" from hub/emote-drivers: the streams that used the emote
+ * most in the interval, one row a channel, most uses first (then the busiest
+ * minute, then the name, as the backend orders them).
  */
-export function emoteDrivers(rows: readonly HubLivePulseMoment[], a: Pick<HubEmoteAgg, 'e' | 'prov'>, limit = 5): EmoteDriver[] {
+export function emoteDriversByUses(rows: readonly HubEmoteDriverMoment[], limit = EMOTE_DRIVER_ROWS): EmoteDriver[] {
+  const best = new Map<string, HubEmoteDriverMoment>()
+  for (const m of rows) {
+    if (!m?.login || !Number.isFinite(m.emoteUses) || m.emoteUses <= 0) continue
+    const key = m.login.toLowerCase()
+    const was = best.get(key)
+    if (!was || m.emoteUses > was.emoteUses) best.set(key, m)
+  }
+  return [...best.values()]
+    .sort((p, q) => q.emoteUses - p.emoteUses || q.emoteMinuteUses - p.emoteMinuteUses || p.login!.toLowerCase().localeCompare(q.login!.toLowerCase()))
+    .slice(0, limit)
+    .map((m) => ({ m, uses: m.emoteUses }))
+}
+
+/**
+ * C1's "Who drove it" on a backend without hub/emote-drivers: of an interval's
+ * busiest chats (hub/moments, one row a stream), those with this emote in their
+ * top 3, matched by provider and name; most uses first, one row a channel.
+ */
+export function emoteDrivers(rows: readonly HubLivePulseMoment[], a: Pick<HubEmoteAgg, 'e' | 'prov'>, limit = EMOTE_DRIVER_ROWS): EmoteDriver[] {
   const best = new Map<string, EmoteDriver>()
   for (const m of rows) {
     if (!m?.login) continue

@@ -11,6 +11,7 @@ import {
   conveyorRng,
   emoteChange,
   emoteDrivers,
+  emoteDriversByUses,
   emoteFlagKey,
   emoteImageAt,
   emoteInWindow,
@@ -618,6 +619,24 @@ describe('who drove it (C1, 10-30)', () => {
     const many = Array.from({ length: 7 }, (_, i) => row(`s${i}`, i, [['Clap', 'seventv', 10]]))
     expect(emoteDrivers(many, clap).map((x) => x.m.login)).toEqual(['s6', 's5', 's4', 's3', 's2'])
     expect(emoteDrivers([row('x', 1, [['Clap', 'seventv', 0]])], clap)).toEqual([])
+  })
+
+  it('from hub/emote-drivers: most uses in the interval first, then the busiest minute, then the name; one row a channel, at most 5', () => {
+    const driver = (login: string, emoteUses: number, emoteMinuteUses: number) => ({ ...row(login, 1, [['Clap', 'seventv', emoteMinuteUses]]), emoteUses, emoteMinuteUses })
+    const rows = [
+      driver('alpha', 45, 40),
+      driver('bravo', 120, 20),
+      driver('Charlie', 65, 40),
+      driver('charlie', 10, 10),
+      driver('delta', 65, 30),
+      driver('echo', 65, 30),
+      driver('', 999, 999),
+      driver('foxtrot', 0, 0),
+      driver('golf', 1, 1),
+    ]
+    expect(emoteDriversByUses(rows).map((x) => [x.m.login, x.uses])).toEqual([['bravo', 120], ['Charlie', 65], ['delta', 65], ['echo', 65], ['alpha', 45]])
+    expect(emoteDriversByUses(rows, 2).map((x) => x.m.login)).toEqual(['bravo', 'Charlie'])
+    expect(emoteDriversByUses([])).toEqual([])
   })
 })
 
