@@ -345,6 +345,13 @@ describe('AnalyticsConsole revisiting a failed session', () => {
       calls200 += 1
       return calls200 === 1 ? Promise.reject(serverError) : new Promise(() => undefined)
     })
+    // A recorded channel: with nothing stored, a missing session shows the never-recorded panel instead.
+    api.getAnalyticsStreams.mockResolvedValue({
+      channel: 'xqc',
+      items: [{ streamId: '101', login: 'xqc', startedAt, endedAt: '2026-07-11T20:00:00.000Z', title: 'Stored broadcast' }],
+      sources: [],
+      updatedAt: 0,
+    })
     renderConsole('/analytics/xqc/200')
 
     await screen.findByText(/Unable to load session data for/)

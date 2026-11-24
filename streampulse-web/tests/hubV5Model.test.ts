@@ -1,10 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { HubLiveChannel, HubLivePulseMoment } from '../src/lib/publicHub'
 import type { HubChannelScreenerV1, HubScreenerMetric } from '../src/lib/channelScreenerContract'
 import {
   boxArtAt,
   busiestCue,
-  busiestShowsPictures,
   busiestTip,
   channelRows,
   channelVs,
@@ -36,6 +35,7 @@ import {
   typedLogin,
   whereChatIs,
 } from '../src/ui/components/hub/v5/hubV5Model'
+import { momentAtKey, momentMinuteAt } from '../src/lib/momentFeedback'
 
 const W0 = Date.UTC(2026, 9, 19, 17, 45)
 const W1 = W0 + 5 * 60_000
@@ -168,12 +168,12 @@ describe('Busiest now', () => {
     expect(busiestCue(set, W1)).toBe('stale')
   })
 
-  it('shows Twitch live pictures only beside live 5-minute numbers (mockup §5, 10-31)', () => {
+  it('says every tile shows Twitch’s live picture, whatever the basis (11-22)', () => {
     const set = rankBusiest([channel('a', {}, { currentPerMin: 300 })])
-    expect(busiestShowsPictures(set, busiestCue(set, W1 + 60_000))).toBe(true)
-    expect(busiestShowsPictures(set, busiestCue(set, W1 + 10 * 60_000))).toBe(false)
-    expect(busiestShowsPictures({ ...set, basis: 'avg_35' }, 'live')).toBe(false)
-    expect(busiestTip(set, 'live').split('\n').at(-1)).toBe('Live means numbers under 3 minutes old. While they are, each tile shows Twitch’s live picture, which can be a few minutes old; a channel Twitch has no picture for shows its profile picture.')
+    const picture = 'Each tile shows Twitch’s live picture, which can be a few minutes old; a channel Twitch has no picture for, or shows as offline, shows its profile picture.'
+    expect(busiestTip(set, 'live').split('\n').slice(-2)).toEqual(['Live means numbers under 3 minutes old.', picture])
+    expect(busiestTip(set, 'stale').split('\n').at(-1)).toBe(picture)
+    expect(busiestTip({ ...set, basis: 'avg_35' }, 'stale').split('\n').at(-1)).toBe(picture)
   })
 })
 
@@ -249,6 +249,28 @@ describe('Moments', () => {
 
   it('builds the Moments deep link', () => {
     expect(momentHref({ login: 'a', streamId: '9', offsetSeconds: 61.9 })).toBe('/analytics/moments?login=a&stream=9&offset=61')
+  })
+
+  it('links the Moment’s own page by the minute that holds `at` only once the page is switched on', () => {
+    const at = Date.UTC(2026, 10, 14, 12, 0, 41, 500)
+    const moment = { login: 'a', streamId: '9000001', offsetSeconds: 61.9, at }
+    // Off (the default build): today's list link, exactly.
+    expect(momentHref(moment)).toBe('/analytics/moments?login=a&stream=9000001&offset=61')
+    vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+    try {
+      expect(momentHref(moment)).toBe('/analytics/moments/9000001/20261114T1200Z')
+      // A stream that started on a fractional second (12:00:30.4): its 12:01 Moment's `at` is start + 29 s, 12:00:59.4.
+      // The link names 12:01, as Up next and the minute's own time do.
+      const start = Date.UTC(2026, 10, 14, 12, 0, 30, 400)
+      const key = momentAtKey(momentMinuteAt(start, 29))
+      expect(key).toBe(momentAtKey(Date.UTC(2026, 10, 14, 12, 1)))
+      expect(momentHref({ login: 'a', streamId: '9000001', offsetSeconds: 29, at: start + 29_000 })).toBe(`/analytics/moments/9000001/${key}`)
+      // No time, or no stream id, names no minute: the list link stays.
+      expect(momentHref({ login: 'a', streamId: '9000001', offsetSeconds: 61 })).toBe('/analytics/moments?login=a&stream=9000001&offset=61')
+      expect(momentHref({ login: 'a', streamId: '', offsetSeconds: 61, at })).toBe('/analytics/moments?login=a&stream=&offset=61')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 

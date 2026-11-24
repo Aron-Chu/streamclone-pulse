@@ -25,6 +25,7 @@ import { momentRowHms } from '../../utils/momentRowDisplay.ts'
 import {
   frameBackgroundStyle,
   frameTimingPhrase,
+  isVodSheetFailed,
   loadVodFrame,
   peekVodFrame,
   useVodFrame,
@@ -152,7 +153,9 @@ export function MomentReelCard({
     setScrub(null)
   }, [vodId, frameVodOffset])
 
-  const shown = scrub?.frame ?? frame
+  // a scrub tile on a sheet that failed to load gives way to the moment's own picture (or its fallback)
+  const scrubFrame = scrub && !isVodSheetFailed(scrub.frame.sheetUrl) ? scrub.frame : null
+  const shown = scrubFrame ?? frame
   const chip = shown && shown.fromSec != null && alignSeconds != null
     ? `about ${momentRowHms(Math.max(0, shown.fromSec - alignSeconds))}`
     : null

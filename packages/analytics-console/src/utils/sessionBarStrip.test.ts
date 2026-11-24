@@ -127,7 +127,7 @@ describe('buildSessionBarStrip', () => {
       vodId: '2899924626',
       playAt: 3039,
       playVerb: 'Play VOD from',
-      open: { href: 'https://www.twitch.tv/videos/2899924626?t=50m39s', label: 'Open VOD at 0:50:39' },
+      open: { href: 'https://www.twitch.tv/videos/2899924626?t=50m39s', label: 'Open on Twitch at 0:50:39' },
       leadCaption: { leadSeconds: 10, alignSeconds: -5 },
       message: null,
       subject: 'moment',
@@ -151,7 +151,7 @@ describe('buildSessionBarStrip', () => {
   it('a bar without a moment plays from its own start, without lead-in', () => {
     const m = buildSessionBarStrip({ ...base, span: { startSec: 2994, endSec: 3054, levelMinutes: 1 }, rollups: [minute(2994)] })
     expect(m.lockedMoment).toBeNull()
-    expect(m.vod).toMatchObject({ playAt: 2989, playVerb: 'Play from', leadCaption: null, subject: 'minute', open: { label: 'Open VOD at 0:49:49' } })
+    expect(m.vod).toMatchObject({ playAt: 2989, playVerb: 'Play from', leadCaption: null, subject: 'minute', open: { label: 'Open on Twitch at 0:49:49' } })
   })
 
   it('a wider bar: range title, viewer peak, summed emotes are minimums, partial coverage', () => {

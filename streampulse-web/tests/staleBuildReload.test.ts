@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-vi.mock('../src/lib/sentry', () => ({ Sentry: {}, sanitizePortalPath: (path: string) => path }))
+vi.mock('../src/lib/sentry', () => ({ reportPortalError: () => {} }))
 import { STORAGE_PREFIX } from '../src/lib/publicHubCacheReset'
 import { installStaleBuildReload, STALE_BUILD_RELOAD_KEY } from '../src/ui/staleBuildReload'
 

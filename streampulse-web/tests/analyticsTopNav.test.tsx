@@ -30,7 +30,7 @@ describe('AnalyticsTopNav', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Navigation menu' }))
-    expect(screen.getByRole('link', { name: 'Service status' }).getAttribute('href')).toBe('/status')
+    expect(screen.getByRole('link', { name: 'Status' }).getAttribute('href')).toBe('/status')
   })
 
   it('omits empty navigation without losing the brand link', () => {
@@ -54,10 +54,10 @@ describe('AnalyticsTopNav', () => {
     const trigger = screen.getByRole('button', { name: 'Navigation menu' })
     fireEvent.click(trigger)
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
-    const panel = screen.getByRole('link', { name: 'Extension guide' }).parentElement
+    const panel = screen.getByRole('link', { name: 'Changelog' }).parentElement
     expect(panel?.getAttribute('data-state')).toBe('open')
 
-    fireEvent.keyDown(screen.getByRole('link', { name: 'Support' }), { key: 'Escape' })
+    fireEvent.keyDown(screen.getByRole('link', { name: 'Privacy' }), { key: 'Escape' })
     expect(document.activeElement).toBe(trigger)
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
 

@@ -52,9 +52,9 @@ async function nextPaint(page: Page): Promise<void> {
 async function collectDomEvidence(page: Page): Promise<Omit<EvidenceStep, 'step' | 'consoleErrors' | 'failedRequests'>> {
   return page.evaluate(() => {
     const main = document.querySelector('main[data-hub-state]')
-    // The hero's "N live channels tracked" line (the old `live-pool-size` counter is gone).
+    // Scope text is published by the hero after the pool loads.
     const pool = document.querySelector('.hv5-scope:not([data-wait])')
-    const moments = document.querySelector('#big-moments')
+    const moments = document.querySelector('#top-moments')
     return {
       hubState: main?.getAttribute('data-hub-state') ?? null,
       poolText: pool?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
@@ -188,9 +188,9 @@ test.describe('analytics design audit (deterministic capture)', () => {
     if (await activity.count()) {
       await activity.screenshot({ path: path.join(outDir, 'hub-1600-live-activity.png') })
     }
-    const moments = page.locator('#big-moments').first()
+    const moments = page.locator('#top-moments').first()
     if (await moments.count()) {
-      await moments.screenshot({ path: path.join(outDir, 'hub-1600-big-moments.png') })
+      await moments.screenshot({ path: path.join(outDir, 'hub-1600-top-moments.png') })
     }
 
     // Mobile fold + chart transition

@@ -183,7 +183,7 @@ function ChatRow({ m, i, top, avatars }: { m: HubLivePulseMoment; i: number; top
   const teSrc = te ? emoteDisplaySrc(te.imageUrl ?? undefined, 20) : null
   return (
     <li style={{ animationDelay: `${i * 18}ms` }}>
-      <Link to={momentHref(m)} className="hbk-r">
+      <Link to={momentHref(m)} state={{ from: 'hub' }} className="hbk-r">
         <span className="hbk-i" aria-hidden="true">{i + 1}</span>
         <HubV5Avatar login={login} name={name} src={m.profileImageUrl || avatars?.get(login) || avatars?.get(login.toLowerCase())} size={24} />
         <span className="hbk-n" aria-hidden="true">

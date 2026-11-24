@@ -93,7 +93,7 @@ function renderApp(path: string) {
 }
 
 // Public pages load on demand; load them first, as main.tsx does for the page a visit opens on.
-beforeAll(() => Promise.all(['/docs', '/privacy', '/terms', '/refunds', '/support', '/status', '/changelog'].map(preloadOpeningPage)))
+beforeAll(() => Promise.all(['/help', '/privacy', '/terms', '/refunds', '/status', '/changelog', '/guides/find-twitch-moments'].map(preloadOpeningPage)))
 
 beforeEach(() => {
   frames = []
@@ -136,23 +136,23 @@ function layoutTarget(id: string) {
 
 describe('route change scroll (OP1-FUN-008)', () => {
   it('opens a footer link destination at the top instead of the previous page offset', async () => {
-    renderApp('/docs')
+    renderApp('/help')
     await settleMicrotasks()
     expect(scrollTo).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('link', { name: 'Privacy Policy' }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Footer' })).getByRole('link', { name: 'Privacy' }))
     expect(await screen.findByRole('heading', { name: /^privacy policy$/i })).toBeTruthy()
     expect(scrollTo).toHaveBeenCalledWith(0, 0)
   })
 
-  it('lands a pushed /docs#extension link on its section, not the old offset', async () => {
-    renderApp('/support')
+  it('lands a pushed /help#install link on its section, not the old offset', async () => {
+    renderApp('/guides/find-twitch-moments')
     await settleMicrotasks()
 
-    fireEvent.click(screen.getByRole('link', { name: /extension setup guide/i }))
+    fireEvent.click(screen.getByRole('link', { name: 'Installation guide' }))
     await settleMicrotasks()
     expect(scrollTo).toHaveBeenCalledWith(0, 0)
-    expect(scrolledElements()).toEqual([document.getElementById('extension')])
+    expect(scrolledElements()).toEqual([document.getElementById('install')])
     // A different page is a fresh landing, like a document load: no animation.
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' })
   })
@@ -188,7 +188,7 @@ describe('route change scroll (OP1-FUN-008)', () => {
   })
 
   it('leaves Back and Forward to the browser scroll restoration', async () => {
-    renderApp('/docs')
+    renderApp('/help')
     await settleMicrotasks()
     act(() => { navigate('/privacy') })
     await settleMicrotasks()
@@ -197,7 +197,7 @@ describe('route change scroll (OP1-FUN-008)', () => {
     act(() => { navigate(-1) })
     await settleMicrotasks()
     runFrames(5)
-    expect(await screen.findByTestId('docs-page')).toBeTruthy()
+    expect(await screen.findByTestId('help-page')).toBeTruthy()
     expect(scrollTo).not.toHaveBeenCalled()
     expect(scrollIntoView).not.toHaveBeenCalled()
   })
@@ -224,30 +224,30 @@ describe('route change scroll (OP1-FUN-008)', () => {
   })
 
   it('opens the bare page at the top from a link on one of its #sections', async () => {
-    renderApp('/docs#coverage')
+    renderApp('/help#coverage')
     await settleMicrotasks()
     expect(scrollTo).not.toHaveBeenCalled()
 
-    // e.g. the header Docs link while reading /docs#api.
-    act(() => { navigate('/docs') })
+    // e.g. the header Help link while reading /help#api.
+    act(() => { navigate('/help') })
     await settleMicrotasks()
     expect(scrollTo).toHaveBeenCalledWith(0, 0)
 
     // A page that rewrites its own URL without the hash keeps the reader's place.
     scrollTo.mockClear()
-    act(() => { navigate('/docs#coverage') })
-    act(() => { navigate('/docs', { replace: true }) })
+    act(() => { navigate('/help#coverage') })
+    act(() => { navigate('/help', { replace: true }) })
     await settleMicrotasks()
     expect(scrollTo).not.toHaveBeenCalled()
   })
 
   it('keeps the reader\'s place when a link drops a #t= deep link from the same page', async () => {
-    renderApp('/docs#t=120')
+    renderApp('/help#t=120')
     await settleMicrotasks()
     scrollTo.mockClear()
 
     // e.g. the sidebar link to the session already open at a selected minute.
-    act(() => { navigate('/docs') })
+    act(() => { navigate('/help') })
     await settleMicrotasks()
     expect(scrollTo).not.toHaveBeenCalled()
   })
@@ -294,9 +294,9 @@ describe('route change scroll (OP1-FUN-008)', () => {
   })
 
   it('animates an in-page hash change unless the reader prefers reduced motion', async () => {
-    renderApp('/docs')
+    renderApp('/help')
     await settleMicrotasks()
-    act(() => { navigate('/docs#coverage') })
+    act(() => { navigate('/help#coverage') })
     await settleMicrotasks()
     expect(scrollTo).not.toHaveBeenCalled()
     expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'start', behavior: 'smooth' })
@@ -305,9 +305,9 @@ describe('route change scroll (OP1-FUN-008)', () => {
       matches: query.includes('reduce'), media: query, onchange: null,
       addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
     }))
-    act(() => { navigate('/docs#help') })
+    act(() => { navigate('/help#ask') })
     await settleMicrotasks()
-    expect(scrolledElements()[scrolledElements().length - 1]).toBe(document.getElementById('help'))
+    expect(scrolledElements()[scrolledElements().length - 1]).toBe(document.getElementById('ask'))
     expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'start', behavior: 'auto' })
   })
 
@@ -511,7 +511,7 @@ describe('Back to a #section the reader left (OP1-FUN-001)', () => {
   })
 
   it('does not reopen a <details> the reader closed when Back restores their place', async () => {
-    window.history.replaceState(null, '', '/docs#api')
+    window.history.replaceState(null, '', '/help#api')
     const layout = layoutTarget('api')
     render(
       <BrowserRouter>
@@ -525,18 +525,18 @@ describe('Back to a #section the reader left (OP1-FUN-001)', () => {
     const details = () => document.getElementById('api')!.closest('details')!
     expect(details().open).toBe(true)
 
-    // The reader closes the Developer reference, scrolls on, and opens Support from the footer.
+    // The reader closes the Developer reference, scrolls on, and opens the Changelog from the footer.
     act(() => { details().open = false })
     layout.top = -400
     fireEvent.scroll(window)
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Footer' })).getByRole('link', { name: 'Support' }))
-    expect(await screen.findByRole('heading', { level: 1, name: /support/i })).toBeTruthy()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Footer' })).getByRole('link', { name: 'Changelog' }))
+    expect(await screen.findByTestId('changelog-page')).toBeTruthy()
     scrollTo.mockClear()
     scrollIntoView.mockClear()
 
     await traverse(-1)
     runFrames(120)
-    expect(await screen.findByTestId('docs-page')).toBeTruthy()
+    expect(await screen.findByTestId('help-page')).toBeTruthy()
     expect(details().open).toBe(false)
     expect(scrollTo).not.toHaveBeenCalled()
     expect(scrollIntoView).not.toHaveBeenCalled()
@@ -777,9 +777,9 @@ describe('replaced pages (path-changing REPLACE)', () => {
   })
 
   it('lands a replaced page on the #target it names', async () => {
-    renderApp('/support')
+    renderApp('/privacy')
     await settleMicrotasks()
-    act(() => { navigate('/docs#coverage', { replace: true }) })
+    act(() => { navigate('/help#coverage', { replace: true }) })
     await settleMicrotasks()
     expect(scrollTo).not.toHaveBeenCalled()
     expect(scrolledElements()).toEqual([document.getElementById('coverage')])

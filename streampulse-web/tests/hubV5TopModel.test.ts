@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { MomentsFeedItem } from '../src/lib/momentsFeed'
 import { checkMoment, feedStreamEnds, fx, momentEdge, sparkLastDataOffset, topBursts } from '../src/lib/momentsChecked'
 import { normalizePublicHub, type HubLiveChannel, type HubLivePulseMoment, type PublicHub } from '../src/lib/publicHub'
@@ -36,6 +36,20 @@ describe('Top moments today from the Moments list', () => {
     expect(rows.map((r) => r.id)).toEqual(want.map((m) => m.item.id))
     for (const r of rows) expect([r.checked?.item.verdict, r.checked?.item.checks.rise?.code]).toEqual(['ok', 'rose'])
     expect(rows[0]!.href).toBe(`/analytics/moments?m=${encodeURIComponent(rows[0]!.id)}`)
+  })
+
+  it('links each row’s own Moment page by the feed’s minute once the page is switched on', () => {
+    vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+    try {
+      const rows = topFeedRows(fixture)
+      expect(rows.length).toBeGreaterThan(0)
+      for (const r of rows) {
+        const minute = new Date(r.checked!.item.minuteStart).toISOString().replace(/[-:]/g, '').slice(0, 13) + 'Z'
+        expect(r.href).toBe(`/analytics/moments/${r.streamId}/${minute}`)
+      }
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('counts the day as the moments that hold up, else the feed total', () => {
@@ -328,7 +342,7 @@ describe('Top moments today: the busiest-minute fill (board 2A, 11-02)', () => {
 
   it('says what it is, never a ×', () => {
     const [row] = busiestFillRows([m('kaicenat', 1204, { at: NOW - 13 * MIN })], [], new Map(), NOW)
-    expect(topRowAria(row!, 4, NOW)).toMatch(/^4\. KAICENAT, Busiest minute, 1,204 chat a minute, Just Chatting, 13 min ago at .+\. Open it in Top moments below\.$/)
+    expect(topRowAria(row!, 4, NOW)).toMatch(/^4\. KAICENAT, Busiest minute, 1,204 chat a minute, Just Chatting, 13 min ago at .+\. Opens the moment\.$/)
   })
 })
 
@@ -339,8 +353,8 @@ describe('Top moments today row words', () => {
 
   it('says the rank, who, what rose, the game and when, then what a click does', () => {
     // the phone peek's rows bring their card to the front of the carousel below
-    expect(topRowAria(hubRow!, 1, now)).toMatch(/^1\. ALPHA, KEKW, 12 times more emotes, Chess, 13 min ago at .+\. Open it in Top moments below\.$/)
-    expect(topRowAria(feedRow, 2, NOW)).toMatch(/^2\. .+ Open it in Top moments below\.$/)
+    expect(topRowAria(hubRow!, 1, now)).toMatch(/^1\. ALPHA, KEKW, 12 times more emotes, Chess, 13 min ago at .+\. Opens the moment\.$/)
+    expect(topRowAria(feedRow, 2, NOW)).toMatch(/^2\. .+ Opens the moment\.$/)
   })
 
   it('names the channels folded into a row', () => {

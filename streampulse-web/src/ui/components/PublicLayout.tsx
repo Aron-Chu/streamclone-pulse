@@ -7,17 +7,9 @@ import { DiscordMark } from './DiscordMark'
 import { discordInviteUrl } from '../../lib/discord'
 import { InstallCta } from './InstallCta'
 import { capturePublicCta } from '../../lib/productAnalytics'
-import { AnalyticsPreferences } from './AnalyticsPreferences'
-import { SUPPORTER_WITHDRAWAL_PATH, supporterWithdrawalEnabled } from '../../lib/supporterWithdrawal'
+import { SITE_NAV_ITEMS } from '../../lib/siteNav'
+import { SiteFooter } from './SiteFooter'
 import { PageErrorBoundary } from '../PortalErrorBoundary'
-import {
-  FEEDBACK_PATH,
-  GITHUB_REPO_URL,
-  PRIVACY_PATH,
-  REFUNDS_PATH,
-  SUPPORTER_PATH,
-  TERMS_PATH,
-} from '../../lib/externalLinks'
 
 const DISCORD_LABEL = 'Join the StreamPulse Discord (opens in a new tab)'
 
@@ -58,45 +50,17 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           aria-label="Main Navigation" onClick={(event) => {
             if ((event.target as HTMLElement).closest('a')) setMenuOpen(false)
           }}>
-          <NavLink
-            to="/analytics"
-            onClick={() => capturePublicCta('open_analytics')}
-            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
-          >
-            Hub
-          </NavLink>
-          <NavLink
-            to="/docs"
-            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
-          >
-            Docs
-          </NavLink>
-          <NavLink
-            to="/status"
-            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
-          >
-            Status
-          </NavLink>
-          <NavLink
-            to="/support"
-            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
-          >
-            Support
-          </NavLink>
-          <NavLink
-            to="/privacy"
-            className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
-          >
-            Privacy
-          </NavLink>
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="app-nav__link"
-          >
-            GitHub
-          </a>
+          {SITE_NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              onClick={item.to === '/analytics' ? () => capturePublicCta('open_analytics') : undefined}
+              className={({ isActive }) => `app-nav__link${isActive ? ' is-active' : ''}`}
+            >
+              {item.label}
+            </NavLink>
+          ))}
           {discord ? (
             <a href={discord} target="_blank" rel="noopener noreferrer" className="app-nav__discord" aria-label={DISCORD_LABEL}>
               <DiscordMark size={16} />Discord
@@ -107,47 +71,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         <AccountEntrySlot variant="public" />
       </header>
       <main className="app-main" id="public-main" tabIndex={-1}><PageErrorBoundary>{children}</PageErrorBoundary></main>
-      <footer className="app-footer">
-        <div className="app-footer__inner">
-          <div className="flex items-center gap-2">
-            <BrandMark size={20} />
-            <span className="font-bold text-zinc-300">StreamPulse</span>
-            <span className="app-footer__sep text-zinc-400" aria-hidden="true">·</span>
-            <span className="text-xs text-zinc-400">Free Twitch chat and emote stats. Not affiliated with Twitch.</span>
-          </div>
-          {/* Two rows rather than nine links in one: product destinations and
-              policy documents are different errands. Both rows keep the same
-              colour and size — dimming the legal row would drop it below the
-              contrast floor for small text. */}
-          <nav className="app-footer__nav" aria-label="Footer">
-            <div className="app-footer__links">
-              <Link to="/analytics" onClick={() => capturePublicCta('open_analytics')}>Hub</Link>
-              <Link to="/recaps">Stream recaps</Link>
-              <Link to="/docs">Documentation</Link>
-              <Link to="/status">System Status</Link>
-              <Link to="/support">Support</Link>
-              <Link to={FEEDBACK_PATH}>Send feedback</Link>
-              {discord ? (
-                <a href={discord} target="_blank" rel="noopener noreferrer" className="app-footer__discord" aria-label="Discord (opens in a new tab)">
-                  <DiscordMark size={15} />Discord
-                </a>
-              ) : null}
-              <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer noopener">
-                GitHub
-              </a>
-            </div>
-            <div className="app-footer__links">
-              <Link to="/tools/twitch-vod-timestamp-link">Timestamp link tool</Link>
-              <Link to={SUPPORTER_PATH}>Supporter</Link>
-              <Link to={PRIVACY_PATH}>Privacy Policy</Link>
-              <Link to={TERMS_PATH}>Terms of Use</Link>
-              <Link to={REFUNDS_PATH}>Cancellation &amp; Refunds</Link>
-              {supporterWithdrawalEnabled() ? <Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link> : null}
-              <AnalyticsPreferences />
-            </div>
-          </nav>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   )
 }

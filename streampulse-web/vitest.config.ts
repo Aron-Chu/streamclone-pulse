@@ -66,6 +66,7 @@ export default defineConfig({
       'scripts/recap-pilot.test.mjs',
       'scripts/audit-ai-crawl.test.mjs',
       'scripts/account-routing.test.mjs',
+      'scripts/account-redirects.test.mjs',
       'scripts/account-proxy-worker.test.mjs',
       'scripts/check-edge-freeze.test.mjs',
       'scripts/destination-pages-smoke.test.mjs',

@@ -1,15 +1,15 @@
 /**
  * Top moments today (D1 C1 F1 O1, 10-30; board artifacts/moments-top-today-20261030),
- * the day's strongest moments, the last 24 hours. Since M1 (hub rail board
- * 2026-11-02) they show in the carousel under the chart (HubV5BigMoments) with
- * the game chips, and the right rail is Picking up now (HubV5PickingUp); this
- * file keeps the state they share, the chips and the phone peek.
+ * the day's strongest moments, the last 24 hours. Since H1 (11-19) they are one
+ * still list of 5 under the chart (HubV5TopList), with the game chips, in place
+ * of the carousel and the phone peek; each row opens its moment. The right rail
+ * is Picking up now (HubV5PickingUp), which shares this file's state.
  * Where the Moments list is on and answers, its top 20 by the feed's score, one
  * game at a time (chips with each game's count); otherwise the hub's own
  * moments, strongest × first, with the ones it sent earlier today that this
  * browser kept (hubV5TopModel topDayRows; localStorage, beside the hub's saved
- * copy, so a page crash clears it too). One source a list, never both. While the pointer or keyboard focus is in the carousel,
- * what a read brings waits; a change of source (the list's rows for the hub's)
+ * copy, so a page crash clears it too). One source a list, never both. While the mouse or keyboard focus is in the list,
+ * what a read brings waits, so a row never moves under a click; a change of source (the list's rows for the hub's)
  * goes in at once.
  * Under 10 hub rows, each other channel's busiest minute from the chart's
  * hub/moments reads fills in after them (busiestFillRows; board 2A, 11-02),
@@ -24,10 +24,9 @@
  * game's read that fails with nothing kept shows the hub's rows from that game.
  * With neither, the page's saved copy; with nothing at all, "Unavailable right
  * now."
- *
- * On phones a "Top today" peek under the hero shows rows 1–3 (HubV5TopPeek).
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { isApiError } from '../../../../lib/apiClient'
 import { emoteDisplaySrc } from '../../../../lib/emoteAssetUrl'
 import { clk, fx, int } from '../../../../lib/momentsChecked'
@@ -36,6 +35,7 @@ import { momentsFeedEnabled } from '../../../../lib/momentsFeedFlag'
 import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
 import { publicHubCacheWritesStopped, STORAGE_PREFIX } from '../../../../lib/publicHubCacheReset'
 import '../d3/hub-d3-tokens.css'
+import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Avatar } from './HubV5Avatar'
 import { GameArt } from './HubV5Rack'
 import { bigWhen } from './hubV5BigMomentsModel'
@@ -54,6 +54,7 @@ import {
   topFeedRows,
   topFrom,
   topGames,
+  topMomentsHref,
   topRowAria,
   topEdgeTag,
   topRowWhy,
@@ -82,7 +83,6 @@ function writeTopDay(rows: readonly TopRowData[]) {
   }
 }
 const sameIds = (a: readonly TopRowData[], b: readonly TopRowData[]) => a.length === b.length && a.every((r, i) => r.id === b[i]!.id)
-const calm = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /* ---------- the reads and what is shown ---------- */
 
@@ -177,7 +177,7 @@ export interface TopTodayInput {
 
 export interface TopToday {
   shown: TopView | null
-  /** Pointer or focus in the carousel: what a read brings waits. */
+  /** The mouse or keyboard focus in the list: what a read brings waits. */
   hold: (what: 'hover' | 'focus', on: boolean) => void
   /** The game chips show: the list has answered this visit, so a pick can always go back to All. */
   chips: boolean
@@ -434,17 +434,17 @@ function RowFace({ row, avatar, rank, nowMs, fresh = false }: { row: TopRowData;
 /* ---------- the words ---------- */
 
 const FEED_TIP = 'The day’s strongest moments, the last 24 hours, from the Moments page’s own list, with its checks: the moments that hold up and rose, '
-  + 'one per burst, strongest first by its score, one card per moment. The × is that minute against the stream’s 15 minutes before it (“6.2× more emotes”). '
+  + 'one per burst, strongest first by its score, one row per moment. The × is that minute against the stream’s 15 minutes before it (“6.2× more emotes”). '
   // ended streams drop out of the list until B1 brings them back (board 04)
   + 'A game’s count is its moments today that hold up. Streams that have ended drop out.'
 /** A saved copy's streams may have ended since: it says when they were live, and keeps its rows (Q1b, 10-31). */
 const hubTip = (savedAt: string | null) => `The day’s strongest moments, the last 24 hours, on streams ${savedAt ? `that were live ${savedAt}` : 'live today'}: `
-  + 'the hub sends its latest 10, from the 12 chattiest live channels. '
-  + `Those at least ${TOP_MIN_X}× the stream’s own average before them come first, strongest × first, one card per moment. `
+  + 'the hub sends its 10 highest-scoring, from the 12 chattiest live channels. '
+  + `Those at least ${TOP_MIN_X}× the stream’s own average before them come first, strongest × first, one row per moment. `
   + `A moment from a stream’s first ${TOP_START_MIN} minutes (too soon for its average), or one whose two counts disagree, shows its rate a minute and no ×. `
-  + 'Under 10, a “Busiest minute” card fills in for other channels: the most chat a minute in the chart’s reads, not a spike. '
+  + `Under ${TOP_LIST_ROWS}, a “Busiest minute” row fills in for other channels: the most chat a minute in the chart’s reads, not a spike. `
   + 'This browser keeps the moments the hub sent earlier today, so a moment stays after its stream ends.'
-/** Top moments today's "?" (the carousel's): the list's words, or the hub's. */
+/** Top moments today's "?": the Moments list's words, or the hub's. */
 export const topTip = (v: TopView, nowMs: number) => (isFeed(v) ? FEED_TIP : hubTip(v.source === 'saved' && v.asOf != null ? hubSavedAt(v.asOf, nowMs) : null))
 export const TOP_NONE = 'Unavailable right now.'
 export const TOP_HUB_EMPTY = 'No standout moments on streams live now yet.'
@@ -461,67 +461,81 @@ export const topFresh = (v: TopView | null, nowMs: number) => { const clock = sa
 /** The hub's line under its rows: a saved copy's says when it was saved. */
 export const topEndLine = (v: TopView, rows: number, nowMs: number) => { const clock = savedClock(v, nowMs); return clock ? topSavedLine(rows, clock) : rows ? TOP_HUB_END : TOP_HUB_EMPTY }
 
-/* ---------- phones: the peek under the hero ---------- */
+/* ---------- the list: Top moments today ---------- */
+
+/** Rows the hub lists; the rest are on the Moments page (H1, 11-19). */
+export const TOP_LIST_ROWS = 5
+
+/** Focus the keyboard put there: a tap's or a click's is not :focus-visible, and holds nothing (as the carousel had it). */
+const keyboardFocus = (el: Element) => {
+  try {
+    return el.matches(':focus-visible')
+  } catch {
+    return false
+  }
+}
 
 /**
- * "Top today" under the hero, at every width since B1 (11-11): Top moments
- * today's rows 1–3. A row brings its channel's card to the front of the
- * carousel below (HubV5BigMoments), which comes into view; the link goes down
- * to it and takes focus there. It says what the carousel says when it has no
- * rows. No live dot: it is the day's list (D1, 11-13).
+ * Top moments today (H1, 11-19): one still list of the day's 5 strongest
+ * moments under the chart, in place of the "Top today" peek under the hero and
+ * the carousel that turned by itself, which showed the same moments twice. A
+ * row opens its moment; "All moments →" opens the Moments page, on the picked
+ * game while the game chips show. No live dot: it is the day's list (D1, 11-13).
  */
-export function HubV5TopPeek({ top, nowMs }: { top: TopToday; nowMs: number }) {
-  const { shown } = top
-  const rows = shown?.rows.slice(0, 3) ?? []
-  const onJump = (event: MouseEvent<HTMLAnchorElement>) => {
-    const target = document.getElementById('big-moments')
-    if (!target) return
-    event.preventDefault()
-    target.scrollIntoView({ block: 'start', behavior: calm() ? 'auto' : 'smooth' })
-    // focus follows the jump (HUB-LIVE-6): the carousel, else the section's heading
-    const into = target.querySelector<HTMLElement>('.hv5-bm') ?? target.querySelector<HTMLElement>('h2')
-    if (into) {
-      if (into.tabIndex < 0 && !into.hasAttribute('tabindex')) into.setAttribute('tabindex', '-1')
-      into.focus({ preventScroll: true })
-    }
-  }
-  // the carousel takes the pick (top.open), brings the card to the front and comes into view
-  const onPick = (id: string) => top.setOpen(id)
+export function HubV5TopList({ top, nowMs }: { top: TopToday; nowMs: number }) {
+  const { shown, hold } = top
+  // leaving the page lets a waiting read in
+  useEffect(() => () => {
+    hold('hover', false)
+    hold('focus', false)
+  }, [hold])
+  const rows = shown?.rows.slice(0, TOP_LIST_ROWS) ?? []
+  // the link goes where the rail's does: the picked game's moments while its Moments list is shown, else every game's
+  const linkGame = isFeed(shown) ? top.game : null
   const line = shown?.source === 'none' ? TOP_NONE
-    : shown && !rows.length ? (isFeed(shown) ? 'Nothing in the last 24 hours.' : topEndLine(shown, 0, nowMs))
+    : shown && !rows.length ? (isFeed(shown) ? `Nothing${linkGame ? ` from ${linkGame.name}` : ''} in the last 24 hours.` : topEndLine(shown, 0, nowMs))
       : null
   return (
     <section
-      className={`hv5-sec hv5-f3-peek hv5-top${topStale(shown, nowMs) ? ' hv5-f2-stale' : ''}`}
-      aria-labelledby="hv5-pk-h"
-      // Keeps the three rows' height while it waits (hub-v5.css), so they land without a shift.
+      id="top-moments"
+      className={`hv5-sec hv5-tops hv5-top${topStale(shown, nowMs) ? ' hv5-f2-stale' : ''}`}
+      aria-labelledby="hv5-tops-h"
+      // Keeps the five rows' height while it waits (hub-v5.css), so they land without a shift.
       data-wait={shown ? undefined : ''}
     >
       <div className="hv5-rh">
-        <h2 id="hv5-pk-h">Top today</h2>
+        <h2 id="hv5-tops-h">Top moments today</h2>
         <span className="hv5-f2-fresh">{topFresh(shown, nowMs)}</span>
-        <span className="hv5-end"><a className="hv5-mo-all" href="#big-moments" onClick={onJump}>Top moments ↓</a></span>
+        {shown && shown.source !== 'none' ? <HubToggletip tip={topTip(shown, nowMs)} label="About Top moments today" /> : null}
+        <span className="hv5-end">
+          <Link className={`hv5-mo-all${linkGame ? ' hv5-mo-game' : ''}`} to={topMomentsHref(linkGame?.name ?? null)}>
+            {linkGame ? <>All&nbsp;<span className="hv5-mo-gm">{linkGame.name}</span>&nbsp;moments →</> : TOP_ALL}
+          </Link>
+        </span>
       </div>
+      {top.chips ? <TopGames games={top.games} game={top.game} onGame={top.pickGame} /> : null}
       {shown ? (
-        <ol className="hv5-tm-list">
+        <ol
+          className="hv5-tm-list"
+          onPointerEnter={(event) => { if (event.pointerType === 'mouse') top.hold('hover', true) }}
+          onPointerLeave={(event) => { if (event.pointerType === 'mouse') top.hold('hover', false) }}
+          onFocus={(event) => top.hold('focus', keyboardFocus(event.target))}
+          onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) top.hold('focus', false) }}
+        >
           {rows.map((row, i) => (
             <li key={row.id} className={`hv5-tm-it${shown.source === 'feed-old' ? ' hv5-tm-old' : ''}`}>
-              <button
-                className="hv5-tm-row"
-                type="button"
-                onClick={() => onPick(row.id)}
-              >
+              <Link className="hv5-tm-row" to={row.href} state={{ from: 'hub' }}>
                 <RowFace row={row} avatar={row.avatar ?? top.avatars.get(row.login) ?? null} rank={i + 1} nowMs={nowMs} fresh={!!top.fresh?.has(row.id)} />
                 {/* Its words for screen readers; an aria-label would not match the row's own text (WCAG 2.5.3). */}
                 <span className="hv5-vh">{`${top.fresh?.has(row.id) ? 'New. ' : ''}${topRowAria(row, i + 1, nowMs)}`}</span>
-              </button>
+              </Link>
             </li>
           ))}
           {line ? <li className="hv5-fd-quiet">{line}</li> : null}
         </ol>
       ) : (
         <ol className="hv5-tm-list hv5-tm-wait" aria-hidden="true">
-          {Array.from({ length: 3 }, (_, i) => <li key={i} />)}
+          {Array.from({ length: TOP_LIST_ROWS }, (_, i) => <li key={i} />)}
         </ol>
       )}
     </section>

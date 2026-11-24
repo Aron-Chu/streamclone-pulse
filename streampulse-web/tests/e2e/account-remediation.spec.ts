@@ -14,13 +14,13 @@ test.beforeEach(async ({ page }) => {
 })
 
 for (const width of [320, 390, 1440]) {
-  test(`built Docs and account fit ${width}px`, async ({ page }, testInfo) => {
+  test(`built Help and account fit ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })
-    await page.goto('/docs')
+    await page.goto('/help')
     await page.getByText('Developer reference', { exact: true }).click()
     await expect(page.locator('.public-api-reference')).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    await page.screenshot({ path: testInfo.outputPath(`docs-${width}.png`), fullPage: true })
+    await page.screenshot({ path: testInfo.outputPath(`help-${width}.png`), fullPage: true })
     await page.goto('/account/settings')
     await expect(page.getByRole('heading', { name: 'Account & devices' })).toBeVisible()
     await expect(page.getByText('Desktop extension', { exact: true })).toBeVisible()

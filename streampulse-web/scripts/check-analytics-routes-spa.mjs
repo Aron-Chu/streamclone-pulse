@@ -13,6 +13,7 @@ const source = readFileSync(routesPath, 'utf8')
 
 const required = [
   '/',
+  '/help',
   '/docs',
   '/status',
   '/privacy',
@@ -23,6 +24,7 @@ const required = [
   '/support',
   '/feedback',
   '/changelog',
+  '/brainchat',
   '/account/sign-in',
   '/account/settings',
   '/account/confirm',
@@ -31,9 +33,11 @@ const required = [
   '/account/billing',
   '/account/billing/return',
   '/analytics',
+  '/analytics/moments',
   '/analytics/:login',
   '/analytics/:login/:streamId',
   '/analytics/:login/s/:streamId',
+  '/analytics/moments/:streamId/:momentAt',
 ]
 
 const missing = required.filter((fragment) => !source.includes(`path="${fragment}"`))

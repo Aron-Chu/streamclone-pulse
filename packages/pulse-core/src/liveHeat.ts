@@ -2,9 +2,12 @@ import type { ReplayHeatmapPoint } from './types/heatmap.ts'
 import { resolveEmoteImageUrl } from './emoteImageUrl.ts'
 import { buildMomentScoreModel } from './momentScore.ts'
 import {
+  buildMomentScoringContext,
   computeStreamBaselines,
   detectPickReason,
   fallbackMomentScore100,
+  type CatalogTopEmote,
+  type MomentScoringContext,
   type StreamBaselines,
 } from './momentScoring.ts'
 
@@ -177,31 +180,17 @@ function topEmotesFromRollup(
     })
 }
 
-function liveHeatCatalogAsTopEmotes(catalog: LiveHeatCatalogEmote[]) {
-  return catalog
-    .filter((emote): emote is LiveHeatCatalogEmote & { key: string } => Boolean(emote.key))
-    .map(emote => ({
-      key: emote.key,
-      name: emote.name,
-      id: emote.id,
-      providerEmoteId: emote.providerEmoteId,
-      provider: emote.provider,
-      imageUrl: emote.imageUrl,
-      count: emote.count,
-    }))
-}
-
 function scoreLiveHeatPoint(
   r: LiveHeatRollup,
   baselines: StreamBaselines,
-  completedRollups: LiveHeatRollup[],
+  completed: MomentScoringContext,
   heatmapPointMap: Map<string, ReplayHeatmapPoint> | null,
-  catalog: LiveHeatCatalogEmote[],
+  catalog: CatalogTopEmote[],
 ): { score: number; estimated: boolean; reason: LiveHeatReason; reasonLabel: string } {
-  const fallbackReason = detectPickReason(r, baselines, liveHeatCatalogAsTopEmotes(catalog))
+  const fallbackReason = detectPickReason(r, baselines, catalog)
   const scoreModel = buildMomentScoreModel({
     heatmapPoint: r.minuteTs ? heatmapPointMap?.get(r.minuteTs) : undefined,
-    fallbackScore100: fallbackMomentScore100(r, baselines, completedRollups),
+    fallbackScore100: fallbackMomentScore100(r, baselines, completed.rollups, completed),
     fallbackReason,
   })
   const reason = (scoreModel.reason in REASON_LABELS
@@ -234,17 +223,17 @@ function filterRankedHeatPoints(points: LiveHeatPoint[]): LiveHeatPoint[] {
 function buildPoint(
   r: LiveHeatRollup,
   baselines: StreamBaselines,
-  completedRollups: LiveHeatRollup[],
+  completed: MomentScoringContext,
   heatmapPointMap: Map<string, ReplayHeatmapPoint> | null,
   firstMs: number,
   catalog: Map<string, LiveHeatCatalogEmote>,
   byName: Map<string, LiveHeatCatalogEmote>,
-  catalogList: LiveHeatCatalogEmote[],
+  catalogList: CatalogTopEmote[],
   collecting: boolean,
   streamStartedMs?: number,
 ): LiveHeatPoint {
   const topEmotes = topEmotesFromRollup(r, catalog, byName)
-  const scored = scoreLiveHeatPoint(r, baselines, completedRollups, heatmapPointMap, catalogList)
+  const scored = scoreLiveHeatPoint(r, baselines, completed, heatmapPointMap, catalogList)
   const minuteMs = parseMinuteMs(r.minuteTs)
   const anchorMs = Number.isFinite(streamStartedMs) ? streamStartedMs! : firstMs
   const offsetSeconds =
@@ -288,10 +277,14 @@ export function deriveLiveHeat(input: LiveHeatInput): LiveHeatResult {
 
   const baselineRollups = completed.length ? completed : dataRollups
   const baselines = computeStreamBaselines(baselineRollups)
+  // One context for every point: each point is scored against the same completed list.
+  const completedScoring = buildMomentScoringContext(completed)
   const heatmapPointMap = input.heatmapPoints?.length
     ? new Map(input.heatmapPoints.map(point => [point.minuteTs, point]))
     : null
-  const catalogList = input.topEmotes ?? []
+  // Once for every point, not a copy per point: the keyed entries, which the reason only reads.
+  const catalogList = (input.topEmotes ?? [])
+    .filter((emote): emote is LiveHeatCatalogEmote & { key: string } => Boolean(emote.key))
   const firstMs = parseMinuteMs(dataRollups[0]?.minuteTs)
   const streamStartedMs = parseMinuteMs(input.streamStartedAt)
 
@@ -299,7 +292,7 @@ export function deriveLiveHeat(input: LiveHeatInput): LiveHeatResult {
     ? buildPoint(
         collectingRollup,
         baselines,
-        completed,
+        completedScoring,
         heatmapPointMap,
         firstMs,
         catalog,
@@ -317,7 +310,7 @@ export function deriveLiveHeat(input: LiveHeatInput): LiveHeatResult {
         completed.map(r => buildPoint(
           r,
           baselines,
-          completed,
+          completedScoring,
           heatmapPointMap,
           firstMs,
           catalog,

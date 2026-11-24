@@ -4,7 +4,7 @@ import type { ComponentType } from 'react'
 import { describe, expect, it } from 'vitest'
 import Privacy from '../src/routes/public/Privacy'
 import Refunds from '../src/routes/public/Refunds'
-import Support from '../src/routes/public/Support'
+import Help from '../src/routes/public/Help'
 import Supporter from '../src/routes/public/Supporter'
 import Terms from '../src/routes/public/Terms'
 
@@ -147,7 +147,7 @@ describe('Supporter legal copy', () => {
     expect(body).not.toMatch(/header accent|overlay finishes|none will be moved/i)
   })
 
-  it.each([...pages.map(([name, Page]) => [name, Page] as const), ['Support', Support] as const])('%s states the owner-confirmed billing response time', (_, Page) => {
+  it.each([...pages.map(([name, Page]) => [name, Page] as const), ['Help', Help] as const])('%s states the owner-confirmed billing response time', (_, Page) => {
     render(<MemoryRouter><Page /></MemoryRouter>)
     const response = screen.getByText(/Aron answers billing, cancellation and refund requests within 7 days\./)
     expect(response.textContent).not.toMatch(/refunds? (completed|resolved|processed) within 7 days/i)

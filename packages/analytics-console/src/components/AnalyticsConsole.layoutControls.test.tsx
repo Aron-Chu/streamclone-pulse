@@ -245,8 +245,11 @@ describe('AnalyticsConsole data skeleton', () => {
     const status = screen.getByRole('status', { name: /loading analytics chart/i })
     expect(status.getAttribute('data-console-skeleton')).toBe('chart')
     // Representative initial chart: one short named emote and the accessible 44 px control row.
+    // Below 390 px Add emote takes its own row, and below 364 px the readout takes another line.
     // Content-dependent additional rows may be taller; native tests check the actual loading transition.
-    expect(status.className).toMatch(/(?:^| )min-h-\[51\.125rem\]/)
+    expect(status.className).toMatch(/(?:^| )min-h-\[55\.625rem\]/)
+    expect(status.className).toMatch(/ min-\[364px\]:min-h-\[54\.375rem\]/)
+    expect(status.className).toMatch(/ min-\[390px\]:min-h-\[51\.125rem\]/)
     expect(status.className).toMatch(/ min-\[610px\]:min-h-\[49\.125rem\]/)
     expect(status.className).toMatch(/ sm:min-h-\[48\.625rem\]/)
     expect(status.className).toMatch(/ min-\[720px\]:min-h-\[54\.875rem\]/)

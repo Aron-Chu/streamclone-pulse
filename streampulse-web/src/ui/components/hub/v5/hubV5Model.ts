@@ -10,41 +10,47 @@
 import type { HubActivityPoint, HubEmote, HubLiveChannel, HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
 import type { LiveWireMetricComparison } from '../../../../lib/liveWire'
 import { screenerMetricMultiplier, type HubScreenerMetric } from '../../../../lib/channelScreenerContract'
-import { buildAnalyticsHref } from '../../../../lib/analyticsLinks'
+import { channelHref, formatHubInt, formatHubRate, hasChatAverage, hasFullChatWindow, HUB_BUSIEST_COUNT, hubChannelName as nameOf, hubChatNow as chatNow, rankBusiest, sharedChatWindow, type HubBusiestRow, type HubBusiestSet, type HubChatBasis } from '../../../../lib/hubBusiest'
 import { isPlausibleTwitchLogin } from '../../../../lib/normalizeTwitchLogin'
+import { momentPageHref } from '../../../../lib/momentPageFlag'
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 
 /* ---------- formatting (mockup fmt / int / clk / mult) ---------- */
 
-/** A rate: one decimal under 10, else a whole number with separators. */
-export function formatHubRate(value: number | null | undefined): string {
-  if (!finite(value)) return '—'
-  return Math.abs(value) < 10 ? (Math.round(value * 10) / 10).toFixed(1) : Math.round(value).toLocaleString('en-US')
-}
+// Busiest now's ranking and the number words (formatHubRate, formatHubInt) live in lib/hubBusiest, which the saved hub
+// copy shares without this UI model (11-19); they are re-exported here.
+export { channelHref, formatHubInt, formatHubRate, hasFullChatWindow, HUB_BUSIEST_COUNT, rankBusiest, sharedChatWindow }
+export type { HubBusiestRow, HubBusiestSet, HubChatBasis }
 
-export function formatHubInt(value: number | null | undefined): string {
-  return finite(value) ? Math.round(value).toLocaleString('en-US') : '—'
-}
+// One formatter each, made once: toLocaleTimeString builds a new one on every call, which the hub's first draw paid
+// about 190 ms for on a phone (S1, 11-19). Same output.
+let clockFormat: Intl.DateTimeFormat | null = null
+let dayFormat: Intl.DateTimeFormat | null = null
 
 const CLOCK: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' }
 const nearestMinute = (t: number) => new Date(Math.round(t / 60_000) * 60_000)
+/**
+ * "10:50 AM" in the viewer's own time zone, from one shared formatter. An invalid date reads "Invalid Date", as
+ * toLocaleTimeString did: Intl's format throws on one, which would take the whole hub down.
+ */
+export const formatHubClockAt = (at: Date) => (Number.isNaN(at.getTime()) ? 'Invalid Date' : (clockFormat ??= new Intl.DateTimeFormat('en-US', CLOCK)).format(at))
 
 /** "10:50 AM": nearest minute, the viewer's own time zone. */
 export function hubClock(t: number): string {
-  return nearestMinute(t).toLocaleTimeString('en-US', CLOCK)
+  return formatHubClockAt(nearestMinute(t))
 }
 
 /** A saved copy's day ("yesterday", "Oct 27"), or null today, and its minute. */
 function savedClockParts(t: number, nowMs: number): { day: string | null; clock: string } {
   // Never later than now: the saved minute is floored, and a copy stamped ahead of this clock reads as now.
   const at = new Date(Math.min(t, nowMs))
-  const clock = new Date(Math.floor(at.getTime() / 60_000) * 60_000).toLocaleTimeString('en-US', CLOCK)
+  const clock = formatHubClockAt(new Date(Math.floor(at.getTime() / 60_000) * 60_000))
   const now = new Date(nowMs)
   if (at.toDateString() === now.toDateString()) return { day: null, clock }
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
   if (at.toDateString() === yesterday.toDateString()) return { day: 'yesterday', clock }
-  return { day: at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), clock }
+  return { day: Number.isNaN(at.getTime()) ? 'Invalid Date' : (dayFormat ??= new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })).format(at), clock }
 }
 
 /**
@@ -103,21 +109,7 @@ export function hubMonogram(name: string | undefined, login: string): string {
   return Array.from(String(name || login || '?').replace(/[^\p{L}\p{N}]/gu, '')).slice(0, 2).join('').toUpperCase() || '?'
 }
 
-export function channelHref(channel: Pick<HubLiveChannel, 'login' | 'streamId'>): string {
-  return buildAnalyticsHref({ login: channel.login, streamId: channel.streamId })
-}
-
-const nameOf = (c: Pick<HubLiveChannel, 'login' | 'displayName'>) => c.displayName || c.login
-
-/* ---------- Busiest now (R5-1) ---------- */
-
-/** Synced, with a full 5-minute window and a chat rate: the one rule for Busiest, Where chat is and Chat/min. */
-export function hasFullChatWindow(c: HubLiveChannel): boolean {
-  const s = c.screenerV1
-  return c.coverageState === 'synced' && s?.currentWindow?.measuredMinutes === 5 && s.chat != null && finite(s.chat.currentPerMin)
-}
-
-const chatNow = (c: HubLiveChannel) => c.screenerV1!.chat!.currentPerMin
+/* ---------- Busiest now (R5-1; the ranking is lib/hubBusiest's) ---------- */
 
 /** The backend's reasons for a screener its own history read could not build (hub_screener.go). */
 const SCREENER_READ_FAILED = new Set(['history_query_unavailable', 'history_store_unavailable'])
@@ -140,23 +132,16 @@ export function screenerDown(live: readonly HubLiveChannel[]): boolean {
 
 /** The empty line of Busiest now and Where chat is when the counts did not come (fix, 10-30). */
 export const HUB_CHAT_COUNTS_DOWN = 'Chat counts are unavailable right now.'
-
 /**
- * Which chat rate the lists rank by (HUB-1, candidate, 10-30): the 5-minute
- * screener count, or, while that count is down, each row's own chatPerMin. The
- * backend averages that over the reply's lookback of up to 35 minutes (minutes
- * with data only, the open minute included; hub_overview.go
- * summarizeChannelWindow), and the row does not say how many minutes it covers.
- * It is not "now" and not a fixed 35 minutes, so every list that uses it says
- * "recent average" (CX-4 fix, 10-30), and the two rates never share a list.
+ * H1 (11-19): one outage of the 5-minute counts said so in three places (Busiest now, Picking up now, Where chat is).
+ * Busiest now says it once, and the other two step aside until the counts are back.
  */
-export type HubChatBasis = 'five_min' | 'avg_35'
+export const HUB_COUNTS_DOWN_REST = 'Picking up now and Where chat is come back with them.'
+/** Over Busiest now's recent averages, while the 5-minute counts are down. */
+export const HUB_COUNTS_DOWN_AVG = '5-minute chat counts are unavailable, so these rank by each channel’s recent average. ' + HUB_COUNTS_DOWN_REST
 
-/** The hub windows whose reply averages row chatPerMin over up to 35 minutes; 7d and longer look back 47 minutes or more. */
+/** The hub windows whose reply averages row chatPerMin over up to 35 minutes (HubChatBasis); 7d and longer look back 47 minutes or more. */
 const AVG_35_WINDOWS: ReadonlySet<string> = new Set(['30m', '24h'])
-
-/** A synced row with a chat average above zero (candidate, 10-30). */
-const hasChatAverage = (c: HubLiveChannel) => c.coverageState === 'synced' && finite(c.chatPerMin) && c.chatPerMin > 0
 
 /** 'avg_35' only on 30m and 24h, while the screener is down and no row has a 5-minute count (candidate, 10-30). */
 export function hubChatBasis(live: readonly HubLiveChannel[], windowKey?: string): HubChatBasis {
@@ -168,105 +153,8 @@ export function hubChatBasis(live: readonly HubLiveChannel[], windowKey?: string
 const countedOn = (basis: HubChatBasis) => (basis === 'avg_35' ? hasChatAverage : hasFullChatWindow)
 const rateOn = (basis: HubChatBasis): ((c: HubLiveChannel) => number) => (basis === 'avg_35' ? (c) => c.chatPerMin : chatNow)
 
-export interface HubBusiestRow {
-  rank: number
-  login: string
-  displayName: string
-  category: string
-  streamId?: string
-  viewers: number
-  perMin: number
-  fig: string
-  href: string
-  avatar: string | null
-  /** 'avg_35': perMin is the row's recent average (up to 35 min) (candidate, 10-30). */
-  basis?: HubChatBasis
-  /** No chat rate Busiest now would count (Your follows): the tile shows viewers and perMin is NaN. */
-  viewersOnly?: boolean
-}
-
-export interface HubBusiestSet {
-  rows: HubBusiestRow[]
-  /** The 5-minute window the rows share (unix ms), or NaN with no rows. */
-  windowStart: number
-  windowEnd: number
-  /** Channels with a full window (all windows). */
-  eligible: number
-  synced: number
-  /** Synced channels without a full window yet. */
-  noWindow: number
-  /** Channels with a full window that is not the shared one (left out). */
-  otherWindow: number
-  /** 'avg_35': ranked by each row's recent average (up to 35 min), with no shared window (candidate, 10-30). */
-  basis?: HubChatBasis
-}
-
-export const HUB_BUSIEST_COUNT = 12
 /** Numbers older than this are not "live" (the shared 3-minute rule). */
 export const HUB_LIVE_MS = 180_000
-
-/** The 5-minute window most channels with a full one report (the later one on a tie), in unix ms; NaN with none. */
-export function sharedChatWindow(live: readonly HubLiveChannel[]): readonly [number, number] {
-  const tally = new Map<string, number>()
-  for (const c of live) {
-    if (!hasFullChatWindow(c)) continue
-    const w = c.screenerV1!.currentWindow!
-    const key = `${w.start}|${w.end}`
-    tally.set(key, (tally.get(key) ?? 0) + 1)
-  }
-  const top = [...tally.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? 1 : -1))[0]
-  return top ? top[0].split('|').map(Number) as [number, number] : [NaN, NaN]
-}
-
-/** Busiest now: the shared (most common) 5-minute window, chat/min desc, then viewers desc, then login. */
-export function rankBusiest(live: readonly HubLiveChannel[], n = HUB_BUSIEST_COUNT, basis: HubChatBasis = 'five_min'): HubBusiestSet {
-  if (basis === 'avg_35') return rankBusiestOnAverage(live, n)
-  const ok = live.filter(hasFullChatWindow)
-  const synced = live.filter((c) => c.coverageState === 'synced').length
-  const [windowStart, windowEnd] = sharedChatWindow(live)
-  const shared = ok.filter((c) => c.screenerV1!.currentWindow!.start === windowStart && c.screenerV1!.currentWindow!.end === windowEnd)
-  const rows = shared
-    .slice()
-    .sort((a, b) => chatNow(b) - chatNow(a) || (b.viewers || 0) - (a.viewers || 0) || (a.login < b.login ? -1 : a.login > b.login ? 1 : 0))
-    .slice(0, n)
-    .map((c, index): HubBusiestRow => ({
-      rank: index + 1,
-      login: c.login,
-      displayName: nameOf(c),
-      category: c.category || '',
-      streamId: c.streamId,
-      viewers: c.viewers,
-      perMin: chatNow(c),
-      fig: formatHubRate(chatNow(c)),
-      href: channelHref(c),
-      avatar: c.profileImageUrl || null,
-    }))
-  return { rows, windowStart, windowEnd, eligible: ok.length, synced, noWindow: synced - ok.length, otherWindow: ok.length - shared.length }
-}
-
-/** Busiest now on each synced row's recent average (up to 35 min): no shared window, same ties (candidate, 10-30). */
-function rankBusiestOnAverage(live: readonly HubLiveChannel[], n: number): HubBusiestSet {
-  const ok = live.filter(hasChatAverage)
-  const synced = live.filter((c) => c.coverageState === 'synced').length
-  const rows = ok
-    .slice()
-    .sort((a, b) => b.chatPerMin - a.chatPerMin || (b.viewers || 0) - (a.viewers || 0) || (a.login < b.login ? -1 : a.login > b.login ? 1 : 0))
-    .slice(0, n)
-    .map((c, index): HubBusiestRow => ({
-      rank: index + 1,
-      login: c.login,
-      displayName: nameOf(c),
-      category: c.category || '',
-      streamId: c.streamId,
-      viewers: c.viewers,
-      perMin: c.chatPerMin,
-      fig: formatHubRate(c.chatPerMin),
-      href: channelHref(c),
-      avatar: c.profileImageUrl || null,
-      basis: 'avg_35',
-    }))
-  return { rows, windowStart: NaN, windowEnd: NaN, eligible: ok.length, synced, noWindow: synced - ok.length, otherWindow: 0, basis: 'avg_35' }
-}
 
 export type HubBusiestCue = 'live' | 'stale'
 
@@ -274,10 +162,12 @@ export function busiestCue(set: Pick<HubBusiestSet, 'windowEnd'>, nowMs: number)
   return finite(set.windowEnd) && nowMs - set.windowEnd <= HUB_LIVE_MS ? 'live' : 'stale'
 }
 
-/** Twitch's live pictures show only beside live 5-minute numbers (mockup §5); the recent average and old numbers get faces. */
-export function busiestShowsPictures(set: Pick<HubBusiestSet, 'basis'>, cue: HubBusiestCue): boolean {
-  return set.basis !== 'avg_35' && cue === 'live'
-}
+/**
+ * Every tile tries Twitch's live picture, whatever the numbers' basis (11-22): the picture is Twitch's, checked against
+ * Twitch's offline picture, and says nothing about our counts. Until 11-22 it showed only beside live 5-minute numbers
+ * (mockup §5, 10-31), so the screener's outages left the strip on faces.
+ */
+export const BUSIEST_PICTURE_LINE = 'Each tile shows Twitch’s live picture, which can be a few minutes old; a channel Twitch has no picture for, or shows as offline, shows its profile picture.'
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
@@ -291,7 +181,8 @@ export function busiestTip(set: HubBusiestSet, cue: HubBusiestCue): string {
     ? `${set.eligible} of ${set.synced} synced channels have that full window; ${set.noWindow}${set.noWindow === 1 ? ' doesn’t yet and is left out.' : ' don’t yet and are left out.'}`
     : `All ${set.synced} synced channels have that full window.`)
   if (set.otherWindow > 0) lines.push(`${count(set.otherWindow, 'channel', 'channels')} reported a different window and ${set.otherWindow === 1 ? 'is' : 'are'} left out.`)
-  lines.push('Live means numbers under 3 minutes old. While they are, each tile shows Twitch’s live picture, which can be a few minutes old; a channel Twitch has no picture for shows its profile picture.')
+  lines.push('Live means numbers under 3 minutes old.')
+  lines.push(BUSIEST_PICTURE_LINE)
   return lines.join('\n')
 }
 
@@ -302,7 +193,7 @@ function busiestAverageTip(set: HubBusiestSet): string {
     set.noWindow > 0
       ? `${set.eligible} of ${set.synced} synced channels have a chat average; ${set.noWindow}${set.noWindow === 1 ? ' doesn’t and is left out.' : ' don’t and are left out.'}`
       : `All ${set.synced} synced channels have a chat average.`,
-    'Live pictures show only beside the 5-minute counts, so each channel shows its profile picture.',
+    BUSIEST_PICTURE_LINE,
   ].join('\n')
 }
 
@@ -392,9 +283,8 @@ export function gameAria(game: HubGameShare, pressed: boolean, basis: HubChatBas
 
 /* ---------- Where chat is as a ranked rack (R5-22, mockup hub-rack.js) ---------- */
 
-/** Rows the rack holds: 10 shown, 16 in two columns of 8 when the block is wide. */
-export const HUB_RACK_ROWS = 16
-export const HUB_RACK_NARROW_ROWS = 10
+/** Rows the rack holds: eight under one share bar, at every width (9A, 11-22; it was 10, or 16 in two columns). */
+export const HUB_RACK_ROWS = 8
 
 /** "The other 12 games: 8.4% of chat" under the first `shown` rows. */
 export function rackFoot(games: Pick<HubWhereChatIs, 'all'>, shown: number): string {
@@ -599,8 +489,13 @@ function momentCmp(m: HubLivePulseMoment, series: 'chat' | 'emotes'): HubMomentC
   return { why: 'no avg', long: 'No comparison came with this moment.' }
 }
 
-/** Analytics → Moments deep link (login, stream, whole-second offset). */
-export function momentHref(m: Pick<HubLivePulseMoment, 'login' | 'streamId' | 'offsetSeconds'>): string {
+/**
+ * The Moment's own page for the minute that holds `at` when the build has the page; else the
+ * Analytics → Moments deep link (login, stream, whole-second offset).
+ */
+export function momentHref(m: Pick<HubLivePulseMoment, 'login' | 'streamId' | 'offsetSeconds' | 'at'>): string {
+  const page = momentPageHref({ streamId: m.streamId ?? '', at: m.at })
+  if (page) return page
   const query = new URLSearchParams({ login: m.login ?? '', stream: m.streamId ?? '', offset: String(Math.max(0, Math.floor(m.offsetSeconds || 0))) })
   return `/analytics/moments?${query}`
 }

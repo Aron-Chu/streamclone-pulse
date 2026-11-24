@@ -5,7 +5,7 @@ import { BrandMark } from '../BrandMark'
 import { DiscordMark } from '../DiscordMark'
 import { InstallCta } from '../InstallCta'
 import { discordInviteUrl } from '../../../lib/discord'
-import { FEEDBACK_PATH } from '../../../lib/externalLinks'
+import { SITE_FOOTER_ITEMS } from '../../../lib/siteNav'
 import { AccountEntrySlot, MenuAccountSlot } from '../AccountEntrySlot'
 import { accountHeaderEnabled } from '../../../lib/accountHeaderFlag'
 
@@ -16,7 +16,7 @@ export interface AnalyticsTopNavItem {
 }
 
 export interface AnalyticsTopNavProps {
-  items: AnalyticsTopNavItem[]
+  items: readonly AnalyticsTopNavItem[]
   navigationLabel?: string
   /** A page's own search in the bar (the hub's docked search), between the links and the buttons. */
   dock?: ReactNode
@@ -119,19 +119,14 @@ export function AnalyticsTopNav({
                   </NavLink>
                 ))}
               </nav>
-              <Link to={FEEDBACK_PATH} onClick={() => closeMenu()}>Send feedback</Link>
-              <Link to="/docs" onClick={() => closeMenu()}>Extension guide</Link>
-              <Link to="/support" onClick={() => closeMenu()}>Support</Link>
-              <Link to="/status" onClick={() => closeMenu()}>Service status</Link>
-              <Link to="/supporter" onClick={() => closeMenu()}>Pulse Supporter</Link>
               {/* No account entries until Continue with Twitch is public: the sign-in
                   page is the invited-tester bridge, sign-ups are closed, and extension
                   connection codes are tester-only. Testers reach them from account pages.
                   The header account entry switch (VITE_ACCOUNT_HEADER=1) adds the one link. */}
               <MenuAccountSlot onNavigate={() => closeMenu()} />
-              <Link to="/privacy" onClick={() => closeMenu()}>Privacy</Link>
-              <Link to="/terms" onClick={() => closeMenu()}>Terms</Link>
-              <Link to="/refunds" onClick={() => closeMenu()}>Cancellation and refunds</Link>
+              {SITE_FOOTER_ITEMS.map((item) => (
+                <Link key={item.to} to={item.to} onClick={() => closeMenu()}>{item.label}</Link>
+              ))}
             </div>
           </div>
       ) : null}

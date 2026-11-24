@@ -169,11 +169,11 @@ test.describe('portal VOD correctness (mocked)', () => {
     const moment = page.getByRole('region', { name: 'Pulse moments recap' }).getByRole('button', { name: /^Moment 1 about 0:04:00/ })
     await expect(moment).toBeVisible()
     await moment.click()
-    const jump = page.getByRole('link', { name: /^Open VOD at / }).first()
+    const jump = page.getByRole('link', { name: /^Open on Twitch at / }).first()
     await expect(jump).toBeVisible()
     // 120-second verified alignment plus the selected 240-second moment, played
     // 10 s early (the strip's lead-in, session-original momentPlayAt).
-    await expect(jump).toHaveAccessibleName(/^Open VOD at 0:05:50/)
+    await expect(jump).toHaveAccessibleName(/^Open on Twitch at 0:05:50/)
     await expect(jump).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}?t=5m50s`)
 
     // Pending linkage: never opens another session's VOD

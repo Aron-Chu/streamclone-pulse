@@ -32,6 +32,8 @@ import { focusKeyWithin, noteCarriedFocus, restoreCarriedFocus } from '../../ui/
 import { MomentLoadingSkeleton, MomentsTopPlaceholder } from '../../ui/components/moments/MomentLoadingSkeleton'
 import { useCollectionArrival } from '../../ui/motion/useCollectionArrival'
 import { MomentRow } from '../../ui/components/moments/MomentRow'
+import { MomentStreamCard } from '../../ui/components/moments/MomentStreamCard'
+import { momentStreamCards, momentStreams } from '../../lib/momentStreamCards'
 import { MomentSelect } from '../../ui/components/moments/MomentSelect'
 import { MomentEvidenceBars } from '../../ui/components/moments/MomentEvidenceBars'
 import { MomentNote } from '../../ui/components/moments/MomentNote'
@@ -42,6 +44,8 @@ import type { ArchiveArtwork } from '../../lib/archiveArtwork'
 import { EmoteImg } from '../../ui/components/analytics/EmoteImg'
 import { emoteImageUrlFromIdentity } from '../../lib/emoteAssetUrl'
 import { loadExactMomentRecap } from '../../lib/discoveryMomentRecap'
+import { forgetFailedMomentReads, primeMomentStream } from '../../lib/momentReads'
+import { handOverMoment, momentPageHref, momentPageWarmth } from '../../lib/momentPageFlag'
 import { newsroomProfileUrl } from '../../lib/newsroomProfiles'
 import { creatorHistoryHref } from '../../lib/creatorHistoryHref'
 import type { PublicHubLoadSource } from '../../lib/publicHub'
@@ -68,6 +72,8 @@ const scrollPositions = new Map<string, number>()
 const returnScrollPositions = new Map<string, number>()
 /** The row link the reader left by, per list URL, so Back puts focus on it again (J, 11-13). */
 const returnFocusByUrl = new Map<string, { momentKey: string; href: string }>()
+/** The Latest streams whose other moments the reader opened, per list URL, so Back finds their cards again. */
+const expandedStreamsByUrl = new Map<string, ReadonlySet<string>>()
 const RETURN_RESTORE_FRAMES = 120
 const RETURN_RESTORE_STOP_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
 /** One moment is open at a time, so its slot has one id for the row's `aria-controls`. */
@@ -154,6 +160,35 @@ function rowBelowClosingSlot(): HTMLElement | null {
   }
   return null
 }
+/** The row or card a moment's primary button sits in. */
+function momentRowElement(key: string): HTMLElement | null {
+  // Inside a quoted attribute value only a quote and a backslash need escaping.
+  return document.querySelector<HTMLElement>(`.moments-result [data-discovery-key="${key.replace(/["\\]/g, '\\$&')}"]`)
+    ?.closest<HTMLElement>('.moments-result') ?? null
+}
+
+/** How many columns a card grid lays out now: its media rules decide, this reads them. */
+function useGridColumns(grid: RefObject<HTMLElement | null>, enabled: boolean): number {
+  const [columns, setColumns] = useState(4)
+  useLayoutEffect(() => {
+    const element = grid.current
+    if (!enabled || !element) return
+    const read = () => setColumns(Math.max(1, getComputedStyle(element).gridTemplateColumns.split(' ').filter(track => track && track !== 'none').length))
+    read()
+    if (typeof ResizeObserver !== 'function') return
+    // Cards loading in grow the grid's height; only a new width can change its columns.
+    let width = element.getBoundingClientRect().width
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry || entry.contentRect.width === width) return
+      width = entry.contentRect.width
+      read()
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [grid, enabled])
+  return columns
+}
+
 export function resolveMomentAvatarUrl(value: unknown): string | undefined {
   return newsroomProfileUrl(value)
 }
@@ -189,8 +224,11 @@ export function VodOffsetNote({ broadcastSeconds, vodSeconds }: { broadcastSecon
   return <small className="moments-vod-offset-note">{`Twitch's recording started ${formatShortDuration(difference)} ${difference > 0 ? 'before' : 'after'} our tracked start, so this moment is at ${formatStreamOffset(vodSeconds)} in the VOD.`}</small>
 }
 
-function MomentCreator({ moment, historyAvailable, onNavigate }: { moment: DiscoveryMoment; historyAvailable: boolean; onNavigate?: () => void }) {
-  const content = <><MomentAvatar moment={moment} /><span><strong>{moment.displayName || moment.login}</strong><small>{moment.category || 'Category unavailable'}</small></span></>
+function MomentCreator({ moment, historyAvailable, onNavigate, nameOnly = false }: { moment: DiscoveryMoment; historyAvailable: boolean; onNavigate?: () => void
+  /** A stream card shows the picture and the game itself, so its link is the name alone. */
+  nameOnly?: boolean }) {
+  const content = nameOnly ? <>{moment.displayName || moment.login}</>
+    : <><MomentAvatar moment={moment} /><span><strong>{moment.displayName || moment.login}</strong><small>{moment.category || 'Category unavailable'}</small></span></>
   const name = moment.displayName || moment.login
   // While History is hidden, a creator's broadcasts are the same fallback the stream console uses.
   const href = historyAvailable ? creatorHistoryHref(moment.login)
@@ -253,7 +291,8 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
     // The detail is keyed by exact moment identity; a new selection starts fresh.
     setLoading(true); setError('')
     onSourceState(moment.key, 'Checking source')
-    void checkMomentSource(moment, controller.signal, true).then(result => {
+    // The answer is the stream route's, so the Moment page this detail links to reuses it.
+    void checkMomentSource(moment, controller.signal, true, data => primeMomentStream(moment.streamId, data)).then(result => {
       if (controller.signal.aborted) return
       if (result.lookupFailed) {
         setError('The source recheck failed. Any visible preview uses the last verified mapping; playback still depends on Twitch.')
@@ -303,6 +342,9 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
   const clock = momentRowClock(moment.offsetSeconds)
   // The head (C1, 10-22): the × in plain words, then when and how far in (standalone; in line the row says so) and the game.
   const lift = early ? null : momentLiftLine(moment)
+  // The Moment’s own page, when the build has it and the minute is known. The source's occurrence and the hub's `at` are both the stream start plus whole seconds, so a stream that started on a fractional second puts them just before the Moment's minute; momentPageHref rounds up to the second before it names the minute. The link shows while the source loads.
+  const occurrenceMs = source?.occurrenceAt ?? moment.at
+  const momentPageTo = momentPageHref({ streamId: moment.streamId, at: occurrenceMs })
   const streamPage = broadcastTimelineHref(moment.login, moment.streamId, detailLocation.pathname + detailLocation.search + detailLocation.hash, moment.offsetSeconds)
   const gameArt = moment.category && moment.categoryId && moment.boxArtUrl && !moment.categoryMetadataRejected && isExactCategoryBoxArt(moment.boxArtUrl, moment.categoryId) ? moment.boxArtUrl : null
   const gameIn = moment.category ? <>{gameArt ? <img src={gameArt} alt="" /> : null}{moment.category}</> : null
@@ -347,6 +389,8 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
     {source?.vodHref ? <a href={source.vodHref} target="_blank" rel="noopener noreferrer" data-focus-key="open-vod">Open VOD at {formatStreamOffset(source.vodOffsetSeconds ?? moment.offsetSeconds)} ↗</a> : null}
     {source?.liveHref ? <a href={source.liveHref} target="_blank" rel="noopener noreferrer" data-focus-key="watch-live">Watch live now ↗</a> : null}
     {source?.vodHref && source.vodOffsetSeconds != null ? <VodOffsetNote broadcastSeconds={moment.offsetSeconds} vodSeconds={source.vodOffsetSeconds} /> : null}
+    {momentPageTo ? <Link to={momentPageTo} state={{ from: 'moments', moment: handOverMoment(moment, occurrenceMs) }} data-focus-key="moment-page"
+      {...momentPageWarmth({ streamId: moment.streamId, at: occurrenceMs })}>Open the Moment’s page</Link> : null}
   </div>
   const actionsInPreview = phone && Boolean(source?.vodHref)
   const watch = <>
@@ -383,7 +427,7 @@ function MomentDetail({ moment: suppliedMoment, variant, onClose, saved, onSourc
     {variant === 'standalone' ? <h2 tabIndex={-1} className="moments-detail-title"><Link className="moments-detail-name" to={streamPage} title="Open the stream’s page">{moment.displayName || moment.login}</Link> · {moment.label}</h2> : null}
     {head}
     {phone ? <div className="moments-detail-watch">{watch}</div> : null}
-    {evidenceState ? <p className="moments-muted" role="status">{evidenceState}{!evidenceState.startsWith('Loading') ? <> <button type="button" onClick={() => setEvidenceAttempt(value => value + 1)}>Retry reaction details</button></> : null}</p> : null}
+    {evidenceState ? <p className="moments-muted" role="status">{evidenceState}{!evidenceState.startsWith('Loading') ? <> <button type="button" onClick={() => { forgetFailedMomentReads(suppliedMoment.streamId); setEvidenceAttempt(value => value + 1) }}>Retry reaction details</button></> : null}</p> : null}
     <MomentMinuteChart moment={moment} />
     <div className="moments-detail-grid">
       {/* What happened (why it was selected) on the left; watching and actions on the right. */}
@@ -491,6 +535,8 @@ function MomentsWorkspace() {
   const savedToAccount = accountMomentsEnabled() && session.status === 'signed_in'
   const [explainerOpen, setExplainerOpen] = useState(false)
   const [sourceStates, setSourceStates] = useState<Record<string, string>>({})
+  /** Latest's streams whose other moments the reader asked to see. */
+  const [expandedStreams, setExpandedStreams] = useState<ReadonlySet<string>>(() => expandedStreamsByUrl.get(location.pathname + location.search) ?? new Set())
   const [filtersExpanded, setFiltersExpanded] = useState(false)
   // Keep each view's own URL filters while switching tabs. Latest and Saved
   // share loaded-result browse semantics; ranked views keep separate scopes.
@@ -661,6 +707,14 @@ function MomentsWorkspace() {
   }
   // The first load keeps the list's shape (L1, 11-13); after about 5 s it says the wait is expected.
   const loadingFirst = busy && !displayed.length && !noticeOnly
+  // Latest is one card per stream (B, 11-22); every other list stays one row per moment.
+  const streamCards = view === 'recent'
+  const streams = useMemo(() => streamCards ? momentStreams(profiledResults) : [], [streamCards, profiledResults])
+  const cardStreams = streams.map(stream => ({ stream, cards: momentStreamCards(stream, expandedStreams.has(stream.key), openRowKey) }))
+  /** What Previous and Next step through: the cards in their order on Latest, the rows elsewhere. */
+  const reviewOrder = streamCards ? cardStreams.flatMap(item => item.cards) : displayed
+  const listRef = useRef<HTMLDivElement>(null)
+  const gridColumns = useGridColumns(listRef, streamCards && !loadingFirst)
   const [loadingLong, setLoadingLong] = useState(false)
   useEffect(() => {
     if (!loadingFirst) { setLoadingLong(false); return }
@@ -780,7 +834,7 @@ function MomentsWorkspace() {
     const open = document.getElementById(DETAIL_ID)
     swapAnchor.current = open ? { top: open.getBoundingClientRect().top, focus: control } : null
     select(moment)
-    const { position, total } = loadedMomentNeighbors(displayed, moment.key)
+    const { position, total } = loadedMomentNeighbors(reviewOrder, moment.key)
     setReviewAnnouncement({ key: moment.key, text: `${position != null ? `Moment ${position} of ${total}: ` : ''}${spokenMoment(moment)}` })
   }
   const swapping = swapAnchor.current != null
@@ -884,6 +938,12 @@ function MomentsWorkspace() {
     }
   }, [location.key, requested, view])
   const locationUrl = location.pathname + location.search
+  useEffect(() => {
+    expandedStreamsByUrl.delete(locationUrl)
+    if (!expandedStreams.size) return
+    expandedStreamsByUrl.set(locationUrl, expandedStreams)
+    if (expandedStreamsByUrl.size > 40) expandedStreamsByUrl.delete(expandedStreamsByUrl.keys().next().value!)
+  }, [expandedStreams, locationUrl])
   /** A row link that leaves the list (a stream timeline, analytics) is where Back puts focus (J, 11-13). */
   function rememberLeavingLink(event: ReactMouseEvent<HTMLDivElement>) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -908,8 +968,7 @@ function MomentsWorkspace() {
     }
     for (const type of RETURN_RESTORE_STOP_EVENTS) window.addEventListener(type, stop, { passive: true })
     const step = () => {
-      const row = [...document.querySelectorAll<HTMLElement>('.moments-result')]
-        .find(element => element.querySelector<HTMLElement>('[data-discovery-key]')?.dataset.discoveryKey === target.momentKey)
+      const row = momentRowElement(target.momentKey)
       const control = row ? [...row.querySelectorAll<HTMLElement>('a[href]')].find(link => link.getAttribute('href') === target.href)
         ?? row.querySelector<HTMLElement>('.moments-card-primary') : null
       const active = document.activeElement
@@ -988,7 +1047,7 @@ function MomentsWorkspace() {
     const slot = inlineKey || standaloneShown ? document.getElementById(DETAIL_ID) : null
     if (!slot) return
     revealed.current = id
-    const row = inlineKey ? slot.previousElementSibling as HTMLElement | null : null
+    const row = inlineKey ? momentRowElement(inlineKey) : null
     const restoring = (location.state?.momentsReturn === true || navigationType === 'POP') && (returnScrollPositions.get(location.pathname + location.search) ?? 0) > 0
     if (moved) {
       // Its row left a settled list, so the detail started again at the top of the
@@ -1005,7 +1064,7 @@ function MomentsWorkspace() {
   }, [chosen?.key, inlineKey, standaloneShown, location.key])
   const resetSelection = { login: null, stream: null, offset: null, moment: null, story: null }
   const arrivalRoot = useRef<HTMLElement>(null)
-  useCollectionArrival(arrivalRoot, JSON.stringify(profiledResults.map(item => item.key)))
+  useCollectionArrival(arrivalRoot, JSON.stringify(reviewOrder.map(item => item.key)))
   const hasBrowseFilters = Boolean(category || browse.query || browse.order !== 'newest')
   function changeView(next: typeof view) {
     if (next === view) return
@@ -1035,7 +1094,34 @@ function MomentsWorkspace() {
   // A selection outside the list names the list (Z05, 11-13); one whose row left a settled list was not shared.
   const listName = view === 'saved' ? 'Saved' : historyMode ? 'History' : explore ? 'Explore' : 'Latest'
   const outside = place?.moved ? `Not in ${listName} right now` : `Shared moment, not in ${listName} right now`
-  const detail = chosen ? <MomentDetail key={`${chosen.key}:${chosen.publicMomentId || ''}:${openGeneration.current}`} variant={inlineKey ? 'inline' : 'standalone'} moment={chosen} onSourceState={onSourceState} onClose={() => close('row')} saved={view === 'saved' && Boolean(selected)} navigation={loadedMomentNeighbors(displayed, chosen.key)} onNavigate={review}
+  /**
+   * Latest's cards: each stream's lead, and its other moments once the reader opens them.
+   * An open moment's detail spans the grid under the row of cards it opened from, so the
+   * cards beside it stay where they were.
+   */
+  function cardGrid() {
+    // A collapsed stream may still show one other moment, the open one: "+N more" counts the rest.
+    const cards = cardStreams.flatMap(({ stream, cards: shown }) => shown.map((moment, index) => ({ moment, stream, lead: index === 0, hidden: stream.others.length - (shown.length - 1) })))
+    return cards.flatMap(({ moment, stream, lead, hidden }, index) => {
+      const rowStart = index - (index % gridColumns)
+      const rowEnd = index === rowStart + gridColumns - 1 || index === cards.length - 1
+      const expanded = expandedStreams.has(stream.key)
+      // Latest lists currently live streams, so a young moment may show its live picture (the Hub's rule).
+      const card = <MomentStreamCard key={moment.key} moment={moment} selected={openRowKey === moment.key} detailId={DETAIL_ID} artwork={resolveArtwork(moment)} onSelect={toggle}
+        lead={lead} live={view === 'recent'} stagger={index - rowStart}
+        avatar={<MomentAvatar moment={moment} />}
+        creator={<MomentCreator nameOnly moment={moment} historyAvailable={historyAvailable} onNavigate={() => { creatorReturnFocus.current = { locationKey: location.key, momentKey: moment.key } }} />}
+        more={lead && (expanded || hidden > 0) ? { count: expanded ? stream.others.length : hidden, expanded, onToggle: () => setExpandedStreams(current => {
+          const next = new Set(current)
+          if (next.has(stream.key)) next.delete(stream.key)
+          else next.add(stream.key)
+          return next
+        }) } : undefined} />
+      if (!rowEnd) return [card]
+      return [card, ...cards.slice(rowStart, index + 1).map(({ moment: inRow }) => <MomentInlineReveal key={`detail:${inRow.key}`} open={inlineKey === inRow.key} animate={!swapping} id={inlineKey === inRow.key ? DETAIL_ID : undefined} onInsidePress={markInsidePress}>{inlineKey === inRow.key ? detail : null}</MomentInlineReveal>)]
+    })
+  }
+  const detail = chosen ? <MomentDetail key={`${chosen.key}:${chosen.publicMomentId || ''}:${openGeneration.current}`} variant={inlineKey ? 'inline' : 'standalone'} moment={chosen} onSourceState={onSourceState} onClose={() => close('row')} saved={view === 'saved' && Boolean(selected)} navigation={loadedMomentNeighbors(reviewOrder, chosen.key)} onNavigate={review}
     pickedGame={category} onGame={rankedMode ? undefined : pickGame} outside={outside}
     continuation={rankedMode && ranked.data ? { loading: ranked.loading, canLoad: ranked.canLoad, limited: ranked.limited, error: ranked.error, load: ranked.loadMore } : undefined} /> : null
   // Explore and History stay hidden while the ranked backend is not deployed (owner
@@ -1076,7 +1162,7 @@ function MomentsWorkspace() {
       onChange={(values, options) => { leaveSelection(); keepPlaceFor(options); update({ ...resetSelection, ...values, calendar: null, month: null, q: null }, options?.replace ?? false) }}
       onRefresh={() => { if (!chosen) setRankedClock(new Date()); retention.refresh() }} /> : null}
     {/* The games on top, outside the filters so a phone shows them too (M1, 10-22). */}
-    {!rankedMode && (games.length > 1 || category) ? <MomentsGameRow games={games} total={collection.length} picked={category} onPick={pickGame} /> : null}
+    {!rankedMode && (games.length > 0 || category) ? <MomentsGameRow games={games} total={collection.length} picked={category} onPick={pickGame} /> : null}
     {/* While Latest first loads, the games row and filters keep their space (L1, 11-13). */}
     {view === 'recent' && loadingFirst && !collection.length ? <MomentsTopPlaceholder /> : null}
     {!rankedMode && (collection.length > 0 || displayed.length > 0) ? <>
@@ -1104,11 +1190,11 @@ function MomentsWorkspace() {
           // Why it is empty, and where to go next (S1, 11-13).
           : <div className="moments-empty-live"><p role="status">No big chat reactions in live streams right now. New ones show up here as they happen.</p>
             <div className="moments-actions"><Link to="/analytics">See live activity</Link>{saved.items.length ? <button type="button" onClick={() => { changeView('saved'); document.getElementById('moments-view-tab-saved')?.focus() }}>Open your saved moments</button> : null}</div></div> : null}
-        <div className="moments-result-list" onClick={rememberLeavingLink}>
+        <div ref={listRef} className={`moments-result-list${streamCards && !loadingFirst ? ' moments-stream-grid' : ''}`} onClick={rememberLeavingLink}>
           {/* The placeholders sit in the list's own frame; the first one says when the wait runs long,
               in its own box, so nothing is covered or moved and the first row lands there (L, round 5 11-13). */}
           {loadingFirst ? <MomentLoadingSkeleton late={loadingLate} /> : null}
-          {profiledResults.map(moment => {
+          {streamCards ? cardGrid() : profiledResults.map(moment => {
             const rank = rankedMode ? ranked.data?.items.find(item => item.key === moment.key) : undefined
             const open = inlineKey === moment.key
             return <Fragment key={moment.key}>

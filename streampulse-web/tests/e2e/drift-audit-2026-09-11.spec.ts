@@ -566,7 +566,7 @@ test.describe('drift audit 2026-09-11', () => {
         .waitFor({ state: 'visible', timeout: 60_000 })
       const momentHovers = [
         ...(await probeHoverTargets(page, '.moments-result')),
-        ...(await probeHoverTargets(page, '.moments-row-emotes span')),
+        ...(await probeHoverTargets(page, '.moments-stream-card .msc-emote')),
         ...(await probeHoverTargets(page, '.moment-category-card', 2)),
       ]
       await page.screenshot({ path: join(outDir, `hover-moments-${width}.png`) })

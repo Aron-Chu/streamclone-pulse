@@ -14,8 +14,9 @@ import {
 // the selected bar's strip in the page's flow under the chart, never over the
 // plot. The picture is a VOD storyboard frame or, with no frame (today: the web
 // client has none), a plain dark box and the reason, with the game's sharp cover
-// by the title (candidate 10-30, PIC-2). Play loads Twitch's player only on click;
-// every Twitch request here is intercepted, never live.
+// by the title (candidate 10-30, PIC-2). On a computer Twitch's player loads
+// paused once the pick settles (11-21); phones and data saver load it only on
+// Play. Every Twitch request here is intercepted, never live.
 const MINUTES = 30
 const PLOT = '[data-bench-plot]'
 const PART = '[data-session-chart-part]'
@@ -24,6 +25,13 @@ const READOUT = '[data-session-readout]'
 // 120 s verified alignment, the recap moment at 240 s, minus the 10 s lead-in
 const PLAY_AT = '0:05:50'
 const PLAYER_SRC = `https://player.twitch.tv/?video=v${PORTAL_VOD_ID}&time=5m50s&parent=127.0.0.1&autoplay=true`
+const PAUSED_SRC = PLAYER_SRC.replace('autoplay=true', 'autoplay=false')
+
+/** Data saver on (Save-Data): the page keeps Play on every screen. */
+const dataSaver = (page: Page) =>
+  page.addInitScript(() => {
+    Object.defineProperty(navigator, 'connection', { configurable: true, value: { saveData: true } })
+  })
 
 const VERIFIED_VOD = {
   vodId: PORTAL_VOD_ID,
@@ -151,7 +159,49 @@ async function clickMinute(page: Page, clock: string, input: 'mouse' | 'touch' =
 test.describe('session bar strip at 1440', () => {
   test.use({ viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: 'reduce' } })
 
-  test('opens under the plot with the fallback picture; Play loads the player only on click; Esc clears', async ({ page }) => {
+  test('on a computer the player loads paused once the pick settles, on one glass stage with the figures', async ({ page }) => {
+    const { harness, twitch } = await open(page, { verifiedVod: true })
+    await clickMinute(page, '0:04:00')
+    const strip = page.locator(STRIP)
+    await expect(strip).toHaveCount(1)
+    // 11-21 (Aron: "why cant we just load the preview instead of having to click a button"): paused, no Play
+    const player = strip.locator('iframe.mpl-if')
+    await expect(player).toHaveAttribute('src', PAUSED_SRC)
+    await expect(player).toHaveAttribute('data-vod-player', 'preview')
+    await expect(strip.locator('[data-preview-tile]')).toHaveAttribute('data-preview-tile', 'preview')
+    await expect(strip.getByRole('button', { name: /^Play VOD from/ })).toHaveCount(0)
+    await expect.poll(() => twitch.filter((u) => u.startsWith('https://player.twitch.tv/')).length).toBe(1)
+    expect(twitch.filter((u) => u.startsWith('https://player.twitch.tv/'))).toEqual([PAUSED_SRC])
+    // a preview never takes focus from the chart
+    expect(await strip.locator('.mpl-box').evaluate((el) => el.contains(document.activeElement))).toBe(false)
+
+    // one glass stage: the figures, then the player as wide as the stage (16 px in), 16:9, Open on Twitch under it
+    const inner = await box(strip.locator('.bkc-in'))
+    const body = await box(strip.locator('.bkc-body'))
+    const shown = await box(player)
+    const glass = await strip.locator('.bkc-in').evaluate((el) => {
+      const cs = getComputedStyle(el, '::before')
+      return { content: cs.content, bg: cs.backgroundImage }
+    })
+    expect(glass.content).not.toBe('none')
+    expect(glass.bg).toContain('linear-gradient')
+    expect(shown.y).toBeGreaterThanOrEqual(body.y + body.height - 0.5)
+    expect(shown.width).toBeGreaterThanOrEqual(640)
+    expect(Math.abs(shown.width - (inner.width - 32))).toBeLessThanOrEqual(2)
+    expect(Math.abs(shown.x + shown.width / 2 - (inner.x + inner.width / 2))).toBeLessThanOrEqual(2)
+    expect(Math.abs(shown.height - (shown.width * 9) / 16)).toBeLessThanOrEqual(2)
+    const vodBtn = await box(strip.getByRole('link', { name: `Open on Twitch at ${PLAY_AT}` }))
+    expect(vodBtn.y).toBeGreaterThanOrEqual(shown.y + shown.height)
+    expect(vodBtn.x + vodBtn.width).toBeLessThanOrEqual(shown.x + shown.width + 0.5)
+
+    await page.keyboard.press('Escape')
+    await settle(page)
+    await expect(page.locator(STRIP)).toHaveCount(0)
+    await assertNoUnexpected(harness)
+  })
+
+  test('with data saver on: the fallback picture; Play loads the player only on click; Esc clears', async ({ page }) => {
+    await dataSaver(page)
     const { harness, twitch } = await open(page, { verifiedVod: true })
     await clickMinute(page, '0:04:00')
     const strip = page.locator(STRIP)
@@ -168,13 +218,22 @@ test.describe('session bar strip at 1440', () => {
     expect(s.y).toBeGreaterThanOrEqual(part.y + part.height - 0.5)
     expect(s.y).toBeGreaterThanOrEqual(plot.y + plot.height)
 
-    // two columns: the picture (at most 420 px) left of the figures
+    // round 2 (11-21): the picture is its own row under the figures, centred, at most 880 px wide
     const pic = await box(strip.locator('.mpl-box'))
+    const pvw = await box(strip.locator('.bkc-pvw'))
     const body = await box(strip.locator('.bkc-body'))
-    expect(pic.width).toBeLessThanOrEqual(420.5)
-    expect(pic.x + pic.width).toBeLessThanOrEqual(body.x)
+    const inner = await box(strip.locator('.bkc-in'))
+    expect(pvw.width).toBeLessThanOrEqual(880.5)
+    expect(pvw.y).toBeGreaterThanOrEqual(body.y + body.height - 0.5)
+    expect(Math.abs(pvw.x + pvw.width / 2 - (inner.x + inner.width / 2))).toBeLessThanOrEqual(2)
     // no frame means no box: a compact row (Play, then the reason), never an empty 16:9 box
     expect(pic.height).toBeLessThan((pic.width * 9) / 16)
+    // Play and Open on Twitch side by side, the pair centred under the figures
+    const playBtn = await box(strip.getByRole('button', { name: `Play VOD from ${PLAY_AT}` }))
+    const vodBtn = await box(strip.getByRole('link', { name: `Open on Twitch at ${PLAY_AT}` }))
+    expect(Math.abs(playBtn.y + playBtn.height / 2 - (vodBtn.y + vodBtn.height / 2))).toBeLessThanOrEqual(4)
+    expect(vodBtn.x).toBeGreaterThan(playBtn.x + playBtn.width)
+    expect(Math.abs((playBtn.x + vodBtn.x + vodBtn.width) / 2 - (pvw.x + pvw.width / 2))).toBeLessThanOrEqual(2)
 
     // no frame from the web client today: the reason, never a stand-in frame or blurred art
     // (candidate, 10-30, PIC-2); the reel's line (fix, 10-30, PIC-3)
@@ -194,7 +253,7 @@ test.describe('session bar strip at 1440', () => {
     await expect(strip).not.toContainText('usual')
 
     // verified alignment: Play and the VOD link carry the 10 s lead-in
-    const vod = strip.getByRole('link', { name: `Open VOD at ${PLAY_AT}` })
+    const vod = strip.getByRole('link', { name: `Open on Twitch at ${PLAY_AT}` })
     await expect(vod).toHaveAttribute('href', `https://www.twitch.tv/videos/${PORTAL_VOD_ID}?t=5m50s`)
     await expect(vod).toHaveAttribute('target', '_blank')
     await expect(strip.locator('.mpl-cap')).toContainText("On the VOD's clock")
@@ -207,6 +266,10 @@ test.describe('session bar strip at 1440', () => {
     const player = strip.locator('iframe.mpl-if')
     await expect(player).toHaveAttribute('src', PLAYER_SRC)
     await expect(player).toHaveAttribute('title', `Twitch VOD from ${PLAY_AT}`)
+    // the player is the big thing: at least 640 px wide here, centred under the figures
+    const shown = await box(player)
+    expect(shown.width).toBeGreaterThanOrEqual(640)
+    expect(Math.abs(shown.x + shown.width / 2 - (inner.x + inner.width / 2))).toBeLessThanOrEqual(2)
     await expect.poll(() => twitch.filter((u) => u.startsWith('https://player.twitch.tv/')).length).toBe(1)
     expect(twitch[0]).toBe(PLAYER_SRC)
 
@@ -223,7 +286,7 @@ test.describe('session bar strip at 1440', () => {
     await expect(strip).toHaveCount(1)
     await expect(strip.getByRole('button', { name: /^Play/ })).toHaveCount(0)
     await expect(strip.locator('.mpl-msg')).toBeVisible()
-    await expect(strip.getByRole('link', { name: /^Open VOD at/ })).toHaveCount(0)
+    await expect(strip.getByRole('link', { name: /^Open on Twitch at/ })).toHaveCount(0)
     await expect(strip.locator('iframe')).toHaveCount(0)
     expect(twitch).toEqual([])
     await assertNoUnexpected(harness)

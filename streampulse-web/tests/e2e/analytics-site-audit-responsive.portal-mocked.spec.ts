@@ -1,6 +1,7 @@
 import { expect, test } from './helpers/portalMockedTest'
 import { writeFile } from 'node:fs/promises'
 import { installHubUxMock } from './helpers/hubUxMock'
+import { openV5Hub } from './helpers/openV5Hub'
 import { buildMinutes, installPortalAcceptanceHarness, loadXqcGames, openAnalyticsSession } from './helpers/portalAcceptanceHarness'
 
 test.use({ hasTouch: true })
@@ -41,14 +42,14 @@ for (const width of [320, 390]) {
       const hit = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)
       return { name: link.textContent, inViewport: b.left >= 0 && b.right <= innerWidth && b.top >= 0 && b.bottom <= innerHeight, receivesTap: !!hit && link.contains(hit) }
     }))
-    expect(hits.length).toBeGreaterThanOrEqual(11)
+    expect(hits.length).toBeGreaterThanOrEqual(7)
     for (const hit of hits) expect(hit, hit.name ?? 'menu link').toMatchObject({ inViewport: true, receivesTap: true })
     await writeFile(testInfo.outputPath('menu-hit-targets.json'), JSON.stringify({ width, realDiscordConfigured: hasDiscord, controls: boxes, links: hits }, null, 2))
     await page.screenshot({ path: testInfo.outputPath(`menu-${width}-discord-${hasDiscord}.png`) })
-    await menu.getByRole('link', { name: 'Analytics', exact: true }).tap()
+    await menu.getByRole('link', { name: 'Hub', exact: true }).tap()
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')
     await trigger.tap()
-    await menu.getByRole('link', { name: 'Home', exact: true }).focus()
+    await menu.getByRole('link', { name: 'Help', exact: true }).focus()
     await page.keyboard.press('Escape')
     await expect(trigger).toBeFocused()
   })
@@ -99,22 +100,20 @@ for (const width of [320, 390]) {
   })
 }
 
-test('at 1440px the capped Top today and next existing section share a row', async ({ page }, testInfo) => {
+test('at 1440px Busiest now takes the whole row, with no Top today beside it (2B, 11-22)', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await installHubUxMock(page)
-  await page.goto('/analytics')
-  const peek = page.locator('.hv5-f3-peek')
+  await openV5Hub(page)
   const busy = page.locator('.hv5-busiest')
-  await expect(peek).toBeVisible()
+  const chart = page.locator('.hv5-activity')
   await expect(busy).toBeVisible()
-  const left = (await peek.boundingBox())!, right = (await busy.boundingBox())!
-  expect(left.width).toBeLessThanOrEqual(720)
-  expect(right.width).toBeLessThanOrEqual(720)
-  expect(Math.abs(left.y - right.y)).toBeLessThanOrEqual(1)
-  expect(left.x + left.width).toBeLessThan(right.x)
-  expect(await peek.evaluate((node, nextClass) => Boolean(node.compareDocumentPosition(document.querySelector(nextClass)!) & Node.DOCUMENT_POSITION_FOLLOWING), '.hv5-busiest')).toBe(true)
+  await expect(page.locator('.hv5-f3-peek')).toHaveCount(0)
+  const row = (await busy.boundingBox())!, below = (await chart.boundingBox())!
+  expect(Math.abs(row.x - below.x)).toBeLessThanOrEqual(1)
+  expect(Math.abs(row.width - below.width)).toBeLessThanOrEqual(1)
+  // whole tiles only: the pager says what shows
+  await expect(busy.locator('.hv5-bzc-pos')).toHaveText(/^1–6 of \d+$/)
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
-  await page.screenshot({ path: testInfo.outputPath('adjacent-existing-hub-sections.png') })
+  await page.screenshot({ path: testInfo.outputPath('busiest-across.png') })
 })
 
 test('the narrow multi-game header shows the whole fixture title and every KPI', async ({ page }, testInfo) => {

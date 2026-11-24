@@ -803,6 +803,12 @@
   margin-top: 8px;
   max-height: 288px;
   overflow: auto;
+  /* round 2 (11-21): no visible scrollbar (the hub's lists hide theirs too); the wheel, touch and keys still scroll */
+  scrollbar-width: none;
+}
+
+.ssc-md-sc::-webkit-scrollbar {
+  display: none;
 }
 
 .ssc-md table {

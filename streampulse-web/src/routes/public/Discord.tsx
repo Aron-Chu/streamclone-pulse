@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 import { DiscordMark } from '../../ui/components/DiscordMark'
 import { buttonClass } from '../../ui/primitives'
-import { FEEDBACK_PATH } from '../../lib/externalLinks'
+import { HELP_FEEDBACK_PATH } from '../../lib/externalLinks'
 import { discordInviteUrl } from '../../lib/discord'
 import { feedbackSiteKey, supportFormAvailability } from '../../lib/supportForm'
 
@@ -14,7 +14,8 @@ function leaveFor(url: string) {
 /**
  * /discord — the stable address the extension's "Join Discord" opens. The invite
  * itself is a build-time input, so changing it never needs an extension release.
- * Without a valid invite the page says so plainly and points at /support.
+ * Without a valid invite the page says so plainly and points at the feedback
+ * form on Help.
  */
 export default function Discord({ redirect = leaveFor }: { redirect?: (url: string) => void }) {
   const invite = discordInviteUrl()
@@ -39,7 +40,7 @@ export default function Discord({ redirect = leaveFor }: { redirect?: (url: stri
             {/* Until the private form opens there is nowhere private to send account problems, so the note only warns. */}
             <p className="muted">
               {formReady
-                ? <>The server is public, so keep account problems for the <Link to={FEEDBACK_PATH}>private feedback form</Link>.</>
+                ? <>The server is public, so keep account problems for the <Link to={HELP_FEEDBACK_PATH}>private feedback form</Link>.</>
                 : 'The server is public, so leave out account details and anything personal.'}
             </p>
           </>
@@ -48,7 +49,7 @@ export default function Discord({ redirect = leaveFor }: { redirect?: (url: stri
             <h1>The StreamPulse Discord isn&apos;t open yet</h1>
             <p>There is no community server to join right now. To report a problem or share an idea, send private feedback.</p>
             <div className="public-document__actions">
-              <Link className={buttonClass('default', 'lg')} to={FEEDBACK_PATH}>Send feedback</Link>
+              <Link className={buttonClass('default', 'lg')} to={HELP_FEEDBACK_PATH}>Send feedback</Link>
             </div>
           </>
         )}

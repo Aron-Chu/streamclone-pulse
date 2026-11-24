@@ -3,9 +3,9 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * WCAG 1.4.3 for the /support card's small and placeholder text. The
- * backgrounds are the ones measured on the page: the page behind the Discord
- * line (rgb(14, 12, 19)) and the inputs' own fill.
+ * WCAG 1.4.3 for the Help page's small and placeholder text. The
+ * backgrounds are the ones measured on the page: the page behind the header
+ * (rgb(14, 12, 19)), the card and the inputs' own fill.
  */
 const css = readFileSync(resolve(process.cwd(), 'src/routes/public/support.css'), 'utf8')
 
@@ -28,12 +28,12 @@ function contrast(a: string, b: string): number {
   return (hi! + 0.05) / (lo! + 0.05)
 }
 
-describe('/support text contrast', () => {
+describe('/help text contrast', () => {
   it.each([
-    { selector: '.support-discord-line small', background: '#0e0c13' },
+    { selector: '.support-page__head p', background: '#0e0c13' },
     { selector: '.feedback-input::placeholder', background: '#09090b' },
     { selector: '.feedback-public__note', background: '#121218' },
-    { selector: '.support-page__aside', background: '#0e0c13' },
+    { selector: '.feedback-card__sub', background: '#121218' },
     { selector: '.feedback-card__private', background: '#121218' },
   ])('$selector is at least 4.5:1 on $background', ({ selector, background }) => {
     expect(contrast(colorOf(selector), background)).toBeGreaterThanOrEqual(4.5)

@@ -94,7 +94,14 @@ export function topEmotesFromRollup(
   limit = 5,
   catalog?: CatalogTopEmote[],
 ): RollupEmoteHit[] {
-  if (!rollup.emotes) return []
+  return rollup.emotes ? catalogTopEmotes(catalog)(rollup, limit) : []
+}
+
+/**
+ * topEmotesFromRollup for one catalog, with the catalog's lookup Maps built once
+ * instead of per call: the same hits, for ranking every minute of a stream.
+ */
+export function catalogTopEmotes(catalog?: CatalogTopEmote[]) {
   const byKey = new Map(catalog?.map(item => [item.key, item]) ?? [])
   const byLookup = new Map(
     (catalog ?? [])
@@ -102,25 +109,28 @@ export function topEmotesFromRollup(
       .filter((entry): entry is readonly [string, CatalogTopEmote] => entry[0] !== ''),
   )
   const byName = new Map(catalog?.map(item => [item.name.toLowerCase(), item]) ?? [])
-  return Object.entries(rollup.emotes)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([key, count]) => {
-      const parsed = parseEmoteKey(key)
-      const lookupKey = `${(parsed.provider !== 'unknown' ? parsed.provider : 'unknown').toLowerCase()}:${parsed.name.toLowerCase()}`
-      const match = byKey.get(key) ?? byLookup.get(lookupKey) ?? byName.get(parsed.name.toLowerCase())
-      return {
-        key,
-        name: match?.name ?? parsed.name,
-        provider: match?.provider ?? (parsed.provider !== 'unknown' ? parsed.provider : undefined),
-        count,
-        image_url: match
-          ? getEmoteImageUrl(match)
-          : (parsed.id && parsed.id !== parsed.name
-              ? getEmoteImageUrl({ provider: parsed.provider, id: parsed.id })
-              : undefined),
-      }
-    })
+  return (rollup: MomentScoringRollup, limit = 5): RollupEmoteHit[] => {
+    if (!rollup.emotes) return []
+    return Object.entries(rollup.emotes)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([key, count]) => {
+        const parsed = parseEmoteKey(key)
+        const lookupKey = `${(parsed.provider !== 'unknown' ? parsed.provider : 'unknown').toLowerCase()}:${parsed.name.toLowerCase()}`
+        const match = byKey.get(key) ?? byLookup.get(lookupKey) ?? byName.get(parsed.name.toLowerCase())
+        return {
+          key,
+          name: match?.name ?? parsed.name,
+          provider: match?.provider ?? (parsed.provider !== 'unknown' ? parsed.provider : undefined),
+          count,
+          image_url: match
+            ? getEmoteImageUrl(match)
+            : (parsed.id && parsed.id !== parsed.name
+                ? getEmoteImageUrl({ provider: parsed.provider, id: parsed.id })
+                : undefined),
+        }
+      })
+  }
 }
 
 export function detectPickReason(
@@ -155,10 +165,41 @@ function percentile(values: number[], p: number): number {
   return sorted[idx] || 1
 }
 
+function p95Thresholds(rollups: MomentScoringRollup[]) {
+  return {
+    chatP95: percentile(rollups.map(r => Math.max(0, r.chatCount ?? 0)), 0.95),
+    emoteP95: percentile(rollups.map(r => minuteEmoteTotal(r)), 0.95),
+  }
+}
+
+/**
+ * What scoring one minute needs from its whole rollup list, built once per list so
+ * that scoring every minute of a long stream stays linear instead of re-sorting the
+ * list per minute. Pass it only together with the `rollups` array it was built from,
+ * and rebuild it after changing that array.
+ */
+export type MomentScoringContext = {
+  rollups: MomentScoringRollup[]
+  chatP95: number
+  emoteP95: number
+  /** Each minuteTs's first index, as rollups.findIndex finds it. */
+  minuteIndex: Map<string | undefined, number>
+}
+
+export function buildMomentScoringContext(rollups: MomentScoringRollup[]): MomentScoringContext {
+  return {
+    rollups,
+    ...p95Thresholds(rollups),
+    // Reversed, so a repeated minuteTs keeps its first index.
+    minuteIndex: new Map(rollups.map((point, index) => [point.minuteTs, index] as const).reverse()),
+  }
+}
+
 function computeMomentScore(
   rollup: MomentScoringRollup,
   baselines: StreamBaselines,
   rollups?: MomentScoringRollup[],
+  context?: MomentScoringContext,
 ): number {
   const chatNorm = Math.min(1, (rollup.chatCount ?? 0) / Math.max(baselines.chat * 2, 1))
   const emoteNorm = Math.min(1, minuteEmoteTotal(rollup) / Math.max(baselines.emotes * 2, 1))
@@ -172,7 +213,9 @@ function computeMomentScore(
 
   let noveltyNorm = 0.5
   if (rollups?.length) {
-    const idx = rollups.findIndex(point => point.minuteTs === rollup.minuteTs)
+    const idx = context
+      ? context.minuteIndex.get(rollup.minuteTs) ?? -1
+      : rollups.findIndex(point => point.minuteTs === rollup.minuteTs)
     if (idx > 0) {
       const prior = rollups.slice(Math.max(0, idx - 5), idx).filter(point => !point.missing)
       if (prior.length > 0) {
@@ -196,18 +239,17 @@ export function computeMomentScore100(
   rollup: MomentScoringRollup,
   baselines: StreamBaselines,
   rollups?: MomentScoringRollup[],
+  context?: MomentScoringContext,
 ): number {
-  return clampMomentScore(computeMomentScore(rollup, baselines, rollups) * 10)
+  return clampMomentScore(computeMomentScore(rollup, baselines, rollups, context) * 10)
 }
 
 export function computeP95ReactionScore100(
   rollup: MomentScoringRollup,
   rollups: MomentScoringRollup[],
+  context?: MomentScoringContext,
 ): number {
-  const chatValues = rollups.map(r => Math.max(0, r.chatCount ?? 0))
-  const emoteValues = rollups.map(r => minuteEmoteTotal(r))
-  const chatP95 = percentile(chatValues, 0.95)
-  const emoteP95 = percentile(emoteValues, 0.95)
+  const { chatP95, emoteP95 } = context ?? p95Thresholds(rollups)
   const chatNorm = Math.min(1, (rollup.chatCount ?? 0) / Math.max(chatP95, 1))
   const emoteNorm = Math.min(1, minuteEmoteTotal(rollup) / Math.max(emoteP95, 1))
   const weighted = chatNorm * 0.6 + emoteNorm * 0.4
@@ -218,9 +260,10 @@ export function fallbackMomentScore100(
   rollup: MomentScoringRollup,
   baselines: StreamBaselines,
   rollups: MomentScoringRollup[],
+  context?: MomentScoringContext,
 ): number {
-  const multi = computeMomentScore100(rollup, baselines, rollups)
-  const p95 = computeP95ReactionScore100(rollup, rollups)
+  const multi = computeMomentScore100(rollup, baselines, rollups, context)
+  const p95 = computeP95ReactionScore100(rollup, rollups, context)
   return Math.round(Math.min(multi, p95))
 }
 

@@ -1,5 +1,6 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
+import { answerTwitchLivePictures } from './helpers/twitchLivePictures'
 import portalTimingFixture from '../fixtures/portal_vod_timing_v1.json' with { type: 'json' }
 
 // The approved 2026-10-06 Moments behaviour: a moment opens in line under its own
@@ -7,6 +8,16 @@ import portalTimingFixture from '../fixtures/portal_vod_timing_v1.json' with { t
 
 const detail = (page: Page) => page.getByRole('region', { name: /^Selected moment: / })
 const rows = (page: Page) => page.locator('.moments-result')
+/**
+ * What follows a result in the list: the slot right under a row, or, on Latest's
+ * cards, the slot under the row of cards it sits in, past the cards beside it.
+ */
+const slotAfter = (row: Locator) => row.evaluate(element => {
+  const top = element.getBoundingClientRect().top
+  let next = element.nextElementSibling
+  while (next?.matches('.moments-stream-card') && Math.abs(next.getBoundingClientRect().top - top) < 1) next = next.nextElementSibling
+  return next?.id
+})
 
 /**
  * Per-minute rollups for one broadcast, in the shape `/streams/{id}/minutes`
@@ -79,6 +90,7 @@ async function recordClicks(page: Page) {
 const THIRD_MOMENT = { login: 'forsen', streamId: 's3', offsetSeconds: 360, label: 'Laugh spike', minutesBefore: 6 }
 
 test.beforeEach(async ({ page }) => {
+  await answerTwitchLivePictures(page)
   await page.route('**/v1/**', route => route.fulfill({ status: 503, json: { error: 'unmocked_endpoint' } }))
   await page.route(/\/v1\/public\/discovery\/ranked\/availability(?:\?.*)?$/, route => route.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found\n' }))
   await page.route('**/v1/portal/analytics/streams/*', route => {
@@ -94,6 +106,9 @@ test('a moment opens in line under its row, keeps the list in place, and closes 
   await installMinutes(page, { streamId: 's1', login: 'xqc', offsetSeconds: 5400, at: momentAts[0], chat: xqcChat })
   await page.goto('/analytics/moments')
   await expect(rows(page)).toHaveCount(2)
+  // Playwright's own scroll before a click can move a card title that sits low on the
+  // screen, though a reader's click doesn't: take it first, so only opening is measured.
+  await rows(page).first().locator('.moments-card-primary').scrollIntoViewIfNeeded()
   const list = page.locator('.moments-result-list')
   const before = await list.boundingBox()
   const pageWidth = () => page.evaluate(() => document.documentElement.clientWidth)
@@ -107,7 +122,7 @@ test('a moment opens in line under its row, keeps the list in place, and closes 
   const open = detail(page)
   await expect(open).toBeVisible()
   // Directly under its row, inside the same full-width list.
-  expect(await first.evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
+  expect(await slotAfter(first)).toBe('moments-selected-detail')
   await expect(primary).toHaveAttribute('aria-expanded', 'true')
   await expect(primary).toHaveAttribute('aria-controls', 'moments-selected-detail')
   // Only the open row controls the slot; the closed row claims nothing.
@@ -145,8 +160,8 @@ test('a moment opens in line under its row, keeps the list in place, and closes 
   await page.screenshot({ path: testInfo.outputPath('inline-open-1440.png') })
   await page.screenshot({ path: testInfo.outputPath('inline-open-1440-full.png'), fullPage: true })
 
-  // The row's own links and Save do not toggle it.
-  await first.getByRole('button', { name: 'Save', exact: true }).click()
+  // The card's own links and Save do not toggle it.
+  await first.getByRole('button', { name: /^Save / }).click()
   await expect(open).toBeVisible()
 
   // A click in the page margin, beside the content, closes it. (Its history step back is
@@ -178,7 +193,7 @@ test('a moment opens in line under its row, keeps the list in place, and closes 
   await search.fill('')
   await primary.click()
   await expect(open).toBeVisible()
-  await first.locator('.moments-result-evidence').click()
+  await first.locator('.msc-picture').click()
   await expect(open).toHaveCount(0)
 })
 
@@ -186,7 +201,7 @@ test('Esc closes the open moment and returns focus to its row', async ({ page })
   await installHubUxMock(page, { withComparisons: true })
   await page.goto('/analytics/moments')
   const first = rows(page).first()
-  await first.locator('.moments-result-evidence').click()
+  await first.locator('.msc-picture').click()
   await expect(detail(page)).toBeVisible()
   await detail(page).getByRole('button', { name: 'Recheck source', exact: true }).focus()
   await page.keyboard.press('Escape')
@@ -229,6 +244,8 @@ test('selecting text outside the open moment is not a click away', async ({ page
   await expect(detail(page)).toBeVisible()
   const clicks = await recordClicks(page)
   // A drag across the page heading to copy it: it starts and ends outside the slot.
+  // Reaching a tall card's button may have scrolled the heading away; bring it back first.
+  await page.evaluate(() => window.scrollTo(0, 0))
   const heading = page.getByRole('heading', { name: 'Moments', level: 1 })
   const box = (await heading.boundingBox())!
   await page.mouse.move(box.x + 1, box.y + box.height / 2)
@@ -254,7 +271,7 @@ test('a row pressed while a close is stepping back opens once the step back land
     document.querySelectorAll<HTMLElement>('.moments-result .moments-card-primary')[1]!.click()
   })
   await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
-  await expect.poll(() => rows(page).nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
+  await expect.poll(() => slotAfter(rows(page).nth(1))).toBe('moments-selected-detail')
   await expect(detail(page)).toHaveCount(1)
   await page.waitForTimeout(1200)
   await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
@@ -297,8 +314,8 @@ test('a click away steps back in history, and browser Back from the next moment 
 })
 
 test('opening another row closes the first and keeps the clicked row in place', async ({ page }) => {
-  // Short enough that the second row sits below the fold under the open detail.
-  await page.setViewportSize({ width: 1440, height: 600 })
+  // One card per row (phone width), and short enough that the second sits below the fold under the open detail.
+  await page.setViewportSize({ width: 520, height: 700 })
   await installHubUxMock(page, { withComparisons: true })
   await page.goto('/analytics/moments')
   await rows(page).first().locator('.moments-card-primary').click()
@@ -306,7 +323,7 @@ test('opening another row closes the first and keeps the clicked row in place', 
   await page.waitForTimeout(400)
   const second = rows(page).nth(1)
   await second.scrollIntoViewIfNeeded()
-  const evidence = (await second.locator('.moments-result-evidence').boundingBox())!
+  const evidence = (await second.locator('.msc-picture').boundingBox())!
   const topBefore = (await second.boundingBox())!.y
   const scrollBefore = await page.evaluate(() => window.scrollY)
   await page.mouse.click(evidence.x + evidence.width / 2, evidence.y + evidence.height / 2)
@@ -316,7 +333,7 @@ test('opening another row closes the first and keeps the clicked row in place', 
   expect(Math.abs((await second.boundingBox())!.y - topBefore)).toBeLessThan(3)
   expect(await page.evaluate(() => window.scrollY)).toBeLessThan(scrollBefore)
   await expect(page.locator('.moments-inline')).toHaveCount(1)
-  expect(await second.evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
+  expect(await slotAfter(second)).toBe('moments-selected-detail')
   await expect(rows(page).first().locator('.moments-card-primary')).toHaveAttribute('aria-expanded', 'false')
 })
 
@@ -331,13 +348,13 @@ test('Previous and Next move the detail in line and keep its top on screen', asy
   await detail(page).getByRole('button', { name: 'Next moment', exact: true }).click()
   await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   await expect(detail(page).locator('.moments-detail-head')).toContainText('2 of 2 loaded moments')
-  await expect.poll(() => rows(page).nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
+  await expect.poll(() => slotAfter(rows(page).nth(1))).toBe('moments-selected-detail')
   expect(Math.abs((await slot.boundingBox())!.y - top)).toBeLessThan(2)
   // At the end of the list focus stays on the control that still moves.
   await expect(detail(page).getByRole('button', { name: 'Previous moment', exact: true })).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/login=xqc&stream=s1&offset=420/)
-  await expect.poll(() => rows(page).first().evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
+  await expect.poll(() => slotAfter(rows(page).first())).toBe('moments-selected-detail')
   expect(Math.abs((await slot.boundingBox())!.y - top)).toBeLessThan(2)
 })
 
@@ -374,7 +391,7 @@ test('Previous and Next keep focus on the control just used while both still mov
   await expect(page).toHaveURL(/login=sodapoppin&stream=s2&offset=540/)
   await expect(head).toContainText('2 of 3 loaded moments')
   await expect(previous).toBeFocused()
-  await expect.poll(() => rows(page).nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
+  await expect.poll(() => slotAfter(rows(page).nth(1))).toBe('moments-selected-detail')
 })
 
 test('a deep link opens in line under its row and scrolls it into view', async ({ page }, testInfo) => {
@@ -384,7 +401,7 @@ test('a deep link opens in line under its row and scrolls it into view', async (
   await page.goto('/analytics/moments?view=recent&login=sodapoppin&stream=s2&offset=7200')
   const second = rows(page).nth(1)
   await expect(detail(page)).toBeVisible()
-  expect(await second.evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
+  expect(await slotAfter(second)).toBe('moments-selected-detail')
   await expect(second.locator('.moments-card-primary')).toHaveAttribute('aria-expanded', 'true')
   await expect(second.locator('.moments-card-primary')).toBeFocused()
   await expect(second).toBeInViewport()
@@ -415,7 +432,7 @@ test('a deep link keeps its selection through a click or Esc while its feed is s
   await expect(page).toHaveURL(/\?login=sodapoppin&stream=s2&offset=540$/)
   release()
   await expect(detail(page)).toBeVisible()
-  expect(await rows(page).nth(1).evaluate(row => row.nextElementSibling?.id)).toBe('moments-selected-detail')
+  expect(await slotAfter(rows(page).nth(1))).toBe('moments-selected-detail')
   // Shown, it closes as usual.
   await page.keyboard.press('Escape')
   await expect(detail(page)).toHaveCount(0)
@@ -453,8 +470,10 @@ test('the minute chart draws measured minutes against the earlier average', asyn
   const reads = await installMinutes(page, { streamId: 's1', login: 'xqc', offsetSeconds: 5400, at: momentAts[0], chat: xqcChat })
   await page.goto('/analytics/moments')
   await expect(rows(page)).toHaveCount(2)
-  // Lazy: nothing is read until a moment opens.
-  expect(reads).toHaveLength(0)
+  // The card reads its minutes once it nears the screen and draws them as its line;
+  // opening the moment reuses that read.
+  await expect(rows(page).first().locator('.msc-picture')).toHaveAttribute('data-picture', 'line')
+  expect(reads).toHaveLength(1)
   await rows(page).first().locator('.moments-card-primary').click()
   const chart = detail(page).getByRole('figure', { name: 'Chat per minute around this moment' })
   await expect(chart).toHaveAttribute('data-state', 'ready')
@@ -472,7 +491,9 @@ test('the minute chart draws measured minutes against the earlier average', asyn
   await expect(chart.locator('.moment-minutes__axis')).toContainText('30 min before')
   await expect(chart.locator('.moment-minutes__axis em')).toHaveText('this moment')
   await expect(chart.locator('.moment-minutes__legend')).toContainText('Earlier average 160/min')
-  // Measure bars only once the slot, fade and bar growth have finished moving them.
+  // The detail opens under a tall card: bring the chart on screen, then measure bars
+  // only once the slot, fade and bar growth have finished moving them.
+  await chart.scrollIntoViewIfNeeded()
   await page.evaluate(() => Promise.all(document.getAnimations()
     .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
     .map(animation => animation.finished.catch(() => undefined))))
@@ -508,6 +529,7 @@ test('the minute chart draws nothing before the broadcast started or past the la
     .toEqual([-6, -5, -4, -3, -2, -1, 0, 1, 2, 3])
   // Only the minutes inside the broadcast so far are counted; the rest are named.
   await expect(chart.getByRole('img')).toHaveAttribute('aria-label', /This minute: 393 chat per minute\..* 10 of 10 minutes measured\. The first 24 minutes came before the broadcast started\. The last 7 minutes aren’t available yet\.$/)
+  await chart.scrollIntoViewIfNeeded()
   await page.evaluate(() => Promise.all(document.getAnimations()
     .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
     .map(animation => animation.finished.catch(() => undefined))))

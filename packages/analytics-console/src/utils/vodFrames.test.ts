@@ -27,12 +27,16 @@ afterEach(() => {
 })
 
 describe('isAllowedSheetUrl', () => {
-  it('allows https cloudfront sheets only', () => {
+  it('allows https sheets only on the storyboard hosts the backend accepts', () => {
+    // The backend's storyboard check accepts cloudfront.net, twitch.tv and jtvnw.net hosts.
     expect(isAllowedSheetUrl(SHEET)).toBe(true)
+    expect(isAllowedSheetUrl('https://static-cdn.jtvnw.net/cf_vods/a.jpg')).toBe(true)
+    expect(isAllowedSheetUrl('https://storyboards.twitch.tv/a.jpg')).toBe(true)
     expect(isAllowedSheetUrl('http://d2vi6trrdongqn.cloudfront.net/a.jpg')).toBe(false)
-    expect(isAllowedSheetUrl('https://static-cdn.jtvnw.net/cf_vods/a.jpg')).toBe(false)
     expect(isAllowedSheetUrl('https://evil.example/cloudfront.net/a.jpg')).toBe(false)
     expect(isAllowedSheetUrl('https://cloudfront.net.evil.example/a.jpg')).toBe(false)
+    expect(isAllowedSheetUrl('https://jtvnw.net.evil.example/a.jpg')).toBe(false)
+    expect(isAllowedSheetUrl('https://eviljtvnw.net/a.jpg')).toBe(false)
     expect(isAllowedSheetUrl(42)).toBe(false)
   })
 
@@ -199,5 +203,48 @@ describe('useVodFrame', () => {
     expect(result.current).toEqual({ loading: false, result: null })
     renderHook(() => useVodFrame('2899924626', null))
     expect(get).not.toHaveBeenCalled()
+  })
+})
+
+describe('the sheet check', () => {
+  /** jsdom loads no pictures, so the test answers for the sheet. */
+  class FakeImage {
+    static made: FakeImage[] = []
+    onload: (() => void) | null = null
+    onerror: (() => void) | null = null
+    crossOrigin: string | null = null
+    src = ''
+    constructor() {
+      FakeImage.made.push(this)
+    }
+  }
+
+  beforeEach(() => {
+    FakeImage.made = []
+    vi.stubGlobal('Image', FakeImage)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('loads each sheet once, without CORS like the CSS, and a sheet that loads keeps its frames', async () => {
+    configure(async () => THUMB)
+    await loadVodFrame('2899924626', 3054)
+    await loadVodFrame('2899924626', 3060)
+    expect(FakeImage.made).toHaveLength(1)
+    expect(FakeImage.made[0].src).toBe(SHEET)
+    expect(FakeImage.made[0].crossOrigin).toBeNull()
+    act(() => FakeImage.made[0].onload?.())
+    expect(peekVodFrame('2899924626', 3054)?.frame?.sheetUrl).toBe(SHEET)
+    expect((await loadVodFrame('2899924626', 3060)).frame?.sheetUrl).toBe(SHEET)
+  })
+
+  it('a sheet that fails to load turns its frames into unavailable, also one already shown', async () => {
+    configure(async () => THUMB)
+    const { result } = renderHook(() => useVodFrame('2899924626', 3054))
+    await waitFor(() => expect(result.current.result?.frame?.sheetUrl).toBe(SHEET))
+    act(() => FakeImage.made[0].onerror?.())
+    expect(result.current).toEqual({ loading: false, result: { frame: null, reason: 'unavailable' } })
+    expect(peekVodFrame('2899924626', 3054)?.reason).toBe('unavailable')
+    expect((await loadVodFrame('2899924626', 3060)).reason).toBe('unavailable')
+    expect(FakeImage.made).toHaveLength(1)
   })
 })
