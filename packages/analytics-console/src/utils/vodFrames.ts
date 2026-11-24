@@ -9,6 +9,9 @@
  *   storyboards), with no characters that could break out of a CSS `url()`;
  * - crops the tile with CSS `background-size` / `background-position`, so no
  *   canvas and no CORS;
+ * - loads each sheet once more the way the CSS does, and turns a frame whose
+ *   sheet fails to load into `unavailable`, so a blocked or missing sheet shows
+ *   the fallback, never an empty box;
  * - caches per VOD and offset, and remembers a VOD that has no storyboard (or
  *   is still recording) so the page asks once, not once per bar.
  *
@@ -18,7 +21,7 @@
  * fallback (the reason, with the game's sharp cover beside it since 10-30, PIC-2;
  * blurred art until then). Never a stand-in or a live frame.
  */
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { getConfiguredAnalyticsApi } from '../configureApi.ts'
 
 /** One storyboard tile: a crop rectangle inside a sheet image (pixels). */
@@ -169,6 +172,57 @@ export function frameTimingPhrase(
   return d > 0 ? `from about ${d} s into ${unit}` : `from about ${-d} s before ${unit}`
 }
 
+// ---- sheet check ----
+
+/**
+ * The answer can name a sheet that never draws (gone, blocked, not an image). Each sheet is loaded once more
+ * the way the CSS loads it (no CORS, no canvas): a load changes nothing, and a failure turns every frame on
+ * that sheet into `unavailable`, so the picture falls back instead of staying an empty box. The check never
+ * holds a frame back; where there is no `Image` (the prerender) nothing is checked.
+ */
+const failedSheets = new Set<string>()
+const checkingSheets = new Map<string, HTMLImageElement>()
+const checkedSheets = new Set<string>()
+const sheetListeners = new Set<() => void>()
+let sheetVersion = 0
+
+function checkSheet(url: string): void {
+  if (checkedSheets.has(url) || typeof Image !== 'function') return
+  checkedSheets.add(url)
+  const image = new Image()
+  // kept until it answers, so the request is not dropped with the element
+  checkingSheets.set(url, image)
+  // a check the cache reset dropped answers for nothing
+  image.onload = () => {
+    if (checkingSheets.get(url) === image) checkingSheets.delete(url)
+  }
+  image.onerror = () => {
+    if (checkingSheets.get(url) !== image) return
+    checkingSheets.delete(url)
+    failedSheets.add(url)
+    sheetVersion += 1
+    for (const listener of [...sheetListeners]) listener()
+  }
+  image.src = url
+}
+
+function subscribeSheets(listener: () => void): () => void {
+  sheetListeners.add(listener)
+  return () => {
+    sheetListeners.delete(listener)
+  }
+}
+
+/** True once a sheet has failed to load: a frame on it must not be drawn (the reel's scrub keeps tiles of its own). */
+export function isVodSheetFailed(url: string): boolean {
+  return failedSheets.has(url)
+}
+
+/** A frame whose sheet failed to load is `unavailable`; anything else is returned as it is. */
+function withSheet(result: VodFrameResult): VodFrameResult {
+  return result.frame && failedSheets.has(result.frame.sheetUrl) ? miss('unavailable') : result
+}
+
 // ---- loading + cache ----
 
 const frameCache = new Map<string, VodFrameResult>()
@@ -198,6 +252,9 @@ export function resetVodFrameCache(): void {
   vodMisses.clear()
   vodFirst.clear()
   vodAnswered.clear()
+  failedSheets.clear()
+  checkingSheets.clear()
+  checkedSheets.clear()
 }
 
 function cacheKey(vodId: string, offsetSec: number): string {
@@ -209,7 +266,8 @@ export function peekVodFrame(vodId: string | null | undefined, offsetSec: number
   if (!vodId || offsetSec == null || !Number.isFinite(offsetSec)) return null
   const vodMiss = vodMisses.get(vodId)
   if (vodMiss) return miss(vodMiss)
-  return frameCache.get(cacheKey(vodId, Math.max(0, Math.floor(offsetSec)))) ?? null
+  const cached = frameCache.get(cacheKey(vodId, Math.max(0, Math.floor(offsetSec))))
+  return cached ? withSheet(cached) : null
 }
 
 /** Load the tile under a VOD offset (seconds on the VOD's clock). Never throws. */
@@ -237,7 +295,8 @@ export function loadVodFrame(vodId: string, vodOffsetSec: number): Promise<VodFr
     if (result.reason === 'no_storyboard' || result.reason === 'recording') vodMisses.set(vodId, result.reason)
     frameCache.set(key, result)
     vodAnswered.add(vodId)
-    return result
+    if (result.frame) checkSheet(result.frame.sheetUrl)
+    return withSheet(result)
   })().finally(() => {
     inFlight.delete(key)
     vodFirst.delete(vodId)
@@ -261,6 +320,8 @@ export function useVodFrame(vodId: string | null | undefined, vodOffsetSec: numb
     return { key, result: key ? peekVodFrame(vodId, offset) : null }
   })
   const key = vodId && offset != null ? cacheKey(vodId, offset) : null
+  // a sheet that fails after its frame is shown takes the frame away
+  useSyncExternalStore(subscribeSheets, () => sheetVersion, () => 0)
   useEffect(() => {
     if (!vodId || offset == null || !key) return
     let alive = true
@@ -272,7 +333,7 @@ export function useVodFrame(vodId: string | null | undefined, vodOffsetSec: numb
     }
   }, [vodId, offset, key])
   if (!key) return { loading: false, result: null }
-  if (state.key === key && state.result) return { loading: false, result: state.result }
+  if (state.key === key && state.result) return { loading: false, result: withSheet(state.result) }
   const cached = peekVodFrame(vodId, offset)
   return cached ? { loading: false, result: cached } : { loading: true, result: null }
 }
