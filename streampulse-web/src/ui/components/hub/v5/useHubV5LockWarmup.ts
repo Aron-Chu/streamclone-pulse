@@ -3,7 +3,9 @@
  * pointer rests on is read at once, and 2 s after the chart has points the
  * page reads the busiest bars and the top emotes' spike bars, one at a time
  * (hubLockWarmup). Once per window a visit; never with Save-Data on or while
- * the tab is hidden.
+ * the tab is hidden. It waits for the page to be idle after those 2 s, so its
+ * reads never land on the hub's first draw (S1, 11-19). It stays one read at
+ * a time: the limiter's second slot is left for a click on the chart.
  */
 import { useEffect, useRef } from 'react'
 import { prefetchHubIntervalMoments } from '../../../../lib/hubIntervalMoments'
@@ -50,12 +52,16 @@ export function useHubV5LockWarmup({ points, bucketMinutes, intervalWindow, read
       void warmHubBuckets(lockWarmTargets(pointsRef.current, bucketMinutes), intervalWindow, bucketMinutes, abort.signal)
     }
     // a hidden tab waits until it is shown
+    const idle = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }
+    let idleId: number | undefined
     const id = window.setTimeout(() => {
       if (document.hidden) document.addEventListener('visibilitychange', start)
+      else if (typeof idle.requestIdleCallback === 'function') idleId = idle.requestIdleCallback(start, { timeout: HUB_WARM_SETTLE_MS })
       else start()
     }, HUB_WARM_SETTLE_MS)
     return () => {
       window.clearTimeout(id)
+      if (idleId !== undefined) idle.cancelIdleCallback?.(idleId)
       document.removeEventListener('visibilitychange', start)
       abort.abort()
     }

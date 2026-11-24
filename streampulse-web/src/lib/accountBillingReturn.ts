@@ -1,3 +1,4 @@
+import { momentPageReturnPath } from './momentPageFlag'
 import { clipPageReturnPath } from './nativeClipsFlag'
 
 const STORAGE_KEY = 'pulse.account.billingReturn.v1'
@@ -25,12 +26,12 @@ export const ACCOUNT_LINK_DEVICE_PATH = '/account/link-device'
 
 /**
  * Every destination a sign-in may continue to: billing (including a validated
- * Stripe return), the extension-link page, or a clip's own page (to review or
- * comment on it). A fixed allowlist, never an arbitrary return URL; the link
+ * Stripe return), the extension-link page, a clip's own page, or a Moment's own page (to
+ * review, rate or comment on it). A fixed allowlist, never an arbitrary return URL; the link
  * page continuation carries no code.
  */
 export function accountContinuationPath(value: unknown): string | null {
-  return value === ACCOUNT_LINK_DEVICE_PATH ? ACCOUNT_LINK_DEVICE_PATH : clipPageReturnPath(value) ?? accountBillingReturnPath(value)
+  return value === ACCOUNT_LINK_DEVICE_PATH ? ACCOUNT_LINK_DEVICE_PATH : clipPageReturnPath(value) ?? momentPageReturnPath(value) ?? accountBillingReturnPath(value)
 }
 
 export function accountBillingReturnFromSearch(search: string): string | null {

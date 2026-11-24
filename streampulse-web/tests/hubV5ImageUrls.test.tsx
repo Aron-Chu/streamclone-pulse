@@ -10,8 +10,7 @@ import { HubV5Busiest } from '../src/ui/components/hub/v5/HubV5Busiest'
 import { HubV5Conveyor, type HubV5ConveyorRefs } from '../src/ui/components/hub/v5/HubV5Conveyor'
 import { HubV5EmoteMap } from '../src/ui/components/hub/v5/HubV5EmoteMap'
 import { HubV5Rack } from '../src/ui/components/hub/v5/HubV5Rack'
-import { HubV5BigMoments } from '../src/ui/components/hub/v5/HubV5BigMoments'
-import { HubV5TopPeek, useTopToday } from '../src/ui/components/hub/v5/HubV5TopMoments'
+import { HubV5TopList, useTopToday } from '../src/ui/components/hub/v5/HubV5TopMoments'
 import type { HubWhereChatIs } from '../src/ui/components/hub/v5/hubV5Model'
 
 // The sanitizer resolves relative URLs against the backend, so the tests pin it.
@@ -107,11 +106,10 @@ describe('HubV5Avatar', () => {
 
 function Top({ hub, nowMs }: { hub: PublicHub | null; nowMs: number }) {
   const top = useTopToday({ hub, savedAt: null, reading: true, attempt: 1, nowMs })
-  return <><HubV5TopPeek top={top} nowMs={nowMs} /><HubV5BigMoments top={top} nowMs={nowMs} /></>
+  return <HubV5TopList top={top} nowMs={nowMs} />
 }
-/** The phone peek's first row and the carousel's front card. */
-const topRow = () => document.querySelector<HTMLElement>('.hv5-f3-peek .hv5-tm-list > .hv5-tm-it')
-const card = () => document.querySelector<HTMLElement>('#big-moments .hv5-bm-card[data-pos="0"]')!
+/** Top moments today's first row (the still list under the chart, H1 11-19). */
+const topRow = () => document.querySelector<HTMLElement>('#top-moments .hv5-tm-list > .hv5-tm-it')
 
 describe('Top moments images from the hub', () => {
   function renderHubTop(imageUrl: string | undefined) {
@@ -121,23 +119,19 @@ describe('Top moments images from the hub', () => {
     return topRow()!
   }
 
-  it('a peek row asks for the 70 px avatar, its card for the 150 px one, and both bind an allowlisted emote URL unchanged', async () => {
+  it('a row asks for the 70 px avatar and binds an allowlisted emote URL unchanged', async () => {
     const row = renderHubTop(SAFE)
     expect(imgSrcs(row.querySelector('.hv5-tm-face')!)).toEqual([PROFILE_70])
     expect(imgSrcs(row.querySelector('.hv5-f2-em')!)).toEqual([SAFE])
-    expect(imgSrcs(card().querySelector('.hv5-bm-who')!)).toEqual([PROFILE_150])
-    expect(imgSrcs(card().querySelector('.hv5-bm-em')!)).toEqual([SAFE])
     fireEvent.error(row.querySelector('.hv5-tm-face img')!)
     expect(imgSrcs(row.querySelector('.hv5-tm-face')!)).toEqual([PROFILE])
   })
 
-  it.each(REJECTED)('a peek row and its card name the emote without a picture for %s', async (_label, url) => {
+  it.each(REJECTED)('a row names the emote without a picture for %s', async (_label, url) => {
     const row = renderHubTop(url)
     const em = row.querySelector('.hv5-f2-em')!
     expect(em.querySelector('img')).toBeNull()
     expect(em.textContent).toBe('KEKW')
-    expect(card().querySelector('.hv5-bm-em img')).toBeNull()
-    expect(card().querySelector('.hv5-bm-em')!.textContent).toContain('KEKW')
   })
 })
 
@@ -156,24 +150,20 @@ describe('Top moments images from the Moments list', () => {
   }
   const row = topRow
 
-  it('a peek row asks for the 70 px avatar, its card for the 150 px one, and both bind an allowlisted emote URL unchanged', async () => {
+  it('a row asks for the 70 px avatar and binds an allowlisted emote URL unchanged', async () => {
     renderTop(SAFE)
     await waitFor(() => expect(row()).not.toBeNull())
     await act(async () => {})
     expect(imgSrcs(row()!.querySelector('.hv5-tm-face')!)).toEqual([PROFILE_70])
     expect(imgSrcs(row()!.querySelector('.hv5-f2-em')!)).toEqual([SAFE])
-    expect(imgSrcs(card().querySelector('.hv5-bm-who')!)).toEqual([PROFILE_150])
-    expect(imgSrcs(card().querySelector('.hv5-bm-em')!)).toEqual([SAFE])
   })
 
-  it.each(REJECTED)('a peek row and its card name the emote without a picture for %s', async (_label, url) => {
+  it.each(REJECTED)('a row names the emote without a picture for %s', async (_label, url) => {
     renderTop(url)
     await waitFor(() => expect(row()).not.toBeNull())
     await act(async () => {})
     expect(row()!.querySelector('.hv5-f2-em img')).toBeNull()
     expect(row()!.querySelector('.hv5-f2-em')!.textContent).toBe('KEKW')
-    expect(card().querySelector('.hv5-bm-em img')).toBeNull()
-    expect(card().querySelector('.hv5-bm-em')!.textContent).toContain('KEKW')
   })
 })
 
@@ -190,10 +180,10 @@ describe('Emote map pictures', () => {
 
   it('Most used and a selected emote bind an allowlisted https URL at their size; its moments ask for the 70 px avatar', () => {
     const { container } = renderMap(SAFE)
-    // A 24 px picture asks for the smallest file (1x), not a sharper one.
+    // A 24 px list picture asks for the smallest file (1x); the 32 px header picture (4A) asks for 2x.
     expect(imgSrcs(container.querySelector('.hv5-el-cols')!)).toEqual([SAFE])
     fireEvent.click(container.querySelector('.hv5-el-cols button')!)
-    expect(imgSrcs(container.querySelector('.hv5-el-ti')!)).toEqual([SAFE])
+    expect(imgSrcs(container.querySelector('.hv5-el-pic')!)).toEqual([SAFE.replace('/1x.', '/2x.')])
     expect(imgSrcs(container.querySelector('.hv5-el-cols')!)).toEqual([PROFILE_70])
   })
 
@@ -203,7 +193,7 @@ describe('Emote map pictures', () => {
     expect(list.querySelector('img')).toBeNull()
     expect(list.querySelector('.hv5-el-n')!.textContent).toContain('KEKW')
     fireEvent.click(list.querySelector('button')!)
-    expect(container.querySelector('.hv5-el-ti img')).toBeNull()
+    expect(container.querySelector('.hv5-el-pic img')).toBeNull()
     expect(container.querySelector('.hv5-el-ti')!.textContent).toContain('KEKW')
   })
 })
@@ -230,24 +220,32 @@ describe('Conveyor pictures', () => {
     bucketComplete: true,
     topEmotes: urls.map((imageUrl, i) => ({ name: `E${i}`, count: 50 - i, imageUrl })),
   }] as unknown as HubActivityPoint[]
-  /** The picture URLs the conveyor loads to bake its sprites. */
+  /** The picture URLs the conveyor loads to bake its sprites, once the page is idle (jsdom: a timer). */
   function loads(urls: ReadonlyArray<string>) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const set = vi.spyOn(HTMLImageElement.prototype, 'src', 'set')
     const ctx = { setTransform() {}, clearRect() {}, save() {}, restore() {}, translate() {}, rotate() {}, drawImage() {} }
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D)
     const mast = document.body.appendChild(document.createElement('header'))
     const refs: HubV5ConveyorRefs = { mast: { current: mast }, title: { current: null }, field: { current: null }, tryRow: { current: null }, foot: { current: null } }
     render(<HubV5Conveyor points={points(urls)} refs={refs} />)
+    const before = set.mock.calls.length
+    act(() => { vi.advanceTimersByTime(1000) })
     mast.remove()
-    return set.mock.calls.map((c) => c[0])
+    return { before, urls: set.mock.calls.map((c) => c[0]) }
   }
 
-  it('loads an allowlisted https picture unchanged', () => {
-    expect(loads([SAFE])).toEqual([SAFE])
+  it('asks for the small still of an allowlisted picture, and only once the page is idle', () => {
+    const SMALL = 'https://cdn.7tv.app/emote/01HXYZ/2x.webp'
+    const TW = 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/3.0'
+    const TW_STILL = 'https://static-cdn.jtvnw.net/emoticons/v2/25/static/dark/2.0'
+    const got = loads([SAFE, TW])
+    expect(got.before).toBe(0)
+    expect(got.urls).toEqual([SMALL, TW_STILL])
   })
 
   it('leaves out every picture the allowlist rejects', () => {
-    expect(loads([SAFE, ...REJECTED.map(([, url]) => url)])).toEqual([SAFE])
+    expect(loads([SAFE, ...REJECTED.map(([, url]) => url)]).urls).toEqual(['https://cdn.7tv.app/emote/01HXYZ/2x.webp'])
   })
 })
 

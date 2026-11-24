@@ -10,6 +10,7 @@
 import type { HubLiveChannel } from '../../../../lib/publicHub'
 import type { TwitchFollows } from '../../../../lib/twitchFollows'
 import {
+  BUSIEST_PICTURE_LINE,
   channelChat,
   channelHref,
   formatHubInt,
@@ -93,6 +94,7 @@ export function followsTip(set: HubFollowsSet, follows: TwitchFollows, liveCount
     lines.push('No channel has a full 5-minute chat count right now, so these show viewers.')
   }
   if (set.live > set.rows.length) lines.push(`The busiest ${formatHubInt(set.rows.length)} are shown.`)
+  lines.push(BUSIEST_PICTURE_LINE)
   const read = `Read from Twitch at ${hubClock(follows.at)} for ${follows.name}`
   lines.push(follows.total > follows.logins.length
     ? `${read}: Twitch lists ${formatHubInt(follows.total)} follows and the ${formatHubInt(follows.logins.length)} most recent are used.`

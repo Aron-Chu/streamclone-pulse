@@ -37,7 +37,7 @@ import { boxArtAtSize } from '../../utils/boxArtSize.ts'
 import type { VodLinkState } from '../../utils/twitchVodUrl.ts'
 import { useVodFrame } from '../../utils/vodFrames.ts'
 import { ConsoleEmoteImg } from './ConsoleEmoteImg.tsx'
-import { MomentVodPanel } from './MomentVodPanel.tsx'
+import { MomentVodPanel, useVodAutoPreview } from './MomentVodPanel.tsx'
 
 export interface SelectedMomentCompactCardProps {
   /** The selected minute (the bar's first measured minute, or the pinned one). */
@@ -496,6 +496,8 @@ export function SelectedMomentCompactCard({
   // card off the screen (a phone, the card under the chart), focus moves to the details, which say their name.
   const firstOpen = useRef(true)
   const autoPlayToken = playRequestFor(model, playRequest)
+  // 11-21: on a desktop pointer the picture is Twitch's player, loaded paused once the pick holds still
+  const autoPreview = useVodAutoPreview()
   useEffect(() => {
     const first = firstOpen.current
     firstOpen.current = false
@@ -571,7 +573,7 @@ export function SelectedMomentCompactCard({
   const vodLink = !model.gap && vod.open ? (
     <a className="bkc-vod" href={vod.open.href} target="_blank" rel="noopener noreferrer" data-strip-vod-link>
       {vod.playAt != null
-        ? <>Open VOD{' '}<span className="sr-only">at {formatStripClock(vod.playAt)}</span></>
+        ? <>Open on Twitch{' '}<span className="sr-only">at {formatStripClock(vod.playAt)}</span></>
         : vod.open.label}
       {ICON.ext}
     </a>
@@ -648,6 +650,7 @@ export function SelectedMomentCompactCard({
                 hasArt={Boolean(shownArt)}
                 recording={recording}
                 autoPlayToken={autoPlayToken}
+                preview={autoPreview}
               />
             </div>
           )}

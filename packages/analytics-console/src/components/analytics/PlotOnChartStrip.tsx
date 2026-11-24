@@ -3,6 +3,9 @@
  * stream's top emotes as chips (picture, name, uses). Back on the session page on 2026-10-21 (Aron: "why cant
  * we just use the old one where it was a dropdwon that was wide and filled with emotes"), in place of the
  * narrow checklist. The words and direct removal remain unchanged during current-master integration.
+ * The whole bar opens and closes the panel (Aron, 2026-11-22: "make the bar the whole drop down instead of the
+ * add emote button"); a token's × only removes it. Add emote stays the bar's keyboard control, with Show on
+ * chart's chevron.
  *
  * Plotted keys can come from the minute rollups ("seventv:LOL:LOL") while the list comes from the summary
  * ("seventv:<id>:LOL"). The chart matches the two by provider and name (pulse-charts chartSeries
@@ -42,6 +45,7 @@ export function PlotOnChartStrip({
   const [expanded, setExpanded] = useState(false)
   const selectorId = useId()
   const addRef = useRef<HTMLButtonElement>(null)
+  const barRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const close = useCallback((restoreFocus: boolean) => {
     setExpanded(false)
@@ -58,7 +62,7 @@ export function PlotOnChartStrip({
     }
     const onDown = (event: PointerEvent) => {
       const target = event.target as Node | null
-      if (target && (panelRef.current?.contains(target) || addRef.current?.contains(target))) return
+      if (target && (panelRef.current?.contains(target) || barRef.current?.contains(target))) return
       close(false)
     }
     document.addEventListener('keydown', onKey, true)
@@ -77,8 +81,19 @@ export function PlotOnChartStrip({
   const plottedCount = plottedKeys.length
 
   return (
-    <div className="relative" data-chart-overlay-selector>
-      <div className="flex min-h-9 w-full flex-wrap items-center gap-2 rounded border border-slate-400/15 bg-slate-400/[0.04] px-2.5 py-1.5" data-session-emotes-on-chart="">
+    // data-chart-action, as the minute table and the selected detail carry: a press on the bar or its panel is
+    // not outside the chart, so a pinned minute stays pinned (Aron, 2026-11-22).
+    <div className="relative" data-chart-overlay-selector data-chart-action="true">
+      {/* A click anywhere on the bar opens or closes the panel; its buttons (×, Add emote) do their own thing. */}
+      <div
+        ref={barRef}
+        onClick={event => {
+          if ((event.target as Element).closest('button')) return
+          setExpanded(value => !value)
+        }}
+        className="flex min-h-9 w-full cursor-pointer flex-wrap items-center gap-2 rounded border border-slate-400/15 bg-slate-400/[0.04] px-2.5 py-1.5 transition hover:border-slate-300/25"
+        data-session-emotes-on-chart=""
+      >
         <span className="shrink-0 text-xs font-bold text-slate-300">Emotes on chart</span>
         {plottedKeys.slice(0, maxPlotted).map(key => {
           const emote = emoteOf(key)
@@ -92,8 +107,12 @@ export function PlotOnChartStrip({
             </span>
           )
         })}
-        <button ref={addRef} type="button" data-chart-overlay-toggle="" data-session-emote-add="" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls={selectorId} className="inline-flex min-h-11 min-w-24 shrink-0 items-center gap-1 rounded border border-slate-400/15 px-2 py-1 text-xs font-bold text-slate-300">
+        <button ref={addRef} type="button" data-chart-overlay-toggle="" data-session-emote-add="" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls={selectorId} className="ml-auto inline-flex min-h-11 shrink-0 items-center gap-1 rounded px-2 py-1 text-xs font-bold text-slate-300">
           <span aria-hidden="true">+</span>Add emote
+          {/* The strip sits outside .ssc, where --sp-text-3 is not set; fall back to its value so the chevron matches Show on chart's. */}
+          <svg className="ssc-chev" style={{ rotate: expanded ? '180deg' : undefined, color: 'var(--sp-text-3, #8e8e96)' }} viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
         </button>
       </div>
       {expanded ? (
@@ -104,8 +123,10 @@ export function PlotOnChartStrip({
           role="group"
           aria-label="Emotes on chart"
           onBlur={event => {
+            // Tabbing out closes it. A click on the bar or the panel's own space moves focus to an ancestor (the
+            // page's <main>), which is not leaving; a press anywhere else is the outside press above.
             const next = event.relatedTarget as Node | null
-            if (next && !panelRef.current?.contains(next) && next !== addRef.current) close(false)
+            if (next && !panelRef.current?.contains(next) && next !== addRef.current && !next.contains(panelRef.current)) close(false)
           }}
           className="sc-reveal mt-1 rounded border border-slate-400/15 bg-slate-950/75 p-2.5 shadow-lg"
           data-chart-wheel-exempt=""

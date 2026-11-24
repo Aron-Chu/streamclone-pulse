@@ -89,9 +89,10 @@ test.describe('portal games (mocked)', () => {
       await showAll.click()
     }
 
+    // The answer's 210x280 cover is asked for at the strip's 144x192 size.
     await expect(strip.locator('img').first()).toHaveAttribute(
       'src',
-      /509658-210x280\.jpg/,
+      /509658-144x192\.jpg/,
     )
     // A cover the page checks against Twitch's grey "?" stays hidden until the
     // check passes: wait for it to show.

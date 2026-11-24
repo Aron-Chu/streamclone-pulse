@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from './helpers/portalMockedTest'
 
 /**
- * The private feedback form on /feedback (and the /support card that links to
+ * The private feedback form on /help (old /feedback and /support links open
  * it) in a real browser. The form, the Turnstile widget and
  * the Discord links only render on a build given the activation inputs
  * (VITE_TURNSTILE_SITE_KEY, VITE_PUBLIC_DISCORD_INVITE_URL). CI builds set
@@ -81,22 +81,25 @@ async function mockNetwork(page: Page, baseURL: string | undefined, replies: Cas
   })
 }
 
-/** Opens /feedback; skips the test when the build has no Turnstile site key (no form). */
+/** Opens /help; skips the test when the build has no Turnstile site key (no form). */
 async function openConfiguredFeedback(page: Page) {
-  await page.goto('/feedback')
+  await page.goto('/help')
   const form = page.getByTestId('support-form')
   const off = page.getByTestId('support-form-unavailable')
   await expect(form.or(off)).toBeVisible()
-  test.skip(await off.isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /feedback shows no form')
+  test.skip(await off.isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /help shows no form')
+  // The bot check loads when the form comes near the viewport (or a field is used).
+  await form.scrollIntoViewIfNeeded()
   await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
 }
 
 /** The card's height and where the content after it starts, once fonts are in. */
 async function cardLayout(page: Page) {
   await page.evaluate(() => document.fonts.ready.then(() => undefined))
-  return page.locator('#send-feedback').evaluate((card) => ({
+  return page.locator('#feedback').evaluate((card) => ({
     card: Math.round(card.getBoundingClientRect().height),
-    next: Math.round(card.nextElementSibling!.getBoundingClientRect().top + scrollY),
+    // The card ends the page, so the footer is what comes after it.
+    next: Math.round(document.querySelector('footer.app-footer')!.getBoundingClientRect().top + scrollY),
   }))
 }
 
@@ -104,7 +107,7 @@ const noHorizontalScroll = (page: Page) =>
   page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth }))
 
 test.describe('any build', () => {
-  for (const [path, title] of [['/support', 'Support & Troubleshooting'], ['/feedback', 'Send feedback']] as const) {
+  for (const [path, title] of [['/help', 'Help'], ['/feedback', 'Help'], ['/support', 'Help']] as const) {
     test(`the page h1 comes before every other heading on ${path}`, async ({ page, baseURL }) => {
       await mockNetwork(page, baseURL)
       await page.goto(path)
@@ -115,19 +118,16 @@ test.describe('any build', () => {
     })
   }
 
-  test('an old /support#send-feedback link lands on the card that opens /feedback', async ({ page, baseURL }) => {
+  test('an old /support#send-feedback link lands on the feedback form on Help', async ({ page, baseURL }) => {
     await mockNetwork(page, baseURL)
     await page.goto('/support#send-feedback')
-    const card = page.locator('#send-feedback')
-    await expect(card).toHaveAttribute('data-testid', 'support-feedback-link')
+    await expect(page).toHaveURL(/\/help#feedback$/)
+    const card = page.locator('#feedback')
+    await expect(card).toHaveAttribute('data-testid', 'help-feedback')
     await expect(card).toBeInViewport()
     // A build without the Turnstile site key (CI) cannot take private
     // messages yet, so the card says the form opens soon instead of promising them.
-    await expect(card).toContainText(/Only the StreamPulse team reads it\.|Our private form opens soon\./)
-    await expect(page.getByTestId('support-form')).toHaveCount(0)
-    await card.getByRole('link', { name: /^(Send feedback|See where to ask)$/ }).click()
-    await expect(page).toHaveURL(/\/feedback$/)
-    await expect(page.getByRole('heading', { level: 1, name: 'Send feedback' })).toBeVisible()
+    await expect(page.getByTestId('help-feedback-sub')).toHaveText(/Report a problem or share an idea\.|Our private form opens soon\./)
     const form = page.getByTestId('support-form')
     await expect(form.or(page.getByTestId('support-form-unavailable'))).toBeVisible()
     if (await form.isVisible()) {
@@ -137,15 +137,17 @@ test.describe('any build', () => {
     }
   })
 
-  test('without a working form, /feedback offers only alternatives labelled public', async ({ page, baseURL }) => {
+  test('without a working form, Help offers only alternatives labelled public', async ({ page, baseURL }) => {
     // Every case POST answers 503 disabled, so a configured build ends up here too.
     await page.addInitScript(() => { (window as { __turnstilePasses?: boolean }).__turnstilePasses = true })
     await mockNetwork(page, baseURL, [{ status: 503, body: { error: 'disabled' } }])
-    await page.goto('/feedback')
+    await page.goto('/help')
     const form = page.getByTestId('support-form')
     const off = page.getByTestId('support-form-unavailable')
     await expect(form.or(off)).toBeVisible()
     if (await form.isVisible()) {
+      await form.scrollIntoViewIfNeeded()
+      await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
       await page.getByLabel('Your message').fill('Is this on?')
       await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
       await form.locator('button[type="submit"]').click()
@@ -155,9 +157,10 @@ test.describe('any build', () => {
     const alternatives = off.getByTestId('feedback-public-alternatives')
     await expect(alternatives).toContainText('Public alternatives. Anyone can read these')
     expect(await alternatives.textContent()).not.toMatch(/private/i)
-    // No private-delivery promise over the unavailable panel, and Discord once.
+    // No private-delivery promise over the unavailable panel, and Discord once: Ask us drops its own list.
     await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
-    await expect(page.getByTestId('support-discord-line')).toHaveCount(0)
+    await expect(page.getByTestId('help-ask-public')).toHaveCount(0)
+    await expect(page.getByTestId('feedback-public-alternatives')).toHaveCount(1)
     await expect(page.getByTestId('support-form-success')).toHaveCount(0)
     // The site-wide public reset used to strip these borders, so the buttons read as loose text.
     const buttons = off.locator('.sc-btn--outline')
@@ -167,16 +170,16 @@ test.describe('any build', () => {
     }
   })
 
-  test('before the private form opens, /feedback says it opens soon without reading like an outage', async ({ page, baseURL }) => {
+  test('before the private form opens, Help says it opens soon without reading like an outage', async ({ page, baseURL }) => {
     await mockNetwork(page, baseURL)
-    await page.goto('/feedback')
+    await page.goto('/help')
     const form = page.getByTestId('support-form')
     const off = page.getByTestId('support-form-unavailable')
     await expect(form.or(off)).toBeVisible()
     test.skip(await form.isVisible(), 'build has VITE_TURNSTILE_SITE_KEY, so the private form is open')
-    await expect(page.getByTestId('feedback-soon-badge')).toHaveText('Form opens soon')
-    await expect(page.getByTestId('feedback-page-sub')).toHaveText('Our private form opens soon. Until then, you can ask in public.')
-    // One message, in the header: the card only lists the public places to ask.
+    await expect(page.getByTestId('help-feedback-sub')).toHaveText('Our private form opens soon. Until then, you can ask in public.')
+    await expect(page.getByTestId('help-ask-intro')).toHaveText('Ask in public on Discord or GitHub. The links are below.')
+    // One message, under the card's title: the card only lists the public places to ask.
     await expect(off).not.toContainText(/unavailable|try again later/i)
     await expect(off.getByRole('button', { name: 'Copy safe diagnostics' })).toHaveCount(0)
     await expect(off.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
@@ -219,15 +222,16 @@ test.describe('configured build', () => {
       // no script loads, so the prerendered markup is what lays out.
       const noScripts = (route: Route) => (route.request().resourceType() === 'script' ? route.abort() : route.fallback())
       await page.route('**/*', noScripts)
-      await page.goto('/feedback')
+      await page.goto('/help')
       // Without a site key the card prerenders the unavailable panel instead.
-      test.skip(await page.getByTestId('support-form-unavailable').isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /feedback prerenders no form')
+      test.skip(await page.getByTestId('support-form-unavailable').isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /help prerenders no form')
       const prerendered = await cardLayout(page)
       await expect(page.locator('.feedback-form--shell')).toBeVisible()
 
       await page.unroute('**/*', noScripts)
-      await page.goto('/feedback')
+      await page.goto('/help')
       await expect(page.locator('.feedback-form')).not.toHaveClass(/feedback-form--shell/)
+      await page.locator('.feedback-form').scrollIntoViewIfNeeded()
       await expect.poll(() => page.evaluate(() => (window as { __turnstileRenders?: unknown[] }).__turnstileRenders?.length ?? 0)).toBe(1)
       await expect(page.getByLabel('Your message')).toBeEnabled()
       const live = await cardLayout(page)
@@ -241,8 +245,8 @@ test.describe('configured build', () => {
     test.use({ javaScriptEnabled: false })
 
     test('shows the unavailable panel instead of the disabled shell', async ({ page }) => {
-      await page.goto('/feedback')
-      test.skip(await page.locator('.feedback-form--shell').count() === 0, 'build has no VITE_TURNSTILE_SITE_KEY, so /feedback prerenders no form')
+      await page.goto('/help')
+      test.skip(await page.locator('.feedback-form--shell').count() === 0, 'build has no VITE_TURNSTILE_SITE_KEY, so /help prerenders no form')
       await expect(page.locator('.feedback-form--shell')).toBeHidden()
       const off = page.getByTestId('support-form-unavailable')
       await expect(off).toBeVisible()
@@ -290,24 +294,28 @@ test.describe('configured build', () => {
         const right = document.querySelector<HTMLElement>('.sl-nav__right')!.getBoundingClientRect()
         return { links, overflow: nav.scrollWidth - nav.clientWidth, overlap: menu.right > right.left, page: document.documentElement.scrollWidth - innerWidth }
       })
-      const oneLine = row.links.length === 2 && row.links.every(height => height === row.links[0] && height < 40)
+      // Hub, Moments and Help.
+      const oneLine = row.links.length === 3 && row.links.every(height => height === row.links[0] && height < 40)
       if (!oneLine || row.overflow > 0 || row.overlap || row.page > 0) wrapped.push(`${width}: ${JSON.stringify(row)}`)
     }
     expect(wrapped).toEqual([])
   })
 
-  test('keeps the public Discord labelled public under the form and after a failed send', async ({ page, baseURL }) => {
+  test('keeps the public Discord labelled public under Ask us and after a failed send', async ({ page, baseURL }) => {
     // The launch-day labels ("Ask in Discord") are for the closed form only; the real form's wording stays as it was.
     await page.addInitScript(() => { (window as { __turnstilePasses?: boolean }).__turnstilePasses = true })
     await mockNetwork(page, baseURL, [{ status: 500, body: { error: 'boom' } }])
     await openConfiguredFeedback(page)
-    const line = page.getByTestId('support-discord-line')
-    test.skip(await line.count() === 0, 'build has no VITE_PUBLIC_DISCORD_INVITE_URL, so there is no Discord line')
-    await expect(line.getByRole('link', { name: 'Join the public Discord (opens in a new tab)' })).toHaveText('Join the public Discord')
+    const ask = page.getByTestId('help-ask-public')
+    const discord = ask.getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })
+    test.skip(await discord.count() === 0, 'build has no VITE_PUBLIC_DISCORD_INVITE_URL, so there is no Discord link')
+    await expect(discord).toHaveText('Ask in the public Discord')
     await page.getByLabel('Your message').fill('Charts are blank')
     await page.getByLabel('I consent to submitting this text to StreamPulse support.').check()
     await page.getByTestId('support-form').locator('button[type="submit"]').click()
     await expect(page.getByTestId('support-form-error')).toBeVisible()
+    // The card now lists the public places itself, so Ask us drops its own list.
+    await expect(ask).toHaveCount(0)
     const alternatives = page.getByTestId('feedback-public-alternatives')
     await expect(alternatives.getByRole('link')).toHaveText(['Open a public issue on GitHub', 'Ask in the public Discord'])
     await expect(alternatives.getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })).toBeVisible()
@@ -383,15 +391,18 @@ test.describe('configured build', () => {
     test('a blocked bot check says so instead of looking like an outage, and Try again recovers once allowed', async ({ page, baseURL }) => {
       const challenge = { blocked: true }
       await mockNetwork(page, baseURL, [{ status: 201, body: { case_id: 'case-e2e-unblocked' } }], challenge)
-      await page.goto('/feedback')
+      await page.goto('/help')
+      // The check script is first asked for when the form comes into view.
+      await page.locator('#feedback').scrollIntoViewIfNeeded()
       const blocked = page.getByTestId('support-form-check-blocked')
       const off = page.getByTestId('support-form-unavailable')
       await expect(blocked.or(off)).toBeVisible()
-      test.skip(await off.isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /feedback shows no form')
+      test.skip(await off.isVisible(), 'build has no VITE_TURNSTILE_SITE_KEY, so /help shows no form')
       await expect(blocked).toContainText('Your browser blocked the spam check — try again or disable blockers for this page.')
       await expect(off).toHaveCount(0)
-      // An open form behind a blocked check: the header does not say it is closed.
-      await expect(page.getByTestId('feedback-private-badge')).toBeVisible()
+      // An open form behind a blocked check: the card does not say it is closed.
+      await expect(page.getByTestId('help-feedback')).toContainText('Send private feedback')
+      await expect(page.getByTestId('help-feedback-sub')).toHaveText('Report a problem or share an idea. No account needed.')
       await expect(blocked.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
 
       challenge.blocked = false

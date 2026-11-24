@@ -1,10 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import Landing from '../src/routes/public/Landing'
-import { findLandingEmote } from '../src/ui/components/landing/landingEmotes'
 import { prerenderPublicPage } from '../src/prerender'
 
 // Plain-function mocks (not vi.fn) so the global afterEach restoreAllMocks in
@@ -75,10 +74,10 @@ function renderLanding() {
   )
 }
 
-/** Answers matchMedia as a screen at least 961px wide (or not); restored after each test. */
-function stubWideScreen(wide: boolean) {
+/** Answers matchMedia as a screen at least 961px wide (or not), with motion allowed (or reduced); restored after each test. */
+function stubWideScreen(wide: boolean, motion = true) {
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string): MediaQueryList => ({
-    matches: wide && query === '(min-width: 961px)',
+    matches: (wide && query === '(min-width: 961px)') || (motion && query === '(prefers-reduced-motion: no-preference)'),
     media: query,
     onchange: null,
     addListener: () => {},
@@ -103,15 +102,18 @@ describe('landing page', () => {
     expect(dock).toBeTruthy()
     expect(dock!.hasAttribute('data-shown')).toBe(false)
     expect(document.querySelector<HTMLButtonElement>('.sl-header .hv5-dock-btn')!.hidden).toBe(true)
+    // BrainChat, coming later, right after the demo (board extension-brainchat 11-22, ★ B1).
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       expect.stringMatching(/see it beside twitch chat/i),
+      'BrainChat',
       'Twitch chat stats by streamer',
       'What is StreamPulse?',
     ])
     expect(screen.queryByRole('heading', { name: 'Look up a streamer' })).toBeNull()
     expect(document.querySelector('[data-cta="chrome-install-closing"]')).toBeNull()
+    // The shared site footer: the destinations, then site information.
     const footer = screen.getByRole('navigation', { name: 'Footer' })
-    for (const name of ['Privacy', 'Terms', 'Refunds', 'Supporter']) {
+    for (const name of ['Hub', 'Moments', 'Help', 'Status', 'Changelog', 'Privacy', 'Terms']) {
       expect(within(footer).getByRole('link', { name })).toBeTruthy()
     }
     expect(screen.getByText(/not affiliated with twitch/i)).toBeTruthy()
@@ -181,8 +183,14 @@ describe('landing page', () => {
     await screen.findByRole('heading', { name: /actually reacted to/i })
     const samples = container.querySelectorAll('details.sl-optional-demo')
     expect(samples).toHaveLength(0)
-    expect(container.querySelector('.sl-fx')).not.toBeNull()
+    expect(container.querySelector('.sl-herobg')).not.toBeNull()
     expect(container.querySelector('main > section:nth-child(2)')?.id).toBe('demo')
+    // The hero's cue (★ A1) leads to the demo, which takes focus from it; BrainChat's card follows the demo.
+    const cue = screen.getByRole('link', { name: 'See the extension beside Twitch chat' })
+    expect(cue.getAttribute('href')).toBe('#demo')
+    expect(cue.closest('.sl-stage')?.querySelector('.sl-hero__desk')?.nextElementSibling).toBe(cue)
+    expect(container.querySelector('#demo')?.getAttribute('tabindex')).toBe('-1')
+    expect(container.querySelector('#demo')?.nextElementSibling?.getAttribute('aria-labelledby')).toBe('brainchat-title')
     expect(container.querySelector('#analysis')).toBeNull()
     expect(container.querySelector('#roadmap')).toBeNull()
     expect(container.querySelectorAll('.lsg')).toHaveLength(0)
@@ -207,38 +215,38 @@ describe('landing page', () => {
     const wide = renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
     expect(wide.container.querySelector('.sl-chatbg')).not.toBeNull()
+    expect(wide.container.querySelector('.sl-herobg')?.getAttribute('aria-hidden')).toBe('true')
+    // The channel names and moment labels it draws stay out of search-result snippets.
+    expect(wide.container.querySelector('.sl-herobg')?.hasAttribute('data-nosnippet')).toBe(true)
+    expect(wide.container.querySelector('.sl-fx')?.hasAttribute('data-nosnippet')).toBe(true)
     wide.unmount()
 
     stubWideScreen(false)
     const narrow = renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
-    expect(narrow.container.querySelector('.sl-fx')).not.toBeNull()
     expect(narrow.container.querySelector('.sl-chatbg')).toBeNull()
+    expect(narrow.container.querySelector('.sl-ridge')).not.toBeNull()
   })
 
-  it('keeps the chat backdrop and the removed sections out of the prerendered page', () => {
-    stubWideScreen(true)
+  it('keeps the still chat columns and ridge but leaves the emote rain out under reduced motion', async () => {
+    stubWideScreen(true, false)
+    const { container } = renderLanding()
+    await screen.findByRole('heading', { name: /actually reacted to/i })
+    expect(container.querySelector('.sl-fx')).toBeNull()
+    expect(container.querySelector('.sl-chatbg')).not.toBeNull()
+    expect(container.querySelector('.sl-ridge')).not.toBeNull()
+  })
+
+  it('keeps the emote rain, the chat backdrop and the removed sections out of the prerendered page', () => {
+    stubWideScreen(true, true)
     const html = prerenderPublicPage('/')
-    expect(html).toContain('sl-fx')
+    // The whole background mounts after load, so none of it is in the prerendered page.
+    expect(html).not.toContain('sl-fx')
+    expect(html).not.toContain('sl-herobg')
     expect(html).not.toContain('sl-chatbg')
     expect(html).not.toContain('id="roadmap"')
     expect(html).not.toContain('id="analysis"')
     expect(html).not.toContain('class="lsg')
-  })
-
-  it('rains 1x emote files without the three wide emotes', async () => {
-    const { container } = renderLanding()
-    await screen.findByRole('heading', { name: /actually reacted to/i })
-    const sources = [...container.querySelectorAll<HTMLImageElement>('.sl-em img')].map((img) => img.getAttribute('src') ?? '')
-    expect(sources).toHaveLength(18)
-    for (const src of sources) {
-      expect(src).toMatch(/\/1x\.webp$|\/1\.0$/)
-    }
-    for (const name of ['degloved', 'widespeedlaugh', 'widereacting']) {
-      const id = findLandingEmote(name)?.id
-      expect(id).toBeTruthy()
-      expect(sources.some((src) => src.includes(id!))).toBe(false)
-    }
   })
 
   it('says what a viewer gets in plain words, with no design-doc jargon', async () => {

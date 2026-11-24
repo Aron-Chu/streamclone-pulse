@@ -197,7 +197,7 @@ function ClipWatch({ id }: { id: string }) {
               <span className="nc-pill-wrap"><SaveClipButton clip={c} onStatus={setStatus} /></span>
             </div>
           </div>
-          {askSignIn && feedback && !feedback.you.canWrite ? <SignInPrompt clipId={id} signedIn={feedback.you.signedIn} canWrite={feedback.you.canWrite} /> : null}
+          {askSignIn && feedback && !feedback.you.canWrite ? <SignInPrompt returnTo={clipPagePath(id)} signedIn={feedback.you.signedIn} canWrite={feedback.you.canWrite} /> : null}
           <ClipDescription clip={c} worthShare={worthShareText(feedback)} />
           {feedback ? (
             <ClipComments feedback={feedback} onNeedSignIn={() => setAskSignIn(true)} onStatus={setStatus}

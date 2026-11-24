@@ -129,6 +129,11 @@ export function writeRuntimeManifests(root, pages) {
 export function escapeHtml(value) {
   return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;')
 }
+/** A UTC date for readers, written like the Changelog's ("Oct 17, 2026"), with the exact time kept in the tag. */
+const RECAP_DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+export function recapDate(iso) {
+  return `<time datetime="${escapeHtml(iso)}">${escapeHtml(RECAP_DATE.format(new Date(iso)))}</time>`
+}
 function timestamp(seconds) {
   const total = Math.floor(seconds)
   return `${Math.floor(total / 3600)}:${String(Math.floor(total / 60) % 60).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
@@ -158,7 +163,7 @@ export function renderRecapSummary(page, pages = []) {
     const url = replayUrl(page, moment)
     return `<li id="moment-${moment.offsetSeconds}">${url ? `<a href="${escapeHtml(url)}" rel="noopener noreferrer">${label}: watch the reaction</a>` : `${label}: reaction recorded`} — score ${moment.score}${moment.chatCount === undefined ? '' : `; ${moment.chatCount} chat messages in this minute`}${moment.emoteCount === undefined ? '' : `; ${moment.emoteCount} emote uses`}</li>`
   }).join('')
-  return `<article class="public-document panel" data-recap-summary>${breadcrumb}<h1>${heading}</h1><p>${escapeHtml(page.summary)}</p><p>Stream started ${escapeHtml(page.startedAt)}. Recorded duration: ${timestamp(page.durationSeconds)}.</p><p>Game/category: ${page.game === undefined ? 'not available in this reviewed snapshot' : escapeHtml(page.game)}.</p><h2>Coverage</h2><p>${escapeHtml(page.coverage.state)}: ${escapeHtml(page.coverage.description)}</p><p>Reviewed ${escapeHtml(page.review.reviewedAt)}. This is a reviewed snapshot; the interactive page shows current availability.</p><h2>Top chat reactions</h2><ol>${moments}</ol>${page.replay ? `<p>Replay availability was checked ${escapeHtml(page.replay.checkedAt)}. Twitch may remove or restrict it.</p>` : '<p>Archive summary: no verified replay is currently available. Reaction measurements remain below; replay links are disabled.</p>'}<h2>Most-used emotes in the measured data</h2><ul>${page.topEmotes.map(emote => `<li>${escapeHtml(emote.code)}: ${emote.count} uses</li>`).join('')}</ul>${more}<p><a href="/docs#extension">Get StreamPulse for tracked Twitch streams</a> · <a href="/analytics">Explore tracked channels</a></p></article>`
+  return `<article class="public-document panel" data-recap-summary>${breadcrumb}<h1>${heading}</h1><p>${escapeHtml(page.summary)}</p><p>Stream started ${recapDate(page.startedAt)}. Recorded duration: ${timestamp(page.durationSeconds)}.</p><p>Game/category: ${page.game === undefined ? 'not available in this reviewed snapshot' : escapeHtml(page.game)}.</p><h2>Coverage</h2><p>${escapeHtml(page.coverage.state)}: ${escapeHtml(page.coverage.description)}</p><p>Reviewed ${recapDate(page.review.reviewedAt)}. This is a reviewed snapshot; the interactive page shows current availability.</p><h2>Top chat reactions</h2><ol>${moments}</ol>${page.replay ? `<p>Replay availability was checked ${recapDate(page.replay.checkedAt)}. Twitch may remove or restrict it.</p>` : '<p>Archive summary: no verified replay is currently available. Reaction measurements remain below; replay links are disabled.</p>'}<h2>Most-used emotes in the measured data</h2><ul>${page.topEmotes.map(emote => `<li>${escapeHtml(emote.code)}: ${emote.count} uses</li>`).join('')}</ul>${more}<p><a href="/help#install">Get StreamPulse for tracked Twitch streams</a> · <a href="/analytics">Explore tracked channels</a></p></article>`
 }
 
 export function recapStructuredData(page) {

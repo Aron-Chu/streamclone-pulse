@@ -8,6 +8,7 @@ import { HubV5Busiest } from '../src/ui/components/hub/v5/HubV5Busiest'
 import { HubV5Channels } from '../src/ui/components/hub/v5/HubV5Channels'
 import { HubV5Rack } from '../src/ui/components/hub/v5/HubV5Rack'
 import {
+  BUSIEST_PICTURE_LINE,
   busiestAria,
   busiestTip,
   channelChat,
@@ -111,7 +112,7 @@ describe('the lists on the recent average (HUB-1 candidate, 10-30)', () => {
     const tip = busiestTip(set, 'stale')
     expect(tip.split('\n')[0]).toBe('The 5-minute counts did not load, so this ranks channels by recent average chat per minute: up to the last 35 minutes, counting only minutes with data and the current unfinished minute, so it can cover much less; ties go to more viewers.')
     expect(tip).not.toMatch(/last full 5-minute window|Live means|over the last 35 minutes/)
-    expect(tip.split('\n').at(-1)).toBe('Live pictures show only beside the 5-minute counts, so each channel shows its profile picture.')
+    expect(tip.split('\n').at(-1)).toBe(BUSIEST_PICTURE_LINE)
     expect(busiestAria(set.rows[2]!, set.rows.length)).toBe('xQc, 244 chat messages per minute, recent average, Grand Theft Auto V, rank 3 of 6. Profile picture.')
     expect(busiestAria(set.rows[0]!, set.rows.length)).not.toMatch(FIXED_35)
   })
@@ -155,8 +156,9 @@ describe('the sections on the recent average (HUB-1 candidate, 10-30)', () => {
     expect([...container.querySelectorAll('[data-login]')].map((el) => el.getAttribute('data-login'))).toEqual(
       ['yuyuta0702', 'aldo_geo', 'xqc', 'supertf', 'yourragegaming', 'summit1g'],
     )
-    // Twitch's live pictures go only beside the 5-minute counts (10-31)
-    expect(container.querySelector('.hv5-bzv-prev')).toBeNull()
+    // every tile tries Twitch's live picture, whatever the numbers' basis (11-22); until it is checked the face shows
+    expect(container.querySelectorAll('img.hv5-bzv-prev')).toHaveLength(6)
+    expect(container.querySelector('img.hv5-bzv-prev[data-shown]')).toBeNull()
   })
 
   it('Busiest now stays empty with the outage line on 7d', () => {

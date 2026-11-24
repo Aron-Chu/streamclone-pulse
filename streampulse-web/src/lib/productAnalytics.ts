@@ -4,15 +4,16 @@ import { recapAnalyticsCategory, type RecapPageCategory } from './recapAnalytics
 
 /** Optional public-site product analytics. No network or import before consent. */
 export type AnalyticsPreference = 'allowed' | 'declined' | 'unset'
-export type PublicPageCategory = 'home' | 'docs' | 'status' | 'privacy' | 'terms' | 'refunds' | 'supporter' | 'support' | 'tool' | 'guide' | RecapPageCategory
+export type PublicPageCategory = 'home' | 'help' | 'docs' | 'status' | 'privacy' | 'terms' | 'refunds' | 'supporter' | 'support' | 'tool' | 'guide' | RecapPageCategory
 export type PublicCta = 'install_extension' | 'open_analytics'
 // Renew consent for the explicitly opened, closed-choice tool feedback survey.
 export const ANALYTICS_PREFERENCE_KEY = 'sp.websiteAnalytics.v4'
 
 const categories: Record<string, PublicPageCategory> = {
-  '/': 'home', '/docs': 'docs', '/status': 'status', '/privacy': 'privacy',
-  '/tools/twitch-vod-timestamp-link': 'tool',
-  '/guides/find-twitch-moments': 'guide', '/guides/twitch-vod-timestamps': 'guide',
+  '/': 'home', '/help': 'help', '/docs': 'docs', '/status': 'status', '/privacy': 'privacy',
+  // The timestamp link builder sits at the top of its guide, so that guide counts as the tool.
+  '/tools/twitch-vod-timestamp-link': 'tool', '/guides/twitch-vod-timestamps': 'tool',
+  '/guides/find-twitch-moments': 'guide',
   '/terms': 'terms', '/refunds': 'refunds', '/supporter': 'supporter', '/support': 'support',
 }
 const listeners = new Set<() => void>()

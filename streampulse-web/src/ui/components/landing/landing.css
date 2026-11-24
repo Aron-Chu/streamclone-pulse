@@ -26,138 +26,240 @@
   scroll-margin-top: 4rem;
 }
 
+/* Side gutters only: the stats band's own top and bottom padding
+   (.sl-streamer-stats) now arrives in a separate stylesheet that can load
+   before this one, and a padding shorthand here would zero it. */
 .sl-container {
   width: min(var(--sl-shell, 1120px), 100%);
   margin: 0 auto;
-  padding: 0 1.5rem;
+  padding-inline: 1.5rem;
 }
 
+/* The front page's background (Aron's mix 03, 11-22; HeroBackdrop.tsx). The emote rain is fixed through
+   the page; the chat columns and the ridge belong to the first screen and scroll away with it. Decorative:
+   no pointer events, and the engine reads the pointer from the window. */
 .sl-fx {
   position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
+  /* Drops fade in from the bottom and out under the header. */
+  mask-image: linear-gradient(to bottom, transparent 4%, rgb(0 0 0 / 1) 14%, rgb(0 0 0 / 1) 90%, transparent 100%);
 }
 
-.sl-chatbg {
-  position: fixed;
-  inset: 0;
+.sl-fx__drop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+
+.sl-fx__drop > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sl-herobg {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
   z-index: 0;
+  /* The first screen, as on the board (11-22): the ridge fills its lower part and fades out under the next
+     section's heading (.sl-ridge's mask). */
+  height: 100vh;
+  height: 100svh;
+  min-height: 560px;
+  max-height: 1200px;
   overflow: hidden;
   pointer-events: none;
-  mask-image: linear-gradient(
-    180deg,
-    transparent 0%,
-    rgb(0 0 0 / 0.35) 12%,
-    rgb(0 0 0 / 0.55) 45%,
-    rgb(0 0 0 / 0.35) 78%,
-    transparent 100%
-  );
+}
+
+/* Counted chat: one line stands for a batch of counted messages in a channel, never its words or who wrote
+   them. The two columns lean back toward the headline like the walls of a hall. */
+.sl-chatbg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  perspective: 1300px;
+  perspective-origin: 50% 38%;
 }
 
 .sl-chatbg__col {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  /* Live entirely in the gutter beside .sl-container (min(1120px, 100%)) so the
-     ambient chat never runs underneath the copy. Collapses to 0 — and so
-     disappears — as soon as the gutter is too narrow to hold it. */
+  top: 4.625rem;
+  /* Short columns: they end above the ridge. */
+  bottom: 42%;
+  /* Live entirely in the gutter beside .sl-container (min(1120px, 100%)) so the ambient chat never runs
+     underneath the copy. Collapses to 0 as soon as the gutter is too narrow to hold it. */
   width: max(0px, min(18rem, (100vw - var(--sl-shell, 1120px)) / 2 - 1.5rem));
   overflow: hidden;
-  opacity: 0.14;
+  mask-image:
+    linear-gradient(180deg, transparent 0, rgb(0 0 0 / 1) 18%, rgb(0 0 0 / 1) 74%, transparent 100%),
+    linear-gradient(90deg, rgb(0 0 0 / 1) 58%, transparent 100%);
+  mask-composite: intersect;
 }
 
 .sl-chatbg__col--left {
   left: 0.75rem;
-  /* Fade toward the content edge so the column reads as depth, not as a sidebar. */
-  mask-image: linear-gradient(90deg, rgb(0 0 0 / 1) 0%, rgb(0 0 0 / 1) 45%, transparent 100%);
+  transform-origin: 0 50%;
+  transform: rotateY(28deg);
 }
 
 .sl-chatbg__col--right {
   right: 0.75rem;
-  mask-image: linear-gradient(270deg, rgb(0 0 0 / 1) 0%, rgb(0 0 0 / 1) 45%, transparent 100%);
+  transform-origin: 100% 50%;
+  transform: rotateY(-28deg);
+  mask-image:
+    linear-gradient(180deg, transparent 0, rgb(0 0 0 / 1) 18%, rgb(0 0 0 / 1) 74%, transparent 100%),
+    linear-gradient(270deg, rgb(0 0 0 / 1) 58%, transparent 100%);
 }
 
 .sl-chatbg__inner {
-  display: flex;
-  flex-direction: column;
-  animation: sl-chatscroll linear infinite;
-}
-
-.sl-chatbg__track {
-  display: grid;
-  gap: 0.55rem;
-  padding: 0.75rem 0.5rem;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  will-change: transform;
 }
 
 .sl-chatbg__line {
-  margin: 0;
-  font-size: 0.78rem;
-  line-height: 1.35;
-  color: hsl(var(--sc-muted-foreground) / 0.85);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 27px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font: 700 13px/1 var(--sc-font);
+  opacity: 0.4;
+  transition: opacity 300ms ease;
 }
 
-.sl-chatbg__user {
+.sl-chatbg__col--right .sl-chatbg__line {
+  justify-content: flex-end;
+}
+
+.sl-chatbg__line b {
+  flex: none;
   font-weight: 700;
+  /* Each channel keeps one chat-name colour, set per line as a hue (chatColumns.ts), as Twitch chat does. */
+  color: hsl(var(--sl-name-h, 220) 62% 72%);
 }
 
-.sl-chatbg__msg {
-  color: hsl(var(--sc-foreground) / 0.72);
+.sl-chatbg__line s {
+  display: block;
+  flex: none;
+  height: 7px;
+  border-radius: 4px;
+  background: hsl(var(--sc-foreground) / 0.32);
 }
 
-.sl-chatbg__emote {
-  display: inline-block;
-  width: 1.15rem;
-  height: 1.15rem;
-  margin-left: 0.2rem;
-  vertical-align: -0.2rem;
-  object-fit: contain;
+.sl-chatbg__line img {
+  flex: none;
+  width: auto;
+  height: 19px;
+  opacity: 0.7;
 }
 
-@keyframes sl-chatscroll {
-  0% {
-    transform: translateY(0);
-  }
-  100% {
-    transform: translateY(-50%);
-  }
+.sl-chatbg__line.is-hot { opacity: 1; }
+.sl-chatbg__line.is-hot s { background: hsl(var(--sc-foreground) / 0.6); }
+.sl-chatbg__line.is-match { opacity: 0.95; }
+.sl-chatbg__line.is-match b { color: hsl(var(--sc-chart-1)); }
+.sl-chatbg__line.is-match s { background: hsl(var(--sc-chart-1) / 0.42); }
+.sl-chatbg__line.is-dim { opacity: 0.1; }
+
+/* A live moment's own line, in the spike colour. */
+.sl-chatbg__line.is-moment {
+  padding: 0 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, hsl(var(--sc-chart-5) / 0.2), transparent 85%);
+  color: hsl(var(--sc-chart-5));
+  font-weight: 600;
+  opacity: 0.92;
 }
 
-.sl-em {
+.sl-chatbg__col--right .sl-chatbg__line.is-moment {
+  background: linear-gradient(270deg, hsl(var(--sc-chart-5) / 0.2), transparent 85%);
+}
+
+.sl-chatbg__line.is-moment b { color: hsl(var(--sc-chart-5)); font: 800 13px/1 var(--sc-font-mono); }
+.sl-chatbg__line.is-moment span { color: hsl(var(--sc-chart-5) / 0.85); }
+.sl-chatbg__line.is-moment.is-hot { opacity: 1; }
+
+.sl-chatbg__paused {
   position: absolute;
-  bottom: -14%;
-  /* Drops ride the page gutters, never the content column. Below ~1200px the
-     gutter collapses and the floor keeps them hugging the viewport edge. */
-  /* Less the widest drop, so even lane 1.0 stays clear of the content column. */
-  --sl-gutter: max(0px, max(2.5rem, (100vw - var(--sl-shell, 1120px)) / 2) - 3rem);
-  left: calc(var(--lane, 0.5) * var(--sl-gutter));
-  display: inline-flex;
-  color: hsl(var(--sc-chart-2) / 0.18);
-  animation: sl-floatup linear infinite;
+  bottom: 40%;
+  left: 50%;
+  padding: 6px 12px;
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: 999px;
+  background: hsl(var(--sc-popover) / 0.94);
+  color: hsl(var(--sc-foreground));
+  font: 600 12px/1 var(--sc-font);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  transition: opacity 200ms ease, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.sl-em[data-side='r'] {
-  left: auto;
-  right: calc(var(--lane, 0.5) * var(--sl-gutter));
+.sl-chatbg__col.is-paused .sl-chatbg__paused {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
-.sl-em img {
-  width: var(--sz, 2rem);
-  height: var(--sz, 2rem);
-  object-fit: contain;
-  filter: grayscale(0.28) saturate(0.95) blur(0.35px) drop-shadow(0 3px 8px rgb(0 0 0 / 0.3));
+/* The chat ridge: the network's last complete minutes in perspective, across the first screen's lower half.
+   It fades in just above the far line (ridge.ts sets where) and out at the foot of the first screen, so no edge
+   shows as the page scrolls. */
+.sl-ridge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  mask-image: linear-gradient(to bottom, transparent var(--sl-ridge-from, 48%), rgb(0 0 0 / 1) var(--sl-ridge-to, 61%), rgb(0 0 0 / 1) 86%, transparent 100%);
 }
 
-@keyframes sl-floatup {
-  0% { transform: translateY(0) rotate(var(--r, 0deg)); opacity: 0; }
-  10% { opacity: var(--op, 0.16); }
-  86% { opacity: calc(var(--op, 0.16) * 0.8); }
-  100% { transform: translateY(-122vh) rotate(var(--r, 0deg)); opacity: 0; }
+/* A hover or moment label in the background layers. */
+.sl-bgchip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid hsl(var(--sc-border));
+  border-radius: 999px;
+  background: hsl(var(--sc-popover) / 0.94);
+  color: hsl(var(--sc-foreground));
+  /* Names in the page font; the counts, in <small>, in mono. */
+  font: 600 13px/1 var(--sc-font);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, calc(-100% - 0.6rem));
+  transition: opacity 180ms ease;
+  pointer-events: none;
 }
+
+.sl-bgchip.is-on { opacity: 1; }
+
+.sl-bgchip small {
+  color: hsl(var(--sc-muted-foreground));
+  font: 500 12px/1 var(--sc-font-mono);
+}
+
+.sl-bgchip img {
+  flex: none;
+  width: auto;
+  height: 18px;
+}
+
+.sl-bgchip--moment { border-color: hsl(var(--sc-chart-5) / 0.55); }
+.sl-bgchip--moment span { color: hsl(var(--sc-chart-5)); }
 
 /* 0.94, not 0.76 (11-18): at 0.76 the hero's 56 px heading ghosted through the blur as a grey smear across the
    bar's middle. The blur stays, so the page's glow still tints the bar. */
@@ -360,17 +462,21 @@
   }
 }
 
-/* While the hero's own install button is on screen, the header's steps back
-   (Landing useHeroButtonsInView): one at a time. It keeps its place, so Menu
-   and Open the Hub never move. Discord lives only in the header now.
-   11-18: it is first in its group, so its empty place joins the free room and
-   Discord no longer sits stranded mid-bar; and it rises into the bar as the
-   hero's buttons go up under it, then sinks back out (as on the hub). */
-.sl-nav .sl-nav__install {
+/* While the hero's own buttons are on screen, the header's Install and Open the
+   Hub step back (Landing useHeroButtonsInView): one of each at a time. They keep
+   their places, so Menu and Discord never move. Discord lives only in the header.
+   11-18: they lead their group, so their empty places join the free room and
+   Discord never sits stranded mid-bar; they rise into the bar as the hero's
+   buttons go up under it, then sink back out (as on the hub). 11-22: Open the
+   Hub joined Install (Aron), the Hub a beat after Install. */
+.sl-nav .sl-nav__install,
+.sl-nav .sl-nav__analytics {
   transition: opacity 200ms ease-out, visibility 0s linear 0s, translate 320ms cubic-bezier(.16, 1, .3, 1),
     background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
 }
-.sl-nav[data-hero-buttons] .sl-nav__install {
+.sl-nav .sl-nav__analytics { transition-delay: 60ms, 60ms, 60ms, 0s, 0s, 0s, 0s; }
+.sl-nav[data-hero-buttons] .sl-nav__install,
+.sl-nav[data-hero-buttons] .sl-nav__analytics {
   opacity: 0;
   visibility: hidden;
   translate: 0 8px;
@@ -379,7 +485,8 @@
   transition-timing-function: ease-in, linear, cubic-bezier(.4, 0, 1, 1), ease, ease, ease, ease;
 }
 @media (prefers-reduced-motion: reduce) {
-  .sl-nav .sl-nav__install { transition: none; }
+  .sl-nav .sl-nav__install,
+  .sl-nav .sl-nav__analytics { transition: none; }
 }
 
 /* Search a streamer (F2, 11-02). The markup is the hub's HubV5SearchBox, so the
@@ -1135,94 +1242,15 @@
     0 16px 40px -22px rgba(var(--xp-rgb), 0.7);
 }
 
-.sl-footer {
+/* The shared site footer (SiteFooter) sits above the fixed chat backdrop; the
+   page's link colour rule would otherwise also cancel its hover. */
+.sp-landing .app-footer {
   position: relative;
   z-index: 1;
-  border-top: 1px solid hsl(var(--sc-border));
-  padding: 2.4rem 0;
 }
 
-/* Brand on the left, then Product, Help and Legal columns (B1). */
-.sl-foot {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr);
-  gap: 1.6rem 2rem;
-  align-items: start;
-}
-
-.sl-foot__brand p {
-  margin: 0.6rem 0 0;
-  color: hsl(var(--sc-muted-foreground));
-  font-size: 0.86rem;
-}
-
-.sl-foot__cols {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.2rem;
-}
-
-.sl-foot__links {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.65rem;
-}
-
-.sl-foot__head {
-  color: hsl(var(--sc-foreground));
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.sl-foot__links a {
-  color: hsl(var(--sc-muted-foreground));
-  text-decoration: none;
-  font-size: 0.86rem;
-  font-weight: 600;
-  transition: color 0.15s ease;
-}
-
-.sl-foot__links a:hover,
-.sl-foot__links a:focus-visible {
-  color: hsl(var(--sc-foreground));
-}
-
-.sl-foot__links a.sl-foot__discord {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.sl-foot small {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  /* Top-aligned, so an open Analytics preferences panel grows down, not around the line beside it. */
-  align-items: flex-start;
-  gap: 0.4rem 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid hsl(var(--sc-border));
-  color: hsl(var(--sc-muted-foreground));
-  text-align: center;
-}
-
-.sl-foot small .analytics-preferences__body { text-align: left; }
-
-@media (max-width: 719px) {
-  .sl-foot { grid-template-columns: minmax(0, 1fr); }
-  .sl-foot__links { gap: 0; }
-  .sl-foot__head { display: flex; align-items: center; min-height: 32px; }
-  .sl-foot__links a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-  }
-}
-
-@media (max-width: 420px) {
-  .sl-foot__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sp-landing .app-footer__links a:hover {
+  color: #fff;
 }
 
 /* Static / reduced-motion / no-JS / mobile: native panel scroll */
@@ -1337,8 +1365,8 @@
   .sl-nav__right .sl-discord-nav { display: none; }
   .sl-discord-icon { display: grid; margin-left: -0.75rem; }
   .sl-chatbg { display: none; }
-  /* No gutter survives at this width, so the rain hugs the viewport edge and
-     grazes the copy. Halve it there so it stays texture rather than content. */
+  /* No gutter survives at this width, so the rain keeps to a thin band at each
+     edge and grazes the copy. Halve it there so it stays texture rather than content. */
   .sl-fx { opacity: 0.5; }
   /* Match LiveSignalScrollGraph: keep tall scene + sticky pin; only [data-static] collapses. */
   .sl-xtour { --sl-xtour-dwell: 120vh; }
@@ -1385,7 +1413,377 @@
     animation: none !important;
     transition: none !important;
   }
+  /* The rain is not mounted under reduced motion; the chat columns and the ridge stay, still. */
   .sl-fx { display: none; }
-  .sl-chatbg { display: none; }
   [data-reveal] { opacity: 1; transform: none; }
+}
+
+/* Fastest chats (board artifacts/chat-now-board-20261122, ★ 1A 2A 3A, 11-22): the five busiest live chats by the Hub's
+   Busiest now, in the band between the hero and the demo; on a wide screen Twitch's chat, or board option D's column of
+   blank lines at the chat's pace, sits beside them. LandingChatNow.tsx draws it. The head repeats the row head the band had before; the colours
+   the page's theme has no entry for (chat violet, live red, glass) are named here once. */
+.sl-cn {
+  --sl-cn-link: #d8cbfa;
+  --sl-cn-live: #ef4444;
+  --sl-cn-line: rgb(255 255 255 / 0.08);
+  --sl-cn-hover: rgb(255 255 255 / 0.04);
+  --sl-cn-track: rgb(255 255 255 / 0.03);
+  --sl-cn-fill: rgb(167 139 250 / 0.16);
+  --sl-cn-tick: rgb(196 181 253 / 0.62);
+  /* the column's blank message bar (board option D's) and blank emote square */
+  --sl-cn-bar: rgb(255 255 255 / 0.13);
+  --sl-cn-emote: rgb(196 181 253 / 0.32);
+  --sl-cn-glass: rgb(255 255 255 / 0.025);
+  /* Twitch's dark chat surface, behind its frame while Twitch draws */
+  --sl-cn-twitch: #18181b;
+  padding: 8px 0 clamp(3.4rem, 7vh, 5.6rem);
+}
+
+.sl-cn-in {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "head more" "body body";
+  align-items: end;
+  gap: 20px 32px;
+}
+
+.sl-cn-head { grid-area: head; min-width: 0; }
+
+.sl-cn-head h2 {
+  margin: 0;
+  font: 700 28px/1.25 var(--sc-font);
+  letter-spacing: -0.025em;
+}
+
+.sl-cn-head p {
+  margin: 4px 0 0;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.sp-landing a.sl-cn-more {
+  grid-area: more;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--sl-cn-link);
+  font: 600 14px/20px var(--sc-font);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.sp-landing a.sl-cn-more:hover { text-decoration: underline; text-underline-offset: 4px; }
+.sp-landing a.sl-cn-more:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; border-radius: 4px; }
+
+.sl-cn-body {
+  grid-area: body;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.sl-cn-body[data-peek] { grid-template-columns: minmax(0, 1fr) 360px; }
+
+.sl-cn-list {
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  border-radius: 16px;
+  background: hsl(var(--sc-card));
+  box-shadow: inset 0 0 0 1px hsl(var(--sc-border));
+}
+
+.sp-landing a.sl-cn-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 36px minmax(120px, 180px) minmax(0, 1fr) 72px;
+  gap: 0 12px;
+  align-items: center;
+  min-height: 60px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: hsl(var(--sc-foreground));
+  text-decoration: none;
+}
+
+/* beside the chat panel the rows grow so the panel has room for more than Twitch's own banners (its header, leaderboard,
+   pinned message, chat-mode notice and message box take about 300 px; checked 11-22 on a live channel) */
+.sl-cn-body[data-peek] a.sl-cn-row { min-height: 96px; }
+.sp-landing a.sl-cn-row:hover,
+.sp-landing a.sl-cn-row[data-sel] { background: var(--sl-cn-hover); }
+.sp-landing a.sl-cn-row:focus-visible { outline: 2px solid #c4b5fd; outline-offset: -2px; }
+
+.sl-cn-rk {
+  color: hsl(var(--sc-muted-foreground));
+  font: 500 13px/20px var(--sc-font);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.sl-cn-row .hv5-av { width: 36px; height: 36px; }
+.sl-cn-who { display: grid; min-width: 0; }
+
+.sl-cn-nm,
+.sl-cn-gm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-cn-nm { font: 600 15px/20px var(--sc-font); }
+.sl-cn-gm { color: hsl(var(--sc-muted-foreground)); font-size: 13px; line-height: 18px; }
+
+.sl-cn-trk {
+  height: 20px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--sl-cn-track);
+}
+
+.sl-cn-fill {
+  position: relative;
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--sl-cn-fill);
+  transition: width 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* 3A: one tick passes a point per counted message. Every bar's ticks move at one speed and a busier chat's sit closer
+   (--sl-cn-gap, set per row); moved by transform only, paused off screen */
+.sl-cn-tk {
+  position: absolute;
+  inset: 0 0 0 calc(-1 * var(--sl-cn-gap, 12px));
+  background: repeating-linear-gradient(90deg, var(--sl-cn-tick) 0 2px, transparent 2px var(--sl-cn-gap, 12px));
+  animation: sl-cn-flow var(--sl-cn-dur, 0.1s) linear infinite;
+  will-change: transform;
+}
+
+@keyframes sl-cn-flow { to { transform: translateX(var(--sl-cn-gap, 12px)); } }
+.sl-cn[data-off] .sl-cn-tk { animation-play-state: paused; }
+/* still ticks read as a striped progress bar: with reduced motion the bar is the fill alone */
+@media (prefers-reduced-motion: reduce) { .sl-cn-tk { display: none; } }
+
+.sl-cn-fig { text-align: right; white-space: nowrap; }
+.sl-cn-fig small { margin-left: 2px; color: hsl(var(--sc-muted-foreground)); font-size: 12px; }
+
+/* a figure swaps from one reading to the next and never counts through values nobody measured */
+.sl-cn-sw {
+  display: inline-grid;
+  justify-items: end;
+  overflow: hidden;
+  vertical-align: bottom;
+  font: 600 18px/24px var(--sc-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.sl-cn-sw > span { grid-area: 1 / 1; }
+.sl-cn-sw > .in { animation: sl-cn-in 0.38s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.sl-cn-sw > .out { animation: sl-cn-out 0.38s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes sl-cn-in { from { transform: translateY(70%); opacity: 0; } }
+@keyframes sl-cn-out { to { transform: translateY(-70%); opacity: 0; } }
+
+.sl-cn-vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Loading: the row shapes hold their place; no shimmer. */
+.sl-cn-list > .sl-cn-skel {
+  height: 56px;
+  margin: 2px 0;
+  border-radius: 10px;
+  background: var(--sl-cn-track);
+}
+
+.sl-cn-body[data-peek] .sl-cn-list > .sl-cn-skel { height: 92px; }
+
+/* 2A: Twitch's chat for the row pointed at, or that chat's column (board option D), beside the list */
+.sl-cn-peek {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--sl-cn-glass);
+  backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: inset 0 0 0 1px var(--sl-cn-line);
+}
+
+.sl-cn-peek-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--sl-cn-line);
+  font: 400 14px/20px var(--sc-font);
+}
+
+.sl-cn-peek-h b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.sl-cn-peek-h > span { color: hsl(var(--sc-muted-foreground)); }
+
+.sl-cn-peek-h > .sl-cn-peek-st {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+  color: hsl(var(--sc-muted-foreground));
+  font: 400 12px/16px var(--sc-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sl-cn-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sl-cn-live); }
+
+.sl-cn-peek-b {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* board option D, "Replay the minute" (Aron 11-22: D when Twitch's chat does not load): the chat as a column, each
+   counted message a blank bar coming in at the bottom, its emotes blank squares after it; older lines fade out at the
+   top. The board's own values (bar 7 px, gap 6 px) moved to the 4 px base. */
+.sl-cn-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 0;
+  padding: 12px 20px;
+  overflow: hidden;
+  mask-image: linear-gradient(transparent, #000 40%);
+  /* its lines never make the panel taller than the list: it fills what the list leaves */
+  contain: size;
+}
+
+.sl-cn-ln { display: flex; flex: none; align-items: center; gap: 4px; min-height: 8px; }
+.sl-cn-ln > i { display: block; height: 8px; border-radius: 4px; background: var(--sl-cn-bar); }
+.sl-cn-ln > b { flex: none; width: 16px; height: 16px; border-radius: 4px; background: var(--sl-cn-emote); }
+.sl-cn-ln.n { animation: sl-cn-ln-in 0.16s ease-out both; }
+@keyframes sl-cn-ln-in { from { opacity: 0; transform: translateY(8px); } }
+
+.sl-cn-pcap { padding: 12px 16px 16px; border-top: 1px solid var(--sl-cn-line); }
+.sl-cn-pcap p { margin: 0; color: hsl(var(--sc-muted-foreground)); font-size: 13px; line-height: 20px; }
+.sl-cn-pcap .sl-cn-hint { margin-top: 4px; color: hsl(var(--sc-foreground)); font-weight: 500; }
+
+/* Twitch's frame fades in over the column once it has loaded; until then it takes no pointer */
+.sl-cn-if {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--sl-cn-twitch);
+  color-scheme: dark;
+  transition: opacity 0.3s ease;
+}
+
+.sl-cn-if[data-on] { opacity: 1; pointer-events: auto; }
+/* moving to another chat: the one before dims under the new one until the new one fades in over it */
+.sl-cn-if[data-on][data-old] { opacity: 0.35; pointer-events: none; }
+
+/* Phones: the title and Open the Hub share the first line (Tab order = what's on screen); the bar moves under the name. */
+@media (max-width: 719px) {
+  .sl-cn-in {
+    grid-template-areas: "title more" "sub sub" "body body";
+    align-items: center;
+    gap: 0 16px;
+  }
+  .sl-cn-head { display: contents; }
+  .sl-cn-head h2 { grid-area: title; font-size: 22px; line-height: 28px; }
+  .sl-cn-head p { grid-area: sub; margin: 0 0 12px; font-size: 14px; line-height: 20px; }
+  .sp-landing a.sl-cn-more { justify-self: end; }
+  .sl-cn-list { padding: 4px; }
+  .sp-landing a.sl-cn-row {
+    grid-template-columns: 20px 36px minmax(0, 1fr) 64px;
+    grid-template-rows: auto auto;
+    gap: 0 10px;
+    min-height: 64px;
+    padding: 8px;
+  }
+  .sl-cn-rk,
+  .sl-cn-row .hv5-av { grid-row: 1 / 3; }
+  .sl-cn-who { grid-column: 3; grid-row: 1; }
+  .sl-cn-fig { grid-column: 4; grid-row: 1; }
+  .sl-cn-trk { grid-column: 3 / 5; grid-row: 2; height: 6px; margin-top: 6px; }
+  .sl-cn-sw { font-size: 16px; }
+}
+
+/* ★ A1 (board extension-brainchat 11-22): under the hero, a label over a round arrow down to the demo beside
+   Twitch chat (LandingScrollCue.tsx). It nudges three times, then rests; it fades once the page scrolls. */
+.sp-landing a.sl-cue {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 13px;
+  margin-top: clamp(1.8rem, 4.5vh, 2.6rem);
+  color: hsl(var(--sc-foreground));
+  text-decoration: none;
+  transition: opacity 0.3s ease, visibility 0.3s;
+}
+.sp-landing a.sl-cue[data-gone] { opacity: 0; visibility: hidden; pointer-events: none; }
+.sl-cue__label { color: #e4e4e7; font: 600 17px/1.3 var(--sc-font); }
+.sl-cue__btn {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border: 1px solid rgb(255 255 255 / 0.24);
+  border-radius: 50%;
+  background: rgb(24 24 27 / 0.72);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+.sl-cue__btn svg { width: 30px; height: 30px; }
+.sp-landing a.sl-cue:hover .sl-cue__btn { border-color: rgb(255 255 255 / 0.4); background: rgb(39 39 42 / 0.9); }
+.sp-landing a.sl-cue:focus-visible { outline: none; }
+.sp-landing a.sl-cue:focus-visible .sl-cue__btn { outline: 2px solid #c4b5fd; outline-offset: 3px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .sl-cue__btn { animation: sl-cue-nudge 1.5s cubic-bezier(0.45, 0, 0.55, 1) 0.6s 3; }
+}
+
+@keyframes sl-cue-nudge {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(7px); }
+}
+
+@media (max-width: 719px) {
+  .sp-landing a.sl-cue { gap: 10px; }
+  .sl-cue__label { font-size: 14px; }
+  .sl-cue__btn { width: 54px; height: 54px; }
+  .sl-cue__btn svg { width: 24px; height: 24px; }
+}
+
+/* The cue moves focus to the demo's section; the section itself shows no ring. */
+#demo:focus { outline: none; }
+
+/* Until its code loads, the demo's place is the stage's own shape (besideChatModel stageLayout: 1120/700 wide,
+   358/560 up to 640 px tall on a phone) and the 52 px of controls under it, so the page does not jump. */
+#demo .sl-demo-placeholder {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1120px;
+  min-height: 0;
+  margin: 0 auto 52px;
+  aspect-ratio: 1120 / 700;
+  overflow: hidden;
+}
+
+@media (max-width: 647px) {
+  #demo .sl-demo-placeholder { aspect-ratio: 358 / 560; max-height: 640px; margin-bottom: 104px; }
 }

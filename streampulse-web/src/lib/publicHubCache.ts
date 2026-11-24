@@ -5,6 +5,7 @@ import type { HubChannelScreenerV1 } from './channelScreenerContract'
 import { hubActivityContractIssues, isHubActivityLivePoolFallback } from './hubActivityHonesty'
 import { isHubGestureActive } from './hubBucketSelection'
 import { allowPublicHubCacheWritesForTests, clearPublicHubCache, PROJECTION_STORAGE_PREFIX, publicHubCacheWritesStopped, STORAGE_PREFIX } from './publicHubCacheReset'
+import { HUB_BUSIEST_COUNT, rankBusiest } from './hubBusiest'
 
 /**
  * The oldest saved projection (Moments, home tickers) a page may show while it
@@ -316,14 +317,55 @@ function prepareCompactFullWrite(data: PublicHub): PreparedCacheWrite | null {
   // A busier day may not fit with avatars; the second try keeps none. The
   // last drops the 5-minute windows too (rows that each carry their own): the
   // saved copy then shows no full window until the next network read.
+  let windowedChars = 0
   for (const [avatarRows, keepWindows] of [[COMPACT_AVATAR_ROWS, true], [0, true], [0, false]] as const) {
     const channels = JSON.stringify(encodeColumns(compactLiveChannelRows(data.liveChannels, avatarRows, keepWindows)))
     const tail = `"data":${shell},"columns":{"points":${points},"liveChannels":${channels}}}`
     if (tail.length <= PUBLIC_HUB_CACHE_MAX_CHARS - 512) {
       return { version: 2, tail, generatedAt: data.generatedAt }
     }
+    if (avatarRows === 0 && keepWindows) windowedChars = channels.length
+  }
+  // Too many live rows for any whole copy (about 900 and up): save the rows
+  // the saved hub leads with instead of nothing. poolSize stays the answer's.
+  const room = PUBLIC_HUB_CACHE_MAX_CHARS - 512 - (`"data":${shell},"columns":{"points":${points},"liveChannels":}}`).length
+  const rows = data.liveChannels.length
+  let budget = windowedChars > 0 && room > 0 ? Math.floor((rows * room) / windowedChars * 0.95) : 0
+  for (let tries = 0; tries < 4 && budget >= TRIMMED_MIN_ROWS; tries += 1, budget = Math.floor(budget * 0.8)) {
+    const kept = trimmedLiveChannels(data.liveChannels, budget)
+    const channels = JSON.stringify(encodeColumns(compactLiveChannelRows(kept, COMPACT_AVATAR_ROWS, true)))
+    const tail = `"data":${shell},"columns":{"points":${points},"liveChannels":${channels}}}`
+    if (tail.length <= PUBLIC_HUB_CACHE_MAX_CHARS - 512) {
+      return { version: 2, tail, generatedAt: data.generatedAt }
+    }
   }
   return null
+}
+
+/** A trimmed copy below this many rows is not worth saving. */
+const TRIMMED_MIN_ROWS = 2 * HUB_BUSIEST_COUNT
+
+/**
+ * At most `budget` live rows, in the answer's order: every row Busiest ranks
+ * (on either basis), then the most watched. With 5-minute windows, so Busiest
+ * still ranks from the saved copy.
+ */
+function trimmedLiveChannels(channels: readonly HubLiveChannel[], budget: number): HubLiveChannel[] {
+  if (channels.length <= budget) return channels.slice()
+  const keep = new Set<HubLiveChannel>()
+  const byLogin = new Map<string, HubLiveChannel>()
+  for (const channel of channels) if (!byLogin.has(channel.login)) byLogin.set(channel.login, channel)
+  for (const basis of ['five_min', 'avg_35'] as const) {
+    for (const row of rankBusiest(channels, HUB_BUSIEST_COUNT, basis).rows) {
+      const channel = byLogin.get(row.login)
+      if (channel) keep.add(channel)
+    }
+  }
+  for (const channel of [...channels].sort((a, b) => (b.viewers || 0) - (a.viewers || 0))) {
+    if (keep.size >= budget) break
+    keep.add(channel)
+  }
+  return channels.filter((channel) => keep.has(channel))
 }
 
 function prepareFullWrite(data: PublicHub): PreparedCacheWrite | null {
@@ -497,10 +539,17 @@ export function writePublicHubCache(
   dataAsOf?: number | null,
 ): void {
   if (typeof window === 'undefined' || publicHubCacheWritesStopped()) return
+  const key = publicHubCacheKey(backendUrl, activityWindow, projection)
+  // A body this shape was refused (too big, or storage said no): do not
+  // prepare it again on every poll, only once its shape changes.
+  const shape = cacheShape(fullData)
+  if (refusedShapes.get(key) === shape) return
   try {
     const prepared = prepareWrite(fullData, projection)
-    if (!prepared) return
-    const key = publicHubCacheKey(backendUrl, activityWindow, projection)
+    if (!prepared) {
+      refusedShapes.set(key, shape)
+      return
+    }
     // An unchanged body does not extend its saved-copy lifetime. A later
     // trusted measurement may fill a previously unknown data-age anchor.
     const previous = window.localStorage.getItem(key)
@@ -529,7 +578,10 @@ export function writePublicHubCache(
       prepared.generatedAt,
       dataAsOf,
     ) + prepared.tail
-    if (serialized.length > (projection ? PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS : PUBLIC_HUB_CACHE_MAX_CHARS)) return
+    if (serialized.length > (projection ? PUBLIC_HUB_PROJECTION_CACHE_MAX_CHARS : PUBLIC_HUB_CACHE_MAX_CHARS)) {
+      refusedShapes.set(key, shape)
+      return
+    }
     const otherEntries: { key: string; cachedAt: number }[] = []
     for (let i = 0; i < window.localStorage.length; i++) {
       const otherKey = window.localStorage.key(i)
@@ -542,9 +594,19 @@ export function writePublicHubCache(
       window.localStorage.removeItem(old.key)
     }
     window.localStorage.setItem(key, serialized)
+    refusedShapes.delete(key)
   } catch {
-    // Quota / private mode — ignore.
+    // Quota / private mode: remembered, so the next poll does not try the same body again.
+    refusedShapes.set(key, shape)
   }
+}
+
+/** Per cache key, the shape of the last body that could not be saved. */
+const refusedShapes = new Map<string, string>()
+
+/** What decides a body's saved size: its points, live rows and moments. A partial body (a list left out) still has a shape. */
+function cacheShape(data: PublicHub): string {
+  return `${data.activity?.points?.length ?? 0}|${data.liveChannels?.length ?? 0}|${data.livePulseMoments?.length ?? 0}`
 }
 
 /* ---------------------------------------------------------------------------
@@ -652,6 +714,7 @@ export function clearPublicHubCacheForTests(): void {
   clearPublicHubCache()
   pendingWrites.clear()
   cancelScheduledWrites()
+  refusedShapes.clear()
 }
 
 export function readPublicHubCacheForCurrentBackend(

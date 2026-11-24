@@ -80,7 +80,7 @@ describe('muted text on dark surfaces reads at 4.5:1 or more', () => {
 
 describe('stale hub lists (G1, 11-02)', () => {
   const css = read('src/ui/components/hub/v5/hub-v5.css')
-  const LIST = '.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old'
+  const LIST = '.hv5-f2-stale :is(.hv5-fd-list, .hv5-tm-list), .hv5-up-old'
   const rule = (selector: string) => {
     const at = css.indexOf(`${selector} {`)
     return at < 0 ? null : css.slice(at + selector.length + 2, css.indexOf('}', at))
@@ -93,7 +93,7 @@ describe('stale hub lists (G1, 11-02)', () => {
   })
 
   it('fade only the pictures in those rows', () => {
-    expect(rule(`.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono)`)).toMatch(/opacity: \.55;/)
+    expect(rule(`.hv5-f2-stale :is(.hv5-fd-list, .hv5-tm-list) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono)`)).toMatch(/opacity: \.55;/)
     // Nothing else under a stale list asks for an opacity.
     const staleRules = [...css.matchAll(/([^{}]*\.(?:hv5-f2-stale|hv5-up-old)[^{}]*)\{([^}]*)\}/g)]
     for (const [, selector, body] of staleRules) {

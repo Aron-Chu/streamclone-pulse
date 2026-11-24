@@ -52,6 +52,7 @@ async function collectLandingDom(page: Page) {
     const motionSignatures = {
       emoteRain: Boolean(document.querySelector('.sl-fx')),
       chatBackdrop: Boolean(document.querySelector('.sl-chatbg')),
+      chatRidge: Boolean(document.querySelector('.sl-ridge')),
       tickers: document.querySelectorAll('.sl-ticker').length,
       extensionTour: Boolean(document.querySelector('.sl-xtour, #demo')),
     }

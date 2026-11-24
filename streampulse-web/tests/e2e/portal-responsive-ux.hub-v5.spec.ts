@@ -2,7 +2,6 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { installHubUxMock, type HubUxMockOptions } from './helpers/hubUxMock'
-import { scrollSceneToProgress } from './helpers/scrollTour'
 
 const proofDirectory = process.env.PORTAL_UX_PROOF_DIR
 
@@ -14,16 +13,6 @@ async function saveProof(target: Locator, name: string) {
 
 async function assertNoPageOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
-}
-
-async function assertStaticSampleChart(panel: Locator) {
-  const chart = panel.locator('.pulse-sparkline-wrap svg')
-  await expect(chart).toBeVisible()
-  // A populated SVG can still paint nothing when its scroll-driven wipe
-  // clips the entire plot. Prove both the actual sample signal and its paint.
-  await expect(chart.locator('path[data-chart-series="chat"][data-chart-path-state="overview"]')).toHaveAttribute('d', /^M\s.*[LCQ]/)
-  expect(await chart.evaluate(element => getComputedStyle(element).clipPath)).toBe('inset(0px)')
-  expect(await panel.locator('.pulse-sparkline-wrap').evaluate(element => getComputedStyle(element, '::after').content)).toBe('none')
 }
 
 async function moveInto(page: Page, target: Locator) {
@@ -113,30 +102,33 @@ for (const surface of ['plot', 'navigator track'] as const) {
   })
 }
 
-test('Scroll zoom leaves Ctrl and Meta wheel events to browser zoom on both surfaces', async ({ page }) => {
+// S1 (11-19): over the hub chart Ctrl+wheel zooms the chart, as a map does (a trackpad pinch arrives as one, so it
+// zooms the chart too). Meta+wheel, and Ctrl+wheel anywhere off the chart, stay the browser's own zoom.
+test('Ctrl+wheel over the hub chart zooms the chart; Meta+wheel and Ctrl+wheel off it stay the browser zoom (S1, 11-19)', async ({ page }) => {
   await installHubUxMock(page)
   await page.goto('/analytics')
   const navigator = page.getByRole('group', { name: 'Chart navigator', exact: true })
   await expect(navigator.getByRole('status')).toContainText('240 of 240 6-min buckets')
   await expect(navigator.getByRole('button', { name: /^Scroll zoom/ })).toHaveAttribute('aria-pressed', 'true')
   const initial = (await navigator.getAttribute('data-hub-chart-navigator-window'))!
+  // A cancellable DOM event shows who owns it without changing the browser's own zoom or the next test's viewport.
+  const consumed = (selector: string, key: 'ctrlKey' | 'metaKey') => page.locator(selector).first().evaluate((element, modifier) => {
+    const rect = element.getBoundingClientRect()
+    const event = new WheelEvent('wheel', {
+      bubbles: true, cancelable: true, deltaY: -100, [modifier]: true,
+      clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+    })
+    element.dispatchEvent(event)
+    return event.defaultPrevented
+  }, key)
   for (const selector of [HUB_PLOT, '.hx-chart-navigator__track']) {
-    for (const modifier of ['ctrlKey', 'metaKey'] as const) {
-      // Dispatch a cancellable DOM event to observe app ownership without
-      // changing the browser's own zoom or the next test's viewport.
-      const consumed = await page.locator(selector).evaluate((element, key) => {
-        const rect = element.getBoundingClientRect()
-        const event = new WheelEvent('wheel', {
-          bubbles: true, cancelable: true, deltaY: -100, [key]: true,
-          clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
-        })
-        element.dispatchEvent(event)
-        return event.defaultPrevented
-      }, modifier)
-      expect(consumed).toBe(false)
-      await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
-    }
+    expect(await consumed(selector, 'metaKey')).toBe(false)
+    await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
   }
+  expect(await consumed('#busiest', 'ctrlKey')).toBe(false)
+  await expect(navigator).toHaveAttribute('data-hub-chart-navigator-window', initial)
+  expect(await consumed(HUB_PLOT, 'ctrlKey')).toBe(true)
+  await expect(navigator).not.toHaveAttribute('data-hub-chart-navigator-window', initial)
 })
 
 test('on a phone the hub merges its chat bars so each stays readable', async ({ page }) => {
@@ -181,14 +173,14 @@ for (const { width, height, zoom } of responsiveCases) {
     await installHubUxMock(page, TOP_MOMENT)
     await page.goto('/analytics')
     await page.evaluate(value => { document.documentElement.style.zoom = String(value) }, zoom)
-    const big = page.locator('#big-moments')
-    const card = big.locator('.hv5-bm-card[data-pos="0"]')
+    const big = page.locator('#top-moments')
+    const card = big.locator('.hv5-tm-list > .hv5-tm-it').first()
     await expect(card).toBeVisible()
     expect(await card.evaluate(el => {
       const bounds = el.getBoundingClientRect()
-      const stage = el.closest('#big-moments')!.getBoundingClientRect()
-      const foot = el.querySelector('.hv5-bm-foot')!.getBoundingClientRect()
-      return bounds.right <= stage.right + 1 && foot.right <= bounds.right + 1 && foot.left >= bounds.left - 1
+      const stage = el.closest('#top-moments')!.getBoundingClientRect()
+      const time = el.querySelector('.hv5-tm-t')!.getBoundingClientRect()
+      return bounds.right <= stage.right + 1 && time.right <= bounds.right + 1 && time.left >= bounds.left - 1
     })).toBe(true)
     const latest = page.locator('#latest')
     await expect(latest.getByRole('heading', { name: 'Picking up now' })).toBeVisible()
@@ -207,32 +199,31 @@ for (const { width, height, zoom } of responsiveCases) {
     await saveProof(channels, `hub-v5-channels-${size}`)
   })
 
-  test(`Homepage static demo uses normal flow and fits at ${size}`, async ({ page }) => {
+  test(`Homepage demo beside Twitch chat fits its column at ${size}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await installHubUxMock(page)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto('/#demo')
     await page.evaluate(value => { document.documentElement.style.zoom = String(value) }, zoom)
-    const tour = page.locator('.sl-xtour')
-    await expect(tour).toHaveAttribute('data-static', '')
-    const grid = tour.locator('.sl-xtour__grid')
-    const panel = tour.locator('.pulse-landing-panel')
-    await expect(panel).toBeVisible()
-    await expect(panel.getByRole('tab', { name: 'Pulse' })).toBeVisible()
-    await expect(panel.locator('[data-tour-step="4"]')).toBeVisible()
-    await assertStaticSampleChart(panel)
-    expect(await grid.evaluate(element => {
-      const bounds = element.getBoundingClientRect()
-      const panel = element.querySelector('.sl-xtour__panel')!.getBoundingClientRect()
-      const overview = element.querySelector('.sl-xtour__steps')!
-      const overviewBounds = overview.getBoundingClientRect()
-      const overviewVisible = overview.getClientRects().length > 0
-      return panel.left >= bounds.left - 1 && panel.right <= bounds.right + 1
-        && Math.abs((panel.left + panel.right) / 2 - (bounds.left + bounds.right) / 2) < 2
-        && (!overviewVisible || panel.top >= overviewBounds.bottom - 1)
+    const demo = page.locator('.es-demo')
+    const stage = demo.locator('.es')
+    await page.locator('#demo .sl-container > div:nth-child(2)').scrollIntoViewIfNeeded()
+    await expect(stage).toBeVisible()
+    // Under reduced motion it holds one still step: the camera in on the extension's column.
+    await expect(stage).toHaveAttribute('data-beat', '3')
+    await expect(page.getByRole('group', { name: 'Demo steps' })).toBeVisible()
+    expect(await stage.evaluate(element => {
+      const column = element.closest('.sl-container')!
+      const style = getComputedStyle(column)
+      const outer = column.getBoundingClientRect()
+      const left = outer.left + parseFloat(style.paddingLeft)
+      const right = outer.right - parseFloat(style.paddingRight)
+      const box = element.getBoundingClientRect()
+      return box.left >= left - 1 && box.right <= right + 1 && Math.abs((box.left + box.right) / 2 - (left + right) / 2) < 2
     })).toBe(true)
-    expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+    expect(await stage.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
     await assertNoPageOverflow(page)
-    await saveProof(panel.locator('[data-tour-step="1"]'), `homepage-sample-chart-${size}`)
+    await saveProof(stage, `homepage-demo-${size}`)
     if (proofDirectory) {
       await mkdir(proofDirectory, { recursive: true })
       await page.getByRole('heading', { name: /See it beside Twitch chat/i }).scrollIntoViewIfNeeded()
@@ -241,25 +232,27 @@ for (const { width, height, zoom } of responsiveCases) {
   })
 }
 
-test('Homepage animated wipe advances and resizing to short static mode reveals the complete sample', async ({ page }) => {
+test('Homepage demo plays on its own and keeps its shape through a resize', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await installHubUxMock(page)
-  await page.goto('/#demo')
-  const tour = page.locator('.sl-xtour')
-  const panel = tour.locator('.pulse-landing-panel')
-  const chart = panel.locator('.pulse-sparkline-wrap svg')
-  await expect(tour).not.toHaveAttribute('data-static')
-  await expect(panel).toHaveAttribute('data-tour-active', '')
-  await scrollSceneToProgress(page, .005)
-  const earlierClip = await chart.evaluate(element => getComputedStyle(element).clipPath)
-  await scrollSceneToProgress(page, .18)
-  await expect.poll(() => chart.evaluate(element => getComputedStyle(element).clipPath)).not.toBe(earlierClip)
-  await page.setViewportSize({ width: 986, height: 676 })
-  await expect(tour).toHaveAttribute('data-static', '')
-  await expect(panel).not.toHaveAttribute('data-tour-active')
-  await assertStaticSampleChart(panel)
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.goto('/')
+  await page.locator('#demo .sl-container > div:nth-child(2)').scrollIntoViewIfNeeded()
+  const demo = page.locator('.es-demo')
+  const stage = demo.locator('.es')
+  await expect(stage).toBeVisible()
+  await expect(stage).toHaveAttribute('data-beat', '1', { timeout: 10_000 })
+  await expect(demo).toHaveAttribute('data-cap', 'beside')
+  await page.setViewportSize({ width: 860, height: 676 })
+  await expect.poll(() => stage.evaluate(element => {
+    const box = element.getBoundingClientRect()
+    return box.width < 860 && Math.abs(box.height - Math.round(box.width * 700 / 1120)) <= 1
+  })).toBe(true)
+  // At this width the caption no longer fits beside the column: it goes under the stage.
+  await expect(demo).toHaveAttribute('data-cap', 'below')
+  await expect(page.locator('.es-steps-cap')).toBeVisible()
   await assertNoPageOverflow(page)
-  await saveProof(panel.locator('[data-tour-step="1"]'), 'homepage-chart-after-animated-resize-986')
+  await saveProof(stage, 'homepage-demo-after-resize-860')
 })
 
 for (const width of [360, 390, 768, 1024, 1440]) {
@@ -267,20 +260,35 @@ for (const width of [360, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     await installHubUxMock(page)
     await page.goto('/analytics')
-    await expect(page.locator('.analytics-topnav')).toBeVisible()
-    // Only shown targets are measured: Add to Chrome hides at 720px and below, and below 720px
-    // the page links move into the Navigation menu, whose button takes their place on the bar.
-    const targets = await page.locator([
-      '.analytics-topnav__links a:visible',
-      '.analytics-topnav__install:visible',
-      '.analytics-topnav__more-trigger:visible',
-    ].join(', ')).all()
-    expect(targets.length).toBeGreaterThan(0)
-    for (const target of targets) {
+    const bar = page.locator('.analytics-topnav')
+    await expect(bar).toBeVisible()
+    // Below 720px the page links move into the menu and Add to Chrome hides,
+    // so only what is shown is measured: links, install, Discord, the menu button.
+    const trigger = bar.getByRole('button', { name: 'Navigation menu' })
+    await expect(trigger).toBeVisible()
+    const shown = await bar.locator('.analytics-topnav__links a:visible, .analytics-topnav__install:visible, .analytics-topnav__discord:visible').all()
+    // From 720px the three page links sit on the bar; below it they are hidden, not squeezed.
+    if (width < 720) await expect(bar.locator('.analytics-topnav__links')).toBeHidden()
+    else await expect(bar.locator('.analytics-topnav__links a:visible')).toHaveCount(3)
+    const expectTapTarget = async (target: Locator, name: string) => {
       const box = await target.boundingBox()
-      expect(box?.height).toBeGreaterThanOrEqual(44)
-      expect(box?.width).toBeGreaterThanOrEqual(44)
+      expect(box, name).not.toBeNull()
+      expect(box!.height, name).toBeGreaterThanOrEqual(44)
+      expect(box!.width, name).toBeGreaterThanOrEqual(44)
+      expect(box!.x, name).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width, name).toBeLessThanOrEqual(width + 1)
     }
+    for (const target of [...shown, trigger]) await expectTapTarget(target, (await target.textContent())?.trim() || 'header control')
+    await assertNoPageOverflow(page)
+    // The menu: at every width it holds the site information; on phones the page links too.
+    await trigger.click()
+    const menu = bar.locator('.analytics-topnav__more-links')
+    await expect(menu).toHaveAttribute('data-state', 'open')
+    await expect(menu).toHaveCSS('opacity', '1')
+    const menuLinks = await menu.locator('a:visible').all()
+    expect(menuLinks.length).toBeGreaterThanOrEqual(width < 720 ? 7 : 4)
+    for (const link of menuLinks) await expectTapTarget(link, `menu: ${(await link.textContent())?.trim()}`)
+    await expect(menu.getByRole('link', { name: 'Help', exact: true })).toHaveCount(width < 720 ? 1 : 0)
     await assertNoPageOverflow(page)
   })
 }
@@ -289,6 +297,9 @@ test('Top moments and Channels render while a legacy successful history reply aw
   let releaseRepair!: () => void
   const gate = new Promise<void>(resolve => { releaseRepair = resolve })
   await installHubUxMock(page, { ...TOP_MOMENT, legacySuccessfulCoarseFallback: true, recentHubGate: gate })
+  // a live card loads Twitch's live picture and then says "picture: stream now" (11-22); keep Twitch out of this test
+  // so the cards' words change only if the repair changes them
+  await page.route(/^https:\/\/static-cdn\.jtvnw\.net\/previews-ttv\//, (route) => route.abort())
   const repairRequested = page.waitForRequest(request => /\/v1\/public\/hub\?/.test(request.url()) && new URL(request.url()).searchParams.get('activityWindow') === '30m')
   await page.goto('/analytics')
   await repairRequested
@@ -296,7 +307,7 @@ test('Top moments and Channels render while a legacy successful history reply aw
     const chart = page.locator('.figma-global-activity__hub-chart')
     await expect(chart.getByText('Loading measured activity…', { exact: true })).toBeVisible()
     await expect(chart.locator('.spc-bar')).toHaveCount(0)
-    const rows = page.locator('#big-moments .hv5-bm-card')
+    const rows = page.locator('#top-moments .hv5-tm-list > .hv5-tm-it')
     await expect(rows.first()).toBeVisible()
     const momentsBefore = await rows.allTextContents()
     const count = page.locator('#channels [data-hv5-channel-count]')

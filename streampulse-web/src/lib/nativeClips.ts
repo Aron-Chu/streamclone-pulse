@@ -97,7 +97,8 @@ export interface NativeClipsQuery {
 
 const PAGE_BYTES = 512 * 1024
 const CLIP_ID = /^[A-Za-z0-9_-]{1,256}$/
-const THUMBNAIL_HOSTS = new Set(['static-cdn.jtvnw.net', 'clips-media-assets2.twitch.tv'])
+/** Where Twitch serves a clip's picture. */
+export const CLIP_THUMBNAIL_HOSTS: ReadonlySet<string> = new Set(['static-cdn.jtvnw.net', 'clips-media-assets2.twitch.tv'])
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -123,7 +124,7 @@ function clipUrl(raw: unknown, id: string): string | null {
 }
 
 /** An https picture on Twitch's image hosts, or ''. */
-function twitchImage(raw: unknown, hosts: ReadonlySet<string>): string {
+export function twitchImage(raw: unknown, hosts: ReadonlySet<string>): string {
   if (typeof raw !== 'string' || !raw || raw.length > 1024) return ''
   try {
     const u = new URL(raw)
@@ -154,7 +155,7 @@ export function toNativeClip(value: unknown): NativeClip | null {
   if (game === undefined || views === undefined || vod === undefined) return null
   return {
     id: value.id, url, title: value.title.trim() || 'Untitled clip',
-    thumbnailUrl: twitchImage(value.thumbnailUrl, THUMBNAIL_HOSTS), durationSeconds: value.durationSeconds, createdAt,
+    thumbnailUrl: twitchImage(value.thumbnailUrl, CLIP_THUMBNAIL_HOSTS), durationSeconds: value.durationSeconds, createdAt,
     channel: { id: channel.id, login: channel.login, displayName: channel.displayName || channel.login,
       profileImageUrl: twitchImage(channel.profileImageUrl, new Set(['static-cdn.jtvnw.net'])) },
     game, views, vod,

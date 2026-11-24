@@ -48,16 +48,16 @@ const states: State[] = [
   { ...billing('billing-cancellation-scheduled', 'active', 'Supporter active', 'Manage subscription', false), snapshot: { cancelAtPeriodEnd: true, cancellationScheduled: true } },
   { ...billing('billing-refunded', 'expired', 'Supporter ended', 'Billing history', false), snapshot: { refunded: true } },
   { ...billing('billing-invalid-provider-alias', 'canceled', 'Billing status is unavailable right now', 'Check again', false) },
-  { name: 'static-thanks', path: '/supporter/thanks?attempt=untrusted&success=1', heading: 'Return to your extension', primary: 'Help & support' },
-  { name: 'static-cancelled', path: '/supporter/thanks?cancelled=1', heading: 'Return to your extension', primary: 'Help & support' },
+  { name: 'static-thanks', path: '/supporter/thanks?attempt=untrusted&success=1', heading: 'Return to your extension', primary: 'Help' },
+  { name: 'static-cancelled', path: '/supporter/thanks?cancelled=1', heading: 'Return to your extension', primary: 'Help' },
   ...([
     ['ready', 'Restore your Supporter', 'Confirm restore'],
-    ['confirmed', 'Restore confirmed', 'Help & support'],
-    ['expired', 'This restore link is unavailable', 'Help & support'],
+    ['confirmed', 'Restore confirmed', 'Help'],
+    ['expired', 'This restore link is unavailable', 'Help'],
     ['conflict', 'These memberships cannot be combined', 'Contact billing support'],
     ['unavailable', 'Restore is unavailable right now', 'Try again'],
     ['429', 'Restore is unavailable right now', 'Try again'],
-    ['uncertain', 'Check your extension for the result', 'Help & support'],
+    ['uncertain', 'Check your extension for the result', 'Help'],
   ] as const).map(([kind, heading, primary]) => ({ name: `restore-${kind}`, path: `/account/restore#${SECRET}`, heading, primary, setup: `restore-${kind}` as State['setup'] })),
 ]
 

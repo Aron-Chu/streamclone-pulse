@@ -1,13 +1,15 @@
 /**
  * /analytics as the d3-v5 hub. Ported from the approved mockup (d3-v5
- * hub.html): the
- * search hero with the emote conveyor behind it (R5-15 at Soft), Busiest now,
- * the activity chart, Top moments today (D1, 10-30; a "Top today" peek under
- * the hero on phones), Your follows above Busiest now once the viewer shows
- * their Twitch follows (11-01), Chat's big moments as a stage of its rows (C1,
- * 11-01), Top emotes as the emote map (R5-13), Where chat is as
- * the ranked rack (R5-22), Channels and one "How this is measured" disclosure
- * on the d3 grid (one column on phones, the rail beside the page from 1536 px).
+ * hub.html), in H1's reading order (11-19), one answer per block: the search
+ * hero with the emote conveyor behind it (R5-15 at Soft), Your follows once the
+ * viewer shows their Twitch follows (11-01), Busiest now (who is hot; the
+ * featured stream's card folded into it), the Top emotes row, the activity chart
+ * and its bar card (when it spiked), Picking up now, Chat's big moments as a
+ * stage of its rows (C1, 11-01; the "Top today" peek under the hero left the
+ * page on 11-22: the carousel says the same), then the full lists: the emote
+ * map (R5-13), Where chat is (R5-22), Channels and one "How this is measured"
+ * disclosure, on the d3 grid (one column on phones, Picking up now beside the
+ * page from 1536 px).
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigationType, useSearchParams } from 'react-router-dom'
@@ -31,18 +33,21 @@ import { HubV5BigMoments } from '../../ui/components/hub/v5/HubV5BigMoments'
 import { HubV5Busiest } from '../../ui/components/hub/v5/HubV5Busiest'
 import { HubV5Channels } from '../../ui/components/hub/v5/HubV5Channels'
 import { HubV5EmoteMap } from '../../ui/components/hub/v5/HubV5EmoteMap'
+import { animatedFlagsFromKey, animatedFlagsKey } from '../../ui/components/hub/v5/hubV5EmoteMapModel'
+import { HubV5EmoteRow } from '../../ui/components/hub/v5/HubV5EmoteRow'
 import { HubV5Follows, HubV5FollowsButton } from '../../ui/components/hub/v5/HubV5Follows'
 import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
-import { HubV5MostChat, mostChatModel } from '../../ui/components/hub/v5/HubV5MostChat'
-import { HubV5PickingUp } from '../../ui/components/hub/v5/HubV5PickingUp'
+import { climbOnScreen, HubV5PickingUp } from '../../ui/components/hub/v5/HubV5PickingUp'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
-import { HubV5TopPeek, useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
+import { useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
 import { HubV5BarInstall, HubV5DockSearch } from '../../ui/components/hub/v5/HubV5TopBar'
 import { HubV5SearchContext, createHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
 import { useHubV5BusiestMoments } from '../../ui/components/hub/v5/useHubV5BusiestMoments'
 import { useHubV5LockWarmup } from '../../ui/components/hub/v5/useHubV5LockWarmup'
-import { HUB_BUSIEST_COUNT, hubCategoryArt, hubChatBasis, hubSavedAt, hubSearchEmotes, hubSearchGames, rankBusiest, whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
+import { hubCategoryArt, hubSavedAt, hubSearchEmotes, hubSearchGames, screenerDown, whereChatIs } from '../../ui/components/hub/v5/hubV5Model'
+import { feedClimbing } from '../../ui/components/hub/v5/hubV5FeedModel'
+import { conveyorShares, conveyorSpikes, emoteMapData } from '../../ui/components/hub/v5/hubV5EmoteMapModel'
 import { useHashScrollHold } from '../../ui/RouteScrollManager'
 import { StreamerChatStats } from '../../ui/components/StreamerChatStats'
 import '../../ui/components/analytics/figma-analytics.css'
@@ -249,7 +254,24 @@ export default function AnalyticsHubV5Page() {
   })
   const games = useMemo(() => whereChatIs(data.liveChannels, undefined, answerWindow), [data.liveChannels, answerWindow])
   const gameArt = useMemo(() => hubCategoryArt(data.livePulseMoments), [data.livePulseMoments])
-  // Top moments today and its phone peek stay in every state: the Moments list, a hub answer or a saved copy (never
+  // Climbing (11-21): the backend's surge picks from this answer, for the rail while Picking up can't tell and the
+  // "+93%" beside each in Channels; none on a saved copy, whose picks are no longer now.
+  const climbing = useMemo(() => {
+    if (!hubAnswered || savedAt != null) return { rows: [], asOf: null }
+    const asOf = Date.parse(data.generatedAt)
+    return { rows: feedClimbing(data), asOf: Number.isFinite(asOf) ? asOf : null }
+  }, [hubAnswered, savedAt, data])
+  // The hero conveyor's colour and card (the Mix, 11-22): this answer's live emote spikes (none on a saved copy, whose
+  // spikes are no longer now) and the emote map's own shares, read from the points and grid the map reads.
+  const conveyorSpikeMap = useMemo(
+    () => (hubAnswered && savedAt == null ? conveyorSpikes(data.livePulseMoments, data.liveChannels, nowMs) : undefined),
+    [hubAnswered, savedAt, data.livePulseMoments, data.liveChannels, nowMs],
+  )
+  const conveyorShareMap = useMemo(
+    () => conveyorShares(emoteMapData(chartActivity.points, emoteBucketMinutes)),
+    [chartActivity.points, emoteBucketMinutes],
+  )
+  // Top moments today stays in every state: the Moments list, a hub answer or a saved copy (never
   // totals only), waiting on any hub read under way, else unavailable. The list is read with each hub read, answered or not.
   // Under 10 hub rows, the busiest minutes in the locks' reads fill in (board 2A, 11-02).
   const busiest = useHubV5BusiestMoments(emoteIntervalWindow)
@@ -261,28 +283,19 @@ export default function AnalyticsHubV5Page() {
     nowMs,
     busiest,
   })
+  // Channels marks a climbing channel only while the rail lists it, never beside Picking up's own picks
+  const climbMarks = climbOnScreen(top, climbing, nowMs)
   const avatars = useMemo(() => {
     const map = new Map<string, string>()
     for (const c of data.liveChannels) if (c.profileImageUrl) map.set(c.login, c.profileImageUrl)
     return map
   }, [data.liveChannels])
-  // The featured stream (picks I1 and I1b, 10-30) shows on every hub answer that has a ready one: never on a saved copy
-  // or totals only, where Busiest now shows no rows. A failed later read keeps it, as Busiest now keeps its rows; the
-  // health banner above says the read failed. Its chat/min shows only beside a list on the same rate: Busiest now on
-  // recent averages, with the stream one of its rows (reviews 10-30: never beside the 5-minute counts, never a stream
-  // Busiest now leaves out). Its name and game come from the stream's live row, the one Busiest now shows when it lists
-  // the stream (pick 15B). While Busiest now holds its place for an answer, a grey block holds the card's (pick K1).
+  // While Busiest now holds its place for an answer, it waits. The featured stream's card under it is folded into it
+  // (H1, 11-19): the stream is one of its tiles, and its strongest moment is in Top moments today.
   const busiestWaiting = measurementsWaiting || (savedAt != null && !hubGaveUp)
-  const mostChatFeatured = hubAnswered ? data.featuredSession : null
-  const mostChatLogin = mostChatModel(data.featuredSession)?.login
-  const mostChatLive = useMemo(
-    () => (mostChatLogin ? data.liveChannels.find((c) => c.login.toLowerCase() === mostChatLogin) ?? null : null),
-    [data.liveChannels, mostChatLogin],
-  )
-  const mostChatRate = useMemo(() => {
-    if (!hubAnswered || hubChatBasis(data.liveChannels, answerWindow) !== 'avg_35') return false
-    return Boolean(mostChatLogin) && rankBusiest(data.liveChannels, HUB_BUSIEST_COUNT, 'avg_35').rows.some((row) => row.login.toLowerCase() === mostChatLogin)
-  }, [hubAnswered, data.liveChannels, mostChatLogin, answerWindow])
+  // A counts outage on a fresh answer (H1, 11-19): Busiest now says so once, and Where chat is, which ranks by the same
+  // counts, steps aside until they are back. Picking up now stays: its Climbing list is for that state (11-21).
+  const countsDown = hubAnswered && savedAt == null && screenerDown(data.liveChannels)
 
   // The game filter lives in the link (?game=, 3A), so the front page's search can open the hub on a game; any game a
   // live channel is counted in can be picked from the search, not only the rack's top 16.
@@ -324,6 +337,9 @@ export default function AnalyticsHubV5Page() {
   // What the search offers besides channels (3A): the games the filter can list and the emotes the map has.
   const searchGames = useMemo(() => hubSearchGames(games, gameArt), [games, gameArt])
   const searchEmotes = useMemo(() => hubSearchEmotes(chartActivity.points), [chartActivity.points])
+  // the hub's animated top emotes, one set while the flags stay the same: the conveyor asks 7TV for their stills
+  const animatedKey = useMemo(() => animatedFlagsKey(data.topEmotes), [data.topEmotes])
+  const animatedEmotes = useMemo(() => animatedFlagsFromKey(animatedKey), [animatedKey])
   // A picked emote is found on the map; ?emote= (from the front page's search) asks once, on open.
   const [emoteFind, setEmoteFind] = useState<{ name: string; n: number } | null>(() => {
     const name = searchParams.get('emote')
@@ -379,8 +395,8 @@ export default function AnalyticsHubV5Page() {
           />
           <HubBackendSourceBanner />
 
-          <div className="hub-v5 hub-d3" data-hub-v5-page="">
-            <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} foot={<HubV5FollowsButton />} games={searchGames} emotes={searchEmotes} waiting={measurementsWaiting} />
+          <div className="hub-v5 hub-d3" data-hub-v5-page="" data-counts-down={countsDown ? '' : undefined}>
+            <HubV5Hero live={data.liveChannels} poolSize={data.poolSize} points={data.activity.points} animated={animatedEmotes} foot={<HubV5FollowsButton />} games={searchGames} emotes={searchEmotes} waiting={measurementsWaiting} spikes={conveyorSpikeMap} shares={conveyorShareMap} />
             {/* Without scripts the cards never fill, so the prerendered page names the tracked channels for readers and
                 crawlers that do not run them. React renders a noscript's children only on the server. */}
             <noscript>
@@ -398,18 +414,19 @@ export default function AnalyticsHubV5Page() {
               poolSize={data.poolSize}
             />
 
-            <HubV5TopPeek top={top} nowMs={nowMs} />
-
             <HubV5Busiest
               live={savedAt != null ? EMPTY_PUBLIC_HUB.liveChannels : data.liveChannels}
               nowMs={nowMs}
               loading={busiestWaiting}
               unavailable={measurementsUnavailable || (savedAt != null && hubGaveUp)}
               windowKey={answerWindow}
+              countsDown={countsDown}
             />
 
-            {/* The featured stream (picks I1 and I1b, 10-30): its chat/min only while Busiest now ranks by the same recent average and lists it. */}
-            <HubV5MostChat featured={mostChatFeatured} showRate={mostChatRate} live={mostChatLive} avatars={avatars} waiting={busiestWaiting} />
+            {/* Which emotes, before the chart (H1, 11-19): a chip finds its emote on the emote map below. The row is the
+                answer's recent emote pool, not the chart's range: it names the window the backend stamps on that
+                pool, else "Recent window" (11-19). */}
+            <HubV5EmoteRow emotes={data.topEmotes} windowMinutes={data.emoteIntel.windowMinutes} loading={measurementsWaiting} unavailable={measurementsUnavailable} />
 
             <div id="activity" className="hv5-sec hv5-activity">
               {hub.error && measurementAvailable && ACTIVITY_WINDOW_MINUTES[activityWindow] !== (data.activity.requestedWindowMinutes ?? data.activity.windowMinutes) ? (
@@ -461,8 +478,9 @@ export default function AnalyticsHubV5Page() {
               />
             )}
 
-            {/* M1 (11-02): the rail is what is heating up now; the day's moments are the carousel below. */}
-            <HubV5PickingUp top={top} nowMs={nowMs} />
+            {/* M1 (11-02): the rail is what is heating up now; the day's moments are the carousel below. While the
+                5-minute counts are down it shows the backend's Climbing picks instead (11-21). */}
+            <HubV5PickingUp top={top} nowMs={nowMs} climbing={climbing} />
 
             <HubV5BigMoments top={top} nowMs={nowMs} />
 
@@ -480,7 +498,7 @@ export default function AnalyticsHubV5Page() {
               findRequest={emoteFind}
             />
 
-            <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={measurementsWaiting} unavailable={measurementsUnavailable} />
+            {countsDown ? null : <HubV5Rack games={games} game={game} onGame={setGame} art={gameArt} avatars={avatars} loading={measurementsWaiting} unavailable={measurementsUnavailable} />}
 
             <HubV5Channels
               ref={channelsRef}
@@ -493,6 +511,8 @@ export default function AnalyticsHubV5Page() {
               game={game}
               onClearGame={() => writeGame(null)}
               windowKey={answerWindow}
+              art={gameArt}
+              climbing={climbMarks}
             />
 
             <details id="measured" className="hv5-sec hv5-dis" ref={measuredRef}>

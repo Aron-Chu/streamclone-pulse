@@ -468,7 +468,7 @@ export function buildSessionBarStrip(args: {
       vodId, playAt, playVerb: 'Play VOD from',
       leadCaption: playAt == null ? null : { leadSeconds: VOD_LEAD_SECONDS, alignSeconds: align },
       open: playAt == null ? { href: buildTwitchVodUrl(vodId), label: 'Open full VOD' }
-        : { href: buildTwitchVodUrl(vodId, playAt), label: `Open VOD at ${formatStripClock(playAt)}` },
+        : { href: buildTwitchVodUrl(vodId, playAt), label: `Open on Twitch at ${formatStripClock(playAt)}` },
       message: playAt == null ? "This minute isn't in the VOD yet." : null,
       subjectVodStart: vodAt(lockedMoment.offsetSec) ?? null,
       frameVodOffset: frameMid(lockedMoment.offsetSec, lockedMoment.offsetSec + 60),
@@ -479,7 +479,7 @@ export function buildSessionBarStrip(args: {
     vod = {
       vodId, playAt: jump ?? null, playVerb: 'Play from', leadCaption: null,
       open: jump == null ? { href: buildTwitchVodUrl(vodId), label: 'Open full VOD' }
-        : { href: buildTwitchVodUrl(vodId, jump), label: `Open VOD at ${formatStripClock(jump)}` },
+        : { href: buildTwitchVodUrl(vodId, jump), label: `Open on Twitch at ${formatStripClock(jump)}` },
       message: jump == null ? "This minute isn't in the VOD yet." : null,
       subjectVodStart: jump ?? null,
       frameVodOffset: frameMid(span.startSec, end),

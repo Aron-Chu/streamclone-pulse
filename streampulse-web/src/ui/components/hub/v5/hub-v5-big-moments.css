@@ -3,37 +3,25 @@
  * index.html "carousel C1: stage"): HubV5BigMoments, above Top emotes. The
  * board's stage in hub tokens; no text under 12 px.
  *
- * Its grid row exists only while the section is on the page, as the featured
- * stream's does (hub-v5.css section 2b). These templates outrank hub-v5.css's
- * by specificity, so they hold whichever file the bundle puts first.
+ * Its grid row exists only while the section is on the page. These templates
+ * outrank hub-v5.css's by specificity, so they hold whichever file the bundle
+ * puts first.
  */
 .hv5-big { grid-area: big; margin-top: 32px; }
 /* after Picking up now and above Top emotes, as on phones; desktop takes that order too (B1, 11-11) */
 .hub-v5.hub-d3:has(> .hv5-big) {
-  grid-template-areas: "mast" "fol" "peek" "busy" "act" "intv" "rail" "big" "emo" "games" "chan" "meas";
+  grid-template-areas: "mast" "fol" "busy" "emr" "act" "intv" "rail" "big" "emo" "games" "chan" "meas";
 }
 @media (min-width: 720px) {
   .hub-v5.hub-d3:has(> .hv5-big) {
-    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
-  }
-}
-/* with the featured stream's row too */
-.hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
-  grid-template-areas: "mast" "fol" "peek" "busy" "most" "act" "intv" "rail" "big" "emo" "games" "chan" "meas";
-}
-@media (min-width: 720px) {
-  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
-    grid-template-areas: "mast mast" "fol fol" "peek peek" "busy busy" "most most" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "rail rail" "big big" "emo games" "chan chan" "meas meas";
   }
 }
 /* A1 (11-12): the two lists that follow each other, Picking up now and Top moments today, sit side by side; the order does not change.
    From 1200 px since W1 (11-13), as at 1440; up to 1535 px since L1 (11-16, below). */
 @media (min-width: 1200px) {
   .hub-v5.hub-d3:has(> .hv5-big) {
-    grid-template-areas: "mast mast" "fol fol" "peek busy" "act act" "intv intv" "rail big" "emo games" "chan chan" "meas meas";
-  }
-  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
-    grid-template-areas: "mast mast" "fol fol" "peek busy" "most most" "act act" "intv intv" "rail big" "emo games" "chan chan" "meas meas";
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "rail big" "emo games" "chan chan" "meas meas";
   }
   /* beside Top moments today, Picking up now fills its column (11-16) */
   .hub-v5.hub-d3:has(> .hv5-big) > .hv5-latest { max-width: none; }
@@ -42,10 +30,22 @@
    column on its own */
 @media (min-width: 1536px) {
   .hub-v5.hub-d3:has(> .hv5-big) {
-    grid-template-areas: "mast mast mast" "fol fol fol" "peek busy rail" "act act rail" "intv intv rail" "big big rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy rail" "emr emr rail" "act act rail" "intv intv rail" "big big rail" "emo games rail" "chan chan rail" "meas meas rail";
   }
-  .hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {
-    grid-template-areas: "mast mast mast" "fol fol fol" "peek busy rail" "most most rail" "act act rail" "intv intv rail" "big big rail" "emo games rail" "chan chan rail" "meas meas rail";
+}
+
+/* a counts outage (hub-v5.css): Where chat is steps aside, so Top emotes takes its whole row */
+.hub-v5.hub-d3[data-counts-down]:has(> .hv5-big) {
+  grid-template-areas: "mast" "fol" "busy" "emr" "act" "intv" "rail" "big" "emo" "chan" "meas";
+}
+@media (min-width: 720px) {
+  .hub-v5.hub-d3[data-counts-down]:has(> .hv5-big) {
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "rail rail" "big big" "emo emo" "chan chan" "meas meas";
+  }
+}
+@media (min-width: 1200px) {
+  .hub-v5.hub-d3[data-counts-down]:has(> .hv5-big) {
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "rail big" "emo emo" "chan chan" "meas meas";
   }
 }
 
@@ -102,8 +102,9 @@
 .hv5-bm-card[data-pos="-2"] { transform: translateX(-112%) scale(0.7); opacity: 0; z-index: 1; pointer-events: none; }
 .hv5-bm-card[data-pos="2"] { transform: translateX(112%) scale(0.7); opacity: 0; z-index: 1; pointer-events: none; }
 .hv5-bm-card[data-pos="far"] { transform: scale(0.6); opacity: 0; z-index: 0; pointer-events: none; }
-/* a live stream's picture behind the words, darkest under them */
-.hv5-bm-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.55; }
+/* a live stream's picture now behind the words, darkest under them; it shows once it proves live (data-ok) */
+.hv5-bm-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--sp-dur-move, 0.3s) ease; }
+.hv5-bm-bg[data-ok] { opacity: 0.55; }
 .hv5-bm-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgb(10 10 12 / 0.96) 0%, rgb(10 10 12 / 0.82) 46%, rgb(10 10 12 / 0.25) 100%); }
 .hv5-bm-body { position: relative; height: 100%; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
 
@@ -152,6 +153,8 @@
 
 .hv5-bm-foot { display: flex; align-items: center; gap: 10px; color: var(--sp-text-3); font-size: 12px; line-height: 16px; }
 .hv5-bm-t { white-space: nowrap; }
+/* the picture behind is the stream now, not the moment (11-22) */
+.hv5-bm-pn { color: var(--sp-text-2); }
 .hv5-bm-act { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-left: auto; }
 .hub-v5 .hv5-big .hv5-bm-act a { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 12px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
 /* the first step: the moment in Moments, as the rail's primary button */

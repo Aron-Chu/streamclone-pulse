@@ -14,9 +14,9 @@ const areas = (source: string, selector: string) =>
 const withoutBig = (rows: string[]) => rows.filter((r) => !r.split(' ').includes('big'))
 
 describe('Chat’s big moments in the hub’s grid (C1, 11-01)', () => {
+  // the featured stream's card and its grid variants left the page with H1 (11-19)
   for (const [name, theirs, mine] of [
-    ['without the featured stream', '.hub-v5.hub-d3', '.hub-v5.hub-d3:has(> .hv5-big)'],
-    ['with the featured stream', '.hub-v5.hub-d3:has(> .hv5-most)', '.hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big)'],
+    ['on the hub grid', '.hub-v5.hub-d3', '.hub-v5.hub-d3:has(> .hv5-big)'],
   ] as const) {
     it(`adds only its row above Top emotes at every width, ${name}`, () => {
       const before = areas(hub, theirs)
@@ -35,11 +35,13 @@ describe('Chat’s big moments in the hub’s grid (C1, 11-01)', () => {
       })
       const wide = after[1]!
       expect(wide.slice(wide.indexOf('big big'), wide.indexOf('big big') + 2)).toEqual(['big big', 'emo games'])
-      // from 1440 px Picking up now and Chat's big moments share a row; every other row keeps its place
+      // from 1200 px Picking up now and Chat's big moments share a row; every other row keeps its place, and Busiest now
+      // runs across with no Top today beside it (2B, 11-22)
       const paired = all[2]!
       expect(paired).toContain('rail big')
-      expect(paired).toContain('peek busy')
-      expect(paired.filter((r) => r !== 'rail big' && r !== 'peek busy')).toEqual(wide.filter((r) => !['big big', 'rail rail', 'peek peek', 'busy busy'].includes(r)))
+      expect(paired).toContain('busy busy')
+      expect(paired.some((r) => r.split(' ').includes('peek'))).toBe(false)
+      expect(paired.filter((r) => r !== 'rail big')).toEqual(wide.filter((r) => !['big big', 'rail rail'].includes(r)))
       // from 1536 px Picking up now is the right column (L1, 11-16), so Chat's big moments spans the main column under the
       // chart, above Top emotes; every other row is hub-v5.css's
       const column = all[3]!
@@ -51,18 +53,20 @@ describe('Chat’s big moments in the hub’s grid (C1, 11-01)', () => {
   }
 
   it('outranks hub-v5.css’s templates whichever file the bundle puts first', () => {
-    // (0,3,0) beats the bare grid's (0,2,0); with both rows, (0,4,0) beats the featured stream's (0,3,0)
+    // (0,3,0) beats the bare grid's (0,2,0); in a counts outage, (0,4,0) beats hub-v5.css's (0,3,0)
     expect(css).toContain('.hub-v5.hub-d3:has(> .hv5-big) {')
-    expect(css).toContain('.hub-v5.hub-d3:has(> .hv5-most):has(> .hv5-big) {')
+    expect(css).toContain('.hub-v5.hub-d3[data-counts-down]:has(> .hv5-big) {')
+    expect(css).not.toContain('hv5-most')
     expect(hub).not.toContain('hv5-big')
   })
 })
 
 describe('Picking up now’s column from 1536 px (L1, 11-16)', () => {
   it('runs from Busiest now down in a 380 px third column, and stays in view while the page scrolls', () => {
-    for (const selector of ['.hub-v5.hub-d3', '.hub-v5.hub-d3:has(> .hv5-most)']) {
+    for (const selector of ['.hub-v5.hub-d3']) {
       const rows = areas(hub, selector)[3]!
-      const at = rows.indexOf('peek busy rail')
+      // Busiest now spans the main column beside it; Top today is off the page (2B, 11-22)
+      const at = rows.indexOf('busy busy rail')
       expect(rows.slice(0, at)).toEqual(['mast mast mast', 'fol fol fol'])
       expect(rows.slice(at).every((r) => r.endsWith(' rail') && r.split(' ').length === 3)).toBe(true)
     }

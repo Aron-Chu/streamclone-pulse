@@ -543,7 +543,11 @@ export default function Privacy() {
             StreamPulse a notification with your Twitch user ID, which StreamPulse uses only to sign
             that account out everywhere and does not store. Show my Twitch follows sends your browser
             to Twitch's sign-in page and reads your follows from Twitch's API with the token Twitch
-            gave the tab; StreamPulse's servers are not involved.
+            gave the tab; StreamPulse's servers are not involved. On a session page, picking a minute
+            on a larger screen with a mouse or trackpad loads Twitch's player from Twitch, paused,
+            unless data saver is on. Otherwise it loads only when you press Play. On the front page, pointing
+            at a chat on a larger screen with a mouse or trackpad loads that channel's chat from Twitch,
+            unless data saver is on.
             {supporterChatBadgesEnabled() ? <> {PRIVACY_TWITCH_THIRD_PARTY_SEEN_IN_CHAT}</> : null}
           </li>
           <li>
@@ -668,7 +672,7 @@ export default function Privacy() {
         <p data-testid="privacy-contact">
           For privacy or legal questions, email{' '}
           <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> or visit the{' '}
-          <Link to="/support">support page</Link>. That mailbox is privacy, legal and billing only —
+          <Link to="/help">Help page</Link>. That mailbox is privacy, legal and billing only —
           not routine product support.
         </p>
         <p>Aron answers billing, cancellation and refund requests within 7 days.</p>

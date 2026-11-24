@@ -5,9 +5,11 @@
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createServer, loadConfigFromFile } from 'vite'
+import { createServer, loadConfigFromFile, loadEnv } from 'vite'
 import { readPilot, writeRuntimeManifests, renderRecapDocument, recapRedirects, sitemapWithRecaps } from './recap-pilot.mjs'
 import { sitemapWithStatedDates, statedUpdateDate } from './sitemap-lastmod.mjs'
+import { accountMomentsOn, accountRedirects } from './account-redirects.mjs'
+import { momentPageRedirects } from './moment-page-redirects.mjs'
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -24,12 +26,13 @@ const analyticsCriticalStyles = readdirSync(join(dist, 'assets'))
 // preloads its own chunks, so they download beside the entry, not after it.
 const manifest = JSON.parse(readFileSync(join(dist, '.vite', 'manifest.json'), 'utf8'))
 const publicPageSources = {
-  'tools/twitch-vod-timestamp-link': 'TwitchTimestampTool',
+  '': 'Landing',
+  'tools/twitch-vod-timestamp-link': 'TwitchVodTimestampsGuide',
   'guides/find-twitch-moments': 'FindTwitchMomentsGuide',
   'guides/twitch-vod-timestamps': 'TwitchVodTimestampsGuide',
-  docs: 'Docs', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds', withdraw: 'Withdraw',
-  supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Support',
-  feedback: 'Feedback', discord: 'Discord', changelog: 'Changelog', recaps: 'Recaps',
+  help: 'Help', docs: 'Help', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds', withdraw: 'Withdraw',
+  supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Help',
+  feedback: 'Help', discord: 'Discord', changelog: 'Changelog', recaps: 'Recaps',
 }
 function chunkFiles(key, files = new Set()) {
   const chunk = manifest[key]
@@ -49,19 +52,49 @@ function chunkStyles(key, styles = new Set(), seen = new Set()) {
   return styles
 }
 const entryStyles = chunkStyles('index.html')
-function pagePreloads(path) {
-  // The hub's first render is prerendered too (src/prerender.tsx), so its styles load with the document, not after it.
-  const source = path === 'analytics' ? 'src/routes/analytics/AnalyticsHubV5Page.tsx'
-    : publicPageSources[path] ? `src/routes/public/${publicPageSources[path]}.tsx` : null
-  if (!source) return ''
-  const styles = path === 'analytics'
-    ? [...chunkStyles(source)].filter(file => !entryStyles.has(file) && !analyticsCriticalStyles.includes(`/${file}"`))
-      .map(file => `<link rel="stylesheet" crossorigin href="/${file}">`)
-    : []
-  return [...styles, ...[...chunkFiles(source)]
-    .filter(file => !entryChunks.has(file))
-    .map(file => `<link rel="modulepreload" crossorigin href="/${file}">`)]
-    .join('\n    ')
+function pageSource(path) {
+  return path === 'analytics' ? 'src/routes/analytics/AnalyticsHubV5Page.tsx'
+    : publicPageSources[path] != null ? `src/routes/public/${publicPageSources[path]}.tsx` : null
+}
+/**
+ * The page's own chunks, beside the entry. Its styles that are not in the
+ * first stylesheet come with the document too, so a prerendered page (the hub,
+ * the home page) paints styled; Vite's loader finds them there and adds none.
+ */
+function pagePreloads(sources, { styles: withStyles = true } = {}) {
+  const styles = new Set()
+  const scripts = new Set()
+  for (const source of sources) {
+    if (withStyles) for (const file of chunkStyles(source)) styles.add(file)
+    for (const file of chunkFiles(source)) scripts.add(file)
+  }
+  return [
+    ...[...styles].filter(file => !entryStyles.has(file) && !analyticsCriticalStyles.includes(`/${file}"`))
+      .map(file => `<link rel="stylesheet" crossorigin href="/${file}">`),
+    ...[...scripts].filter(file => !entryChunks.has(file)).map(file => `<link rel="modulepreload" crossorigin href="/${file}">`),
+  ].join('\n    ')
+}
+// Stream and channel pages: their document preloads the console's code, so it
+// downloads beside the entry instead of after the first render asks for it.
+// That includes what the console view imports on demand (one level): when the
+// console package loads through import(), it is a dynamic import of the view,
+// which the static walk above does not follow.
+// Scripts only: the loading shell paints with the analytics styles it already has.
+const consoleView = 'src/routes/analytics/ConsoleChannelView.tsx'
+const consolePreloads = pagePreloads(['src/routes/analytics/ChannelAnalyticsPage.tsx', consoleView,
+  ...(manifest[consoleView]?.dynamicImports ?? [])], { styles: false })
+// Hub and stream pages show Twitch and 7TV pictures; open those connections
+// with the document. No crossorigin: the pictures load as plain images.
+const imagePreconnects = ['https://static-cdn.jtvnw.net', 'https://cdn.7tv.app']
+  .map(href => `<link rel="preconnect" href="${href}" />`).join('\n    ')
+// Pictures a prerendered page imports render with their source paths on the
+// server; the document must name the files the build emitted.
+function builtAssetPaths(markup) {
+  return markup.replace(/(?<=["'(\s,])\/src\/[^"'\s)?#,]+/g, (path) => {
+    const file = manifest[path.slice(1)]?.file
+    if (!file) throw new Error(`prerender: no built asset for ${path}`)
+    return `/${file}`
+  })
 }
 // Reuse the Vite source aliases/shims; no second page copy and no browser/network fetch.
 const loaded = await loadConfigFromFile({ command: 'serve', mode: 'production' }, undefined, root)
@@ -69,8 +102,25 @@ if (!loaded) throw new Error('Missing Vite configuration for public prerender')
 const nativePackages = ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query', 'zustand']
 const aliases = Object.fromEntries(Object.entries(loaded.config.resolve?.alias ?? {})
   .filter(([name]) => !nativePackages.includes(name)))
+// The account documents' card: the route fallback's account variant, rendered
+// in the same module graph as the public pages so React and the router match.
+const accountShellId = 'virtual:streampulse-account-shell'
+const accountShellPlugin = {
+  name: 'streampulse-prerender-account-shell',
+  resolveId: (id) => (id === accountShellId ? `\0${accountShellId}` : undefined),
+  load: (id) => (id === `\0${accountShellId}` ? [
+    "import { createElement } from 'react'",
+    "import { renderToString } from 'react-dom/server'",
+    "import { StaticRouter } from 'react-router-dom'",
+    "import { AnalyticsRouteFallback } from '/src/routes/AnalyticsRouteFallback.tsx'",
+    'export function renderAccountShell(location) {',
+    "  return renderToString(createElement(StaticRouter, { location }, createElement(AnalyticsRouteFallback, { variant: 'account' })))",
+    '}',
+  ].join('\n') : undefined),
+}
 const server = await createServer({
   ...loaded.config, configFile: false, root, mode: 'production',
+  plugins: [...(loaded.config.plugins ?? []), accountShellPlugin],
   // This middleware server must not rewrite a running dev server's optimizer
   // metadata. Concurrent builds otherwise invalidate already-served imports.
   cacheDir: join(root, 'node_modules/.cache/streampulse-prerender'),
@@ -79,17 +129,29 @@ const server = await createServer({
   optimizeDeps: { noDiscovery: true, include: [] },
   server: { middlewareMode: true, watch: null }, appType: 'custom',
 })
-let prerenderPublicPage, GROWTH_PAGES, GITHUB_REPO_URL
+let prerenderPublicPage, GROWTH_PAGES, GITHUB_REPO_URL, renderAccountShell, resolvePageMetadata
 try {
   ;({ prerenderPublicPage, GROWTH_PAGES } = await server.ssrLoadModule('/src/prerender.tsx'))
   ;({ GITHUB_REPO_URL } = await server.ssrLoadModule('/src/lib/externalLinks.ts'))
+  ;({ renderAccountShell } = await server.ssrLoadModule(accountShellId))
+  ;({ resolvePageMetadata } = await server.ssrLoadModule('/src/lib/pageMetadata.ts'))
 } catch (error) {
   await server.close()
   throw error
 }
 
+// The help pages that became sections of /help, and the timestamp builder's old
+// address. Each still answers, since the extension and other sites link them,
+// and opens the new page; search is pointed there and they stay out of the sitemap.
+const helpPage = {
+  title: 'Help — StreamPulse',
+  description: 'Install the free StreamPulse extension, fix common problems, or ask us on Discord, on GitHub or with the private feedback form.',
+  canonicalPath: '/help',
+}
+const timestampGuide = GROWTH_PAGES.find((page) => page.path === 'guides/twitch-vod-timestamps')
 const routes = [
   ...GROWTH_PAGES,
+  { ...timestampGuide, path: 'tools/twitch-vod-timestamp-link', robots: 'noindex,nofollow' },
   {
     path: 'supporter/thanks',
     title: 'Return to your extension — StreamPulse',
@@ -118,13 +180,8 @@ const routes = [
     canonicalPath: '/analytics',
     robots: 'index,follow',
   },
-  {
-    path: 'docs',
-    title: 'Documentation — StreamPulse',
-    description: 'Install the free StreamPulse extension for Chrome, Edge or Firefox, explore the Hub’s public Twitch chat stats, and read what each coverage state means.',
-    canonicalPath: '/docs',
-    robots: 'index,follow',
-  },
+  { path: 'help', ...helpPage, robots: 'index,follow' },
+  { path: 'docs', ...helpPage, robots: 'noindex,nofollow' },
   {
     path: 'status',
     title: 'Service Status — StreamPulse',
@@ -169,22 +226,9 @@ const routes = [
     canonicalPath: '/supporter',
     robots: 'index,follow',
   },
-  {
-    path: 'support',
-    title: 'Support — StreamPulse',
-    description: 'Troubleshoot the StreamPulse Twitch extension and public analytics portal.',
-    canonicalPath: '/support',
-    robots: 'index,follow',
-  },
-  {
-    // The private feedback form. /support links here and the extension's
-    // "Send feedback" opens it.
-    path: 'feedback',
-    title: 'Send Feedback — StreamPulse',
-    description: 'Spotted a problem or have an idea? Send private feedback about the StreamPulse extension or website. No account needed, and nothing is posted publicly.',
-    canonicalPath: '/feedback',
-    robots: 'index,follow',
-  },
+  // The extension's "Send feedback" opens /feedback, and its billing help opens /support.
+  { path: 'support', ...helpPage, robots: 'noindex,nofollow' },
+  { path: 'feedback', ...helpPage, robots: 'noindex,nofollow' },
   {
     // The extension's "Join Discord" opens this page. It only forwards to the
     // build-time invite (or says there is none), so it stays out of search and
@@ -203,6 +247,15 @@ const routes = [
     description: 'What changed in each version of the StreamPulse extension.',
     canonicalPath: '/changelog',
     robots: 'index,follow',
+  },
+  {
+    // The extension's BrainChat card links here. BrainChat is not out, so the
+    // page stays out of search and out of public/sitemap.xml until it is.
+    path: 'brainchat',
+    title: 'BrainChat — StreamPulse',
+    description: 'BrainChat reads Twitch chat around a moment and says what it was about. Coming later.',
+    canonicalPath: '/brainchat',
+    robots: 'noindex,nofollow',
   },
   {
     path: 'setup',
@@ -261,11 +314,19 @@ function renderShell(metadata) {
   // null for the 404, which is not a page of its own.
   const canonical = metadata.canonicalPath == null ? null : new URL(metadata.canonicalPath, origin).toString()
   let html = indexHtml.replace(/<title>[\s\S]*?<\/title>/i, `<title>${metadata.title}</title>`)
+  if (metadata.path === 'analytics') {
+    const apiPreconnect = /<link rel="preconnect" href="https:\/\/api\.streampulse\.stream" crossorigin \/>/
+    html = apiPreconnect.test(html)
+      ? html.replace(apiPreconnect, (tag) => `${tag}\n    ${imagePreconnects}`)
+      : html.replace('</head>', `    ${imagePreconnects}\n  </head>`)
+  }
   if (metadata.path === 'analytics' && analyticsCriticalStyles) {
     html = html.replace('</head>', `    ${analyticsCriticalStyles}\n  </head>`)
   }
-  // Stream, channel and recap documents render the loading shell, not the hub (rootPath below).
-  const preloads = metadata.rootPath ? '' : pagePreloads(metadata.path)
+  // Stream, channel, recap and account documents render a loading shell, not
+  // the page (rootPath, markup below), and name their own preloads.
+  const source = pageSource(metadata.path)
+  const preloads = metadata.preloads ?? (metadata.rootPath || !source ? '' : pagePreloads([source]))
   if (preloads) html = html.replace('</head>', `    ${preloads}\n  </head>`)
   html = upsertMeta(html, 'name', 'description', metadata.description)
   html = upsertMeta(html, 'name', 'robots', metadata.robots)
@@ -318,7 +379,7 @@ function renderShell(metadata) {
     }
   }
   const path = metadata.rootPath ?? (metadata.path == null ? '/404' : `/${metadata.path}`)
-  const markup = `<div id="root" data-prerendered>${prerenderPublicPage(path)}</div>`
+  const markup = `<div id="root" data-prerendered>${builtAssetPaths(metadata.markup ?? prerenderPublicPage(path))}</div>`
   const boundary = /<!--public-root:start-->[\s\S]*?<!--public-root:end-->/
   if (!boundary.test(html)) throw new Error('Missing public root markers: run Vite build before prerender')
   return html.replace(boundary, () => `<!--public-root:start-->${markup}<!--public-root:end-->`)
@@ -371,13 +432,66 @@ mkdirSync(join(dist, 'analytics-fallback'), { recursive: true })
 writeFileSync(join(dist, 'analytics-fallback', 'index.html'), fallback)
 writeFileSync(join(dist, 'analytics-fallback.html'), fallback)
 
+// Stream and channel pages (public/_redirects): the same loading shell, with
+// the console's code preloaded. Moments, explore and recap pages keep the one above.
+const consoleFallback = renderShell({ path: 'analytics', rootPath: '/analytics-fallback', preloads: consolePreloads,
+  title: 'StreamPulse Analytics', description: 'Explore tracked Twitch streams. Coverage and replay availability load with the data.',
+  canonicalPath: '/analytics-console-fallback', robots: 'noindex,nofollow' })
+mkdirSync(join(dist, 'analytics-console-fallback'), { recursive: true })
+writeFileSync(join(dist, 'analytics-console-fallback', 'index.html'), consoleFallback)
+writeFileSync(join(dist, 'analytics-console-fallback.html'), consoleFallback)
+
+// Checked at build time, because CI runs the unit tests before it builds and
+// scripts/prerender-preloads.test.mjs never sees a fresh dist there. The
+// console fallback preloads the console view, all it imports and what it
+// imports on demand; the plain fallback preloads none of it.
+{
+  const preloaded = (html) => new Set([...html.slice(0, html.indexOf('</head>'))
+    .matchAll(/<link rel="modulepreload"[^>]*\shref="\/([^"]+)"/g)].map(match => match[1]))
+  const view = manifest[consoleView]
+  const consoleCode = new Set()
+  for (const key of view ? [consoleView, ...(view.dynamicImports ?? [])] : []) {
+    for (const file of chunkFiles(key)) if (!entryChunks.has(file)) consoleCode.add(file)
+  }
+  const inConsole = preloaded(consoleFallback)
+  const inPlain = preloaded(fallback)
+  const missing = view ? [...consoleCode].filter(file => !inConsole.has(file)) : [consoleView]
+  const leaked = [...consoleCode].filter(file => inPlain.has(file))
+  if (!view || !inConsole.has(view.file) || missing.length || leaked.length) {
+    await server.close()
+    throw new Error(`prerender: the console fallback must preload the console's code and the plain fallback must not (missing: ${missing.join(', ') || 'none'}; in the plain fallback: ${leaked.join(', ') || 'none'})`)
+  }
+}
+
+// Each account address (public/_redirects) opens on the account card, with its
+// page's code preloaded and its own title; noindex, and no account data.
+const accountShells = {
+  'sign-in': 'AccountPage', confirm: 'AccountPage', 'link-device': 'AccountPage',
+  settings: 'AccountSettings', restore: 'AccountRestore', billing: 'BillingPage', 'billing/return': 'BillingPage',
+}
+for (const [slug, page] of Object.entries(accountShells)) {
+  const location = `/account/${slug}`
+  const metadata = resolvePageMetadata(location)
+  const html = renderShell({ ...metadata, path: `account-fallback/${slug}`, robots: 'noindex,nofollow',
+    preloads: pagePreloads([`src/routes/account/${page}.tsx`]), markup: renderAccountShell(location) })
+  mkdirSync(join(dist, 'account-fallback', slug), { recursive: true })
+  writeFileSync(join(dist, 'account-fallback', slug, 'index.html'), html)
+  // Vite preview serves /account/<slug> from here; Pages takes the rewrite first.
+  mkdirSync(dirname(join(dist, `${location.slice(1)}.html`)), { recursive: true })
+  writeFileSync(join(dist, `${location.slice(1)}.html`), html)
+}
+
 for (const page of pilotPages) {
   const html = renderRecapDocument(renderShell({ ...routes.find(route => route.path === 'analytics'), rootPath: '/analytics-fallback' }), page, pilotPages)
   const asset = join(dist, '_recap-pages', page.login, ...(page.kind === 'stream' ? [page.streamId] : []))
   mkdirSync(asset, { recursive: true })
   writeFileSync(join(asset, 'index.html'), html)
 }
-writeFileSync(join(dist, '_redirects'), slashRedirects(recapRedirects(readFileSync(join(root, 'public', '_redirects'), 'utf8'), pilotPages), routes.map((route) => route.path).filter(Boolean)))
+// A Moment's own page keeps its rewrite lines only in a build with its switch on (the env vite build read).
+const buildEnv = { ...process.env, ...loadEnv('production', root, ['VITE_']) }
+// Bare /account then follows the My Moments switch this build read (scripts/account-redirects.mjs).
+const redirects = accountRedirects(momentPageRedirects(readFileSync(join(root, 'public', '_redirects'), 'utf8'), buildEnv), accountMomentsOn(loadEnv('production', root, ['VITE_'])))
+writeFileSync(join(dist, '_redirects'), slashRedirects(recapRedirects(redirects, pilotPages), routes.map((route) => route.path).filter(Boolean)))
 writeFileSync(join(dist, 'sitemap.xml'), sitemapWithStatedDates(sitemapWithRecaps(readFileSync(join(root, 'public', 'sitemap.xml'), 'utf8'), pilotPages), statedDates))
 
 await server.close()

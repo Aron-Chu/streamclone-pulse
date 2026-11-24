@@ -148,6 +148,26 @@ function hydrateFromCache(activityWindow: PublicHubActivityWindow, projection?: 
   }
 }
 
+/** A saved copy whose window and last closed interval have not moved is rewritten no sooner than this. */
+export const PUBLIC_HUB_PERSIST_REFRESH_MS = 5 * 60_000
+
+/**
+ * The window a poll answered for and where its chart stands: the points'
+ * count, first t and last closed t, and the answer's source. Equal for two
+ * polls of the same closed buckets, whatever the live edge does.
+ */
+function persistSignature(activityWindow: PublicHubActivityWindow, hub: PublicHub, projection?: PublicHubProjection): string {
+  const a = hub.activity
+  let first = Infinity
+  let lastClosed = -Infinity
+  for (const point of a.points) {
+    if (!point || !Number.isFinite(point.t)) continue
+    if (point.t < first) first = point.t
+    if (point.bucketComplete !== false && point.t > lastClosed) lastClosed = point.t
+  }
+  return [activityWindow, projection ?? '', a.points.length, first, lastClosed, a.source ?? '', a.reason ?? '', a.servedWindowMinutes ?? ''].join('|')
+}
+
 function persistSuccessfulHub(activityWindow: PublicHubActivityWindow, hub: PublicHub, projection?: PublicHubProjection, dataAsOf?: number | null) {
   // Idle time, never mid-gesture; the projection is computed once per
   // snapshot (plan §2.6).
@@ -279,6 +299,7 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   // Ends retryBlocked when the server's pause ends, whether or not a read runs then.
   const unblockTimerRef = useRef<number>()
   const pendingPersistRef = useRef<{ hub: PublicHub; activityWindow: PublicHubActivityWindow; projection?: PublicHubProjection; dataAsOf: number | null } | null>(null)
+  const lastPersistRef = useRef<{ sig: string; at: number } | null>(null)
   const randomRef = useRef(random)
   randomRef.current = random
 
@@ -613,10 +634,18 @@ export function usePublicHubData(options: UsePublicHubOptions = {}): PublicHubSt
   // Persist only a snapshot the page has committed: a render crash above this
   // hook never commits one. A crash that does commit (in an effect, or below a
   // nested boundary) is discarded by the error boundary that catches it.
+  // A poll that repeats the saved window and its last closed interval is not
+  // prepared or written again; the copy is refreshed at least every few minutes.
   useEffect(() => {
     const pending = pendingPersistRef.current
     if (!pending) return
     pendingPersistRef.current = null
+    const sig = persistSignature(pending.activityWindow, pending.hub, pending.projection)
+    const last = lastPersistRef.current
+    const now = Date.now()
+    // A projection (no chart of its own, small) is written every time, so its moments stay current.
+    if (!pending.projection && last && last.sig === sig && now - last.at >= 0 && now - last.at < PUBLIC_HUB_PERSIST_REFRESH_MS) return
+    lastPersistRef.current = { sig, at: now }
     persistSuccessfulHub(pending.activityWindow, pending.hub, pending.projection, pending.dataAsOf)
   }, [pollSequence])
 

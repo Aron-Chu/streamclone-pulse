@@ -19,7 +19,7 @@ import { HubToggletip } from '../d3/HubToggletip'
 import { BusiestTile } from './HubV5Busiest'
 import { HubV5Icon } from './HubV5Icon'
 import { FOLLOWS_START_TIP, followsMeta, followsTip, rankFollows, type HubFollowsSet } from './hubV5FollowsModel'
-import { busiestCue, busiestShowsPictures, formatHubInt, hubChatBasis, hubClock } from './hubV5Model'
+import { busiestCue, formatHubInt, hubChatBasis, hubClock } from './hubV5Model'
 import { useHubStrip } from './useHubStrip'
 
 const H_ID = 'hv5-fol-h'
@@ -154,7 +154,6 @@ export function HubV5Follows(props: RowProps) {
 
 function FollowsRow({ follows, set, live, nowMs, loading = false, unavailable = false, poolSize }: RowProps & { follows: TwitchFollows; set: HubFollowsSet }) {
   const cue = busiestCue(set, nowMs)
-  const pictures = busiestShowsPictures(set, cue)
   const rows = set.rows
   const N = rows.length
   const { trackRef, pos, prevOff, nextOff, more, rove, page, onTrackKeyDown } = useHubStrip(N, rows.map((row) => row.login).join(' '))
@@ -205,7 +204,7 @@ function FollowsRow({ follows, set, live, nowMs, loading = false, unavailable = 
           <ol ref={trackRef} id={TRACK_ID} className="hv5-bzc-track" aria-labelledby={H_ID} onKeyDown={onTrackKeyDown}>
             {rows.map((row, i) => (
               <li key={row.login} className="hv5-bzc-it" data-login={row.login}>
-                <BusiestTile row={row} total={N} tab={i === rove} pictures={pictures} nowMs={nowMs} />
+                <BusiestTile row={row} total={N} tab={i === rove} nowMs={nowMs} />
               </li>
             ))}
           </ol>

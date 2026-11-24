@@ -4,10 +4,10 @@ import { createPortal } from 'react-dom'
 import { Menu, X } from 'lucide-react'
 import { buttonClass } from '../../primitives'
 import { capturePublicCta } from '../../../lib/productAnalytics'
+import { SITE_NAV_ITEMS } from '../../../lib/siteNav'
 
 type LandingMobileNavProps = {
   analyticsHref?: string
-  docsHref?: string
 }
 
 /**
@@ -16,7 +16,6 @@ type LandingMobileNavProps = {
  */
 export function LandingMobileNav({
   analyticsHref = '/analytics',
-  docsHref = '/docs',
 }: LandingMobileNavProps) {
   const [open, setOpen] = useState(false)
   const titleId = useId()
@@ -100,15 +99,12 @@ export function LandingMobileNav({
               <X size={18} aria-hidden="true" /> Close menu
             </button>
             <nav className="sl-mobile-nav__links" aria-label="Mobile">
-              <a href="#demo" onClick={() => setOpen(false)}>
-                Pulse tab
-              </a>
-              <Link to={docsHref} onClick={() => setOpen(false)}>
-                Docs
-              </Link>
-              <Link to="/status" onClick={() => setOpen(false)}>Status</Link>
-              <Link to="/support" onClick={() => setOpen(false)}>Support</Link>
-              <Link to="/privacy" onClick={() => setOpen(false)}>Privacy</Link>
+              {SITE_NAV_ITEMS.map((item) => (
+                <Link key={item.to} to={item.to}
+                  onClick={() => { if (item.to === '/analytics') capturePublicCta('open_analytics'); setOpen(false) }}>
+                  {item.label}
+                </Link>
+              ))}
               <Link
                 to={analyticsHref}
                 className={buttonClass('default', 'sm')}

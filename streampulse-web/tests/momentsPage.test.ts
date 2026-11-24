@@ -63,6 +63,14 @@ describe('the games row', () => {
     expect(games.find(game => game.name === 'Apex')?.art).toBeNull()
   })
 
+  it('names the streams playing each game, where the shared cover lookup reads a cover the feed did not send', () => {
+    const games = momentsGames([
+      { category: 'QSMP', streamId: 's1' }, { category: 'QSMP', streamId: 's2' }, { category: 'QSMP', streamId: 's1' }, { category: 'Music' },
+    ] as DiscoveryMoment[])
+    expect(games.find(game => game.name === 'QSMP')?.streamIds).toEqual(['s1', 's2'])
+    expect(games.find(game => game.name === 'Music')?.streamIds).toEqual([])
+  })
+
   it('names a game from the hub’s id link', () => {
     expect(momentsGameName('27471', rows)).toBe('Minecraft')
     expect(momentsGameName('1', rows)).toBeNull()

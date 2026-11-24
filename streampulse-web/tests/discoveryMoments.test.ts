@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { request } = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('../src/lib/apiClient', () => ({ apiClient: request }))
-import { checkMomentSource, discoveryMomentHref, fromHubMoment, fromNewsroomUpdate, uniqueDiscoveryMoments } from '../src/lib/discoveryMoments'
+import { checkMomentSource, discoveryMomentHref, fromHubMoment, fromNewsroomUpdate, momentSourceFromAnswer, uniqueDiscoveryMoments } from '../src/lib/discoveryMoments'
 import type { NewsroomStory, NewsroomUpdate } from '../src/lib/newsroom'
 import portalTimingFixture from './fixtures/portal_vod_timing_v1.json'
 
@@ -181,5 +181,44 @@ describe('discovery identity and source actions', () => {
     const startedAt = new Date(Date.now() - 300_000).toISOString()
     request.mockResolvedValue({ data: { channel: 'creator', stream: { streamId: 'stream-a', startedAt } } })
     expect((await checkMomentSource(fromHubMoment(row)!, new AbortController().signal)).occurrenceAt).toBe(Date.parse(startedAt) + 120_000)
+  })
+})
+
+describe('the source check on a stream answer already read', () => {
+  const moment = { login: 'creator', streamId: 'stream-a', offsetSeconds: 120 }
+  const verified = { channel: 'creator', stream: { streamId: 'stream-a', vodId: '77777' }, vodTiming: { state: 'verified' }, vodAlignSeconds: 5, vodDurationSeconds: 600 }
+  it('gives the same answer as the read-and-check, without reading', async () => {
+    request.mockReset()
+    request.mockResolvedValue({ data: verified })
+    const read = await checkMomentSource(fromHubMoment(row)!, new AbortController().signal)
+    request.mockReset()
+    expect(momentSourceFromAnswer(moment, verified)).toEqual(read)
+    expect(request).not.toHaveBeenCalled()
+  })
+  it('names the archive and its alignment only with a verified, timestamped replay link', () => {
+    const linked = momentSourceFromAnswer(moment, verified)
+    expect(linked.vodHref).toBe('https://www.twitch.tv/videos/77777?t=125s')
+    expect(linked).toMatchObject({ vodId: '77777', vodAlignSeconds: 5 })
+    for (const data of [
+      { ...verified, vodTiming: { state: 'unavailable' } },
+      { ...verified, vodAlignSeconds: undefined },
+      { ...verified, vodDurationSeconds: undefined },
+      { ...verified, vodAlignSeconds: 700 },
+    ]) {
+      const unlinked = momentSourceFromAnswer(moment, data)
+      expect(unlinked.vodHref).toBeNull()
+      expect(unlinked.vodId).toBeUndefined()
+      expect(unlinked.vodAlignSeconds).toBeUndefined()
+    }
+  })
+  it.each([
+    { ...verified, stream: { streamId: 'stream-b', vodId: '77777' } },
+    { ...verified, channel: 'someone_else' },
+    { ...verified, channel: undefined },
+  ])('confirms nothing for another stream or channel', data => {
+    const result = momentSourceFromAnswer(moment, data)
+    expect(result.vodHref).toBeNull()
+    expect(result.vodId).toBeUndefined()
+    expect(result.reason).toMatch(/Source identity could not be confirmed/)
   })
 })

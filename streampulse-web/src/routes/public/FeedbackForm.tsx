@@ -141,7 +141,7 @@ function waitPhrase(seconds: number): string {
  * dashed box inside it. A configured build (a failed send, or intake off)
  * keeps its wording as it was: GitHub first, then "Ask in the public Discord".
  */
-function PublicAlternatives({ compact = false, notLaunched = false }: { compact?: boolean; notLaunched?: boolean }) {
+export function PublicAlternatives({ compact = false, notLaunched = false }: { compact?: boolean; notLaunched?: boolean }) {
   const discord = discordInviteUrl()
   const size = compact ? 'default' : 'lg'
   return (
@@ -324,8 +324,8 @@ type FeedbackCardProps = {
 
 /**
  * What the page around the card needs to know: `open` (the form or a sent
- * case), `failed` (a send failed outright, or this browser blocked the bot
- * check, so the card lists the public alternatives itself) or `unavailable`
+ * case), `failed` (a send failed outright, the form is busy, or this browser
+ * blocked the bot check, so the card lists the public alternatives itself) or `unavailable`
  * (the unavailable panel).
  */
 export type FeedbackPhase = 'open' | 'failed' | 'unavailable'
@@ -365,14 +365,18 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
   const [panelTakesFocus, setPanelTakesFocus] = useState(false)
   // Bumped by the blocked panel's Try again, so the check loads from scratch.
   const [checkAttempt, setCheckAttempt] = useState(0)
+  // The bot check loads once the reader reaches the form (it comes near the
+  // viewport, or a field takes focus or input), not on every Help visit.
+  const [checkWanted, setCheckWanted] = useState(false)
+  const wantCheck = () => setCheckWanted(true)
   useEffect(() => () => {
     submitControllerRef.current?.abort()
     if (noteTimerRef.current !== null) window.clearTimeout(noteTimerRef.current)
   }, [])
 
-  // A blocked check lists the public alternatives itself, like a failed send.
+  // A blocked check and a busy form list the public alternatives themselves, like a failed send.
   const phase: FeedbackPhase = state.kind === 'unavailable' ? 'unavailable'
-    : state.kind === 'failed' || state.kind === 'check_blocked' ? 'failed' : 'open'
+    : state.kind === 'failed' || state.kind === 'check_blocked' || (state.kind === 'rate_limited' && state.busy) ? 'failed' : 'open'
   useEffect(() => {
     onPhase?.(phase)
   }, [phase, onPhase])
@@ -388,7 +392,21 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
   }
 
   useEffect(() => {
-    if (availability !== 'ready' || !siteKey) return
+    if (checkWanted || availability !== 'ready') return
+    const form = formRef.current
+    if (!form || typeof IntersectionObserver === 'undefined') {
+      setCheckWanted(true)
+      return
+    }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) setCheckWanted(true)
+    }, { rootMargin: '200px 0px' })
+    observer.observe(form)
+    return () => observer.disconnect()
+  }, [checkWanted, availability])
+
+  useEffect(() => {
+    if (availability !== 'ready' || !siteKey || !checkWanted) return
     let cancelled = false
     ensureTurnstileScript(siteKey)
       .then(() => {
@@ -430,7 +448,7 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
         widgetIdRef.current = null
       }
     }
-  }, [availability, siteKey, checkAttempt])
+  }, [availability, siteKey, checkAttempt, checkWanted])
 
   // A rate limit holds Send until the server's Retry-After (or the fallback
   // minute) has passed, then lets the reader send again without a reload.
@@ -675,7 +693,8 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
         <CheckBlockedPanel keptMessage={message.trim() ? message : undefined} takeFocus={panelTakesFocus} onRetry={retryCheck} />
       ) : (
         <form data-testid="support-form" className={shell ? 'feedback-form feedback-form--shell' : 'feedback-form'}
-          onSubmit={onSubmit} aria-busy={sending} noValidate ref={formRef}>
+          onSubmit={onSubmit} onFocus={checkWanted ? undefined : wantCheck} onInput={checkWanted ? undefined : wantCheck}
+          aria-busy={sending} noValidate ref={formRef}>
           {/* Paused, not disabled, while sending: disabling the control that has
               focus drops focus to <body> and the keyboard reader starts over. */}
           <div className="feedback-form__fields" data-paused={sending ? 'true' : undefined}>
@@ -768,7 +787,7 @@ function FeedbackCard({ siteKey, shell = false, lead, onPhase }: FeedbackCardPro
             </div>
           </div>
           <p className="feedback-legal">
-            How we handle it: <Link to="/privacy">Privacy policy</Link> · Privacy or legal: <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> · Security: see <Link to="/support#security">security reports</Link>
+            How we handle it: <Link to="/privacy">Privacy policy</Link> · Privacy or legal: <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a> · Security: see <Link to="/help#security">security reports</Link>
           </p>
         </form>
       )}

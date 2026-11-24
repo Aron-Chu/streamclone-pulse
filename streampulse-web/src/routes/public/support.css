@@ -1,4 +1,4 @@
-/* /feedback form and the /support link card (v2 design, 2026-10-07). Plain CSS on the public
+/* The Help page and its private feedback form (v2 design, 2026-10-07). Plain CSS on the public
    tokens so it renders on a cold route before any analytics styles load. */
 
 /* minmax(0, 1fr): nothing inside (a 300px challenge on a 320px phone) can
@@ -7,11 +7,6 @@
 
 /* Page title, centred over the card in the same column. */
 .support-page__head { width: min(620px, 100%); margin: 0 auto -0.25rem; text-align: center; }
-.support-page__badge { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.6rem; border-radius: 6px; background: rgba(139, 92, 246, 0.1); color: #c4b5fd; font-size: 0.75rem; font-weight: 700; }
-.support-page__badge > span { width: 6px; height: 6px; border-radius: 50%; background: #a78bfa; }
-/* Amber for a temporary "not yet" state (the private form opens soon). */
-.support-page__badge--soon { background: rgba(251, 191, 36, 0.1); color: #fcd34d; }
-.support-page__badge--soon > span { background: #fbbf24; }
 .support-page__head h1 { margin: 0.7rem 0 0; }
 .support-page__head p { margin: 0.55rem auto 0; max-width: 52ch; color: #a1a1aa; font-size: 1rem; line-height: 1.5; text-wrap: pretty; }
 
@@ -184,25 +179,7 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 .feedback-public.feedback-public--plain { padding: 0; border: 0; }
 .feedback-public__discord { color: #8b93f8; }
 
-/* /support: the card that sends readers to /feedback reads as part of the page, not a second box. */
-.app-shell .feedback-link-card { width: 100%; margin: 0; padding: 0 0 1.75rem; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; background: none; box-shadow: none; }
-.feedback-link-card::before { content: none; }
-.feedback-link-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 1.5rem; }
-.feedback-link-card__text { flex: 1 1 18rem; min-width: 0; }
-.feedback-link-card .feedback-card__title { font-size: 1.45rem; }
-.feedback-link-card .feedback-card__sub { display: flex; align-items: flex-start; gap: 0.45rem; margin-bottom: 0; }
-.feedback-link-card .feedback-card__sub svg { width: 16px; height: 16px; flex: none; margin-top: 0.25rem; color: #6ee7b7; }
-.feedback-link-card .sc-btn { flex: none; min-height: 46px; }
-
-.support-page__aside { margin: -0.4rem auto 0; text-align: center; font-size: 0.9rem; color: #a1a1aa; }
-.support-page__aside a { color: #e4e4e7; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgba(255, 255, 255, 0.3); }
-
-.support-discord-line { margin: -0.4rem auto 0; text-align: center; font-size: 0.92rem; color: #8b8b95; }
-.support-discord-line a { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; padding: 0 0.35rem; font-weight: 600; color: #e4e4e7; }
-.support-discord-line a svg { color: #5865f2; }
-.support-discord-line a span { border-bottom: 1px solid rgba(255, 255, 255, 0.25); }
-.support-discord-line a:hover { color: #fff; }
-.support-discord-line small { display: block; margin-top: -0.3rem; font-size: 0.8rem; color: #8b8b95; }
+.help-page__status a { color: #e4e4e7; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgba(255, 255, 255, 0.3); }
 
 @media (max-width: 560px) {
   .feedback-card { padding: 1.3rem 1.1rem; border-radius: 14px; }
@@ -211,8 +188,6 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
   .feedback-choice__opt { flex-direction: column; justify-content: center; gap: 0.3rem; min-height: 74px; padding: 0.6rem 0.4rem; font-size: 0.88rem; text-align: center; }
   .feedback-choice__opt svg { width: 19px; height: 19px; }
   .feedback-row .sc-btn { width: 100%; }
-  .feedback-link-card .feedback-card__title { font-size: 1.3rem; }
-  .feedback-link-card .sc-btn { width: 100%; }
 }
 
 /* Prerendered shell: looks like the live form (no disabled dimming) and is
@@ -241,3 +216,8 @@ textarea.feedback-input { min-height: 118px; resize: vertical; line-height: 1.5;
 
 /* Install button and the store it opens (named after detection, 11-02). */
 .support-page__install { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+
+/* /help: the status line and the section links under the title. */
+.support-page__head .help-page__status { font-size: 0.9rem; }
+.help-page__toc { justify-content: center; }
+.help-page__toc a { display: inline-flex; align-items: center; min-height: 32px; }

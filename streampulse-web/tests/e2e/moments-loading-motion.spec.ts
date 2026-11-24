@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
+import { answerTwitchLivePictures } from './helpers/twitchLivePictures'
+
+// Twitch's live pictures answer as offline here, so no card depends on a real channel being live.
+test.beforeEach(async ({ page }) => { await answerTwitchLivePictures(page) })
 
 test('slow first load reserves cards and reveals arrivals without replaying filters', async ({ page }) => {
   await page.addInitScript(() => {

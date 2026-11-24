@@ -1,7 +1,7 @@
 /**
  * What the extension does, under the hub search (direction A of the 11-01 board, "Beside chat"): a
  * sample stream with the Pulse tab beside it plays five beats (chat goes wild, Pulse marks the
- * spike, Top moments, open one and press Jump, the player lands on that second), at most twice
+ * spike, Top moments, open one and press Jump, the player lands just before it), at most twice
  * while half of it is on screen, then rests on the last. Hover plays it once more; reduced motion
  * and a hidden tab show the last beat still. The panel pictures are 2× captures of the real panel
  * (the sandbox /extension demo); the stream is drawn sample art. One install button, for the
@@ -42,13 +42,14 @@ const CALM: ReadonlyArray<readonly [string, string, string]> = [
   ['#94a3b8', 'quietfox', 'gg that run'], ['#60a5fa', 'kayto', 'what seed is this'], ['#34d399', 'wisp', 'cave next?'],
 ]
 
-const BEATS = ['Chat goes wild', 'Pulse marks the spike', 'Top moments, ranked', 'Open it, press Jump', 'Lands on that second'] as const
+const BEATS = ['Chat goes wild', 'Pulse marks the spike', 'Top moments, ranked', 'Open it, press Jump', 'Lands just before it'] as const
 const LAST = BEATS.length - 1
 /** The marks on the replay's timeline, as % of 3:00:00; the hot one is 2:18:20. */
 const TICKS = [16.9, 28.5, 52.9, 77.2, 89.4] as const
 const HOT = 77.2
 const FROM_S = 3080
-const TO_S = 8300
+// Jump starts 5 s before the spike (reactionLeadInOffset), so the player clock ends at 2:18:15.
+const TO_S = 8295
 const LOOP_MS = 12200
 const MAX_LOOPS = 2
 /** The panel pictures are 338 px wide at 1×; the card's Jump button sits at (58, 385). */
@@ -290,7 +291,7 @@ export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props,
           <img className="hv5-pr-scene" src={blocksDay} alt="" width={320} height={180} loading="lazy" decoding="async" />
           <img className="hv5-pr-scene hv5-pr-cave" src={blocksCave} alt="" width={320} height={180} loading="lazy" decoding="async" />
           <div className="hv5-pr-ptop"><span className="hv5-pr-ch">sample_streamer</span><span className="hv5-pr-rp">REPLAY</span></div>
-          <div className="hv5-pr-toast">▶ Jumped to 2:18:20</div>
+          <div className="hv5-pr-toast">▶ Jumped to 2:18:15</div>
           <div className="hv5-pr-pbot">
             <div className="hv5-pr-tl">
               <i className="hv5-pr-fill" />
@@ -332,7 +333,7 @@ export const HubV5Promo = forwardRef<HTMLDivElement>(function HubV5Promo(_props,
           See how it works
           <HubV5Icon name="down" />
         </button>
-        <p className="hv5-pr-p" id={bodyId}>The Pulse tab sits beside Twitch chat. It marks every spike and jumps you to the second it happened.</p>
+        <p className="hv5-pr-p" id={bodyId}>The Pulse tab sits beside Twitch chat. It marks every spike and jumps you to just before it happened.</p>
         <InstallCta className="hv5-hero-install" label="short" icon="mark" data-cta="chrome-install-hub-hero" />
         <p className="hv5-pr-desk">Desktop extension for Chrome, Edge and Firefox</p>
         <p className="hv5-pr-free">Free · no account</p>
