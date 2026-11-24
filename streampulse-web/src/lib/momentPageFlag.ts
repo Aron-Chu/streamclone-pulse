@@ -2,7 +2,6 @@ import { momentAtKey, momentPagePath, parseMomentAtKey, type MomentAtKey } from 
 import { isMomentStreamId, loadMomentRecap, loadMomentStream } from './momentReads'
 
 const LOGIN = /^[a-z0-9_]{1,25}$/
-const MOMENT_PAGE_PATH = /^\/analytics\/moments\/([^/]+)\/(\d{8}T\d{4}Z)$/
 
 /**
  * Build-time switch for the Moment watch page, /analytics/moments/<stream>/<minute>
@@ -38,10 +37,11 @@ export function momentFeedbackEnabled(): boolean {
  */
 export function momentPageReturnPath(value: unknown): string | null {
   if (!momentPageEnabled() || !momentFeedbackEnabled() || typeof value !== 'string') return null
-  const [, streamId = '', minute = ''] = MOMENT_PAGE_PATH.exec(value) ?? []
-  // The whole path must match (the same test-then-return shape as clipPageReturnPath), and the
-  // minute must be a real UTC minute, not only shaped like one.
-  return MOMENT_PAGE_PATH.test(value) && isMomentStreamId(streamId) && parseMomentAtKey(minute) !== null ? value : null
+  // Keep this test inline, anchored and free of negated classes like [^/], the same shape as
+  // clipPageReturnPath: CodeQL counts only such a test as a check on `value` before it is stored.
+  // The stream id part is isMomentStreamId's pattern; the minute must also be a real UTC minute.
+  return /^\/analytics\/moments\/\d{1,20}\/\d{8}T\d{4}Z$/.test(value)
+    && parseMomentAtKey(value.slice(value.lastIndexOf('/') + 1)) !== null ? value : null
 }
 
 /**
