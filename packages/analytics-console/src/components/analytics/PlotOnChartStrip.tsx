@@ -107,7 +107,11 @@ export function PlotOnChartStrip({
             </span>
           )
         })}
-        <button ref={addRef} type="button" data-chart-overlay-toggle="" data-session-emote-add="" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls={selectorId} className="ml-auto inline-flex min-h-11 shrink-0 items-center gap-1 rounded px-2 py-1 text-xs font-bold text-slate-300">
+        {/* With one short emote the row fits from 390 px with ~6 px to spare (Windows fonts; Linux renders Inter
+            narrower), and below 390 px Add emote takes its own row by rule, not by text width, so the loading reserve
+            (AnalyticsConsoleDataSkeleton, same 390 px step) holds on every platform. A 2 px edge at 391 px flipped
+            the row between Windows and Linux CI (11-24). */}
+        <button ref={addRef} type="button" data-chart-overlay-toggle="" data-session-emote-add="" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls={selectorId} className="ml-auto inline-flex min-h-11 shrink-0 items-center justify-end gap-1 rounded px-1 py-1 text-xs font-bold text-slate-300 max-[389px]:basis-full">
           <span aria-hidden="true">+</span>Add emote
           {/* The strip sits outside .ssc, where --sp-text-3 is not set; fall back to its value so the chevron matches Show on chart's. */}
           <svg className="ssc-chev" style={{ rotate: expanded ? '180deg' : undefined, color: 'var(--sp-text-3, #8e8e96)' }} viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

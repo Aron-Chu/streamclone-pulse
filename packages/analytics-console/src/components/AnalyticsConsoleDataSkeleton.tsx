@@ -1,7 +1,8 @@
 /**
- * Reserve a representative initial chart with one short named emote: 818 px at 392-609 px (toolbar wraps),
+ * Reserve a representative initial chart with one short named emote: 818 px at 390-609 px (toolbar wraps),
  * 786 px at 610-639 px, 778 px at 640-719 px, 878 px from 720 px (taller plot), and 874 px in the desktop
- * columns from 1280 px. Below 392 px Add emote wraps (+44 px and an 8 px gap);
+ * columns from 1280 px. Below 390 px Add emote takes its own row (+44 px and an 8 px gap; PlotOnChartStrip
+ * sets it by the same 390 px step, so fonts do not decide it);
  * below 364 px the readout needs another 20 px line. Long names, additional emotes,
  * games and other content can wrap to more rows; this is not an all-data zero-layout-shift guarantee.
  *
@@ -13,8 +14,8 @@
  */
 export function AnalyticsConsoleDataSkeleton({ minuteTableOutside = false }: { minuteTableOutside?: boolean } = {}) {
   const reserve = minuteTableOutside
-    ? 'min-h-[52.125rem] min-[364px]:min-h-[50.875rem] min-[392px]:min-h-[47.625rem] min-[610px]:min-h-[45.625rem] sm:min-h-[45.125rem] min-[720px]:min-h-[51.375rem]'
-    : 'min-h-[55.625rem] min-[364px]:min-h-[54.375rem] min-[392px]:min-h-[51.125rem] min-[610px]:min-h-[49.125rem] sm:min-h-[48.625rem] min-[720px]:min-h-[54.875rem]'
+    ? 'min-h-[52.125rem] min-[364px]:min-h-[50.875rem] min-[390px]:min-h-[47.625rem] min-[610px]:min-h-[45.625rem] sm:min-h-[45.125rem] min-[720px]:min-h-[51.375rem]'
+    : 'min-h-[55.625rem] min-[364px]:min-h-[54.375rem] min-[390px]:min-h-[51.125rem] min-[610px]:min-h-[49.125rem] sm:min-h-[48.625rem] min-[720px]:min-h-[54.875rem]'
   return (
     <div
       role="status"
