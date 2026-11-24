@@ -27,12 +27,16 @@ afterEach(() => {
 })
 
 describe('isAllowedSheetUrl', () => {
-  it('allows https cloudfront sheets only', () => {
+  it('allows https sheets only on the storyboard hosts the backend accepts', () => {
+    // The backend's storyboard check accepts cloudfront.net, twitch.tv and jtvnw.net hosts.
     expect(isAllowedSheetUrl(SHEET)).toBe(true)
+    expect(isAllowedSheetUrl('https://static-cdn.jtvnw.net/cf_vods/a.jpg')).toBe(true)
+    expect(isAllowedSheetUrl('https://storyboards.twitch.tv/a.jpg')).toBe(true)
     expect(isAllowedSheetUrl('http://d2vi6trrdongqn.cloudfront.net/a.jpg')).toBe(false)
-    expect(isAllowedSheetUrl('https://static-cdn.jtvnw.net/cf_vods/a.jpg')).toBe(false)
     expect(isAllowedSheetUrl('https://evil.example/cloudfront.net/a.jpg')).toBe(false)
     expect(isAllowedSheetUrl('https://cloudfront.net.evil.example/a.jpg')).toBe(false)
+    expect(isAllowedSheetUrl('https://jtvnw.net.evil.example/a.jpg')).toBe(false)
+    expect(isAllowedSheetUrl('https://eviljtvnw.net/a.jpg')).toBe(false)
     expect(isAllowedSheetUrl(42)).toBe(false)
   })
 

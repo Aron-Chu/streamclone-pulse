@@ -184,8 +184,17 @@ const routes = [
     canonicalPath: '/analytics',
     robots: 'index,follow',
   },
-  { path: 'help', ...helpPage, robots: 'index,follow' },
-  { path: 'docs', ...helpPage, robots: 'noindex,nofollow' },
+  // One key per line: the extension's link checks read `path: '…',` at the start of a line.
+  {
+    path: 'help',
+    ...helpPage,
+    robots: 'index,follow',
+  },
+  {
+    path: 'docs',
+    ...helpPage,
+    robots: 'noindex,nofollow',
+  },
   {
     path: 'status',
     title: 'Service Status — StreamPulse',
@@ -231,8 +240,16 @@ const routes = [
     robots: 'index,follow',
   },
   // The extension's "Send feedback" opens /feedback, and its billing help opens /support.
-  { path: 'support', ...helpPage, robots: 'noindex,nofollow' },
-  { path: 'feedback', ...helpPage, robots: 'noindex,nofollow' },
+  {
+    path: 'support',
+    ...helpPage,
+    robots: 'noindex,nofollow',
+  },
+  {
+    path: 'feedback',
+    ...helpPage,
+    robots: 'noindex,nofollow',
+  },
   {
     // The extension's "Join Discord" opens this page. It only forwards to the
     // build-time invite (or says there is none), so it stays out of search and

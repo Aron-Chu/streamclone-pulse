@@ -52,6 +52,15 @@ const base: DiscoveryMoment = {
   comparison: { chat: metric(500, 100), emotes: metric(17, 3) } as unknown as DiscoveryMoment['comparison'],
   topEmotes: [{ name: 'KEKW', id: 'kekw', provider: 'bttv', count: 17, imageUrl: 'https://cdn.betterttv.net/emote/5e9c6c187e090362f8b0b9e8/3x.webp' }] as DiscoveryMoment['topEmotes'],
 }
+/**
+ * The card shows an age only for moments from today or yesterday on this device, so a check of the
+ * age pins the clock an hour after the base moment (the same day in every time zone) instead of
+ * depending on today's date. afterEach puts the real clock back.
+ */
+function pinClockNearBase() {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(Date.parse('2026-11-22T17:50:00Z'))
+}
 const CLIP = { url: 'https://www.twitch.tv/creator/clip/NearbyClip-abc', thumbnailUrl: 'https://static-cdn.jtvnw.net/clip-thumb-480x272.jpg', title: 'chat lost it' }
 
 function show(moment: DiscoveryMoment, props: Partial<Parameters<typeof MomentStreamCard>[0]> = {}) {
@@ -89,6 +98,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('moment stream card', () => {
@@ -245,6 +255,7 @@ describe('moment stream card', () => {
   })
 
   it('tells a screen reader the rates and the full time the picture and the age stand for', () => {
+    pinClockNearBase()
     const { container, unmount } = show({ ...base, emotesPerMin: 17.25 })
     expect(screen.getByText('500 chat/min, 17.3 emotes/min.')).not.toBeNull()
     expect(container.querySelector('.msc-sub time .sr-only')?.textContent).toMatch(/^, .*Nov 22, 2026/)
@@ -283,6 +294,7 @@ describe('moment stream card', () => {
   })
 
   it('names the channel on the stream’s first card only; the later ones keep the game and the time', () => {
+    pinClockNearBase()
     const { container } = show(base, { lead: false })
     expect(screen.queryByText('avatar')).toBeNull()
     expect(screen.queryByRole('link', { name: 'Creator' })).toBeNull()

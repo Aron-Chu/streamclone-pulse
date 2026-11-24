@@ -2,6 +2,7 @@ import { momentAtKey, momentPagePath, parseMomentAtKey, type MomentAtKey } from 
 import { isMomentStreamId, loadMomentRecap, loadMomentStream } from './momentReads'
 
 const LOGIN = /^[a-z0-9_]{1,25}$/
+const MOMENT_PAGE_PATH = /^\/analytics\/moments\/([^/]+)\/(\d{8}T\d{4}Z)$/
 
 /**
  * Build-time switch for the Moment watch page, /analytics/moments/<stream>/<minute>
@@ -37,9 +38,10 @@ export function momentFeedbackEnabled(): boolean {
  */
 export function momentPageReturnPath(value: unknown): string | null {
   if (!momentPageEnabled() || !momentFeedbackEnabled() || typeof value !== 'string') return null
-  const match = /^\/analytics\/moments\/([^/]+)\/(\d{8}T\d{4}Z)$/.exec(value)
-  // The minute must be a real UTC minute, not only shaped like one.
-  return match && isMomentStreamId(match[1]) && parseMomentAtKey(match[2]!) !== null ? value : null
+  const [, streamId = '', minute = ''] = MOMENT_PAGE_PATH.exec(value) ?? []
+  // The whole path must match (the same test-then-return shape as clipPageReturnPath), and the
+  // minute must be a real UTC minute, not only shaped like one.
+  return MOMENT_PAGE_PATH.test(value) && isMomentStreamId(streamId) && parseMomentAtKey(minute) !== null ? value : null
 }
 
 /**
