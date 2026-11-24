@@ -1118,7 +1118,7 @@ function MomentsWorkspace() {
           return next
         }) } : undefined} />
       if (!rowEnd) return [card]
-      return [card, ...cards.slice(rowStart, index + 1).map(({ moment: inRow }) => <MomentInlineReveal key={`detail:${inRow.key}`} open={inlineKey === inRow.key} animate={!swapping} id={DETAIL_ID} onInsidePress={markInsidePress}>{inlineKey === inRow.key ? detail : null}</MomentInlineReveal>)]
+      return [card, ...cards.slice(rowStart, index + 1).map(({ moment: inRow }) => <MomentInlineReveal key={`detail:${inRow.key}`} open={inlineKey === inRow.key} animate={!swapping} id={inlineKey === inRow.key ? DETAIL_ID : undefined} onInsidePress={markInsidePress}>{inlineKey === inRow.key ? detail : null}</MomentInlineReveal>)]
     })
   }
   const detail = chosen ? <MomentDetail key={`${chosen.key}:${chosen.publicMomentId || ''}:${openGeneration.current}`} variant={inlineKey ? 'inline' : 'standalone'} moment={chosen} onSourceState={onSourceState} onClose={() => close('row')} saved={view === 'saved' && Boolean(selected)} navigation={loadedMomentNeighbors(reviewOrder, chosen.key)} onNavigate={review}

@@ -23,6 +23,8 @@ import {
   CHAT_PEEK_WIDE_QUERY,
   CHAT_COLUMN_LINES,
   CHAT_LINE_EMOTES_MAX,
+  CHAT_NOW_LIVE_SUB,
+  CHAT_NOW_LIVE_TITLE,
   chatBarPct,
   chatColumnLine,
   chatEmotesPerMessage,
@@ -86,7 +88,24 @@ function addLine(col: HTMLElement, rnd: { v: number }, emotes: number, animate: 
   line.append(bar)
   for (let i = 0; i < k; i += 1) line.append(document.createElement('b'))
   col.append(line)
+  if (animate) slideIn(line)
   while (col.childElementCount > CHAT_COLUMN_LINES) col.firstElementChild?.remove()
+}
+
+/**
+ * A new line rises 8 px and fades in over 0.16 s. A script animation with its start time set, not a CSS one: Chrome
+ * wakes the page for a CSS animation's start and end (React listens for both) and every display frame until the
+ * compositor reports the start, about eight wakes a line at up to 12 lines a second; this one costs one, at its end.
+ */
+function slideIn(line: HTMLElement) {
+  if (typeof line.animate !== 'function') return
+  const slide = line.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], {
+    duration: 160,
+    easing: 'ease-out',
+    fill: 'backwards',
+  })
+  const now = document.timeline?.currentTime
+  if (now != null) slide.startTime = now
 }
 
 /**
@@ -118,16 +137,14 @@ function ChatColumn({ login, perMin, emotes, run, still }: { login: string; perM
   useEffect(() => {
     const el = col.current
     if (!el || !has || !run || still) return
-    const perS = perMin / 60 / perLine
-    let acc = 0
-    let last = performance.now()
-    let raf = requestAnimationFrame(function step(t) {
-      acc += Math.min(0.25, Math.max(0, t - last) / 1000) * perS
-      last = t
-      while (acc >= 1) { addLine(el, rnd.current, emotesRef.current, true); acc -= 1 }
-      raf = requestAnimationFrame(step)
-    })
-    return () => cancelAnimationFrame(raf)
+    // A timer at the line's interval, not a frame loop: asking for every display frame costs the page a full update
+    // each one, 240 a second on a fast display, for a line or two a second (11-23).
+    const every = (1000 * perLine * 60) / perMin
+    let id = window.setTimeout(function step() {
+      if (!document.hidden) addLine(el, rnd.current, emotesRef.current, true)
+      id = window.setTimeout(step, every)
+    }, every)
+    return () => window.clearTimeout(id)
   }, [has, perMin, perLine, run, still])
   return <div className="sl-cn-col" ref={col} aria-hidden="true" />
 }
@@ -250,7 +267,9 @@ export function LandingChatNow({ hub, loading }: LandingChatNowProps) {
   const still = useMatchMedia(REDUCE)
   const allowed = useSyncExternalStore(subscribeChatPeek, () => chatPeekAllowed(), () => false)
 
-  // the prerendered page has no answer yet: row shapes there would stay forever without JavaScript
+  // The band holds its place from the first paint, so nothing under it moves when the answer lands: the prerendered
+  // page draws the row shapes (index.html hides the band when JavaScript is off), and until the first answer is in,
+  // the shapes stay. No rows after that leaves one quiet line in the same space.
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
@@ -301,33 +320,40 @@ export function LandingChatNow({ hub, loading }: LandingChatNowProps) {
     tops.current = next
   }, [order, wide, still])
 
-  if (!rows && !(mounted && loading && !hub)) return null
   const shapes = !rows
+  const waiting = shapes && (!mounted || (loading && !hub))
   const maxPerMin = rows?.[0]?.perMin ?? 0
-  const peek = mounted && wide
+  const peek = wide
   return (
     <section
       ref={setSec}
       className="sl-cn"
       aria-labelledby="sl-cn-title"
-      aria-busy={shapes || undefined}
+      aria-busy={waiting || undefined}
       data-off={onScreen ? undefined : ''}
       data-state={band?.state}
     >
       <div className="sl-container sl-cn-in">
         <div className="sl-cn-head">
-          <h2 id="sl-cn-title">{band?.title ?? 'Fastest chats'}</h2>
-          <p>{band?.sub ?? 'Chat messages per minute in the live channels StreamPulse reads'}</p>
+          {/* data-size: the live heading, drawn hidden under the shown one (landing.css), so the heading keeps the live
+              one's size before the answer lands and when it holds no rows */}
+          <h2 id="sl-cn-title" data-size={CHAT_NOW_LIVE_TITLE}><span>{band?.title ?? 'Fastest chats'}</span></h2>
+          <p data-size={CHAT_NOW_LIVE_SUB}><span>{band?.sub ?? 'Chat messages per minute in the live channels StreamPulse reads'}</span></p>
         </div>
         <Link className="sl-cn-more" to={CHAT_NOW_HUB_HREF}>Open the Hub<ArrowRight size={16} aria-hidden="true" /></Link>
-        <div className="sl-cn-body" data-peek={peek ? '' : undefined}>
-          {shapes ? (
+        <div className="sl-cn-body" data-peek={peek ? '' : undefined} data-shapes={shapes ? '' : undefined}>
+          {waiting ? (
             <>
-              <div className="sl-cn-list" aria-hidden="true">
+              <div className="sl-cn-list sl-cn-wait" aria-hidden="true">
                 {Array.from({ length: CHAT_NOW_ROWS }, (_, i) => <div key={i} className="sl-cn-skel" />)}
               </div>
-              {peek ? <div className="sl-cn-peek sl-cn-peek-wait" aria-hidden="true" /> : null}
+              {/* the prerender cannot know the width: CSS shows this beside the list on a wide screen */}
+              <div className="sl-cn-peek sl-cn-peek-wait" aria-hidden="true" />
             </>
+          ) : shapes ? (
+            <div className="sl-cn-list sl-cn-none">
+              <p role="status">{hub ? 'No live chats to rank right now.' : 'Chat speeds didn’t load. They’ll show here when they do.'}</p>
+            </div>
           ) : (
             <>
               <ol className="sl-cn-list" ref={list} aria-labelledby="sl-cn-title">
@@ -352,7 +378,7 @@ export function LandingChatNow({ hub, loading }: LandingChatNowProps) {
                         </span>
                         <span className="sl-cn-trk" aria-hidden="true">
                           <span className="sl-cn-fill" style={{ width: `${chatBarPct(row.perMin, maxPerMin)}%` }}>
-                            {ticks ? <span className="sl-cn-tk" style={{ '--sl-cn-gap': `${ticks.gap}px`, '--sl-cn-dur': `${ticks.seconds.toFixed(3)}s` } as CSSProperties} /> : null}
+                            {ticks ? <span className="sl-cn-tk" style={{ '--sl-cn-gap': `${ticks.gap}px`, '--sl-cn-run': `${ticks.run}px`, '--sl-cn-dur': `${ticks.loopSeconds.toFixed(3)}s` } as CSSProperties} /> : null}
                           </span>
                         </span>
                         <span className="sl-cn-fig" aria-hidden="true"><Swap text={row.fig} still={still} /><small>/min</small></span>

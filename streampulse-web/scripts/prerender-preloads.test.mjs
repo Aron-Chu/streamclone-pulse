@@ -91,6 +91,19 @@ describe.skipIf(!fresh)('prerendered documents (dist/)', () => {
     expect(root(html)).not.toContain('sl-fx')
   })
 
+  // 11-23: a band added after JavaScript started moved the front page. The Geist swap is held still by the size-matched
+  // stand-in instead of a preload: preloaded, Geist landed before the app mounted and the app's headline became a
+  // second, later largest paint.
+  it('no page preloads the page font, and the home document holds the Fastest chats band', () => {
+    const font = /<link rel="preload"[^>]*as="font"/
+    for (const path of ['index.html', 'help/index.html', 'status/index.html', 'analytics/index.html']) {
+      expect(head(read(path)), `${path} leaves Geist to its stylesheet`).not.toMatch(font)
+    }
+    const html = read('index.html')
+    expect(root(html)).toContain('class="sl-cn"')
+    expect(head(html)).toContain('<noscript><style>.sl-cn { display: none; }</style></noscript>')
+  })
+
   it('no prerendered document names a source path', () => {
     for (const path of htmlFiles(dist)) {
       expect(readFileSync(path, 'utf8'), path).not.toMatch(/["'(\s,]\/src\//)

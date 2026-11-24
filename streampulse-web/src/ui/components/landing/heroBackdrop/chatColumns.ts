@@ -15,6 +15,13 @@ import { emoteImg, failedEmotes, makeChip, NO_PART, type Part, type Pointer, typ
 const LH = 27
 /** Below this width a column cannot hold a channel name and a bar. */
 const MIN_COL = 120
+/**
+ * A new line slides the column up: the offset falls by e^-7 a second and stops under 0.2 px. The browser's
+ * compositor runs the slide, so it stays smooth while the background's own loop draws 30 frames a second.
+ */
+const SLIDE_RATE = 7
+const SLIDE_STOP_PX = 0.2
+const SLIDE_STEPS = 16
 
 const hue = (s: string) => [...s].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7) % 360
 
@@ -23,9 +30,51 @@ interface Column {
   inner: HTMLElement
   left: boolean
   lines: HTMLElement[]
+  /** The offset when the slide last started, at `offAt` (performance.now()). */
   off: number
+  offAt: number
+  slide: Animation | null
+  /** The running slide's sampled offsets and length, so a new line starts from where the column really is. */
+  ys: number[]
+  ms: number
   wait: number
   paused: boolean
+}
+
+const offsetAt = (col: Column, now: number) => col.off * Math.exp((-SLIDE_RATE * (now - col.offAt)) / 1000)
+
+/** Where the column is now: on its slide's own samples while one runs (one not started yet is at its start). */
+function offsetNow(col: Column, now: number) {
+  if (!col.slide || !col.ys.length) return offsetAt(col, now)
+  const t = col.slide.currentTime
+  const at = typeof t === 'number' ? Math.max(0, t) : 0
+  if (at >= col.ms) return 0
+  const x = (at / col.ms) * SLIDE_STEPS
+  const k = Math.floor(x)
+  return col.ys[k] + (col.ys[k + 1] - col.ys[k]) * (x - k)
+}
+
+/** Adds `by` px to the column's offset and slides it back to rest from there. */
+function slideUp(col: Column, by: number) {
+  const now = performance.now()
+  const from = offsetNow(col, now) + by
+  col.off = from
+  col.offAt = now
+  col.slide?.cancel()
+  col.slide = null
+  col.ys = []
+  // Without the Web Animations API the frame loop moves it instead (tick).
+  if (typeof col.inner.animate !== 'function') return
+  const ms = (Math.log(from / SLIDE_STOP_PX) / SLIDE_RATE) * 1000
+  const frames: Keyframe[] = []
+  for (let k = 0; k <= SLIDE_STEPS; k++) {
+    const p = k / SLIDE_STEPS
+    const y = k === SLIDE_STEPS ? 0 : from * Math.exp((-SLIDE_RATE * p * ms) / 1000)
+    col.ys.push(y)
+    frames.push({ offset: p, transform: `translateY(${y.toFixed(2)}px)` })
+  }
+  col.ms = ms
+  col.slide = col.inner.animate(frames, { duration: ms, easing: 'linear' })
 }
 
 export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources: readonly ChatSource[], reduced: boolean): Part {
@@ -41,7 +90,7 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
     pill.textContent = 'Paused while you read'
     el.appendChild(pill)
     host.appendChild(el)
-    return { el, inner, left: side === 'left', lines: [], off: 0, wait: 0, paused: false }
+    return { el, inner, left: side === 'left', lines: [], off: 0, offAt: 0, slide: null, ys: [], ms: 0, wait: 0, paused: false }
   })
   if (cols[0].el.clientWidth < MIN_COL) {
     host.replaceChildren()
@@ -121,7 +170,7 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
   function push(col: Column, el: HTMLElement, animate: boolean) {
     col.inner.appendChild(el)
     col.lines.push(el)
-    if (animate) col.off += LH
+    if (animate) slideUp(col, LH)
     while (col.lines.length > visible) col.lines.shift()?.remove()
   }
   if (sources.length) {
@@ -147,7 +196,7 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
   }
 
   return {
-    tick(_now, dt) {
+    tick(now, dt) {
       for (const col of cols) {
         if (!reduced && !col.paused && sources.length) {
           col.wait -= dt * (query ? 1.6 : 1)
@@ -157,10 +206,10 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
             col.wait = (0.55 + R() * 0.9) / rate
           }
         }
-        if (col.off > 0.2) {
-          col.off *= Math.exp(-dt * 7)
-          col.inner.style.transform = `translateY(${col.off.toFixed(1)}px)`
-        } else if (col.off) {
+        if (col.slide || !col.off) continue
+        const y = offsetAt(col, now)
+        if (y > SLIDE_STOP_PX) col.inner.style.transform = `translateY(${y.toFixed(1)}px)`
+        else {
           col.off = 0
           col.inner.style.transform = ''
         }
@@ -227,6 +276,7 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
     },
     dispose() {
       tip.dispose()
+      for (const col of cols) col.slide?.cancel()
       host.replaceChildren()
     },
   }

@@ -41,6 +41,12 @@ export const CHAT_TICK_PX_PER_S = 120
 /** Closest and widest tick spacing (px): closer than 4 px the 2 px ticks merge; past 96 px a slow bar looks empty. */
 export const CHAT_TICK_GAP_MIN = 4
 export const CHAT_TICK_GAP_MAX = 96
+/**
+ * About how long one loop of a bar's ticks lasts (s). A loop moves a whole number of spacings, so it looks the same as
+ * a loop of one spacing; but Chrome wakes the page at the end of every loop (React listens for animationiteration),
+ * and a loop one spacing long woke it up to 30 times a second a bar (11-23).
+ */
+export const CHAT_TICK_LOOP_S = 2
 /** Lines a second at most in the chat panel's column; past it each line stands for several messages, and the caption says how many. */
 export const CHAT_LINES_MAX_PER_S = 12
 /** Lines the column holds (enough to fill it); the oldest goes as a new one comes in at the bottom. */
@@ -59,6 +65,9 @@ export interface ChatNowBand {
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
 const SUB_TAIL = 'in the live channels StreamPulse reads'
+/** The live heading: the usual one, so the band holds its size from the prerendered page on (LandingChatNow.tsx). */
+export const CHAT_NOW_LIVE_TITLE = 'Fastest chats right now'
+export const CHAT_NOW_LIVE_SUB = `Chat messages per minute over the last 5 minutes, ${SUB_TAIL}`
 
 /** The band, or null when it should not show. `nowMs` is the page's clock. */
 export function chatNowBand(hub: Pick<PublicHub, 'liveChannels' | 'generatedAt'> | null | undefined, nowMs: number): ChatNowBand | null {
@@ -75,7 +84,7 @@ export function chatNowBand(hub: Pick<PublicHub, 'liveChannels' | 'generatedAt'>
   }
   if (!finite(set.windowEnd) || nowMs - set.windowEnd > CHAT_NOW_MAX_AGE_MS) return null
   if (busiestCue(set, nowMs) === 'live') {
-    return { rows: set.rows, state: 'live', title: 'Fastest chats right now', sub: `Chat messages per minute over the last 5 minutes, ${SUB_TAIL}` }
+    return { rows: set.rows, state: 'live', title: CHAT_NOW_LIVE_TITLE, sub: CHAT_NOW_LIVE_SUB }
   }
   return { rows: set.rows, state: 'stale', title: 'Fastest chats', sub: `Chat messages per minute over 5 minutes, not updated since ${hubClock(set.windowEnd)}` }
 }
@@ -89,13 +98,16 @@ export function chatBarPct(perMin: number, maxPerMin: number): number {
 /**
  * The bar's ticks: spacing in px and the seconds one spacing takes at CHAT_TICK_PX_PER_S, so a tick passes a point
  * once per counted message (7,200 / perMin px apart) between 75 and 1,800 messages a minute; outside that the spacing
- * stops at its limits. Null: no ticks (no rate).
+ * stops at its limits. One loop moves `run` px (whole spacings, about CHAT_TICK_LOOP_S) in `loopSeconds`, at the same
+ * speed. Null: no ticks (no rate).
  */
-export function chatTicks(perMin: number): { gap: number; seconds: number } | null {
+export function chatTicks(perMin: number): { gap: number; seconds: number; run: number; loopSeconds: number } | null {
   if (!finite(perMin) || perMin <= 0) return null
   const gap = Math.max(CHAT_TICK_GAP_MIN, Math.min(CHAT_TICK_GAP_MAX, (CHAT_TICK_PX_PER_S * 60) / perMin))
   const rounded = Math.round(gap * 10) / 10
-  return { gap: rounded, seconds: rounded / CHAT_TICK_PX_PER_S }
+  const spacings = Math.max(1, Math.round((CHAT_TICK_LOOP_S * CHAT_TICK_PX_PER_S) / rounded))
+  const run = Math.round(spacings * rounded * 10) / 10
+  return { gap: rounded, seconds: rounded / CHAT_TICK_PX_PER_S, run, loopSeconds: run / CHAT_TICK_PX_PER_S }
 }
 
 /** Messages each line of the column stands for (1 until the chat passes CHAT_LINES_MAX_PER_S a second). */

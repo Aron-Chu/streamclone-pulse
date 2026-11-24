@@ -48,6 +48,12 @@
     grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "rail big" "emo emo" "chan chan" "meas meas";
   }
 }
+@media (min-width: 1536px) {
+  .hub-v5.hub-d3[data-counts-down]:has(> .hv5-big) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px;
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy rail" "emr emr rail" "act act rail" "intv intv rail" "big big rail" "emo emo rail" "chan chan rail" "meas meas rail";
+  }
+}
 
 /* the base rules the other sections get */
 .hub-v5 .hv5-big :is(*, *::before, *::after) { box-sizing: border-box; }

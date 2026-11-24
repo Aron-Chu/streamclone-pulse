@@ -143,7 +143,7 @@ export default function Help() {
 
             <section id="billing-email" aria-labelledby="billing-email-title">
               <h3 id="billing-email-title">Can't get into your billing email?</h3>
-              <p>Still signed in on the browser you paid in? Open Account &amp; Supporter → Manage subscription and change the email. Then use Restore on your new browser.</p>
+              <p>Still signed in on the browser you paid in? Open Account &amp; Supporter → Manage subscription and change the email for receipts and billing notices.</p>
               <p>
                 If not, we can't move the membership. Email{' '}
                 <a href="mailto:privacy@streampulse.stream">privacy@streampulse.stream</a>{' '}

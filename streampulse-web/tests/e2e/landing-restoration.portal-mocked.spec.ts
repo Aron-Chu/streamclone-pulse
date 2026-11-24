@@ -66,8 +66,9 @@ test.describe('without JavaScript', () => {
     // The whole background mounts after load; none of it is in the prerendered HTML.
     await expect(page.locator('.sl-herobg, .sl-chatbg, .sl-fx')).toHaveCount(0)
     await expect(page.locator('#roadmap, #analysis, .lsg')).toHaveCount(0)
-    // the chat band needs the hub answer: no loading shapes in the prerendered page
-    await expect(page.locator('.sl-cn')).toHaveCount(0)
+    // the chat band holds its place in the prerendered page, but without JavaScript no answer comes, so it stays hidden
+    await expect(page.locator('.sl-cn')).toHaveCount(1)
+    await expect(page.locator('.sl-cn')).toBeHidden()
   })
 })
 
@@ -98,7 +99,7 @@ test('the homepage hero leads with Open the Hub on a phone and keeps the install
 
 // Fastest chats (board 11-22, picks 1A 2A 3A): the five busiest live chats between the hero and the demo, from the hub
 // answer the page already reads, each opening its channel; on a wide screen with a mouse, Twitch's chat for a row
-// pointed at; nothing when the hub is down.
+// pointed at; when the hub is down, one quiet line in the band's place (11-23: the band no longer moves the page).
 test.describe('Fastest chats', () => {
   // The mock's live rows with full 5-minute chat counts that ended a minute ago (the Hub spec's screener shape).
   async function serveChatCounts(page: Page) {
@@ -127,11 +128,14 @@ test.describe('Fastest chats', () => {
     })
   }
 
-  test('stays off when the hub answer fails', async ({ page }) => {
+  test('keeps its place with one quiet line when the hub answer fails', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto('/')
     await expect(page.locator('#demo')).toBeAttached()
-    await expect(page.locator('.sl-cn')).toHaveCount(0)
+    const band = page.locator('.sl-cn')
+    await expect(band).toBeVisible()
+    await expect(band.locator('.sl-cn-none')).toHaveText('Chat speeds didn’t load. They’ll show here when they do.')
+    await expect(band.locator('.sl-cn-skel, a.sl-cn-row')).toHaveCount(0)
   })
 
   test('lists the five busiest under the hero on a desktop, each opening its channel', async ({ page }, testInfo) => {

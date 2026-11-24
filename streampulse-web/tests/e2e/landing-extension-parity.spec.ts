@@ -22,6 +22,12 @@ async function offline(page: Page, baseURL: string | undefined) {
 async function openHome(page: Page) {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15_000 })
+  // The page arrives prerendered and the app then draws it again in place, about a quarter second in. Wait for the
+  // app's own heading (React marks its nodes), so no test holds a prerendered node that is about to be swapped out.
+  await page.waitForFunction(() => {
+    const heading = document.querySelector('#root h1')
+    return heading != null && Object.keys(heading).some((key) => key.startsWith('__reactFiber'))
+  }, null, { timeout: 15_000 })
 }
 
 async function scrollToDemo(page: Page) {
@@ -89,8 +95,18 @@ test.describe('landing demo beside Twitch chat', () => {
     for (const picture of ['.es-p-base', '.es-tab-pulse', '.es-settings']) {
       expect(await page.locator(picture).evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
     }
-    // three.js needs WebGL 2; without it the pictures stay.
-    const webgl = await page.evaluate(() => Boolean(document.createElement('canvas').getContext('webgl2')))
+    // The scene needs WebGL 2 on a graphics card; on a software renderer (headless SwiftShader) or none, the
+    // pictures stay. Same rule as hasWebGL() in LandingBesideChat.tsx.
+    const webgl = await page.evaluate(() => {
+      const gl = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: true })
+      if (!gl) return false
+      let renderer = String(gl.getParameter(gl.RENDERER) || '')
+      if (!renderer || /^webkit webgl$/i.test(renderer)) {
+        const info = gl.getExtension('WEBGL_debug_renderer_info')
+        if (info) renderer = String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || renderer)
+      }
+      return !/swiftshader|llvmpipe|softpipe|lavapipe|software|basic render driver/i.test(renderer)
+    })
     if (webgl) await expect(page.locator('.es-demo .es')).toHaveAttribute('data-scene', '', { timeout: 15_000 })
     else await expect(page.locator('.es-poster').first()).toBeVisible()
     await assertNoPageOverflow(page)

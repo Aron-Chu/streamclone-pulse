@@ -34,6 +34,10 @@ const SWELL = 0.24
 const SWELL_FALL_MS = 800
 const RIPPLE_LINES = 3
 const RIPPLE_DELAY_MS = 90
+/** How long after a moment's label goes that its swell is still falling, ripples included. */
+const SWELL_TAIL_MS = RIPPLE_LINES * RIPPLE_DELAY_MS + SWELL_FALL_MS + 100
+/** A tilt this close to the pointer's is the pointer's: the lines stop moving and the canvas stops drawing. */
+const TILT_SETTLED = 0.001
 
 /** Surface lines between two neighbouring series, so the field has about as many lines as the board's. */
 export function meshPerGap(rows: number, target: number): number {
@@ -133,8 +137,11 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
   const pt = { x: 0, y: 0 }
   let quiet = false
   let dirty = true
+  let swept = false
   let hover: { row: number; i: number; x: number } | null = null
   let drawn: Array<Array<[number, number]>> = []
+  /** Each line's own stroke gradient, kept while its light and the search's hush stay the same. */
+  const lineGrad: Array<{ lit: number; quiet: boolean; grad: CanvasGradient } | null> = lines.map(() => null)
   const hoverChip = makeChip(stage)
   const markChip = makeChip(stage, 'moment')
 
@@ -210,10 +217,32 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
   /** How much a lit line may brighten at u (0-1 across the screen): little behind the words, fully in the gutters. */
   const centre = (u: number) => 1 - 0.65 * clamp(1 - Math.abs(u - 0.5) / 0.22, 0, 1)
 
+  /** Where the running light is (0-1 across a line) on the nearest line; each farther line is up to 0.1 ahead. */
+  const sweepAt = (now: number) => (((now - born) % SWEEP_MS) / SWEEP_MS) * 1.5 - 0.25
+  /** Whether the running light is on any line now. */
+  const sweepShows = (now: number) => {
+    const u = sweepAt(now)
+    return u + 0.1 > -0.08 && u < 1.08
+  }
+
+  function lineGradient(l: number, tone: Rgb, a: number, mid: number, lit: number): CanvasGradient {
+    const kept = lineGrad[l]
+    if (kept && kept.lit === lit && kept.quiet === quiet) return kept.grad
+    const grad = g!.createLinearGradient(0, 0, W, 0)
+    grad.addColorStop(0, rgba(tone, a))
+    grad.addColorStop(0.27, rgba(tone, a))
+    grad.addColorStop(0.4, rgba(tone, mid))
+    grad.addColorStop(0.6, rgba(tone, mid))
+    grad.addColorStop(0.73, rgba(tone, a))
+    grad.addColorStop(1, rgba(tone, a))
+    lineGrad[l] = { lit, quiet, grad }
+    return grad
+  }
+
   function draw(now: number) {
     g!.clearRect(0, 0, W, H)
     drawn = []
-    const sweepP = ((now - born) % SWEEP_MS) / SWEEP_MS
+    const sweepU = sweepAt(now)
     for (let l = 0; l < L; l++) {
       const ln = lines[l]
       const row = ln.row != null ? rows[ln.row] : null
@@ -237,20 +266,13 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
       const a = Math.max(a0, lit * 0.92)
       // The centre stays dim even for a lit line, so a highlight never runs bright behind the buttons.
       const mid = a * (0.4 - 0.18 * lit)
-      const grad = g!.createLinearGradient(0, 0, W, 0)
-      grad.addColorStop(0, rgba(tone, a))
-      grad.addColorStop(0.27, rgba(tone, a))
-      grad.addColorStop(0.4, rgba(tone, mid))
-      grad.addColorStop(0.6, rgba(tone, mid))
-      grad.addColorStop(0.73, rgba(tone, a))
-      grad.addColorStop(1, rgba(tone, a))
-      g!.strokeStyle = grad
+      g!.strokeStyle = lineGradient(l, tone, a, mid, lit)
       g!.lineWidth = (row ? 1.1 : 0.8) + depth * 0.5 + lit * 0.9
       strokeRuns(l, pts)
 
       // The light that runs from the oldest minute to the newest; the far lines a beat ahead of the near ones.
       if (!reduced && !quiet) {
-        const u = sweepP * 1.5 - 0.25 + (1 - depth) * 0.1
+        const u = sweepU + (1 - depth) * 0.1
         if (u > -0.08 && u < 1.08) {
           const boost = (row ? 0.34 : 0.22) * centre(u) * (phone ? 0.6 : 1) * rise(l, now)
           const sweepTone = row ? mixRgb(INK, toneOf(row), 0.55) : INK
@@ -313,8 +335,9 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
 
   return {
     tick(now, dt) {
-      // The rise and the running light keep the lines moving; under reduced motion they draw only on a change.
-      let busy = dirty || !reduced
+      // The canvas draws only while something on it moves: the rise, the running light (and one frame after it
+      // leaves, to clear it), a swell, the tilt, a highlight. Between sweeps the last picture stays up.
+      let busy = dirty
       for (let r = 0; r < ROWS; r++) {
         const want = hover?.row === r || marks.some((m) => m.row === r && now < m.until) ? 1 : 0
         const next = reduced ? want : hi[r] + (want - hi[r]) * Math.min(1, dt * 10)
@@ -324,7 +347,17 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
       }
       if (!reduced) {
         const k = 1 - Math.exp(-dt * 4)
-        for (const ax of ['x', 'y'] as const) pn[ax] += (pt[ax] - pn[ax]) * k
+        for (const ax of ['x', 'y'] as const) {
+          const d = pt[ax] - pn[ax]
+          if (!d) continue
+          pn[ax] = Math.abs(d) < TILT_SETTLED ? pt[ax] : pn[ax] + d * k
+          busy = true
+        }
+        if (now - born < ENTER_MS + L * ENTER_STAGGER_MS + 100) busy = true
+        if (marks.some((m) => now < m.until + SWELL_TAIL_MS)) busy = true
+        const sweeping = !quiet && sweepShows(now)
+        if (sweeping || swept) busy = true
+        swept = sweeping
       }
       for (const m of marks) if (now >= m.until && now < m.until + 100) busy = true
       if (!marks.some((m) => now < m.until)) markChip.hide()
@@ -368,6 +401,10 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
       if (marks.length > 3) marks.shift()
       // On phones the ridge sits behind the search, so a label would cover words: the mark alone shows.
       if (!phone) markChip.show({ text: `▲ ${m.short} ${m.label} · ${m.name}`, small: feedAgo(m.at, nowMs), emote: reduced ? null : findHeroEmote(m.emote) ?? null })
+      dirty = true
+    },
+    resume() {
+      // The last picture may hold a swell or the light that ended while nothing drew.
       dirty = true
     },
     dispose() {

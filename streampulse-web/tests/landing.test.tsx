@@ -102,8 +102,10 @@ describe('landing page', () => {
     expect(dock).toBeTruthy()
     expect(dock!.hasAttribute('data-shown')).toBe(false)
     expect(document.querySelector<HTMLButtonElement>('.sl-header .hv5-dock-btn')!.hidden).toBe(true)
-    // BrainChat, coming later, right after the demo (board extension-brainchat 11-22, ★ B1).
+    // BrainChat, coming later, right after the demo (board extension-brainchat 11-22, ★ B1). The Fastest chats band
+    // keeps its place above the demo even with no hub answer (11-23).
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      'Fastest chats',
       expect.stringMatching(/see it beside twitch chat/i),
       'BrainChat',
       'Twitch chat stats by streamer',
@@ -184,7 +186,9 @@ describe('landing page', () => {
     const samples = container.querySelectorAll('details.sl-optional-demo')
     expect(samples).toHaveLength(0)
     expect(container.querySelector('.sl-herobg')).not.toBeNull()
-    expect(container.querySelector('main > section:nth-child(2)')?.id).toBe('demo')
+    // The Fastest chats band holds its place between the hero and the demo, with or without a hub answer (11-23).
+    expect(container.querySelector('main > section:nth-child(2)')?.className).toBe('sl-cn')
+    expect(container.querySelector('main > section:nth-child(3)')?.id).toBe('demo')
     // The hero's cue (★ A1) leads to the demo, which takes focus from it; BrainChat's card follows the demo.
     const cue = screen.getByRole('link', { name: 'See the extension beside Twitch chat' })
     expect(cue.getAttribute('href')).toBe('#demo')

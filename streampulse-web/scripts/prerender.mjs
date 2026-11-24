@@ -32,7 +32,7 @@ const publicPageSources = {
   'guides/twitch-vod-timestamps': 'TwitchVodTimestampsGuide',
   help: 'Help', docs: 'Help', status: 'Status', privacy: 'Privacy', terms: 'Terms', refunds: 'Refunds', withdraw: 'Withdraw',
   supporter: 'Supporter', 'supporter/thanks': 'SupporterThanks', support: 'Help',
-  feedback: 'Help', discord: 'Discord', changelog: 'Changelog', recaps: 'Recaps',
+  feedback: 'Help', discord: 'Discord', changelog: 'Changelog', recaps: 'Recaps', brainchat: 'BrainChat',
 }
 function chunkFiles(key, files = new Set()) {
   const chunk = manifest[key]
@@ -87,6 +87,10 @@ const consolePreloads = pagePreloads(['src/routes/analytics/ChannelAnalyticsPage
 // with the document. No crossorigin: the pictures load as plain images.
 const imagePreconnects = ['https://static-cdn.jtvnw.net', 'https://cdn.7tv.app']
   .map(href => `<link rel="preconnect" href="${href}" />`).join('\n    ')
+// No preload for the page font (Geist): the size-matched stand-in in portal-fonts.css already keeps its swap from
+// moving text. A preload (tried 11-23) took bandwidth from the stylesheets, and Geist then often landed before the app
+// mounted; the app's fresh headline, a little larger in Geist than the stand-in, became a second largest paint about
+// 0.5 s after the first on phones and tablets.
 // Pictures a prerendered page imports render with their source paths on the
 // server; the document must name the files the build emitted.
 function builtAssetPaths(markup) {

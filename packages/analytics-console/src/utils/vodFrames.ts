@@ -51,9 +51,9 @@ export type VodFrameResult =
   | { frame: VodFrame; reason: null }
   | { frame: null; reason: VodFrameMissReason }
 
-const SHEET_URL = /^https:\/\/(?:[a-z0-9-]+\.)+cloudfront\.net\/[^"'()\\\s]+$/i
+const SHEET_URL = /^https:\/\/(?:[a-z0-9-]+\.)+(?:cloudfront\.net|twitch\.tv|jtvnw\.net)\/[^"'()\\\s]+$/i
 
-/** Tile sheets load from `*.cloudfront.net` only, and never with characters that could escape `url("…")`. */
+/** Tile sheets load from allowed Twitch/CloudFront storyboard hosts only, and never with characters that could escape `url("…")`. */
 export function isAllowedSheetUrl(url: unknown): url is string {
   return typeof url === 'string' && url.length <= 2048 && SHEET_URL.test(url)
 }

@@ -9,6 +9,7 @@ import settingsBar from '../../../../demo/pictures/beside-settings.webp'
 import catOpener from '../../../../demo/pictures/cat-opener.webp'
 import catSetup from '../../../../demo/pictures/cat-setup.webp'
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
+import { markSceneFrame } from '../backdropPace'
 import { DEMO_PLAY_EVENT, takeDemoPlayRequest } from '../demoPlayEvent'
 // Types only: three.js and the scene load on their own, near the demo and only with motion and WebGL.
 import type { CatStreamScene } from './catStreamScene'
@@ -50,6 +51,8 @@ const CUE_SCROLL_MS = 650
 const STALE_CUE_MS = 10_000
 /** The stream draws at most this often: smooth enough for a selfie video, and half the GPU work of 60 fps. */
 const FRAME_MS = 1000 / 30
+/** The timer between frames wakes this long before the next is due, so the display frame after it is the one drawn on. */
+const WAKE_EARLY_MS = 2
 /** Canvases whose WebGL context the browser took back; the scene is never made on them again. */
 const lostCanvases = new WeakSet<HTMLCanvasElement>()
 
@@ -72,6 +75,8 @@ interface Runtime {
   video: Video
   scrubbing: boolean
   raf: number
+  /** The timer that waits out the display frames before the next due one. */
+  wait: number
   shownClock: string
 }
 
@@ -99,14 +104,28 @@ interface Run {
   destroy(): void
 }
 
-/** Whether this browser can draw WebGL 2, which three.js needs; asked before the scene's code is fetched. */
+/** WebGL drawn on the CPU (no graphics card in use): the scene ran at about 6 frames a second there (11-23). */
+const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render driver/i
+
+/**
+ * Whether this browser can draw WebGL 2 on a graphics card, which the scene needs; asked before its code is
+ * fetched. Without one the still pictures stay.
+ */
 function hasWebGL(): boolean {
   try {
     const probe = document.createElement('canvas')
-    const gl = probe.getContext('webgl2')
+    // A browser that would fall back to a much slower renderer gives no context when asked this way...
+    const gl = probe.getContext('webgl2', { failIfMajorPerformanceCaveat: true })
     if (!gl) return false
+    // ...and one that does not still names its renderer. Chrome masks the plain name, so only then is the debug
+    // name asked for (Firefox names the renderer plainly and warns that the debug name is going away).
+    let renderer = String(gl.getParameter(gl.RENDERER) || '')
+    if (!renderer || /^webkit webgl$/i.test(renderer)) {
+      const info = gl.getExtension('WEBGL_debug_renderer_info')
+      if (info) renderer = String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || renderer)
+    }
     gl.getExtension('WEBGL_lose_context')?.loseContext()
-    return true
+    return !SOFTWARE_GL.test(renderer)
   } catch {
     return false
   }
@@ -165,10 +184,19 @@ function createRun(els: Elements, rt: Runtime, layout: () => StageLayout, reduce
   }
   const draw = () => {
     const vt = vtNow()
-    rt.scene?.render(vt)
+    if (rt.scene) {
+      rt.scene.render(vt)
+      // The hero background draws less often while this does.
+      markSceneFrame()
+    }
     if (!rt.scrubbing) setClock(clock(vt))
   }
   let lastDraw = Number.NEGATIVE_INFINITY
+  const kick = () => {
+    clearTimeout(rt.wait)
+    rt.wait = 0
+    if (!rt.raf && rt.visible) rt.raf = requestAnimationFrame(loop)
+  }
   const loop = (now: number) => {
     rt.raf = 0
     // At most 30 frames a second; a frame not yet due waits for the next one, even when the video is held.
@@ -177,10 +205,12 @@ function createRun(els: Elements, rt: Runtime, layout: () => StageLayout, reduce
       lastDraw = now
       draw()
     }
-    if ((playing() || !due) && rt.visible) rt.raf = requestAnimationFrame(loop)
-  }
-  const kick = () => {
-    if (!rt.raf && rt.visible) rt.raf = requestAnimationFrame(loop)
+    if (!(playing() || !due) || !rt.visible) return
+    // The display frames before the next due one pass on a timer: each display frame asked for costs the page a
+    // full update (style, prepaint, commit), and a fast display has four to eight of them to each frame drawn here.
+    const wait = lastDraw + FRAME_MS - 4 - WAKE_EARLY_MS - performance.now()
+    if (wait > WAKE_EARLY_MS) rt.wait = window.setTimeout(kick, wait)
+    else rt.raf = requestAnimationFrame(loop)
   }
   const hold = (vt: number) => {
     rt.video = { still: vt }
@@ -372,6 +402,8 @@ function createRun(els: Elements, rt: Runtime, layout: () => StageLayout, reduce
       clearTimeout(cueTimer)
       cancelAnimationFrame(rt.raf)
       rt.raf = 0
+      clearTimeout(rt.wait)
+      rt.wait = 0
       autoplay?.disconnect()
       seen?.disconnect()
       window.removeEventListener(DEMO_PLAY_EVENT, onCue)
@@ -405,7 +437,7 @@ export function LandingBesideChat() {
   const stepsCapB = useRef<HTMLElement>(null)
   const stepsCapText = useRef<HTMLSpanElement>(null)
   const steps = useRef<HTMLDivElement>(null)
-  const rt = useRef<Runtime>({ scene: null, visible: false, started: false, held: null, video: { still: STILL_VT[3] }, scrubbing: false, raf: 0, shownClock: '' })
+  const rt = useRef<Runtime>({ scene: null, visible: false, started: false, held: null, video: { still: STILL_VT[3] }, scrubbing: false, raf: 0, wait: 0, shownClock: '' })
   const run = useRef<Run | null>(null)
 
   // The stage's size follows the content column.

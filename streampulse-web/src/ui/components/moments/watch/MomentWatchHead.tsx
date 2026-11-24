@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import { BROADCAST_THUMBNAIL_LABEL, NO_PICTURE_LINE, type MomentPreview, type MomentPreviewState } from '@streampulse/analytics-console/moment-previews'
@@ -93,6 +94,9 @@ export function MomentWatchHead({ stream, clip, clipsChecked, offsetSeconds, atS
 }) {
   const channel = { id: '', login: stream.login, displayName: stream.displayName || stream.login, profileImageUrl: stream.profileImageUrl }
   const at = formatStreamOffset(atSeconds)
+  const [failedThumbUrl, setFailedThumbUrl] = useState<string | null>(null)
+  const clipThumb = clip?.thumbnailUrl && clip.thumbnailUrl !== failedThumbUrl ? clip.thumbnailUrl : null
+  const activeArtwork = artwork && artwork.url !== failedThumbUrl ? artwork : null
 
   let box
   let label = null
@@ -101,7 +105,7 @@ export function MomentWatchHead({ stream, clip, clipsChecked, offsetSeconds, atS
   } else if (clip) {
     box = (
       <a className="nc-thumb" href={clip.url} target="_blank" rel="noopener noreferrer" aria-label={`${clip.title} (opens on Twitch)`}>
-        {clip.thumbnailUrl ? <img src={clip.thumbnailUrl} alt="" loading="eager" decoding="async" /> : null}
+        {clipThumb ? <img src={clipThumb} alt="" loading="eager" decoding="async" referrerPolicy="no-referrer" onError={() => setFailedThumbUrl(clip.thumbnailUrl ?? null)} /> : null}
         <span className="nc-thumb-badge nc-thumb-length">{formatClock(clip.durationSeconds)}</span>
       </a>
     )
@@ -114,7 +118,7 @@ export function MomentWatchHead({ stream, clip, clipsChecked, offsetSeconds, atS
       <div className="nc-thumb" data-kind={picture.preview.kind}>{inner}</div>
     )
     label = <MomentPictureLabel preview={picture.preview} />
-  } else if (!artwork && !clipsChecked && (picture === null || picture.loading)) {
+  } else if (!activeArtwork && !clipsChecked && (picture === null || picture.loading)) {
     // No picture to show yet, and none ruled out: the neutral placeholder stays until the picture reads decide.
     box = twitchHref ? (
       <a className="nc-player nc-skel-player" href={twitchHref} target="_blank" rel="noopener noreferrer" tabIndex={-1} aria-hidden="true" />
@@ -123,11 +127,11 @@ export function MomentWatchHead({ stream, clip, clipsChecked, offsetSeconds, atS
     )
   } else {
     // "No clip" only when the feedback answer listed the window's clips; "no picture" only once the picture reads found none.
-    const noPicture = !artwork && picture !== null && !picture.loading && picture.preview.kind === 'none'
+    const noPicture = !activeArtwork && picture !== null && !picture.loading && picture.preview.kind === 'none'
     const line = clipsChecked ? 'No clip of this one yet.' : noPicture ? NO_PICTURE_LINE : null
     const inner = (
       <>
-        {artwork ? <img src={artwork.url} alt="" loading="eager" decoding="async" /> : null}
+        {activeArtwork ? <img src={activeArtwork.url} alt="" loading="eager" decoding="async" referrerPolicy="no-referrer" onError={() => { setFailedThumbUrl(activeArtwork.url); picture?.onImageError(activeArtwork.url) }} /> : null}
         <span className="nc-thumb-gone">
           <span className="mw-gone-text">
             {line ? <strong>{line}</strong> : null}
@@ -136,14 +140,14 @@ export function MomentWatchHead({ stream, clip, clipsChecked, offsetSeconds, atS
         </span>
       </>
     )
-    const cls = artwork ? 'nc-thumb' : 'nc-thumb nc-thumb-missing'
+    const cls = activeArtwork ? 'nc-thumb' : 'nc-thumb nc-thumb-missing'
     box = twitchHref ? (
       // The pill below is the same link; this one stays out of the tab order.
-      <a className={cls} data-unavailable={artwork ? '' : undefined} href={twitchHref} target="_blank" rel="noopener noreferrer" tabIndex={-1} aria-hidden="true">{inner}</a>
+      <a className={cls} data-unavailable={activeArtwork ? '' : undefined} href={twitchHref} target="_blank" rel="noopener noreferrer" tabIndex={-1} aria-hidden="true">{inner}</a>
     ) : (
-      <div className={cls} data-unavailable={artwork ? '' : undefined}>{inner}</div>
+      <div className={cls} data-unavailable={activeArtwork ? '' : undefined}>{inner}</div>
     )
-    if (artwork) label = <MomentPictureLabel preview={artworkPreview(artwork)} />
+    if (activeArtwork) label = <MomentPictureLabel preview={artworkPreview(activeArtwork)} />
   }
 
   return (

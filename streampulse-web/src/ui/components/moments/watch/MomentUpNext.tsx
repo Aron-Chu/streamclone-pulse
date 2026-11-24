@@ -72,6 +72,7 @@ function UpNextThumb({ moment, offsetSeconds, minuteMs, live, liveFrameUrl, artw
   const game = pictures?.games ? momentGameArtAt(pictures.games, offsetSeconds, 285, 380) : null
   const { preview, onImageError } = useDiscoveryMomentPreview(rowMoment,
     { enabled: near && pictures !== null && !holdReads, timing, broadcast: artwork, gameArt: game?.url ?? null, gameName: game?.gameName ?? null })
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
   const badge = <span className="nc-thumb-badge nc-thumb-length" aria-hidden="true">{formatStreamOffset(offsetSeconds)}</span>
   // The link names the row; the label is for the eye (the picture itself is decoration).
   if (pictures && ownPicture(preview)) {
@@ -84,11 +85,12 @@ function UpNextThumb({ moment, offsetSeconds, minuteMs, live, liveFrameUrl, artw
     )
   }
   const frame = live ? liveFrameUrl : undefined
-  const picture = frame ?? artwork?.url
+  const candidate = frame ?? artwork?.url
+  const picture = candidate && candidate !== failedSrc ? candidate : undefined
   return (
     <span ref={ref} className={picture ? 'nc-thumb' : 'nc-thumb nc-thumb-missing'}>
-      {picture ? <img src={picture} alt="" loading="lazy" decoding="async" /> : null}
-      {!frame && artwork ? <MomentPictureLabel preview={artworkPreview(artwork)} quiet /> : null}
+      {picture ? <img src={picture} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => { setFailedSrc(picture); onImageError(picture) }} /> : null}
+      {!frame && picture && artwork ? <MomentPictureLabel preview={artworkPreview(artwork)} quiet /> : null}
       {badge}
     </span>
   )

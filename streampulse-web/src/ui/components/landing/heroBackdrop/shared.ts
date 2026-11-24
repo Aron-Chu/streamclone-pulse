@@ -19,6 +19,8 @@ export interface Part {
   pointer(p: Pointer | null, claimed: boolean): boolean
   search(ev: SearchEvent, value: string): void
   moment(m: HeroMoment, nowMs: number): void
+  /** The layer is back on screen, or the tab is shown again, after time passed without frames. */
+  resume?(): void
   dispose(): void
 }
 

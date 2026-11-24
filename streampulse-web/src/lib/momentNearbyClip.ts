@@ -1,7 +1,6 @@
-import { getBackendUrl } from './apiClient'
+import { apiClient, getBackendUrl } from './apiClient'
 import { resolveBackendSource } from './backendSource'
 import { CLIP_THUMBNAIL_HOSTS, twitchImage } from './nativeClips'
-import { portalAnalyticsApi } from './streamcloneAnalytics'
 
 /** A clip viewers made near a moment: a real picture of the stream around then, not the moment's own frame. */
 export interface NearbyClip { url: string; thumbnailUrl: string; title: string }
@@ -57,9 +56,16 @@ export function lookupNearbyClip(moment: { key: string; login: string; at?: numb
   if (at == null || !Number.isFinite(at) || !moment.login || resolveBackendSource(getBackendUrl()) === 'local') return Promise.resolve(null)
   let lookup = lookups.get(moment.key)
   if (!lookup) {
-    lookup = portalAnalyticsApi.getTwitchDayClips(moment.login, new Date(at - NEARBY_CLIP_BEFORE_MS).toISOString(), new Date(at + NEARBY_CLIP_AFTER_MS).toISOString())
+    const params = new URLSearchParams({
+      startedAt: new Date(at - NEARBY_CLIP_BEFORE_MS).toISOString(),
+      endedAt: new Date(at + NEARBY_CLIP_AFTER_MS).toISOString(),
+    })
+    lookup = apiClient<{ items?: unknown }>(`/v1/channels/${encodeURIComponent(moment.login)}/clips?${params.toString()}`, {
+      timeoutMs: 8000,
+      maxResponseBytes: 512 * 1024,
+    })
       // A malformed answer (items not a list, a null item) is no clip, never a rejection.
-      .then(answer => Array.isArray(answer.items) ? pickNearbyClip((answer.items as unknown[]).filter((item): item is ClipItem => item != null && typeof item === 'object'), at) : null)
+      .then(({ data }) => Array.isArray(data?.items) ? pickNearbyClip((data.items as unknown[]).filter((item): item is ClipItem => item != null && typeof item === 'object'), at) : null)
       .catch(() => null)
     lookups.set(moment.key, lookup)
     if (lookups.size > LOOKUPS_KEPT) lookups.delete(lookups.keys().next().value!)

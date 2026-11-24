@@ -1,4 +1,5 @@
 import type { HubActivityPoint, HubLiveChannel, HubLivePulseMoment } from '../../../../lib/publicHub'
+import { sceneBusy } from '../backdropPace'
 import { chatSources, heroMoments, ridgeRows, type HeroMoment } from '../heroBackdropModel'
 import { mountChatColumns } from './chatColumns'
 import { mountEmoteRain } from './emoteRain'
@@ -9,6 +10,13 @@ import type { Part, Pointer, SearchEvent } from './shared'
  * The front page's background (mix 03): counted chat columns, the emote rain and the chat ridge, on one
  * animation loop. Loaded as its own chunk after the page is idle. The loop stops while the tab is hidden,
  * and the hero's layers stop while the hero is scrolled away.
+ *
+ * Its motion is slow (drops rise 15-32 px a second, the light takes 9 s across), so it draws 30 frames a
+ * second, 20 while the extension demo's 3D scene draws, and 60 (or the display's rate, when lower) only while
+ * something quick is on: the pointer over the background, a live moment's burst, the lines rising (11-23: an idle hero
+ * kept a laptop-class main thread 95 % busy). Between drawn frames it waits on a timer, not on the display: every
+ * display frame asked for costs the page a full update (style, prepaint, commit), drawn or not, and a 240 Hz display
+ * would ask 240 times a second.
  */
 
 export interface StageHosts {
@@ -36,6 +44,26 @@ const BEAT_MIN_MS = 14_000
 const BEAT_SPREAD_MS = 2_000
 const FIRST_BEAT_MS = 3_500
 const RIDGE_ABOVE_BUTTONS_PX = 60
+const FRAME_MS = 1000 / 30
+const SCENE_FRAME_MS = 1000 / 20
+/** Something quick on screen draws 60 frames a second, not a fast display's 120-240. */
+const QUICK_FRAME_MS = 1000 / 60
+/** The display's beat, until the frames measure it. */
+const VSYNC_GUESS_MS = 1000 / 60
+/** A pace keeps its count of display frames until the measured ratio moves this far from it (a 165 Hz display sits at 5.5). */
+const CADENCE_HOLD = 0.65
+/** Back-to-back display frames measured before the timer aims straight at the due frame. */
+const BEATS_KNOWN = 8
+/** A drawn frame this far off a whole number of display frames since the last means the display changed: measure again. */
+const BEAT_SLIP = 0.35
+/** A paced frame may be up to 50 ms late before the motion slows to match. */
+const MAX_DT_S = 0.1
+/** How long the quick pace holds after the pointer moves over the background... */
+const QUICK_POINTER_MS = 1500
+/** ...after a live moment (its burst flies for up to 4.4 s)... */
+const QUICK_MOMENT_MS = 4800
+/** ...and after a rebuild, while the lines rise. */
+const QUICK_BUILD_MS = 2200
 const UI_SELECTOR = 'a, button, input, select, textarea, [role="button"], [role="option"], [role="listbox"], .sl-header, .sl-search, .sl-tickwrap, .sl-hero__actions'
 
 export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: EventTarget | null) => boolean }): HeroBackdropController {
@@ -56,10 +84,19 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
   let beat = 0
   let ridgeBorn = 0
   let resizeTimer = 0
+  let quickUntil = 0
+  /** The display's frame interval, measured from the frames themselves, and how many display frames each pace waits. */
+  let vsync = VSYNC_GUESS_MS
+  let lastRaf = 0
+  let beats = 0
+  const cadence = new Map<number, number>()
   let io: IntersectionObserver | null = null
   let size = { w: window.innerWidth, h: window.innerHeight }
 
   const parts = () => (rain ? [rain, ...stageParts] : stageParts)
+  const quick = (ms: number) => {
+    quickUntil = Math.max(quickUntil, performance.now() + ms)
+  }
 
   function buildRain() {
     rain?.dispose()
@@ -77,8 +114,12 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
     const now = Date.now()
     if (chat) stageParts.push(mountChatColumns(chat, stage, chatSources(stageInput.live), reduced))
     const rd = ridgeRows(stageInput.points, stageInput.generatedAt, stageInput.bucketMinutes)
-    // The lines rise once, when they first have something to draw; a rebuild (fresh data, a resize) keeps them up.
-    if (!ridgeBorn && rd.rows.length && rd.times.length >= 2) ridgeBorn = performance.now()
+    // The lines rise once, when they first have something to draw; a rebuild (fresh data, a resize) keeps them up,
+    // so only the rise runs at the quick pace.
+    if (!ridgeBorn && rd.rows.length && rd.times.length >= 2) {
+      ridgeBorn = performance.now()
+      if (!reduced) quick(QUICK_BUILD_MS)
+    }
     // As on the board, the far line sits a little above the hero's buttons, wherever the copy above them ends.
     const actions = document.querySelector('.sl-hero__actions')
     const farAt = actions ? actions.getBoundingClientRect().top - stage.getBoundingClientRect().top - RIDGE_ABOVE_BUTTONS_PX : undefined
@@ -87,7 +128,10 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
     momentTurn = 0
     if (typeof IntersectionObserver !== 'undefined') {
       io = new IntersectionObserver((entries) => {
+        const was = stageVisible
         stageVisible = entries.some((e) => e.isIntersecting)
+        // Back on screen: time passed without frames, so each layer draws afresh once.
+        if (stageVisible && !was) for (const p of stageParts) p.resume?.()
       })
       io.observe(stage)
     }
@@ -100,6 +144,7 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
   function playMoment() {
     const m = moments[momentTurn++ % moments.length]
     const nowMs = Date.now()
+    if (!reduced) quick(QUICK_MOMENT_MS)
     for (const p of parts()) p.moment(m, nowMs)
   }
 
@@ -108,9 +153,44 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
     beat = window.setTimeout(nextBeat, BEAT_MIN_MS + Math.random() * BEAT_SPREAD_MS)
   }
 
+  function paceAt(now: number) {
+    const scene = sceneBusy(now)
+    return now < quickUntil ? (scene ? FRAME_MS : QUICK_FRAME_MS) : scene ? SCENE_FRAME_MS : FRAME_MS
+  }
+
+  /** How many display frames a frame at this pace waits: a whole number, so the beat stays even. */
+  function framesFor(pace: number) {
+    const ratio = pace / vsync
+    const held = cadence.get(pace)
+    const frames = held != null && Math.abs(ratio - held) <= CADENCE_HOLD ? held : Math.max(1, Math.round(ratio))
+    cadence.set(pace, frames)
+    return frames
+  }
+
+  /** From when the next frame is due: half a display frame before the display frame it is drawn on (0: at once). */
+  function dueAt(now: number) {
+    return last ? last + framesFor(paceAt(now)) * vsync - vsync / 2 : 0
+  }
+
   function loop(now: number) {
     frame = 0
-    const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016)
+    // A skipped display frame (a long task, a hidden tab, a timer's wait) is not the display's beat.
+    const gap = lastRaf ? now - lastRaf : 0
+    if (gap > 0 && gap < vsync * 1.5) {
+      vsync += (gap - vsync) * (beats < BEATS_KNOWN ? 0.5 : 0.1)
+      beats += 1
+    }
+    lastRaf = now
+    if (now < dueAt(now)) {
+      plan()
+      return
+    }
+    if (last) {
+      // Drawn frames sit a whole number of display frames apart; when they do not, the display changed.
+      const k = (now - last) / vsync
+      if (Math.abs(k - Math.round(k)) > BEAT_SLIP) beats = 0
+    }
+    const dt = Math.min(MAX_DT_S, last ? (now - last) / 1000 : 0.016)
     last = now
     if (pointerDirty) {
       pointerDirty = false
@@ -125,16 +205,38 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
       // the pointer or a scroll asks for one at once.
       last = 0
       slow = window.setTimeout(start, 1000)
-    } else start()
+    } else plan()
   }
 
   let disposed = false
 
+  const running = () => !disposed && !document.hidden && !!(rain || stageParts.length)
+
+  /** A display frame now, whatever the pace: the pointer moved, the tab came back, the loop starts. */
   function start() {
-    if (disposed || frame || document.hidden || !(rain || stageParts.length)) return
+    if (!running() || frame) return
     window.clearTimeout(slow)
     slow = 0
     frame = requestAnimationFrame(loop)
+  }
+
+  /**
+   * The next frame at the pace. The display frames before it pass on a timer that wakes the loop when the frame is
+   * due, so the display frame after it is the one drawn on. Until the display's beat is measured the timer wakes a
+   * display frame earlier, and that frame asks for the next, so the two measure the beat.
+   */
+  function plan() {
+    if (!running() || frame) return
+    window.clearTimeout(slow)
+    slow = 0
+    const now = performance.now()
+    const wait = dueAt(now) - (beats >= BEATS_KNOWN ? 0 : vsync) - now
+    if (wait > vsync / 2) {
+      slow = window.setTimeout(() => {
+        slow = 0
+        if (running() && !frame) frame = requestAnimationFrame(loop)
+      }, wait)
+    } else frame = requestAnimationFrame(loop)
   }
 
   function stop() {
@@ -143,6 +245,7 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
     window.clearTimeout(slow)
     slow = 0
     last = 0
+    lastRaf = 0
   }
 
   const onPointerMove = (e: PointerEvent) => {
@@ -150,21 +253,30 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
     // Over the page's own controls the background stays out of the way: no labels behind a button.
     const over = e.target instanceof Element ? e.target.closest(UI_SELECTOR) : null
     pointer = over ? null : { x: e.clientX, y: e.clientY }
+    // Labels follow the pointer over the background; over a control nothing does, so the pace stays down. While
+    // the extension demo's scene draws, the pointer is on the demo, so the background keeps its slower pace.
+    if (pointer && !sceneBusy(performance.now())) quick(QUICK_POINTER_MS)
     pointerDirty = true
-    start()
+    // The next frame at the quick pace, not one on every move.
+    plan()
   }
   const onPointerOut = (e: PointerEvent) => {
     if (e.relatedTarget) return
     pointer = null
     pointerDirty = true
-    start()
+    plan()
   }
   const onScroll = () => {
     if (!pointer) return
+    if (!sceneBusy(performance.now())) quick(QUICK_POINTER_MS)
     pointerDirty = true
+    plan()
+  }
+  const onVisibility = () => {
+    if (document.hidden) return stop()
+    for (const p of parts()) p.resume?.()
     start()
   }
-  const onVisibility = () => (document.hidden ? stop() : start())
   const onSearch = (e: Event) => {
     if (!isSearchInput(e.target)) return
     const ev: SearchEvent = e.type === 'focusin' ? 'focus' : e.type === 'focusout' ? 'blur' : 'input'

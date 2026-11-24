@@ -42,6 +42,8 @@ interface Drop {
   vs: number
   focus: number
   blur: number
+  /** The opacity last written, so an unchanged one is not written again each frame. */
+  op: string
 }
 
 interface Burst {
@@ -109,7 +111,7 @@ export function mountEmoteRain(host: HTMLElement): Part {
       : x < LAYERS[0].share ? 0 : x < LAYERS[0].share + LAYERS[1].share ? 1 : 2) as Drop['layer']
     const el = document.createElement('span')
     el.className = 'sl-fx__drop'
-    const d: Drop = { el, layer, side: i % 2 ? 1 : -1, e: null, h: LAYERS[layer].sz, w: LAYERS[layer].sz, hx: 0, x: 0, y: 0, ph: 0, sw: 0, rot: 0, vr: 0, vs: 1, focus: 0, blur: -1 }
+    const d: Drop = { el, layer, side: i % 2 ? 1 : -1, e: null, h: LAYERS[layer].sz, w: LAYERS[layer].sz, hx: 0, x: 0, y: 0, ph: 0, sw: 0, rot: 0, vr: 0, vs: 1, focus: 0, blur: -1, op: '' }
     place(d, true)
     d.x = d.hx
     drops.push(d)
@@ -126,7 +128,11 @@ export function mountEmoteRain(host: HTMLElement): Part {
 
   function paint(el: HTMLElement, x: number, y: number, rot: number, scale: number, a: number, blur: number, d: Drop | null) {
     el.style.transform = `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0) rotate(${rot.toFixed(3)}rad) scale(${scale.toFixed(3)})`
-    el.style.opacity = a.toFixed(3)
+    const op = a.toFixed(3)
+    if (!d || d.op !== op) {
+      el.style.opacity = op
+      if (d) d.op = op
+    }
     const b = Math.round(blur * 10) / 10
     if (!d || d.blur !== b) {
       el.style.filter = `${b > 0 ? `blur(${b}px) ` : ''}saturate(0.75)`

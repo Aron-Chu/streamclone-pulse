@@ -1462,6 +1462,18 @@
   line-height: 24px;
 }
 
+/* The live heading (data-size) sits hidden in the same cell as the shown one, so the heading is never smaller than
+   the live one: nothing under it moves when the answer lands. */
+.sl-cn-head h2,
+.sl-cn-head p { display: grid; }
+.sl-cn-head h2 > span,
+.sl-cn-head p > span,
+.sl-cn-head h2::after,
+.sl-cn-head p::after { grid-area: 1 / 1; min-width: 0; }
+.sl-cn-head h2 > span { align-self: center; }
+.sl-cn-head h2::after,
+.sl-cn-head p::after { content: attr(data-size); visibility: hidden; pointer-events: none; }
+
 .sp-landing a.sl-cn-more {
   grid-area: more;
   display: inline-flex;
@@ -1549,16 +1561,17 @@
 }
 
 /* 3A: one tick passes a point per counted message. Every bar's ticks move at one speed and a busier chat's sit closer
-   (--sl-cn-gap, set per row); moved by transform only, paused off screen */
+   (--sl-cn-gap, set per row); moved by transform only, paused off screen. A loop moves whole spacings
+   (--sl-cn-run, about 2 s), so the page is woken once a loop rather than once a spacing */
 .sl-cn-tk {
   position: absolute;
-  inset: 0 0 0 calc(-1 * var(--sl-cn-gap, 12px));
+  inset: 0 0 0 calc(-1 * var(--sl-cn-run, var(--sl-cn-gap, 12px)));
   background: repeating-linear-gradient(90deg, var(--sl-cn-tick) 0 2px, transparent 2px var(--sl-cn-gap, 12px));
   animation: sl-cn-flow var(--sl-cn-dur, 0.1s) linear infinite;
   will-change: transform;
 }
 
-@keyframes sl-cn-flow { to { transform: translateX(var(--sl-cn-gap, 12px)); } }
+@keyframes sl-cn-flow { to { transform: translateX(var(--sl-cn-run, var(--sl-cn-gap, 12px))); } }
 .sl-cn[data-off] .sl-cn-tk { animation-play-state: paused; }
 /* still ticks read as a striped progress bar: with reduced motion the bar is the fill alone */
 @media (prefers-reduced-motion: reduce) { .sl-cn-tk { display: none; } }
@@ -1591,7 +1604,10 @@
   white-space: nowrap;
 }
 
-/* Loading: the row shapes hold their place; no shimmer. */
+/* Loading: the row shapes hold their place; no shimmer. A grid, so the gaps between shapes add up to a row's
+   height (block margins would fold together). */
+.sl-cn-wait { display: grid; align-content: start; }
+
 .sl-cn-list > .sl-cn-skel {
   height: 56px;
   margin: 2px 0;
@@ -1600,6 +1616,37 @@
 }
 
 .sl-cn-body[data-peek] .sl-cn-list > .sl-cn-skel { height: 92px; }
+
+/* Until rows show, the band holds the space they will take (LandingChatNow.tsx), from the prerendered page on. The
+   prerender cannot know the width, so the panel beside the list comes from the width CHAT_PEEK_WIDE_QUERY reads. */
+.sl-cn-body[data-shapes] .sl-cn-peek-wait { display: none; }
+
+@media (min-width: 1024px) {
+  .sl-cn-body[data-shapes] { grid-template-columns: minmax(0, 1fr) 360px; }
+  .sl-cn-body[data-shapes] .sl-cn-list > .sl-cn-skel { height: 92px; }
+  .sl-cn-body[data-shapes] .sl-cn-peek-wait { display: flex; }
+}
+
+/* No rows after the answer: one quiet line, in the space five rows take */
+.sl-cn-none {
+  display: grid;
+  place-items: center;
+  grid-column: 1 / -1;
+  min-height: calc(5 * 60px + 16px);
+}
+
+.sl-cn-none p {
+  margin: 0;
+  padding: 0 16px;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 15px;
+  line-height: 24px;
+  text-align: center;
+}
+
+@media (min-width: 1024px) {
+  .sl-cn-none { min-height: calc(5 * 96px + 16px); }
+}
 
 /* 2A: Twitch's chat for the row pointed at, or that chat's column (board option D), beside the list */
 .sl-cn-peek {
@@ -1670,8 +1717,7 @@
 .sl-cn-ln { display: flex; flex: none; align-items: center; gap: 4px; min-height: 8px; }
 .sl-cn-ln > i { display: block; height: 8px; border-radius: 4px; background: var(--sl-cn-bar); }
 .sl-cn-ln > b { flex: none; width: 16px; height: 16px; border-radius: 4px; background: var(--sl-cn-emote); }
-.sl-cn-ln.n { animation: sl-cn-ln-in 0.16s ease-out both; }
-@keyframes sl-cn-ln-in { from { opacity: 0; transform: translateY(8px); } }
+/* a new line (.n) rises and fades in by script (slideIn in LandingChatNow.tsx), not by a CSS animation */
 
 .sl-cn-pcap { padding: 12px 16px 16px; border-top: 1px solid var(--sl-cn-line); }
 .sl-cn-pcap p { margin: 0; color: hsl(var(--sc-muted-foreground)); font-size: 13px; line-height: 20px; }
@@ -1708,6 +1754,9 @@
   .sl-cn-head p { grid-area: sub; margin: 0 0 12px; font-size: 14px; line-height: 20px; }
   .sp-landing a.sl-cn-more { justify-self: end; }
   .sl-cn-list { padding: 4px; }
+  /* a phone row is 66 px (64 px least, plus its two lines): the shapes and the quiet line take the same */
+  .sl-cn-list > .sl-cn-skel { height: 62px; }
+  .sl-cn-none { min-height: calc(5 * 66px + 8px); }
   .sp-landing a.sl-cn-row {
     grid-template-columns: 20px 36px minmax(0, 1fr) 64px;
     grid-template-rows: auto auto;

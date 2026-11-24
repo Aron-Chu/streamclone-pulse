@@ -90,13 +90,30 @@ describe('chatNowBand', () => {
 
 describe('ticks, the chat column and bars', () => {
   it('moves every bar at one speed and spaces ticks one message apart', () => {
-    expect(chatTicks(120)).toEqual({ gap: 60, seconds: 0.5 })
-    expect(chatTicks(900)).toEqual({ gap: 8, seconds: 8 / 120 })
+    expect(chatTicks(120)).toEqual({ gap: 60, seconds: 0.5, run: 240, loopSeconds: 2 })
+    expect(chatTicks(900)).toEqual({ gap: 8, seconds: 8 / 120, run: 240, loopSeconds: 2 })
+    // a loop is whole spacings, about 2 s, at the same speed
+    expect(chatTicks(20)).toMatchObject({ run: 288, loopSeconds: 2.4 })
+    expect(chatTicks(5000)).toMatchObject({ run: 240, loopSeconds: 2 })
     // past the limits the spacing stops
     expect(chatTicks(5000)!.gap).toBe(4)
     expect(chatTicks(20)!.gap).toBe(96)
     expect(chatTicks(0)).toBeNull()
     expect(chatTicks(Number.NaN)).toBeNull()
+  })
+
+  it('loops whole spacings at the same speed when the spacing is not a whole number of pixels', () => {
+    expect(chatTicks(1000)).toEqual({ gap: 7.2, seconds: 7.2 / 120, run: 237.6, loopSeconds: 1.98 })
+    for (let perMin = 1; perMin <= 3000; perMin += 7) {
+      const t = chatTicks(perMin)!
+      const spacings = t.run / t.gap
+      // the loop ends where it began: a whole number of spacings, so the seam cannot show
+      expect(Math.abs(spacings - Math.round(spacings))).toBeLessThan(1e-9)
+      expect(Math.round(spacings)).toBeGreaterThanOrEqual(1)
+      // the same 120 px a second as one spacing, and about 2 s a loop
+      expect(t.run / t.loopSeconds).toBeCloseTo(120, 9)
+      expect(Math.abs(t.run - 240)).toBeLessThanOrEqual(t.gap / 2 + 1e-9)
+    }
   })
 
   it('makes each line one message until twelve a second, and names the square only when the chat has emotes', () => {
@@ -215,7 +232,8 @@ describe('LandingChatNow', () => {
     draw(healthy())
     const tick = document.querySelector<HTMLElement>('.sl-cn-tk')!
     expect(tick.style.getPropertyValue('--sl-cn-gap')).toBe('8px')
-    expect(tick.style.getPropertyValue('--sl-cn-dur')).toBe('0.067s')
+    expect(tick.style.getPropertyValue('--sl-cn-run')).toBe('240px')
+    expect(tick.style.getPropertyValue('--sl-cn-dur')).toBe('2.000s')
   })
 
   it("loads Twitch's chat for a row pointed at, out of the Tab order, and falls back to the column after 10 s", () => {
@@ -305,15 +323,19 @@ describe('LandingChatNow', () => {
     expect(document.querySelector('iframe')).toBeNull()
   })
 
-  it('holds row shapes while the first read is on its way, and shows nothing when the hub has too little', () => {
+  // 11-23: the band keeps its place so nothing under it moves; no rows leaves one quiet line in the same space.
+  it('holds row shapes while the first read is on its way, and one quiet line when there are no rows', () => {
     media({ wide: false })
     const { container, rerender } = draw(null, true)
     expect(container.querySelector('section.sl-cn')!.getAttribute('aria-busy')).toBe('true')
     expect(container.querySelectorAll('.sl-cn-skel')).toHaveLength(5)
     rerender(<MemoryRouter><LandingChatNow hub={null} loading={false} /></MemoryRouter>)
-    expect(container.querySelector('section.sl-cn')).toBeNull()
+    expect(container.querySelector('section.sl-cn')!.hasAttribute('aria-busy')).toBe(false)
+    expect(container.querySelectorAll('.sl-cn-skel, a.sl-cn-row')).toHaveLength(0)
+    expect(container.querySelector('.sl-cn-none')?.textContent).toBe('Chat speeds didn’t load. They’ll show here when they do.')
     rerender(<MemoryRouter><LandingChatNow hub={healthy([500])} loading={false} /></MemoryRouter>)
-    expect(container.querySelector('section.sl-cn')).toBeNull()
+    expect(container.querySelectorAll('.sl-cn-skel, a.sl-cn-row')).toHaveLength(0)
+    expect(container.querySelector('.sl-cn-none')?.textContent).toBe('No live chats to rank right now.')
   })
 
   /** The first chat (600 a minute) with `emotes` emote uses a message over the screener's 5 minutes. */
@@ -373,51 +395,79 @@ describe('LandingChatNow', () => {
 
   it("holds the column still under Twitch's chat, the dimmed one under a loading chat included", () => {
     media({})
-    const realRaf = window.requestAnimationFrame
-    let step: FrameRequestCallback | null = null
-    window.requestAnimationFrame = ((cb: FrameRequestCallback) => { step = cb; return 1 }) as typeof window.requestAnimationFrame
-    try {
-      draw(healthy())
-      expect(step).not.toBeNull()
-      const [first, second] = screen.getAllByRole('listitem').map((li) => li.querySelector('a')!)
-      fireEvent.mouseEnter(first)
-      act(() => { vi.advanceTimersByTime(CHAT_PEEK_SETTLE_MS) })
-      fireEvent.load(document.querySelector('iframe')!)
-      act(() => { vi.advanceTimersByTime(CHAT_PEEK_DRAW_MS) })
-      // Twitch's chat is up: no new frame of lines is asked for
-      step = null
-      act(() => { vi.advanceTimersByTime(1000) })
-      expect(step).toBeNull()
-      // the next chat loads under the first, which stays dimmed over the column: still nothing moves
-      fireEvent.mouseLeave(first)
-      fireEvent.mouseEnter(second)
-      act(() => { vi.advanceTimersByTime(CHAT_PEEK_SETTLE_MS) })
-      expect(document.querySelectorAll('iframe')).toHaveLength(2)
-      expect(step).toBeNull()
-      // the next chat never loads: the frames go and the column moves again
-      act(() => { vi.advanceTimersByTime(CHAT_PEEK_TIMEOUT_MS) })
-      expect(document.querySelector('iframe')).toBeNull()
-      expect(step).not.toBeNull()
-    } finally {
-      window.requestAnimationFrame = realRaf
-    }
+    draw(healthy())
+    // the column's newest line: a new one coming in replaces it
+    const newest = () => document.querySelector('.sl-cn-col')!.lastElementChild
+    let before = newest()
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(newest()).not.toBe(before)
+    const [first, second] = screen.getAllByRole('listitem').map((li) => li.querySelector('a')!)
+    fireEvent.mouseEnter(first)
+    act(() => { vi.advanceTimersByTime(CHAT_PEEK_SETTLE_MS) })
+    fireEvent.load(document.querySelector('iframe')!)
+    act(() => { vi.advanceTimersByTime(CHAT_PEEK_DRAW_MS) })
+    // Twitch's chat is up: no new line comes in
+    before = newest()
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(newest()).toBe(before)
+    // the next chat loads under the first, which stays dimmed over the column: still nothing moves
+    fireEvent.mouseLeave(first)
+    fireEvent.mouseEnter(second)
+    act(() => { vi.advanceTimersByTime(CHAT_PEEK_SETTLE_MS) })
+    expect(document.querySelectorAll('iframe')).toHaveLength(2)
+    before = newest()
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(newest()).toBe(before)
+    // the next chat never loads: the frames go and the column moves again
+    act(() => { vi.advanceTimersByTime(CHAT_PEEK_TIMEOUT_MS) })
+    expect(document.querySelector('iframe')).toBeNull()
+    before = newest()
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(newest()).not.toBe(before)
   })
 
   it("brings new lines in at the bottom at the chat's pace, the oldest going", () => {
     media({})
-    const realRaf = window.requestAnimationFrame
-    let step: FrameRequestCallback | null = null
-    window.requestAnimationFrame = ((cb: FrameRequestCallback) => { step = cb; return 1 }) as typeof window.requestAnimationFrame
+    draw(withEmotes(0))
+    expect(document.querySelectorAll('.sl-cn-ln.n')).toHaveLength(0)
+    // a quarter second at 600 a minute (10 a second): two whole lines, the third due at 300 ms
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(document.querySelectorAll('.sl-cn-ln.n')).toHaveLength(2)
+    act(() => { vi.advanceTimersByTime(50) })
+    expect(document.querySelectorAll('.sl-cn-ln.n')).toHaveLength(3)
+    expect(document.querySelectorAll('.sl-cn-col > .sl-cn-ln')).toHaveLength(CHAT_COLUMN_LINES)
+    expect(document.querySelector('.sl-cn-col')!.lastElementChild!.classList.contains('n')).toBe(true)
+  })
+
+  it('slides only live lines in, by a script animation started now', () => {
+    const targets: Element[] = []
+    const slides: Array<{ startTime: number | null }> = []
+    const animate = vi.fn(function (this: Element) {
+      targets.push(this)
+      const slide = { startTime: null as number | null }
+      slides.push(slide)
+      return slide
+    })
+    Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, writable: true, value: animate })
+    Object.defineProperty(document, 'timeline', { configurable: true, value: { currentTime: 1234 } })
     try {
+      media({})
       draw(withEmotes(0))
-      expect(document.querySelectorAll('.sl-cn-ln.n')).toHaveLength(0)
-      // a quarter second at 600 a minute (10 a second): two whole lines, the half carried
-      act(() => { step!(performance.now() + 250) })
-      expect(document.querySelectorAll('.sl-cn-ln.n')).toHaveLength(2)
-      expect(document.querySelectorAll('.sl-cn-col > .sl-cn-ln')).toHaveLength(CHAT_COLUMN_LINES)
-      expect(document.querySelector('.sl-cn-col')!.lastElementChild!.classList.contains('n')).toBe(true)
+      // the first screenful is drawn still
+      expect(animate).not.toHaveBeenCalled()
+      act(() => { vi.advanceTimersByTime(250) })
+      expect(animate).toHaveBeenCalledTimes(2)
+      for (const call of animate.mock.calls) {
+        expect(call).toEqual([
+          [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+          { duration: 160, easing: 'ease-out', fill: 'backwards' },
+        ])
+      }
+      expect(targets.every((t) => t.classList.contains('sl-cn-ln') && t.classList.contains('n'))).toBe(true)
+      expect(slides.map((s) => s.startTime)).toEqual([1234, 1234])
     } finally {
-      window.requestAnimationFrame = realRaf
+      delete (HTMLElement.prototype as { animate?: unknown }).animate
+      delete (document as { timeline?: unknown }).timeline
     }
   })
 })
