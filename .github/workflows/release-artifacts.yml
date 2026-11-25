@@ -208,7 +208,8 @@ jobs:
             echo "::error::STREAMPULSE_CI_PACKAGE_PROBE must not be set when building release artifacts"
             exit 1
           fi
-          npm ci
+          # Dependency install scripts stay off, as in CI.
+          npm ci --ignore-scripts
           npm run ensure:packages
           npm run package:cws
           npm run package:edge
