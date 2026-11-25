@@ -21,6 +21,11 @@ export interface Part {
   moment(m: HeroMoment, nowMs: number): void
   /** The layer is back on screen, or the tab is shown again, after time passed without frames. */
   resume?(): void
+  /**
+   * True when nothing on the layer needs a frame from script: what moves is left to the browser. A layer without
+   * it needs every frame while it is on screen.
+   */
+  idle?(now: number): boolean
   dispose(): void
 }
 

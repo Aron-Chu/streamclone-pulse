@@ -7,6 +7,11 @@ import { clamp, emoteImg, failedEmotes, makeChip, NO_PART, type Part, type Point
  * and each comes up before any repeats. Three faint depths with blur give it parallax; it is texture behind
  * the page, and a drop near the pointer slows and comes into focus. The search makes it hold its breath, and
  * a live moment stirs the gutters with a handful of different emotes. It falls only in the page gutters.
+ *
+ * Each drop's rise and sway are handed to the browser as animations, so the compositor moves them and the page's
+ * own thread does no work for the rain at rest (11-24: written each frame from script, the rain kept a fast
+ * desktop core about a third busy, at the footer too). Script steps in only while something answers the reader:
+ * the pointer near a drop, the search held, a live moment's burst.
  */
 
 /** Far, middle and near: height px, opacity, rise px/s, blur px, share of the drops. */
@@ -24,26 +29,37 @@ const MIN_GUTTER = 90
 const EDGE_BAND = 40
 /** The fewest drops, so a narrow screen still has a rain rather than a stray emote. */
 const MIN_DROPS = 10
+/** The sway's period at base speed: one full side-to-side swing every 2600 ms x 2 pi. */
+const SWAY_MS = 2600 * Math.PI * 2
+/** A sine's ease, as a curve the compositor runs (easeInOutSine). */
+const SINE_EASE = 'cubic-bezier(0.37, 0, 0.63, 1)'
+/** Focus and speed this close to where they settle count as settled, and the drop is left to the compositor. */
+const SETTLED = 0.004
 
 interface Drop {
+  /** Holds the sway, the opacity and the blur. */
   el: HTMLSpanElement
+  /** Holds the rise and the turn. */
+  fall: HTMLSpanElement
   layer: 0 | 1 | 2
   side: -1 | 1
   e: HeroEmote | null
   h: number
   w: number
   hx: number
-  x: number
-  y: number
-  ph: number
+  y0: number
+  y1: number
+  rot0: number
+  /** Rise duration at base speed, ms. */
+  dur: number
   sw: number
-  rot: number
-  vr: number
-  vs: number
+  swayMs: number
+  rise: Animation | null
+  sway: Animation | null
+  rate: number
   focus: number
-  blur: number
-  /** The opacity last written, so an unchanged one is not written again each frame. */
-  op: string
+  /** The look last written, so an unchanged one is not written again. */
+  look: string
 }
 
 interface Burst {
@@ -59,17 +75,23 @@ interface Burst {
   vr: number
 }
 
+const animates = (el: Element) => typeof (el as HTMLElement).animate === 'function'
+
 export function mountEmoteRain(host: HTMLElement): Part {
   host.replaceChildren()
   const W = host.clientWidth
   const H = host.clientHeight
-  if (H < 200) return NO_PART
+  if (H < 200 || !animates(host)) return NO_PART
   // The content column's width comes from the page (--sl-shell), so the rain follows it if it changes.
   const shell = parseFloat(getComputedStyle(host).getPropertyValue('--sl-shell')) || 1120
   const gutter = Math.max(0, (W - shell) / 2)
   const narrow = gutter < MIN_GUTTER
   const gw = narrow ? Math.max(EDGE_BAND, gutter) : gutter
   const margin = narrow ? 4 : 10
+  // A drop comes into focus within 190 px of the pointer, and the drops keep to the gutters (plus their sway): a
+  // pointer farther in than that can light none of them, so it needs no frames.
+  const REACH = 190 + 20
+  const inReach = (p: Pointer) => p.x < gw + REACH || p.x > W - gw - REACH
 
   const R = Math.random
   const drops: Drop[] = []
@@ -82,25 +104,107 @@ export function mountEmoteRain(host: HTMLElement): Part {
   }
 
   function dress(d: Drop, e: HeroEmote | undefined) {
-    if (!e || (d.e === e && d.el.firstChild)) return
+    if (!e || (d.e === e && d.fall.firstChild)) return
     d.e = e
     d.w = d.h * e.aspect
-    d.el.replaceChildren(emoteImg(e, d.h))
-    d.el.style.width = `${d.w.toFixed(1)}px`
-    d.el.style.height = `${d.h}px`
+    d.look = ''
+    const img = emoteImg(e, d.h)
+    // A picture that fails takes the next emote in the deck, at once rather than on a frame.
+    img.addEventListener('error', () => {
+      if (d.e !== e) return
+      const next = pick(d, d.layer !== 2)
+      if (next && next !== e) dress(d, next)
+      else d.e = null
+    }, { once: true })
+    d.fall.replaceChildren(img)
+    for (const el of [d.el, d.fall]) {
+      el.style.width = `${d.w.toFixed(1)}px`
+      el.style.height = `${d.h}px`
+    }
+  }
+
+  /** The drop's look: opacity, blur and size, from how much it is in focus. Written only when it changes. */
+  function look(d: Drop, fx: number, hovered: boolean) {
+    const L = LAYERS[d.layer]
+    const a = (L.a + (HOVER_A - L.a) * fx * (hovered ? 1 : 0.45)).toFixed(3)
+    const b = Math.round(L.blur * (1 - fx) * 10) / 10
+    const s = (1 + 0.18 * fx).toFixed(3)
+    const key = `${a}|${b}|${s}`
+    if (key === d.look) return
+    d.look = key
+    d.el.style.opacity = a
+    d.el.style.filter = `${b > 0 ? `blur(${b}px) ` : ''}saturate(0.75)`
+    const img = d.fall.firstElementChild as HTMLElement | null
+    if (img) img.style.transform = s === '1.000' ? '' : `scale(${s})`
+  }
+
+  /** Where the drop is now, in the layer's coordinates, from its animations' clocks. */
+  function at(d: Drop): { x: number; y: number } {
+    const t = Number(d.rise?.currentTime ?? 0)
+    const y = d.y0 + (d.y1 - d.y0) * clamp(t / d.dur, 0, 1)
+    const half = d.swayMs / 2
+    const c = Number(d.sway?.currentTime ?? 0)
+    const u = (c % half) / half
+    const eased = (1 - Math.cos(Math.PI * u)) / 2
+    const s = Math.floor(c / half) % 2 ? 1 - 2 * eased : -1 + 2 * eased
+    return { x: d.hx + s * d.sw, y }
+  }
+
+  function setRate(d: Drop, rate: number) {
+    if (Math.abs(rate - d.rate) < 0.01 && !(rate === 0 && d.rate !== 0)) return
+    d.rate = rate
+    d.rise?.updatePlaybackRate(rate)
   }
 
   function place(d: Drop, scatter: boolean) {
     dress(d, pick(d, d.layer !== 2))
+    const L = LAYERS[d.layer]
     const lo = d.side < 0 ? margin : W - gw + margin
+    const vs = 0.85 + R() * 0.3
     d.hx = lo + R() * Math.max(margin, gw - 2 * margin - d.w)
-    d.y = scatter ? R() * (H + 60) : H + 20 + R() * 80
-    d.ph = R() * 6.28
+    d.y0 = scatter ? R() * (H + 60) : H + 20 + R() * 80
+    d.y1 = -d.h - 30
     d.sw = 5 + R() * 9
-    d.rot = (R() - 0.5) * 0.5
-    d.vr = (R() - 0.5) * 0.14
-    d.vs = 0.85 + R() * 0.3
+    d.rot0 = (R() - 0.5) * 0.5
+    const vr = (R() - 0.5) * 0.14
+    d.dur = ((d.y0 - d.y1) / (L.v * vs)) * 1000
+    d.swayMs = SWAY_MS / vs
+    const turn = d.rot0 + (vr * d.dur) / 1000
+    d.rise?.cancel()
+    d.rise = d.fall.animate([
+      { transform: `translate3d(${d.hx.toFixed(1)}px,${d.y0.toFixed(1)}px,0) rotate(${d.rot0.toFixed(3)}rad)` },
+      { transform: `translate3d(${d.hx.toFixed(1)}px,${d.y1.toFixed(1)}px,0) rotate(${turn.toFixed(3)}rad)` },
+    ], { duration: d.dur, easing: 'linear' })
+    if (d.rate !== 1) d.rise.updatePlaybackRate(d.rate)
+    d.rise.onfinish = () => place(d, false)
+    if (!d.sway) {
+      d.sway = d.el.animate([
+        { transform: `translateX(${(-d.sw).toFixed(1)}px)` },
+        { transform: `translateX(${d.sw.toFixed(1)}px)` },
+      ], { duration: d.swayMs / 2, easing: SINE_EASE, direction: 'alternate', iterations: Infinity })
+      d.sway.currentTime = R() * d.swayMs
+    }
+    if (hidden) pauseAll()
   }
+
+  let hidden = document.hidden
+  const pauseAll = () => {
+    for (const d of drops) {
+      d.rise?.pause()
+      d.sway?.pause()
+    }
+  }
+  // While the tab is hidden the drops wait where they are, as the frame loop's drops did; otherwise they would all
+  // finish together and come back up from the bottom in one wave.
+  const onVisibility = () => {
+    hidden = document.hidden
+    if (hidden) return pauseAll()
+    for (const d of drops) {
+      d.rise?.play()
+      d.sway?.play()
+    }
+  }
+  document.addEventListener('visibilitychange', onVisibility)
 
   const N = Math.max(MIN_DROPS, Math.round(26 * Math.min(1, gw / 400)))
   for (let i = 0; i < N; i++) {
@@ -111,60 +215,55 @@ export function mountEmoteRain(host: HTMLElement): Part {
       : x < LAYERS[0].share ? 0 : x < LAYERS[0].share + LAYERS[1].share ? 1 : 2) as Drop['layer']
     const el = document.createElement('span')
     el.className = 'sl-fx__drop'
-    const d: Drop = { el, layer, side: i % 2 ? 1 : -1, e: null, h: LAYERS[layer].sz, w: LAYERS[layer].sz, hx: 0, x: 0, y: 0, ph: 0, sw: 0, rot: 0, vr: 0, vs: 1, focus: 0, blur: -1, op: '' }
-    place(d, true)
-    d.x = d.hx
-    drops.push(d)
+    const fall = document.createElement('span')
+    fall.className = 'sl-fx__fall'
+    el.appendChild(fall)
+    const h = LAYERS[layer].sz
+    drops.push({ el, fall, layer, side: i % 2 ? 1 : -1, e: null, h, w: h, hx: 0, y0: 0, y1: 0, rot0: 0, dur: 1, sw: 0, swayMs: SWAY_MS, rise: null, sway: null, rate: 1, focus: 0, look: '' })
   }
   drops.sort((a, b) => a.layer - b.layer)
-  for (const d of drops) host.insertBefore(d.el, tip.el)
+  for (const d of drops) {
+    host.insertBefore(d.el, tip.el)
+    look(d, 0, false)
+    place(d, true)
+  }
 
   let speed = 1
   let held = false
   let hovered: Drop | null = null
   let pointer: Pointer | null = null
   let lit: { name: string; until: number } | null = null
+  /** True while a drop is lit or easing, so the frame loop keeps calling until everything has settled. */
+  let moving = false
   const bursts: Burst[] = []
 
-  function paint(el: HTMLElement, x: number, y: number, rot: number, scale: number, a: number, blur: number, d: Drop | null) {
-    el.style.transform = `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0) rotate(${rot.toFixed(3)}rad) scale(${scale.toFixed(3)})`
-    const op = a.toFixed(3)
-    if (!d || d.op !== op) {
-      el.style.opacity = op
-      if (d) d.op = op
-    }
-    const b = Math.round(blur * 10) / 10
-    if (!d || d.blur !== b) {
-      el.style.filter = `${b > 0 ? `blur(${b}px) ` : ''}saturate(0.75)`
-      if (d) d.blur = b
-    }
+  function paint(el: HTMLElement, x: number, y: number, rot: number, a: number) {
+    el.style.transform = `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0) rotate(${rot.toFixed(3)}rad)`
+    el.style.opacity = a.toFixed(3)
   }
 
   return {
     tick(now, dt) {
-      speed += ((held ? 0.3 : 1) - speed) * Math.min(1, dt * 2.5)
+      const target = held ? 0.3 : 1
+      speed += (target - speed) * Math.min(1, dt * 2.5)
+      if (Math.abs(target - speed) < SETTLED) speed = target
+      let busy = speed !== target
+      const glowing = lit && now < lit.until ? lit.name : null
+      if (lit && !glowing) lit = null
       for (const d of drops) {
-        // A drop whose picture failed takes the next emote in the deck.
-        if (d.e && !d.el.firstChild) {
-          const next = pick(d, d.layer !== 2)
-          if (next && next !== d.e) dress(d, next)
-          else d.e = null
-        }
-        const L = LAYERS[d.layer]
         let near = 0
         if (pointer && d.layer > 0) {
-          const dd = Math.hypot(d.x + d.w / 2 - pointer.x, d.y + d.h / 2 - pointer.y)
+          const p = at(d)
+          const dd = Math.hypot(p.x + d.w / 2 - pointer.x, p.y + d.h / 2 - pointer.y)
           near = clamp(1 - (dd - 40) / 150, 0, 1)
         }
         d.focus += (near - d.focus) * Math.min(1, dt * 6)
-        if (d !== hovered) d.y -= L.v * d.vs * speed * (1 - 0.8 * d.focus) * dt
-        if (d.y < -d.h - 30) place(d, false)
-        d.x = d.hx + Math.sin((now / 2600) * d.vs + d.ph) * d.sw
-        d.rot += d.vr * dt * speed
-        const glow = lit && d.e && lit.name === d.e.name && now < lit.until ? 1 : 0
+        if (Math.abs(near - d.focus) < SETTLED) d.focus = near
+        else busy = true
+        const glow = glowing && d.e && glowing === d.e.name ? 1 : 0
         const fx = Math.max(d.focus, glow, d === hovered ? 1 : 0)
-        const a = L.a + (HOVER_A - L.a) * fx * (d === hovered ? 1 : 0.45)
-        paint(d.el, d.x, d.y, d.rot, 1 + 0.18 * fx, a, L.blur * (1 - fx), d)
+        look(d, fx, d === hovered)
+        setRate(d, d === hovered ? 0 : speed * (1 - 0.8 * d.focus))
       }
       for (let i = bursts.length - 1; i >= 0; i--) {
         const b = bursts[i]
@@ -181,20 +280,29 @@ export function mountEmoteRain(host: HTMLElement): Part {
         }
         // Brightest out in the gutters, faint where it crosses the words.
         const into = clamp((Math.abs(b.x + b.w / 2 - W / 2) - 380) / 160, 0, 1)
-        paint(b.el, b.x, b.y, b.rot, 1, Math.min(1, b.t * 4) * (1 - b.t / b.life) * (0.1 + 0.18 * into), 0, null)
+        paint(b.el, b.x, b.y, b.rot, Math.min(1, b.t * 4) * (1 - b.t / b.life) * (0.1 + 0.18 * into))
       }
-      if (hovered) tip.at(hovered.x + hovered.w / 2, hovered.y - 4, W)
+      if (hovered) {
+        const p = at(hovered)
+        tip.at(p.x + hovered.w / 2, p.y - 4, W)
+      }
+      moving = busy || !!glowing || !!hovered || bursts.length > 0
+    },
+    idle() {
+      return !moving && !hovered && !(pointer && inReach(pointer))
     },
     pointer(p, claimed) {
       pointer = p
+      moving = true
       let best: Drop | null = null
       let bd = Infinity
       // Drops still come into focus near the pointer; only the label waits while another layer holds it.
       if (p && !claimed) {
         for (const d of drops) {
           if (d.layer === 0 || !d.e) continue
-          const dx = Math.abs(d.x + d.w / 2 - p.x)
-          const dy = Math.abs(d.y + d.h / 2 - p.y)
+          const q = at(d)
+          const dx = Math.abs(q.x + d.w / 2 - p.x)
+          const dy = Math.abs(q.y + d.h / 2 - p.y)
           if (dx < d.w / 2 + 10 && dy < d.h / 2 + 10 && dx + dy < bd) {
             bd = dx + dy
             best = d
@@ -211,9 +319,11 @@ export function mountEmoteRain(host: HTMLElement): Part {
     search(ev: SearchEvent) {
       if (ev === 'focus') held = true
       if (ev === 'blur') held = false
+      moving = true
     },
     moment(m: HeroMoment) {
       const now = performance.now()
+      moving = true
       if (m.emote) lit = { name: m.emote, until: now + 3600 }
       // Out from both ends of the hero's ticker row, when it is on screen.
       const row = document.querySelector('.sl-tickwrap')?.getBoundingClientRect()
@@ -226,10 +336,11 @@ export function mountEmoteRain(host: HTMLElement): Part {
         const h = 24 + R() * 10
         const w = h * e.aspect
         const el = document.createElement('span')
-        el.className = 'sl-fx__drop'
+        el.className = 'sl-fx__drop sl-fx__drop--burst'
         el.style.width = `${w.toFixed(1)}px`
         el.style.height = `${h.toFixed(1)}px`
         el.style.opacity = '0'
+        el.style.filter = 'saturate(0.75)'
         el.appendChild(emoteImg(e, Math.round(h)))
         host.insertBefore(el, tip.el)
         const x0 = side < 0 ? row.left : row.right
@@ -237,6 +348,12 @@ export function mountEmoteRain(host: HTMLElement): Part {
       }
     },
     dispose() {
+      document.removeEventListener('visibilitychange', onVisibility)
+      for (const d of drops) {
+        if (d.rise) d.rise.onfinish = null
+        d.rise?.cancel()
+        d.sway?.cancel()
+      }
       host.replaceChildren()
     },
   }

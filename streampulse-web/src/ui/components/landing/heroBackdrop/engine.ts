@@ -131,7 +131,10 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
         const was = stageVisible
         stageVisible = entries.some((e) => e.isIntersecting)
         // Back on screen: time passed without frames, so each layer draws afresh once.
-        if (stageVisible && !was) for (const p of stageParts) p.resume?.()
+        if (stageVisible && !was) {
+          for (const p of stageParts) p.resume?.()
+          start()
+        }
       })
       io.observe(stage)
     }
@@ -146,6 +149,7 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
     const nowMs = Date.now()
     if (!reduced) quick(QUICK_MOMENT_MS)
     for (const p of parts()) p.moment(m, nowMs)
+    plan()
   }
 
   function nextBeat() {
@@ -205,7 +209,16 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
       // the pointer or a scroll asks for one at once.
       last = 0
       slow = window.setTimeout(start, 1000)
-    } else plan()
+    } else if (needsFrames(now)) plan()
+    // Otherwise nothing on screen needs script: the loop sleeps until the pointer, the search, a moment, a resize or
+    // the hero coming back on screen wakes it.
+    else last = 0
+  }
+
+  /** A layer on screen still moving from script, or one that cannot say. */
+  function needsFrames(now: number) {
+    if (rain && !(rain.idle?.(now) ?? false)) return true
+    return stageVisible && stageParts.some((p) => !(p.idle?.(now) ?? false))
   }
 
   let disposed = false
@@ -282,6 +295,7 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
     const ev: SearchEvent = e.type === 'focusin' ? 'focus' : e.type === 'focusout' ? 'blur' : 'input'
     const value = (e.target as HTMLInputElement).value ?? ''
     for (const p of parts()) p.search(ev, value)
+    plan()
   }
   const onResize = () => {
     window.clearTimeout(resizeTimer)

@@ -38,6 +38,8 @@ const RIPPLE_DELAY_MS = 90
 const SWELL_TAIL_MS = RIPPLE_LINES * RIPPLE_DELAY_MS + SWELL_FALL_MS + 100
 /** A tilt this close to the pointer's is the pointer's: the lines stop moving and the canvas stops drawing. */
 const TILT_SETTLED = 0.001
+/** How far a stroke, its smoothing or a mark reaches past a line's points, in CSS pixels. */
+const INK_PAD = 8
 
 /** Surface lines between two neighbouring series, so the field has about as many lines as the board's. */
 export function meshPerGap(rows: number, target: number): number {
@@ -140,6 +142,8 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
   let swept = false
   let hover: { row: number; i: number; x: number } | null = null
   let drawn: Array<Array<[number, number]>> = []
+  /** Where the running light is in the picture on the canvas now (x from, x to), or null when it is not. */
+  let band: [number, number] | null = null
   /** Each line's own stroke gradient, kept while its light and the search's hush stay the same. */
   const lineGrad: Array<{ lit: number; quiet: boolean; grad: CanvasGradient } | null> = lines.map(() => null)
   const hoverChip = makeChip(stage)
@@ -225,6 +229,24 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
     return u + 0.1 > -0.08 && u < 1.08
   }
 
+  /** The x-range the running light covers at `now`, across every line, or null when it is on none. */
+  function sweepBand(now: number): [number, number] | null {
+    if (reduced || quiet) return null
+    const sweepU = sweepAt(now)
+    let lo = Infinity
+    let hi2 = -Infinity
+    for (let l = 0; l < L; l++) {
+      const u = sweepU + (1 - depthOf(l)) * 0.1
+      if (!(u > -0.08 && u < 1.08)) continue
+      const Z = lineZ(l)
+      const x0 = colX(0, Z)
+      const x1 = colX(COLS - 1, Z)
+      lo = Math.min(lo, x0 + (x1 - x0) * clamp(u - 0.08, 0, 1))
+      hi2 = Math.max(hi2, x0 + (x1 - x0) * clamp(u + 0.08, 0, 1))
+    }
+    return lo <= hi2 ? [lo, hi2] : null
+  }
+
   function lineGradient(l: number, tone: Rgb, a: number, mid: number, lit: number): CanvasGradient {
     const kept = lineGrad[l]
     if (kept && kept.lit === lit && kept.quiet === quiet) return kept.grad
@@ -239,25 +261,58 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
     return grad
   }
 
-  function draw(now: number) {
-    g!.clearRect(0, 0, W, H)
+  /**
+   * The whole picture, or with `onlyLight` the strip the running light left and the one it is in now: when
+   * nothing else moved, the rest of the canvas already holds the same pixels.
+   */
+  function draw(now: number, onlyLight = false) {
+    const next = sweepBand(now)
+    let strip: [number, number] | null = null
+    if (onlyLight) {
+      const from = Math.min(band?.[0] ?? Infinity, next?.[0] ?? Infinity) - INK_PAD
+      const to = Math.max(band?.[1] ?? -Infinity, next?.[1] ?? -Infinity) + INK_PAD
+      band = next
+      if (!(from < to)) return
+      // On whole device pixels, so the strip's edges meet the pixels kept beside it exactly.
+      const a = Math.max(0, Math.floor(from * dpr) / dpr)
+      const b = Math.min(W, Math.ceil(to * dpr) / dpr)
+      if (!(a < b)) return
+      strip = [a, b]
+      g!.save()
+      g!.beginPath()
+      g!.rect(a, 0, b - a, H + 1)
+      g!.clip()
+      g!.clearRect(a, 0, b - a, H + 1)
+    } else {
+      band = next
+      g!.clearRect(0, 0, W, H)
+    }
     drawn = []
     const sweepU = sweepAt(now)
+    /** The lowest ink drawn so far: below it the canvas is still clear, so a cut there changes nothing. */
+    let inkTo = -Infinity
     for (let l = 0; l < L; l++) {
       const ln = lines[l]
       const row = ln.row != null ? rows[ln.row] : null
       const pts = points(l, now)
       drawn.push(pts)
-      // Cut away what this nearer line hides, so the page's own background shows below it.
-      g!.globalCompositeOperation = 'destination-out'
-      g!.beginPath()
-      trace(pts)
-      g!.lineTo(W + 60, H + 10)
-      g!.lineTo(-60, H + 10)
-      g!.closePath()
-      g!.fillStyle = '#000'
-      g!.fill()
-      g!.globalCompositeOperation = 'source-over'
+      let lineTo = -Infinity
+      for (const q of pts) if (q[1] > lineTo) lineTo = q[1]
+      // Cut away what this nearer line hides, so the page's own background shows below it. The cut stops under
+      // the lowest ink already drawn (and never above this line), not at the bottom of the canvas.
+      if (inkTo > -Infinity) {
+        const bottom = Math.min(H + 10, Math.max(inkTo + INK_PAD, lineTo))
+        g!.globalCompositeOperation = 'destination-out'
+        g!.beginPath()
+        trace(pts)
+        g!.lineTo(W + 60, bottom)
+        g!.lineTo(-60, bottom)
+        g!.closePath()
+        g!.fillStyle = '#000'
+        g!.fill()
+        g!.globalCompositeOperation = 'source-over'
+      }
+      inkTo = Math.max(inkTo, lineTo)
 
       const depth = depthOf(l)
       const lit = ln.row != null ? hi[ln.row] : Math.max(hi[ln.a] * (1 - ln.t), hi[ln.b] * ln.t) * 0.35
@@ -297,6 +352,7 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
         g!.fill()
       }
     }
+    if (strip) g!.restore()
     const live = marks.find((m) => now < m.until)
     if (live && drawn[live.line]) markChip.at(drawn[live.line][live.i][0], drawn[live.line][live.i][1], W)
     if (hover && drawn[rowLine[hover.row]]) hoverChip.at(hover.x, yAt(drawn[rowLine[hover.row]], hover.x), W)
@@ -338,11 +394,13 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
       // The canvas draws only while something on it moves: the rise, the running light (and one frame after it
       // leaves, to clear it), a swell, the tilt, a highlight. Between sweeps the last picture stays up.
       let busy = dirty
+      /** Something besides the running light moved, so the whole picture is drawn. */
+      let whole = dirty
       for (let r = 0; r < ROWS; r++) {
         const want = hover?.row === r || marks.some((m) => m.row === r && now < m.until) ? 1 : 0
         const next = reduced ? want : hi[r] + (want - hi[r]) * Math.min(1, dt * 10)
         const v = Math.abs(want - next) < 0.004 ? want : next
-        if (v !== hi[r]) busy = true
+        if (v !== hi[r]) busy = whole = true
         hi[r] = v
       }
       if (!reduced) {
@@ -351,17 +409,17 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
           const d = pt[ax] - pn[ax]
           if (!d) continue
           pn[ax] = Math.abs(d) < TILT_SETTLED ? pt[ax] : pn[ax] + d * k
-          busy = true
+          busy = whole = true
         }
-        if (now - born < ENTER_MS + L * ENTER_STAGGER_MS + 100) busy = true
-        if (marks.some((m) => now < m.until + SWELL_TAIL_MS)) busy = true
+        if (now - born < ENTER_MS + L * ENTER_STAGGER_MS + 100) busy = whole = true
+        if (marks.some((m) => now < m.until + SWELL_TAIL_MS)) busy = whole = true
         const sweeping = !quiet && sweepShows(now)
         if (sweeping || swept) busy = true
         swept = sweeping
       }
-      for (const m of marks) if (now >= m.until && now < m.until + 100) busy = true
+      for (const m of marks) if (now >= m.until && now < m.until + 100) busy = whole = true
       if (!marks.some((m) => now < m.until)) markChip.hide()
-      if (busy) draw(now)
+      if (busy) draw(now, !whole)
       dirty = false
     },
     pointer(p: Pointer | null, claimed: boolean) {
@@ -411,6 +469,7 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
       hoverChip.dispose()
       markChip.dispose()
       g!.clearRect(0, 0, W, H)
+      band = null
     },
   }
 }
