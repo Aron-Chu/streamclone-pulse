@@ -1,6 +1,6 @@
 /**
  * /analytics with no hub answer on screen (10-28): Top moments today (the
- * carousel) and Picking up now stay in every state (the Moments list is off
+ * still list) and Picking up now stay in every state (the Moments list is off
  * here, so their rows are the hub's); Top today's peek is off the page since
  * 2B (11-22). Totals only or nothing: grey rows while a hub read runs,
  * "Unavailable right now." once it gave up, with the banner's Try again (the
@@ -109,14 +109,14 @@ const rail = () => within(document.getElementById('latest')!)
 const railEl = () => document.getElementById('latest')!
 /** Top today's peek: off the page since 2B (11-22), so never there. */
 const peekEl = () => document.querySelector<HTMLElement>('.hv5-f3-peek')
-/** Top moments today, the carousel (M1): not there before the first answer. */
-const bigEl = () => document.getElementById('big-moments')
-const big = () => within(bigEl()!)
+/** Top moments today, the still list (11-25): on the page from the start, holding its rows' height while it waits. */
+const topsEl = () => document.getElementById('top-moments')
+const tops = () => within(topsEl()!)
 
 /** Nothing to show yet: grey rows, grey dot, no time, no (i), never "none yet". Picking up now waits with it. */
 function expectLoading() {
   expect(peekEl()).toBeNull()
-  expect(bigEl()).toBeNull()
+  expect(topsEl()!.hasAttribute('data-wait')).toBe(true)
   expect(railEl().querySelector('.hv5-tm-wait')!.getAttribute('aria-busy')).toBe('true')
   expect(rail().getByRole('status').textContent).toBe('Loading channels picking up')
   expect(railEl().querySelector('.hv5-fd-list')).toBeNull()
@@ -134,12 +134,12 @@ const bannerTryAgain = () => within(document.querySelector<HTMLElement>('.hx-hea
 /** The hub read gave up with nothing to show: "Unavailable right now.", and the banner's Try again reads the hub again (Q5b: one button). */
 function expectUnavailable() {
   expect(peekEl()).toBeNull()
-  expect(bigEl()!.querySelector('.hv5-bm-q')!.textContent).toBe(TOP_NONE)
+  expect(topsEl()!.querySelector('.hv5-fd-quiet')!.textContent).toBe(TOP_NONE)
   expect(railEl().querySelector('.hv5-tm-q')!.textContent).toBe(TOP_NONE)
   expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1)
   expect(bannerTryAgain()).toBeTruthy()
   expect(rail().queryByRole('status')).toBeNull()
-  for (const el of [railEl(), bigEl()!]) {
+  for (const el of [railEl(), topsEl()!]) {
     expect(el.className).toContain('hv5-f2-stale')
     expect(el.querySelector('.hv5-f2-fresh')!.textContent).toBe('')
   }
@@ -177,12 +177,12 @@ const banner = () => document.querySelector('.hx-health-banner')?.textContent ??
 
 function expectRows() {
   expect(peekEl()).toBeNull()
-  expect(bigEl()!.querySelector('.hv5-bm-card[data-pos="0"]')!.getAttribute('aria-label')).toMatch(/^1 of \d+: ALPHA, /)
-  expect(bigEl()!.className).not.toContain('hv5-f2-stale')
-  expect(bigEl()!.querySelector('.hv5-f2-fresh')!.textContent).toMatch(/^as of /)
-  expect(big().getByRole('button', { name: 'About Top moments today' })).toBeTruthy()
-  expect(big().getByRole('link', { name: 'All moments →' })).toBeTruthy()
-  expect(bigEl()!.querySelector('.hv5-bm-q')).toBeNull()
+  expect(tops().getByRole('link', { name: /^1\. ALPHA, / })).toBeTruthy()
+  expect(topsEl()!.className).not.toContain('hv5-f2-stale')
+  expect(topsEl()!.querySelector('.hv5-f2-fresh')!.textContent).toMatch(/^as of /)
+  expect(tops().getByRole('button', { name: 'About Top moments today' })).toBeTruthy()
+  expect(tops().getByRole('link', { name: 'All moments →' })).toBeTruthy()
+  expect(topsEl()!.querySelector('.hv5-fd-quiet')).toBeNull()
   expect(rail().queryByRole('status')).toBeNull()
   expect(railEl().className).not.toContain('hv5-f2-stale')
   expect(railEl().querySelector('.hv5-f2-fresh')!.textContent).toMatch(/^as of /)
@@ -308,10 +308,10 @@ describe('Top moments today with totals only or nothing (10-28)', () => {
   it('says none yet for a hub answer with no standout moments, and keeps the link', () => {
     setHub({ data: hubWith(NOW - 20_000), loadSource: 'full' })
     render(page())
-    expect(bigEl()!.querySelector('.hv5-bm-q')!.textContent).toBe(TOP_HUB_EMPTY)
-    expect(big().getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments')
-    expect(bigEl()!.className).not.toContain('hv5-f2-stale')
-    expect(big().getByRole('button', { name: 'About Top moments today' })).toBeTruthy()
+    expect(topsEl()!.querySelector('.hv5-fd-quiet')!.textContent).toBe(TOP_HUB_EMPTY)
+    expect(tops().getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments')
+    expect(topsEl()!.className).not.toContain('hv5-f2-stale')
+    expect(tops().getByRole('button', { name: 'About Top moments today' })).toBeTruthy()
     // Picking up now is the hub answer's too: none of its channels is hot
     expect(railEl().querySelector('.hv5-tm-q')!.textContent).toBe('Nothing is picking up right now.')
   })
@@ -336,16 +336,16 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     const { container } = render(page())
     const none = topSavedLine(0, hubSavedClock(cachedAt, NOW))
     expect(none).toMatch(/^No standout moments as of 10:50\sAM\.$/)
-    expect(bigEl()!.querySelector('.hv5-bm-q')!.textContent).toBe(none)
-    expect(within(bigEl()!).queryByText(TOP_HUB_EMPTY)).toBeNull()
+    expect(topsEl()!.querySelector('.hv5-fd-quiet')!.textContent).toBe(none)
+    expect(within(topsEl()!).queryByText(TOP_HUB_EMPTY)).toBeNull()
     expect(railEl().querySelector('.hv5-tm-q')!.textContent).toMatch(/^Nothing was picking up as of 10:50\sAM\.$/)
-    fireEvent.click(big().getByRole('button', { name: 'About Top moments today' }))
+    fireEvent.click(tops().getByRole('button', { name: 'About Top moments today' }))
     const tip = document.querySelector('[data-hub-toggletip-pop]')!.textContent!
     expect(tip).toMatch(/on streams that were live at 10:50\sAM: /)
     expect(tip).not.toContain('live now')
     // its rows stay as saved: the tip doesn't say ended streams drop out
     expect(tip).not.toContain('drop out')
-    for (const el of [railEl(), bigEl()!]) {
+    for (const el of [railEl(), topsEl()!]) {
       // a saved copy is never live: grey dot, and the time it was saved
       expect(el.className).toContain('hv5-f2-stale')
       expect(el.querySelector('.hv5-f2-fresh')!.textContent).toBe(`Saved ${hubSavedClock(cachedAt, NOW)}`)
@@ -359,15 +359,13 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     const at = NOW - 10 * MIN
     setHub({ data: answered(at), loadSource: 'cache', cachedAt: at, lastUpdated: at, hubReadPending: true })
     render(page())
-    const card = bigEl()!.querySelector<HTMLElement>('.hv5-bm-card[data-pos="0"]')!
-    expect(card.getAttribute('aria-label')).toMatch(/^1 of \d+: ALPHA, /)
+    expect(tops().getByRole('link', { name: /^1\. ALPHA, / })).toBeTruthy()
     // Q1b: it says when it was saved, not "as of" now
-    expect(bigEl()!.querySelector('.hv5-f2-fresh')!.textContent).toBe(`Saved ${hubSavedClock(at, NOW)}`)
+    expect(topsEl()!.querySelector('.hv5-f2-fresh')!.textContent).toBe(`Saved ${hubSavedClock(at, NOW)}`)
     expect(railEl().querySelector('.hv5-f2-fresh')!.textContent).toBe(`Saved ${hubSavedClock(at, NOW)}`)
     expect(rail().queryByRole('status')).toBeNull()
-    // the copy's streams may have ended since: its card never says live
-    expect(card.hasAttribute('data-live')).toBe(false)
-    expect(card.querySelector('.hv5-bm-live')).toBeNull()
+    // the copy's streams may have ended since: the day's list never says live
+    expect(within(topsEl()!).queryByText(/live/i)).toBeNull()
   })
 
   it('says the day on a copy saved before today', () => {
@@ -384,14 +382,14 @@ describe('a saved copy on screen (S1, Q1, N1, 10-28)', () => {
     const late = new Date(2026, 9, 27, 23, 30).getTime()
     setHub({ data: savedCopy(late), loadSource: 'cache', cachedAt: late, lastUpdated: late, hubReadPending: false })
     const { unmount } = render(page())
-    expect(bigEl()!.querySelector('.hv5-bm-q')!.textContent).toMatch(/^No standout moments as of yesterday, 11:30\sPM\.$/)
-    fireEvent.click(big().getByRole('button', { name: 'About Top moments today' }))
+    expect(topsEl()!.querySelector('.hv5-fd-quiet')!.textContent).toMatch(/^No standout moments as of yesterday, 11:30\sPM\.$/)
+    fireEvent.click(tops().getByRole('button', { name: 'About Top moments today' }))
     expect(document.querySelector('[data-hub-toggletip-pop]')!.textContent).toMatch(/ on streams that were live yesterday, 11:30\sPM: /)
     unmount()
     setHub({ data: answered(late), loadSource: 'cache', cachedAt: late, lastUpdated: late, hubReadPending: false })
     render(page())
-    expect(bigEl()!.querySelector('.hv5-bm-card[data-pos="0"]')!.getAttribute('aria-label')).toMatch(/^1 of \d+: ALPHA, /)
-    expect(bigEl()!.querySelector('.hv5-f2-fresh')!.textContent).toMatch(/^Saved yesterday, 11:30\sPM$/)
+    expect(tops().getByRole('link', { name: /^1\. ALPHA, / })).toBeTruthy()
+    expect(topsEl()!.querySelector('.hv5-f2-fresh')!.textContent).toMatch(/^Saved yesterday, 11:30\sPM$/)
   })
 
   it('updates the data age without changing the saved-copy live region', () => {

@@ -146,8 +146,9 @@ const page = (strict = false) => {
   return strict ? <StrictMode>{tree}</StrictMode> : tree
 }
 const rail = () => document.getElementById('latest')!
-const big = () => document.getElementById('big-moments')
-/** Top today's peek is off the page since 2B (11-22); the carousel carries its rows and its time. */
+/** Top moments today, the still list (11-25): on the page from the start, holding its rows' height while it waits. */
+const tops = () => document.getElementById('top-moments')!
+/** Top today's peek is off the page since 2B (11-22); the still list carries its rows and its time. */
 const peek = () => document.querySelector<HTMLElement>('.hv5-f3-peek')
 const bannerText = () => document.querySelector('.hx-health-banner')?.textContent ?? ''
 const enabledRetry = () =>
@@ -158,16 +159,16 @@ async function at(sec: number) {
   await act(async () => { await vi.advanceTimersByTimeAsync(Math.max(0, T0 + sec * 1000 - Date.now())) })
 }
 
-/** The carousel isn't there yet, and Picking up now waits too. */
+/** Top moments today waits in its rows' height, and Picking up now waits too. */
 function expectTopLoading() {
-  expect(big()).toBeNull()
+  expect(tops().hasAttribute('data-wait')).toBe(true)
   expect(peek()).toBeNull()
   expect(within(rail()).getByRole('status').textContent).toBe('Loading channels picking up')
 }
 
-/** The carousel and Picking up both say "Unavailable right now."; the one Try again is the banner's (Q5b). */
+/** Top moments today and Picking up both say "Unavailable right now."; the one Try again is the banner's (Q5b). */
 function expectTopUnavailable() {
-  expect(big()!.querySelector('.hv5-bm-q')!.textContent).toBe(TOP_NONE)
+  expect(tops().querySelector('.hv5-fd-quiet')!.textContent).toBe(TOP_NONE)
   expect(rail().querySelector('.hv5-tm-q')!.textContent).toBe(TOP_NONE)
   expect([...document.querySelectorAll('button')].filter((b) => b.textContent?.includes('Try again'))).toHaveLength(1)
   expect(peek()).toBeNull()
@@ -175,7 +176,8 @@ function expectTopUnavailable() {
 }
 
 function expectTopRows(who: string) {
-  expect(big()!.querySelector('.hv5-bm-card[data-pos="0"]')!.getAttribute('aria-label')).toMatch(new RegExp(`^1 of \\d+: ${who}, `))
+  expect(within(tops()).getByRole('link', { name: new RegExp(`^1\\. ${who}, `) })).toBeTruthy()
+  expect(tops().hasAttribute('data-wait')).toBe(false)
   expect(within(rail()).queryByRole('status')).toBeNull()
   expect(peek()).toBeNull()
 }
@@ -275,7 +277,7 @@ describe('/analytics on a slow hub API (U8)', () => {
     render(page())
     const saved = hubClock(T0 - 120 * MIN)
     const note = () => document.querySelector('.figma-hub-fallback-banner--info')?.textContent ?? ''
-    const fresh = () => big()!.querySelector('.hv5-f2-fresh')!.textContent
+    const fresh = () => tops().querySelector('.hv5-f2-fresh')!.textContent
     expectTopRows('BRAVO')
     expect(fresh()).toBe(`Saved ${hubSavedClock(T0 - 120 * MIN, T0)}`)
     expect(note()).toBe(`Cached snapshot · Saved at ${saved} · refreshing...`)

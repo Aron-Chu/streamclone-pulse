@@ -14,7 +14,7 @@
  *   burst, strongest × first. The hub sends only its latest 10, so the page
  *   keeps the rows it was sent earlier in the day (topDayRows, 11-02): a
  *   moment stays after the hub moves on or its stream ends.
- *   Carousel fill (board 2A, deep audit 11-02): a moment from a stream's first
+ *   Fill (board 2A, deep audit 11-02): a moment from a stream's first
  *   20 minutes, or one whose counts and comparison disagree (the backend's
  *   minute off-by-one), stays, with its rate and no × (`plain`), after the
  *   rows with one. Under 10, each other channel's busiest minute from the
@@ -73,7 +73,7 @@ export function topGames(categories: readonly MomentsFeedCategoryFacet[] | null 
   return games
 }
 
-/** Cards the carousel fills up to with busiest minutes (board 2A: 5–10). */
+/** Rows the day's list fills up to with busiest minutes (board 2A: 5–10). */
 export const TOP_FILL_TO = 10
 
 /** "All moments →": the Moments page (it has no Top view yet), on the picked game by name (its category filter). */

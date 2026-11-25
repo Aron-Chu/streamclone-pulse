@@ -21,7 +21,7 @@ export function useHubV5BusiestMoments(intervalWindow: PublicHubActivityWindow |
     }
     const read = () => {
       const next = readBucketMomentsResponses(intervalWindow).flatMap((response) => response.moments)
-      // the same moments keep the same list, so the carousel does not redraw for nothing
+      // the same moments keep the same list, so the Hub does not redraw for nothing
       setMoments((prev) => (keys(prev) === keys(next) ? prev : next.length ? next : NONE))
     }
     read()

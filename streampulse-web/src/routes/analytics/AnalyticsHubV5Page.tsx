@@ -4,12 +4,12 @@
  * hero with the emote conveyor behind it (R5-15 at Soft), Your follows once the
  * viewer shows their Twitch follows (11-01), Busiest now (who is hot; the
  * featured stream's card folded into it), the Top emotes row, the activity chart
- * and its bar card (when it spiked), Picking up now, Chat's big moments as a
- * stage of its rows (C1, 11-01; the "Top today" peek under the hero left the
- * page on 11-22: the carousel says the same), then the full lists: the emote
- * map (R5-13), Where chat is (R5-22), Channels and one "How this is measured"
- * disclosure, on the d3 grid (one column on phones, Picking up now beside the
- * page from 1536 px).
+ * and its bar card (when it spiked), Top moments today as a still list of 5 (the
+ * carousel left on 11-25; the "Top today" peek under the hero left on 11-22),
+ * Picking up now, then the full lists: the emote map (R5-13), Where chat is
+ * (R5-22), Channels and one "How this is measured" disclosure, on the d3 grid
+ * (one column on phones; from 1200 px Top moments today and Picking up now share
+ * a row, and from 1536 px Picking up now runs down the side of the page).
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigationType, useSearchParams } from 'react-router-dom'
@@ -29,7 +29,6 @@ import { HubBackendSourceBanner } from '../../ui/components/analytics/HubBackend
 import { HubDataHealthBanner } from '../../ui/components/hub/HubDataHealthBanner'
 import { hubBucketMinutes, pointSpacingMinutes } from '../../ui/components/hub/hubActivitySpModel'
 import { HubV5BarCard } from '../../ui/components/hub/v5/HubV5BarCard'
-import { HubV5BigMoments } from '../../ui/components/hub/v5/HubV5BigMoments'
 import { HubV5Busiest } from '../../ui/components/hub/v5/HubV5Busiest'
 import { HubV5Channels } from '../../ui/components/hub/v5/HubV5Channels'
 import { HubV5EmoteMap } from '../../ui/components/hub/v5/HubV5EmoteMap'
@@ -40,7 +39,7 @@ import { HubV5Hero } from '../../ui/components/hub/v5/HubV5Hero'
 import { HubV5Icon } from '../../ui/components/hub/v5/HubV5Icon'
 import { climbOnScreen, HubV5PickingUp } from '../../ui/components/hub/v5/HubV5PickingUp'
 import { HubV5Rack } from '../../ui/components/hub/v5/HubV5Rack'
-import { useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
+import { HubV5TopList, useTopToday } from '../../ui/components/hub/v5/HubV5TopMoments'
 import { HubV5BarInstall, HubV5DockSearch } from '../../ui/components/hub/v5/HubV5TopBar'
 import { HubV5SearchContext, createHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
 import { useHubV5BusiestMoments } from '../../ui/components/hub/v5/useHubV5BusiestMoments'
@@ -478,11 +477,12 @@ export default function AnalyticsHubV5Page() {
               />
             )}
 
-            {/* M1 (11-02): the rail is what is heating up now; the day's moments are the carousel below. While the
-                5-minute counts are down it shows the backend's Climbing picks instead (11-21). */}
-            <HubV5PickingUp top={top} nowMs={nowMs} climbing={climbing} />
+            {/* The day's best, as a still list of 5, in place of the carousel (11-25). */}
+            <HubV5TopList top={top} nowMs={nowMs} />
 
-            <HubV5BigMoments top={top} nowMs={nowMs} />
+            {/* M1 (11-02): the rail is what is heating up now. While the 5-minute counts are down it shows the backend's
+                Climbing picks instead (11-21). */}
+            <HubV5PickingUp top={top} nowMs={nowMs} climbing={climbing} />
 
             <HubV5EmoteMap
               points={chartActivity.points}
