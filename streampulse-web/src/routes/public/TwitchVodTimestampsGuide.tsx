@@ -26,7 +26,7 @@ export default function TwitchVodTimestampsGuide() {
     <ol><li>Open the right broadcaster’s replay.</li><li>Check that the people you share it with can watch it.</li><li>Make sure the time is inside the replay.</li><li>Open the final link and watch a few seconds to confirm the scene.</li></ol>
     <p>A saved link isn’t a backup of the video. StreamPulse shows chat reactions for the streams it tracks; it doesn’t restore deleted replays or analyze every past VOD.</p>
     <div className="public-document__actions"><InstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/analytics">Explore tracked channels</Link></div>
-    <nav className="growth-guide__related" aria-label="Related guides and help"><Link to="/guides/find-twitch-moments">Find and bookmark tracked moments</Link><Link to={HELP_PATH}>Get help with StreamPulse</Link></nav>
+    <nav className="growth-guide__related" aria-label="Related guides and help"><Link to="/guides/find-twitch-moments">Find and bookmark tracked moments</Link><Link to="/guides/how-moments-are-picked">See how Moments are picked</Link><Link to="/guides/reading-the-chat-chart">Read a stream’s chat chart</Link><Link to="/guides">All guides</Link><Link to={HELP_PATH}>Get help with StreamPulse</Link></nav>
     <p className="growth-guide__source">Twitch sources reviewed October 31, 2026. <a href="https://help.twitch.tv/s/article/how-to-share-a-stream" target="_blank" rel="noopener noreferrer">Twitch’s sharing guide</a> describes its own “Skip to” option.</p>
   </article></PublicLayout>
 }

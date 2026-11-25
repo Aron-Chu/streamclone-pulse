@@ -86,7 +86,10 @@ export default function Help() {
               <ul>
                 <li><Link to="/guides/twitch-vod-timestamps">Make a Twitch VOD timestamp link</Link> and check the replay before you share it.</li>
                 <li><Link to="/guides/find-twitch-moments">Find and bookmark reaction moments</Link> in the streams we track.</li>
+                <li><Link to="/guides/how-moments-are-picked">See how Moments are picked</Link> and what they can’t tell you.</li>
+                <li><Link to="/guides/reading-the-chat-chart">Read a stream’s chat chart</Link>, from viewers to emote bursts.</li>
               </ul>
+              <p><Link to="/guides">All guides</Link></p>
             </section>
           </section>
 

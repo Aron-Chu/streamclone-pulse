@@ -39,6 +39,6 @@ export default function FindTwitchMomentsGuide() {
     </section>
     <StreamerChatStats />
     <div className="public-document__actions"><InstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/help#install">Installation guide</Link></div>
-    <nav className="growth-guide__related" aria-label="Related tools and guides"><Link to="/guides/twitch-vod-timestamps">Build a Twitch timestamp link</Link><Link to="/help">Get help with StreamPulse</Link></nav>
+    <nav className="growth-guide__related" aria-label="Related tools and guides"><Link to="/guides/twitch-vod-timestamps">Build a Twitch timestamp link</Link><Link to="/guides/how-moments-are-picked">See how Moments are picked</Link><Link to="/guides/reading-the-chat-chart">Read a stream’s chat chart</Link><Link to="/guides">All guides</Link><Link to="/help">Get help with StreamPulse</Link></nav>
   </article></PublicLayout>
 }

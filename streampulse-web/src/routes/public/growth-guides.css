@@ -22,3 +22,19 @@
 .timestamp-result input { font-family: ui-monospace, monospace; }
 .growth-guide :is(a, input, button):focus-visible { outline: 3px solid #c4b5fd; outline-offset: 3px; }
 @media (max-width: 480px) { .growth-guide .public-document__actions { align-items: stretch; flex-direction: column; } .growth-guide .btn { min-height: 44px; } }
+/* /guides: one card per guide and tool. The title's link covers the whole card. */
+.public-document .guides-index { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); gap: 1rem; margin: 1.75rem 0 0; padding: 0; list-style: none; }
+.public-document .guides-index > li { position: relative; max-width: none; min-width: 0; margin: 0; padding: 1.1rem 1.25rem 1.2rem; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); overflow-wrap: anywhere; }
+.public-document .guides-index > li:hover { background: var(--bg-card-hover); border-color: var(--accent-border); }
+.public-document .guides-index__card .guides-index__kind { margin: 0 0 .35rem; color: #a1a1aa; font-size: .8rem; }
+.public-document .guides-index__card h2 { margin: 0; font-size: 1.05rem; }
+.public-document .guides-index .guides-index__card h2 a:not(.btn) { color: #f4f4f7; text-decoration: none; }
+.public-document .guides-index .guides-index__card:hover h2 a:not(.btn) { color: #c4b5fd; }
+.public-document .guides-index__card h2 a::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+.growth-guide .guides-index__card h2 a:focus-visible { outline: none; }
+.growth-guide .guides-index__card h2 a:focus-visible::after { outline: 3px solid #c4b5fd; outline-offset: 3px; }
+.public-document .guides-index__card p:last-child { margin: .45rem 0 0; color: #a1a1aa; font-size: .9rem; line-height: 1.5; }
+@media (prefers-reduced-motion: no-preference) {
+  .public-document .guides-index > li { transition: background-color 150ms ease, border-color 150ms ease; }
+  .public-document .guides-index__card h2 a { transition: color 150ms ease; }
+}

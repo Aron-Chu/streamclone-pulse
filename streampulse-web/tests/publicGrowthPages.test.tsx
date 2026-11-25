@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import FindTwitchMomentsGuide from '../src/routes/public/FindTwitchMomentsGuide'
 import TwitchVodTimestampsGuide from '../src/routes/public/TwitchVodTimestampsGuide'
+import GuidesIndex, { GUIDE_CARDS } from '../src/routes/public/GuidesIndex'
+import HowMomentsArePickedGuide from '../src/routes/public/HowMomentsArePickedGuide'
+import ReadingTheChatChartGuide from '../src/routes/public/ReadingTheChatChartGuide'
 import { resolvePageMetadata } from '../src/lib/pageMetadata'
 import { GROWTH_PAGES, TIMESTAMP_TOOL_PATH } from '../src/lib/growthPages'
 import { captureTimestampLinkBuilt } from '../src/lib/productAnalytics'
@@ -98,5 +103,58 @@ describe('public growth page content and metadata', () => {
     expect(screen.getByText('60 days for Partners, Prime and Turbo users.')).toBeTruthy()
     expect(screen.getByText(/doesn’t restore deleted replays/)).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Twitch’s on-demand content guide' }).getAttribute('href')).toBe('https://help.twitch.tv/s/article/video-on-demand')
+  })
+})
+
+describe('guides index and the two short guides', () => {
+  const guidePaths = GROWTH_PAGES.map(page => page.canonicalPath as string).filter(path => path.startsWith('/guides/'))
+  const related = () => screen.getByRole('navigation', { name: /^Related/ })
+  const relatedHrefs = () => [...related().querySelectorAll('a')].map(link => link.getAttribute('href'))
+
+  it('gives every guide a card, plus the timestamp builder, and each card title is its link', () => {
+    render(<MemoryRouter><GuidesIndex /></MemoryRouter>)
+    expect(screen.getByRole('heading', { level: 1, name: 'Guides' })).toBeTruthy()
+    const cards = within(document.querySelector<HTMLElement>('.guides-index')!).getAllByRole('listitem')
+    expect(cards).toHaveLength(GUIDE_CARDS.length)
+    const hrefs = cards.map(card => card.querySelector('h2 a')?.getAttribute('href'))
+    for (const path of guidePaths) expect(hrefs, path).toContain(path)
+    expect(hrefs).toContain('/guides/twitch-vod-timestamps#builder')
+    for (const card of GUIDE_CARDS) expect(screen.getByRole('link', { name: card.title }).getAttribute('href')).toBe(card.to)
+  })
+
+  it('lists the index and both new guides in the sitemap', () => {
+    const sitemap = readFileSync(resolve(process.cwd(), 'public/sitemap.xml'), 'utf8')
+    const urls = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => new URL(match[1]).pathname)
+    for (const path of ['/guides', '/guides/how-moments-are-picked', '/guides/reading-the-chat-chart']) expect(urls, path).toContain(path)
+  })
+
+  it('keeps the Moments guide to what the picker does, and says what a Moment cannot tell you', () => {
+    render(<MemoryRouter><HowMomentsArePickedGuide /></MemoryRouter>)
+    expect(screen.getByRole('heading', { level: 1, name: 'How Moments are picked' })).toBeTruthy()
+    expect(screen.getByText(/A jump in viewers without a rise in chat or emotes isn’t picked/)).toBeTruthy()
+    expect(screen.getByText(/never filled in or guessed/)).toBeTruthy()
+    expect(screen.getByText(/Emotes don’t tell you how chat felt/)).toBeTruthy()
+    expect(screen.getByText(/It counts messages, not people/)).toBeTruthy()
+    // The weights are configurable on the backend, so the guide says so once and gives none.
+    expect(screen.getAllByText(/can be tuned/)).toHaveLength(1)
+    expect(relatedHrefs()).toEqual(expect.arrayContaining(['/guides/reading-the-chat-chart', '/guides']))
+  })
+
+  it('tells quiet, not recorded and unknown apart on the chart', () => {
+    render(<MemoryRouter><ReadingTheChatChartGuide /></MemoryRouter>)
+    expect(screen.getByRole('heading', { level: 1, name: 'Reading the chat chart' })).toBeTruthy()
+    expect(screen.getByText(/read the minute and nothing happened/)).toBeTruthy()
+    expect(screen.getByText(/hatched stripes, never as a zero/)).toBeTruthy()
+    expect(screen.getByText(/reads “—”, never a number/)).toBeTruthy()
+    expect(screen.getByText(/isn’t a score/)).toBeTruthy()
+    expect(relatedHrefs()).toEqual(expect.arrayContaining(['/guides/how-moments-are-picked', '/guides']))
+  })
+
+  it('links the index and both new guides from the older guides', () => {
+    for (const Guide of [FindTwitchMomentsGuide, TwitchVodTimestampsGuide]) {
+      render(<MemoryRouter><Guide /></MemoryRouter>)
+      expect(relatedHrefs()).toEqual(expect.arrayContaining(['/guides', '/guides/how-moments-are-picked', '/guides/reading-the-chat-chart']))
+      cleanup()
+    }
   })
 })
