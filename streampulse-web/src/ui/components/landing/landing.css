@@ -13,7 +13,8 @@
   font-family: var(--sc-font);
 }
 
-.sp-landing a:not(.sc-btn) {
+/* Not the site header's links: they carry their own colours (site-header.css). */
+.sp-landing a:not(.sc-btn, .site-header *) {
   color: inherit;
 }
 
@@ -273,76 +274,6 @@
 .sl-bgchip--moment { border-color: hsl(var(--sc-chart-5) / 0.55); }
 .sl-bgchip--moment span { color: hsl(var(--sc-chart-5)); }
 
-/* 0.94, not 0.76 (11-18): at 0.76 the hero's 56 px heading ghosted through the blur as a grey smear across the
-   bar's middle. The blur stays, so the page's glow still tints the bar. */
-.sl-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  border-bottom: 1px solid hsl(var(--sc-border));
-  background: hsl(var(--sc-background) / 0.94);
-  backdrop-filter: blur(18px);
-}
-
-.sl-nav {
-  height: 3.6rem;
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-}
-
-.sl-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  color: hsl(var(--sc-foreground));
-  text-decoration: none;
-  font-size: 0.95rem;
-  font-weight: 800;
-  letter-spacing: -0.015em;
-}
-
-.sl-brand__mark {
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 0.46rem;
-}
-
-.sl-menu {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.sl-menu a {
-  padding: 0.42rem 0.72rem;
-  white-space: nowrap;
-  border-radius: var(--sc-radius);
-  color: hsl(var(--sc-muted-foreground));
-  text-decoration: none;
-  font-size: 0.86rem;
-  font-weight: 600;
-}
-
-.sl-menu a:hover {
-  color: hsl(var(--sc-foreground));
-  background: hsl(var(--sc-accent-surface));
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .sl-menu a { transition: color 150ms ease, background-color 150ms ease; }
-}
-
-.sl-nav__right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
 .sl-hero--stage {
   padding: clamp(3.4rem, 7vh, 5.4rem) 0 clamp(2.4rem, 5vh, 3.4rem);
 }
@@ -419,86 +350,6 @@
     line-height: 18px;
     text-align: center;
   }
-}
-
-.sl-discord-icon:focus-visible,
-.sc-btn.sl-discord-nav:focus-visible {
-  outline: 2px solid #c4b5fd;
-  outline-offset: 2px;
-}
-
-.sc-btn.sl-discord-nav {
-  gap: 0.42rem;
-  padding: 0 0.7rem 0 0.6rem;
-  border-color: #5865f2;
-  background: #5865f2;
-  color: #fff;
-}
-
-.sc-btn.sl-discord-nav:hover:not(:disabled) {
-  border-color: #4752c4;
-  background: #4752c4;
-  color: #fff;
-}
-
-.sc-btn.sl-discord-nav svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* Phone and tablet header: a 44px mark beside Menu (see the media rules below). */
-.sl-discord-icon {
-  display: none;
-  flex: none;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  border-radius: 0.55rem;
-  background: #5865f2;
-  color: #fff;
-}
-
-.sl-discord-icon:hover {
-  background: #4752c4;
-  color: #fff;
-}
-
-/* The mark's colours ease (2026-11-02), and it gets the approved press dip (it had none). */
-@media (prefers-reduced-motion: no-preference) {
-  .sl-discord-icon {
-    transition: background-color 150ms ease, color 150ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
-  }
-  .sl-discord-icon:active {
-    scale: .96;
-    transition-duration: 150ms, 150ms, 70ms, 200ms;
-  }
-}
-
-/* While the hero's own buttons are on screen, the header's Install and Open the
-   Hub step back (Landing useHeroButtonsInView): one of each at a time. They keep
-   their places, so Menu and Discord never move. Discord lives only in the header.
-   11-18: they lead their group, so their empty places join the free room and
-   Discord never sits stranded mid-bar; they rise into the bar as the hero's
-   buttons go up under it, then sink back out (as on the hub). 11-22: Open the
-   Hub joined Install (Aron), the Hub a beat after Install. */
-.sl-nav .sl-nav__install,
-.sl-nav .sl-nav__analytics {
-  transition: opacity 200ms ease-out, visibility 0s linear 0s, translate 320ms cubic-bezier(.16, 1, .3, 1),
-    background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
-}
-.sl-nav .sl-nav__analytics { transition-delay: 60ms, 60ms, 60ms, 0s, 0s, 0s, 0s; }
-.sl-nav[data-hero-buttons] .sl-nav__install,
-.sl-nav[data-hero-buttons] .sl-nav__analytics {
-  opacity: 0;
-  visibility: hidden;
-  translate: 0 8px;
-  transition-duration: 140ms, 0s, 160ms, 150ms, 150ms, 150ms, 150ms;
-  transition-delay: 0s, 160ms, 0s, 0s, 0s, 0s, 0s;
-  transition-timing-function: ease-in, linear, cubic-bezier(.4, 0, 1, 1), ease, ease, ease, ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  .sl-nav .sl-nav__install,
-  .sl-nav .sl-nav__analytics { transition: none; }
 }
 
 /* Search a streamer (F2, 11-02). The markup is the hub's HubV5SearchBox, so the
@@ -796,9 +647,9 @@
    as the hero's. Once the hero's field has gone up under the header (Landing useDockedSearch) it rises into the
    header, and sinks back out as the field returns; it keeps its place while hidden, so the header never shifts.
    From 1100 px a field in the room between the links and the buttons, on the header's centre line or as near as
-   that room allows (HubV5TopBar sets --hv5-dock-shift). 760-1099 px a search button that opens the field as a row
-   under the header, as on the hub. Under 760 px there is no room beside the buttons, Menu and Discord, so that
-   header stays as it was; / still opens the row there (on phones it goes to the hero's field, as on the hub). */
+   that room allows (HubV5TopBar sets --hv5-dock-shift). Narrower a search button that opens the field as a row
+   under the header, as on the hub; on phones it goes to the hero's field and stays pinned at the top once the
+   header has scrolled away (site-header.css), as on the hub. */
 .sl-dock { display: contents; }
 
 .sl-dock .hv5-dock {
@@ -860,8 +711,8 @@
 /* The search button, as the header's other icon buttons (Menu's border, the Discord mark's 44 px and focus ring). */
 .sl-dock .hv5-dock-btn { display: none; }
 
-@media (min-width: 760px) and (max-width: 1099px) {
-  /* It keeps its place while hidden, so Open the Hub, Menu and Discord never move. */
+@media (max-width: 1099px) {
+  /* It keeps its place while hidden, so the buttons beside it never move. */
   .sl-dock .hv5-dock-btn,
   .sl-dock .hv5-dock-btn[hidden] {
     display: grid;
@@ -871,8 +722,8 @@
     height: 44px;
     margin-left: auto;
     padding: 0;
-    border: 1px solid hsl(var(--sc-border));
-    border-radius: 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
     background: transparent;
     color: hsl(var(--sc-foreground));
     cursor: pointer;
@@ -895,7 +746,12 @@
   .sl-dock .hv5-dock-btn[aria-expanded="true"] { border-color: #5eead4; }
   .sl-dock .hv5-dock-btn:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
   .sl-dock .hv5-dock-btn .hv5-ico { width: 18px; height: 18px; }
-  .sl-dock + .sl-nav__right { margin-left: 0; }
+  .sl-dock + .site-header__actions { margin-left: 0; }
+}
+
+/* Phones: the name takes the free room, so the button sits with Discord and Menu at the right. */
+@media (max-width: 719px) {
+  .sl-dock .hv5-dock-btn { margin-left: 0; }
 }
 
 @media (max-width: 1099px) {
@@ -1125,59 +981,14 @@
   color: #fff;
 }
 
-.sl-mobile-nav { display: none; }
-.sl-mobile-nav__toggle {
-  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
-  min-height: 44px; padding: .5rem .8rem; border: 1px solid hsl(var(--sc-border));
-  border-radius: .5rem; background: hsl(var(--sc-background));
-  color: hsl(var(--sc-foreground)); font: inherit; cursor: pointer;
-}
-.sl-mobile-nav__toggle:hover { background: hsl(var(--sc-accent-surface)); }
-.sl-mobile-nav__layer { position: fixed; inset: 0; z-index: 1000; }
-.sl-mobile-nav__backdrop { position: absolute; inset: 0; background: rgb(0 0 0 / 65%); border: 0; }
-.sl-mobile-nav__panel {
-  position: absolute; inset: 0 0 0 auto; width: min(22rem, 100%);
-  overflow-y: auto; background: #101016; padding: 1.25rem;
-  border-left: 1px solid #33333e;
-}
-.sl-mobile-nav__title { margin: 0 0 1rem; font-weight: 700; }
-.sl-mobile-nav__links { display: flex; flex-direction: column; gap: .5rem; margin-top: 1rem; }
-.sl-mobile-nav__links a { display: flex; align-items: center; min-height: 44px; padding: .6rem; }
-/* Text links only: the drawer's Open the Hub is a light primary button and
-   keeps its own dark label (#eee on its #fafafa fill was about 1.06:1). */
-.sl-mobile-nav__links a:not(.sc-btn) { color: #eee; }
-.sl-mobile-nav__links a.sc-btn { justify-content: center; margin-top: .5rem; }
-.sl-mobile-nav__layer :focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
-/* The drawer slides in from the right over a fading backdrop (2026-11-02), and the Menu / Close button gets the
-   approved hover and press. Closing is still instant: LandingMobileNav removes the layer when it closes, so an
-   exit would need script to keep it mounted. */
-@keyframes sl-mobile-nav-fade { from { opacity: 0; } }
-@keyframes sl-mobile-nav-slide { from { translate: 100% 0; } }
-@media (prefers-reduced-motion: no-preference) {
-  .sl-mobile-nav__toggle {
-    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, opacity 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms cubic-bezier(.16, 1, .3, 1);
-  }
-  .sl-mobile-nav__toggle:active {
-    scale: .96;
-    transition-duration: 140ms, 140ms, 140ms, 140ms, 140ms, 70ms, 200ms;
-  }
-  .sl-mobile-nav__backdrop { animation: sl-mobile-nav-fade 200ms cubic-bezier(.16, 1, .3, 1); }
-  .sl-mobile-nav__panel { animation: sl-mobile-nav-slide 200ms cubic-bezier(.16, 1, .3, 1); }
-}
 .sl-sample-label {
   display: inline-block; margin-block: .75rem; padding: .35rem .65rem;
   border: 1px solid #555063; border-radius: .4rem; color: #d5cce7; font-size: .8rem;
 }
 .sl-demo-placeholder { min-height: 28rem; padding: 2rem; border: 1px solid #33333e; border-radius: 1rem; }
-.sl-skip-link { position: fixed; top: .5rem; left: .5rem; z-index: 100; padding: .75rem 1rem; background: #201b2b; color: #fff; transform: translateY(-200%); }
-.sl-skip-link:focus { transform: none; outline: 2px solid #c4b5fd; }
 [data-prerendered] [data-reveal] { opacity: 1; transform: none; }
 
 @media (max-width: 960px) {
-  .sl-mobile-nav { display: block; }
-  .sl-menu { display: none; }
-  .sl-nav__right .sl-discord-nav { display: none; }
-  .sl-discord-icon { display: grid; margin-left: -0.75rem; }
   .sl-chatbg { display: none; }
   /* No gutter survives at this width, so the rain keeps to a thin band at each
      edge and grazes the copy. Halve it there so it stays texture rather than content. */
@@ -1185,32 +996,8 @@
 }
 
 @media (max-width: 560px) {
-  .sl-nav { padding: 0 1rem; }
-  .sl-nav__right { display: none; }
-  /* Menu and the Discord mark stay together at the right edge, as wider (11-18: the mark took the free room, which
-     left Menu stranded in the middle of the header). */
-  .sl-mobile-nav { margin-left: auto; }
   .sl-stage { padding: 0 1rem; }
   .sl-stage h1 { font-size: 2.35rem; }
-}
-
-/* With the Discord mark beside Menu there is no room for both small nav
-   buttons; Open the Hub stays one tap away in the hero and the menu. */
-@media (min-width: 561px) and (max-width: 700px) {
-  .sl-nav--discord .sl-nav__analytics { display: none; }
-}
-
-@media (max-width: 359px) {
-  .sl-nav--discord { gap: 0.5rem; }
-  /* the same 8 px between Menu and the mark as wider */
-  .sl-nav--discord .sl-discord-icon { margin-left: 0; }
-}
-
-/* Just above the Menu breakpoint the Discord button leaves the menu links
-   about 14px short (961-974px). Tighten the spacing there instead of dropping a nav item. */
-@media (min-width: 961px) and (max-width: 1040px) {
-  .sl-nav--discord { gap: 0.75rem; }
-  .sl-nav--discord .sl-menu a { padding-inline: 0.55rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

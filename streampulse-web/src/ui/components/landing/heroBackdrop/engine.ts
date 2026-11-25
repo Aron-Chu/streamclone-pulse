@@ -64,7 +64,7 @@ const QUICK_POINTER_MS = 1500
 const QUICK_MOMENT_MS = 4800
 /** ...and after a rebuild, while the lines rise. */
 const QUICK_BUILD_MS = 2200
-const UI_SELECTOR = 'a, button, input, select, textarea, [role="button"], [role="option"], [role="listbox"], .sl-header, .sl-search, .sl-tickwrap, .sl-hero__actions'
+const UI_SELECTOR = 'a, button, input, select, textarea, [role="button"], [role="option"], [role="listbox"], .site-header, .sl-search, .sl-tickwrap, .sl-hero__actions'
 
 export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: EventTarget | null) => boolean }): HeroBackdropController {
   let rainHost: HTMLElement | null = null

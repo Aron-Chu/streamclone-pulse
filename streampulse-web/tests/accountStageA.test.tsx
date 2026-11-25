@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import SUPPORTER_PERKS from '../../src/shared/supporter-perks.json'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -6,7 +6,7 @@ import AccountPage from '../src/routes/account/AccountPage'
 import BillingPage from '../src/routes/account/BillingPage'
 import Supporter from '../src/routes/public/Supporter'
 import Terms from '../src/routes/public/Terms'
-import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
+import { SiteHeader } from '../src/ui/components/SiteHeader'
 
 /**
  * Stage A of the account journey (closeout 2026-10-08 spec §3, P1): what the
@@ -71,12 +71,13 @@ describe('/account/billing, signed out', () => {
 
 describe('/analytics support menu', () => {
   it('links no tester sign-in, closed billing action or connection-code bridge', () => {
-    render(<MemoryRouter initialEntries={['/analytics']}><AnalyticsTopNav items={[{ label: 'Overview', to: '/analytics', end: true }]} /></MemoryRouter>)
-    const menu = document.getElementById(screen.getByRole('button', { name: 'Navigation menu' }).getAttribute('aria-controls')!)!
-    const hrefs = Array.from(menu.querySelectorAll('a:not(.analytics-topnav__more-nav a)')).map(link => link.getAttribute('href'))
+    render(<MemoryRouter initialEntries={['/analytics']}><SiteHeader mainId="analytics-main" variant="analytics" /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    const menu = screen.getByRole('dialog')
+    const hrefs = Array.from(menu.querySelectorAll('.site-menu__more a')).map(link => link.getAttribute('href'))
     expect(hrefs).toEqual(['/status', '/changelog', '/privacy', '/terms'])
-    // the bar's own links also sit at the top of the menu, which phones show in place of the bar's row
-    expect(Array.from(menu.querySelectorAll('.analytics-topnav__more-nav a')).map(link => link.getAttribute('href'))).toEqual(['/analytics'])
+    // the bar's own links sit at the top of the menu, which phones show in place of the bar's row
+    expect(Array.from(menu.querySelectorAll('.site-menu__main a')).map(link => link.getAttribute('href'))).toEqual(['/analytics', '/analytics/moments', '/help'])
     expect(hrefs.some(href => href?.startsWith('/account'))).toBe(false)
     expect(menu.textContent).not.toMatch(/Manage membership|Manage subscription|Link extension/)
   })

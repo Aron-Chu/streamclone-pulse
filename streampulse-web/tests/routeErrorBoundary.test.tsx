@@ -57,10 +57,10 @@ function renderAt(path: string) {
   )
 }
 
-/** Only the site layout has these; nav labels and the footer are shared with other shells. */
+/** Only the site layout has this; the header, its nav and the footer are shared with the other shells (11-24). */
 function expectNoSiteLayout(container: HTMLElement) {
   expect(container.querySelector('#public-main')).toBeNull()
-  expect(container.querySelector('.app-nav')).toBeNull()
+  expect(container.querySelector('.site-header')).toBeTruthy()
 }
 
 function navLink(navigation: string, name: string) {
@@ -82,10 +82,10 @@ describe('route-level error boundary', () => {
     renderAt('/status')
 
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
-    expect(screen.getByRole('navigation', { name: 'Main Navigation' })).toBeTruthy()
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Reload page' })).toBeTruthy()
 
-    fireEvent.click(navLink('Main Navigation', 'Help'))
+    fireEvent.click(navLink('Main', 'Help'))
     expect(await screen.findByRole('button', { name: 'Show help' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
   })
@@ -94,10 +94,10 @@ describe('route-level error boundary', () => {
     const { container } = renderAt('/analytics')
 
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
-    expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
     expectNoSiteLayout(container)
 
-    fireEvent.click(navLink('Analytics navigation', 'Moments'))
+    fireEvent.click(navLink('Main', 'Moments'))
     expect(await screen.findByRole('button', { name: 'Show moments' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
   })
@@ -105,12 +105,12 @@ describe('route-level error boundary', () => {
   it('keeps the mounted analytics header when content inside it throws', async () => {
     const { container } = renderAt('/analytics/moments')
     const show = await screen.findByRole('button', { name: 'Show moments' })
-    const header = container.querySelector('.analytics-topnav')
+    const header = container.querySelector('.site-header')
     fireEvent.click(show)
 
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
     expect(header).toBeTruthy()
-    expect(container.querySelector('.analytics-topnav')).toBe(header)
+    expect(container.querySelector('.site-header')).toBe(header)
     expect(container.querySelector('#analytics-main')?.textContent).toContain('Something went wrong')
   })
 
@@ -119,7 +119,7 @@ describe('route-level error boundary', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Show moments' }))
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
 
-    fireEvent.click(navLink('Analytics navigation', 'Moments'))
+    fireEvent.click(navLink('Main', 'Moments'))
     expect(await screen.findByRole('button', { name: 'Show moments' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull()
   })
@@ -127,12 +127,12 @@ describe('route-level error boundary', () => {
   it('keeps the mounted site header when content inside it throws', async () => {
     const { container } = renderAt('/help')
     const show = await screen.findByRole('button', { name: 'Show help' })
-    const header = container.querySelector('.app-nav')
+    const header = container.querySelector('.site-header')
     fireEvent.click(show)
 
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
     expect(header).toBeTruthy()
-    expect(container.querySelector('.app-nav')).toBe(header)
+    expect(container.querySelector('.site-header')).toBe(header)
     expect(container.querySelector('#public-main')?.textContent).toContain('Something went wrong')
   })
 
@@ -141,7 +141,7 @@ describe('route-level error boundary', () => {
     renderAt('/analytics')
 
     expect(await screen.findByRole('heading', { name: 'This page could not load' })).toBeTruthy()
-    expect(screen.getByRole('navigation', { name: 'Main Navigation' })).toBeTruthy()
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
   })
 
   it('clears cached hub snapshots from the error panel before reloading', async () => {
@@ -186,7 +186,7 @@ describe('error reporting', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Show help' }))
 
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
-    expect(screen.getByRole('navigation', { name: 'Main Navigation' })).toBeTruthy()
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
     expect(screen.getAllByRole('heading', { name: 'Something went wrong' })).toHaveLength(1)
     expect(sentry.captureException).toHaveBeenCalledTimes(1)
   })

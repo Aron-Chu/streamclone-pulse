@@ -282,7 +282,7 @@
    containment); its box fills it, never taller than the window less 16 px top and bottom, and is sticky,
    so on a short window it travels with the reader. Every row shows; the hidden-bar list fades at an edge
    while rows remain past it (--ft / --fb from useEdgeFade).
-   The mockup sticks at 16 px from the window top; the portal's .analytics-topnav (figma-analytics.css)
+   The mockup sticks at 16 px from the window top; the portal's .site-header (site-header.css)
    is itself sticky and 56 px tall from 721 px, so the list sticks 16 px below it instead. */
 @media (min-width: 1280px) {
   .analytics-console[data-analytics-console-shell] { --ssp-stick-top: calc(56px + 16px); }

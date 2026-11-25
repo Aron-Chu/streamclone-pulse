@@ -6,17 +6,13 @@ import '../../ui/tokens.css'
 import '../../ui/components/landing/landing.css'
 import { buttonClass } from '../../ui/primitives'
 import { usePublicHubData } from '../../hooks/usePublicHubData'
-import { LandingMobileNav } from '../../ui/components/landing/LandingMobileNav'
 import { HeroBackdrop } from '../../ui/components/landing/HeroBackdrop'
 import { EmoteTicker } from '../../ui/components/landing/EmoteTicker'
 import { buildEmoteTicker, buildMoverTicker } from '../../ui/components/landing/landingData'
-import { BrandMark } from '../../ui/components/BrandMark'
-import { DiscordMark } from '../../ui/components/DiscordMark'
 import { InstallCta } from '../../ui/components/InstallCta'
+import { SiteHeader, SiteHeaderStepBack } from '../../ui/components/SiteHeader'
 import { SiteFooter } from '../../ui/components/SiteFooter'
 import { StreamerChatStats } from '../../ui/components/StreamerChatStats'
-import { SITE_NAV_ITEMS } from '../../lib/siteNav'
-import { discordInviteUrl } from '../../lib/discord'
 import { capturePublicCta } from '../../lib/productAnalytics'
 import type { HubLiveChannel } from '../../lib/publicHub'
 // The hub's own search: the same suggestions and Enter rules, styled for this page in landing.css.
@@ -49,7 +45,6 @@ function DeferredDemo({ children }: { children: ReactNode }) {
   return <div ref={host}><Suspense fallback={fallback}>{visible ? children : fallback}</Suspense></div>
 }
 
-const DISCORD_LABEL = 'Join the StreamPulse Discord (opens in a new tab)'
 const NO_LIVE: readonly HubLiveChannel[] = []
 
 /**
@@ -62,7 +57,7 @@ function useHeroButtonsInView(mainRef: RefObject<HTMLElement | null>): boolean {
   useEffect(() => {
     const targets = Array.from(mainRef.current?.querySelectorAll<HTMLElement>('.sl-hero__actions') ?? [])
     if (!targets.length || typeof IntersectionObserver === 'undefined') { setInView(false); return }
-    const header = document.querySelector('.sl-header')?.getBoundingClientRect().height ?? 0
+    const header = document.querySelector('.site-header')?.getBoundingClientRect().height ?? 0
     const showing = new Set<Element>()
     const io = new IntersectionObserver((entries) => {
       for (const entry of entries) {
@@ -86,7 +81,7 @@ function useDockedSearch(fieldRef: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const field = fieldRef.current
     if (!field || typeof IntersectionObserver === 'undefined') return undefined
-    const header = Math.round(document.querySelector('.sl-header')?.getBoundingClientRect().bottom ?? 0)
+    const header = Math.round(document.querySelector('.site-header')?.getBoundingClientRect().bottom ?? 0)
     const io = new IntersectionObserver(([entry]) => {
       if (entry) store.set({ docked: !entry.isIntersecting && entry.boundingClientRect.bottom <= header + 1 })
     }, { rootMargin: `${-header}px 0px 0px 0px` })
@@ -98,48 +93,30 @@ function useDockedSearch(fieldRef: RefObject<HTMLElement | null>) {
   }, [fieldRef, store])
 }
 
-function TopNav({ discord, heroButtons, live, games, emotes }: { discord: string | null; heroButtons: boolean; live: readonly HubLiveChannel[]; games: readonly HubSearchGame[]; emotes: readonly HubSearchEmote[] }) {
+/**
+ * The site's one header (SiteHeader) with the front page's pieces: the hub's docked search (11-18), and
+ * Add to Chrome with Open the Hub, which step back while the hero's own buttons show (11-22).
+ */
+function LandingHeader({ heroButtons, live, games, emotes }: { heroButtons: boolean; live: readonly HubLiveChannel[]; games: readonly HubSearchGame[]; emotes: readonly HubSearchEmote[] }) {
   return (
-    <header className="sl-header">
-      <nav className={discord ? 'sl-nav sl-nav--discord' : 'sl-nav'} aria-label="StreamPulse" data-hero-buttons={heroButtons ? '' : undefined}>
-        <Link to="/" className="sl-brand">
-          <BrandMark className="sl-brand__mark" size={28} />
-          StreamPulse
-        </Link>
-        <div className="sl-menu">
-          {SITE_NAV_ITEMS.map((item) => (
-            <Link key={item.to} to={item.to}
-              onClick={item.to === '/analytics' ? () => capturePublicCta('open_analytics') : undefined}>
-              {item.label}
-            </Link>
-          ))}
-        </div>
-        {/* The hub's docked search (11-18): from 1100 px a field on the header's middle, 760-1099 px a search button (landing.css). */}
+    <SiteHeader
+      mainId="landing-main"
+      variant="public"
+      dock={(
+        // From 1100 px a field on the bar's middle, narrower a search button (landing.css).
         <div className="sl-dock">
           <HubV5DockSearch live={live} games={games} emotes={emotes} />
         </div>
-        {/* Install and Open the Hub step back while the hero's own buttons show (11-22), so they lead the group:
-            their empty places join the free room and Discord stays at the end. */}
-        <div className="sl-nav__right">
-          <InstallCta className={buttonClass('outline', 'sm', { className: 'sl-nav__install' })} data-cta="chrome-install-nav" icon="mark" />
-          <Link to="/analytics" className={buttonClass('outline', 'sm', { className: 'sl-nav__analytics' })} onClick={() => capturePublicCta('open_analytics')}>
+      )}
+      install={(
+        <SiteHeaderStepBack hidden={heroButtons}>
+          <InstallCta className="site-header__install" label="short" icon="mark" data-cta="chrome-install-nav" />
+          <Link to="/analytics" className="site-header__hub" onClick={() => capturePublicCta('open_analytics')}>
             Open the Hub
           </Link>
-          {discord ? (
-            <a href={discord} target="_blank" rel="noopener noreferrer" className={buttonClass('default', 'sm', { className: 'sl-discord-nav' })} aria-label={DISCORD_LABEL}>
-              <DiscordMark size={16} />Discord
-            </a>
-          ) : null}
-        </div>
-        <LandingMobileNav />
-        {/* At Menu widths the nav button collapses to this 44px mark beside Menu. */}
-        {discord ? (
-          <a href={discord} target="_blank" rel="noopener noreferrer" className="sl-discord-icon" aria-label={DISCORD_LABEL}>
-            <DiscordMark size={22} />
-          </a>
-        ) : null}
-      </nav>
-    </header>
+        </SiteHeaderStepBack>
+      )}
+    />
   )
 }
 
@@ -253,7 +230,6 @@ export default function Landing() {
   // One store for the box and the / shortcut.
   const [searchStore] = useState(createHubV5SearchStore)
   const mainRef = useRef<HTMLElement | null>(null)
-  const discord = discordInviteUrl()
   const heroButtons = useHeroButtonsInView(mainRef)
 
   // A hash in the entry URL cannot scroll on its own: the browser looks for the
@@ -302,8 +278,7 @@ export default function Landing() {
     <HubV5SearchContext.Provider value={searchStore}>
       <div className="sp-landing">
         <HeroBackdrop data={data} />
-        <a className="sl-skip-link" href="#landing-main">Skip to main content</a>
-        <TopNav discord={discord} heroButtons={heroButtons} live={live} games={searchGames} emotes={searchEmotes} />
+        <LandingHeader heroButtons={heroButtons} live={live} games={searchGames} emotes={searchEmotes} />
         <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
           <Hero live={live} games={searchGames} emotes={searchEmotes} emoteItems={emoteItems} moverItems={moverItems} />
 

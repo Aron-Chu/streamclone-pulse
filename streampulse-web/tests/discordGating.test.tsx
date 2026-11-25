@@ -7,7 +7,7 @@ import Landing from '../src/routes/public/Landing'
 import Help from '../src/routes/public/Help'
 import { PublicLayout } from '../src/ui/components/PublicLayout'
 import Terms from '../src/routes/public/Terms'
-import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
+import { SiteHeader } from '../src/ui/components/SiteHeader'
 
 // Test-only placeholder invites. Real invite codes never enter the repository.
 const SHORT_INVITE = 'https://discord.gg/sp-test-code'
@@ -90,23 +90,26 @@ describe('Discord entry points', () => {
     expect(discordLinks()).toEqual([])
   })
 
-  it('shows the nav button and phone icon on the landing page with a valid invite', async () => {
+  it('shows Discord last in the header on the landing page with a valid invite, and in the phone menu', async () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     render(<MemoryRouter><Landing /></MemoryRouter>)
     await screen.findByRole('heading', { name: /actually reacted to/i })
+    // One button: under 1280 px the same link shows as its 44 px mark (site-header.css).
     const links = discordLinks()
-    expect(links.map(a => a.className.split(' ').find(c => c.startsWith('sl-'))).sort())
-      .toEqual(['sl-discord-icon', 'sl-discord-nav'])
-    for (const link of links) {
+    expect(links.map(a => a.className)).toEqual(['site-header__discord'])
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    expect(discordLinks().map(a => a.className)).toEqual(['site-header__discord', 'site-header__discord site-menu__discord'])
+    for (const link of discordLinks()) {
       expect(link.getAttribute('href')).toBe(SHORT_INVITE)
       expect(link.target).toBe('_blank')
       expect(link.rel).toContain('noopener')
       expect(link.getAttribute('aria-label')).toMatch(/Discord.*opens in a new tab/)
     }
-    // Install and Open the Hub lead the right-hand group (both step back at the top of the page), so the nav button
-    // stays at the end instead of mid-bar (11-18, 11-22).
-    const right = document.querySelector('.sl-nav__right')!
-    expect([...right.children].map((el) => [...el.classList].find((c) => c.startsWith('sl-')))).toEqual(['sl-nav__install', 'sl-nav__analytics', 'sl-discord-nav'])
+    // Install and Open the Hub lead the right-hand group (both step back at the top of the page), so Discord
+    // stays at the end instead of mid-bar (11-18, 11-22), then the phone Menu (11-24).
+    const right = document.querySelector('.site-header__actions')!
+    expect([...right.children].map((el) => el.classList[0])).toEqual(['site-header__step', 'site-header__discord', 'site-header__menu'])
+    expect([...right.querySelector('.site-header__step')!.children].map((el) => el.classList.contains('site-header__install') || el.classList.contains('site-header__hub'))).toEqual([true, true])
     // Menu stays the only control named "Menu".
     expect(screen.getAllByRole('button', { name: 'Menu' })).toHaveLength(1)
     expect(screen.queryAllByRole('link', { name: /menu/i })).toHaveLength(0)
@@ -132,8 +135,11 @@ describe('Discord entry points', () => {
     await screen.findByRole('heading', { name: /actually reacted to/i })
     const help = render(<MemoryRouter><Help /></MemoryRouter>)
     const site = render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
+    // Each header has one Discord link since 11-24 (its button and its mark are the same link); the phone menu adds one.
+    fireEvent.click(within(site.container).getByRole('button', { name: 'Menu' }))
     const links = discordLinks()
     expect(links.length).toBeGreaterThanOrEqual(5)
+    expect(links.some((link) => link.classList.contains('site-menu__discord'))).toBe(true)
     for (const link of links) {
       const visible = (link.textContent ?? '').replace(/\s+/g, ' ').trim()
       const name = link.getAttribute('aria-label') ?? visible
@@ -169,41 +175,44 @@ describe('Discord entry points', () => {
 })
 
 describe('feedback and Discord beyond the landing page', () => {
-  it('puts a Discord button in the public header, and a 44px mark beside Menu, only with an invite', () => {
+  it('puts Discord last in the site header, after the install button, only with an invite', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     const { unmount } = render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
-    const header = document.querySelector('header.app-nav') as HTMLElement
-    const button = header.querySelector<HTMLAnchorElement>('a.app-nav__discord')!
+    const header = document.querySelector('header.site-header') as HTMLElement
+    const button = header.querySelector<HTMLAnchorElement>('a.site-header__discord')!
     expect(button.getAttribute('href')).toBe(SHORT_INVITE)
     expect(button.textContent).toBe('Discord')
     expect(button.target).toBe('_blank')
     expect(button.getAttribute('aria-label')).toBe('Join the StreamPulse Discord (opens in a new tab)')
-    // The header button sits just before the install button, as on the landing.
-    expect(button.nextElementSibling?.classList.contains('app-nav__install')).toBe(true)
-    expect(header.querySelector('a.app-nav__discord-icon')?.getAttribute('href')).toBe(SHORT_INVITE)
+    // One bar on every page (11-24): install, then Discord, as on the landing; under 1280 px the same link is its mark.
+    expect(button.previousElementSibling?.classList.contains('site-header__install')).toBe(true)
+    expect(header.querySelectorAll('a[href*="discord"]')).toHaveLength(1)
     unmount()
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', '')
     render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
-    expect(document.querySelector('header.app-nav a[href*="discord"]')).toBeNull()
+    expect(document.querySelector('header.site-header a[href*="discord"]')).toBeNull()
   })
 
-  it('shows Discord once on the analytics bar, beside the install button, and not again in the menu', () => {
+  it('shows Discord on the Hub bar the same way, and once more at the foot of the phone menu', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
-    render(<MemoryRouter><AnalyticsTopNav items={[{ label: 'Hub', to: '/analytics', end: true }, { label: 'Help', to: '/help' }]} /></MemoryRouter>)
-    const bar = document.querySelector<HTMLAnchorElement>('a.analytics-topnav__discord')!
+    render(<MemoryRouter><SiteHeader mainId="analytics-main" variant="analytics" /></MemoryRouter>)
+    const bar = document.querySelector<HTMLAnchorElement>('header a.site-header__discord')!
     expect(bar.getAttribute('href')).toBe(SHORT_INVITE)
-    expect(bar.getAttribute('aria-label')).toBe('Discord (opens in a new tab)')
-    expect(bar.previousElementSibling?.classList.contains('analytics-topnav__install')).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Navigation menu' }))
-    const panel = document.querySelector('.analytics-topnav__more-links')!
-    expect([...panel.querySelectorAll('a')].map((a) => a.textContent)).toEqual(['Hub', 'Help', 'Status', 'Changelog', 'Privacy', 'Terms'])
+    expect(bar.previousElementSibling?.classList.contains('site-header__install')).toBe(true)
     expect(discordLinks()).toEqual([bar])
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    const panel = screen.getByRole('dialog')
+    expect([...panel.querySelectorAll('nav a')].map((a) => a.textContent)).toEqual(['Hub', 'Moments', 'Help', 'Status', 'Changelog', 'Privacy', 'Terms'])
+    const inMenu = panel.querySelector<HTMLAnchorElement>('a.site-menu__discord')!
+    expect(inMenu.getAttribute('href')).toBe(SHORT_INVITE)
+    expect(inMenu.target).toBe('_blank')
+    expect(discordLinks()).toEqual([bar, inMenu])
   })
 
-  it('drops Discord from the analytics bar without an invite', () => {
+  it('drops Discord from the bar and the phone menu without an invite', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', '')
-    render(<MemoryRouter><AnalyticsTopNav items={[{ label: 'Help', to: '/help' }]} /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Navigation menu' }))
+    render(<MemoryRouter><SiteHeader mainId="analytics-main" variant="analytics" /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
     expect(discordLinks()).toEqual([])
   })
 

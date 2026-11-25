@@ -80,10 +80,10 @@ describe('landing page', () => {
     const main = within(screen.getByRole('main'))
     expect(main.getAllByRole('search')).toHaveLength(1)
     expect(main.getAllByRole('combobox', { name: /search streamers or games/i })).toHaveLength(1)
-    const dock = document.querySelector('.sl-header .hv5-dock')
+    const dock = document.querySelector('.site-header .hv5-dock')
     expect(dock).toBeTruthy()
     expect(dock!.hasAttribute('data-shown')).toBe(false)
-    expect(document.querySelector<HTMLButtonElement>('.sl-header .hv5-dock-btn')!.hidden).toBe(true)
+    expect(document.querySelector<HTMLButtonElement>('.site-header .hv5-dock-btn')!.hidden).toBe(true)
     // BrainChat, coming later, right after the demo (board extension-brainchat 11-22, ★ B1). The Fastest chats band
     // is gone (debloat board 11-24): the hero leads straight to the demo.
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
@@ -188,8 +188,8 @@ describe('landing page', () => {
   it('does not expose legacy /setup or /login nav CTAs', async () => {
     renderLanding()
     await screen.findByRole('heading', { name: /actually reacted to/i })
-    const nav = screen.getByRole('navigation', { name: /streampulse/i })
-    const navScope = within(nav)
+    // One header on every page (11-24): its links, and the front page's Open the Hub beside them.
+    const navScope = within(screen.getByRole('banner'))
     expect(navScope.queryByRole('link', { name: /sign in/i })).toBeNull()
     expect(navScope.queryByRole('link', { name: /\/setup/i })).toBeNull()
     expect(navScope.getByRole('link', { name: /open the hub/i }).getAttribute('href')).toBe('/analytics')

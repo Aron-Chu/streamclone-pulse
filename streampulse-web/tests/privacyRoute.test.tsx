@@ -95,7 +95,7 @@ describe('privacy route', () => {
     renderPath('/privacy')
     const footer = await screen.findByRole('navigation', { name: 'Footer' })
     expect(within(footer).getByRole('link', { name: /^privacy$/i }).getAttribute('href')).toBe('/privacy')
-    const navigation = screen.getByRole('navigation', { name: /main navigation/i })
+    const navigation = screen.getByRole('navigation', { name: 'Main' })
     expect(within(navigation).getByRole('link', { name: /^help$/i }).getAttribute('href')).toBe('/help')
   })
 })

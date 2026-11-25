@@ -29,7 +29,10 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('region', { name: 'BrainChat' })).toBeVisible()
     await expect(page.locator('.lsg')).toHaveCount(0)
     await expect(page.locator('.sl-fx')).toHaveCount(0)
-    expect(await page.locator('.sl-header').evaluate(element => Math.abs(element.getBoundingClientRect().top))).toBeLessThanOrEqual(1)
+    // The bar stays at the top from 720 px; on phones it scrolls away with the page (site-header.css).
+    const headerTop = await page.locator('.site-header').evaluate(element => element.getBoundingClientRect().top)
+    if (width >= 720) expect(Math.abs(headerTop)).toBeLessThanOrEqual(1)
+    else expect(headerTop).toBeLessThan(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.evaluate(() => scrollTo(0, 0))
     await page.screenshot({ path: testInfo.outputPath(`home-${width}.png`) })

@@ -358,12 +358,12 @@ test('creator links open the channel while History is hidden; a History creator 
 
 test('in-page Back does not leave a detail entry that browser Back reopens', async ({ page }) => {
   await page.goto('/analytics')
-  await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'Moments', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Moments', exact: true }).click()
   await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
   await expect(page.locator('.moments-detail')).toBeVisible()
   // Revisit this detail after unmounting the page: its return origin must be
   // stored on the history entry, not only in a component ref.
-  await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'Hub', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Hub', exact: true }).click()
   await page.goBack()
   await expect(page.locator('.moments-detail')).toBeVisible()
   await page.getByRole('button', { name: 'Close', exact: true }).click()
@@ -672,7 +672,7 @@ for (const width of [390, 768, 1440]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     if (width <= 768) {
       const geometry = await page.evaluate(() => {
-        const header = document.querySelector('.analytics-topnav')!.getBoundingClientRect()
+        const header = document.querySelector('.site-header')!.getBoundingClientRect()
         const controls = ['.moments-result.is-selected .moments-card-primary', '.moments-detail-head'].map(selector => {
           const bounds = document.querySelector(selector)!.getBoundingClientRect()
           return { selector, top: bounds.top, bottom: bounds.bottom }
