@@ -79,6 +79,9 @@ function onDemandPage(load: () => Promise<{ default: ComponentType }>) {
 const Landing = onDemandPage(() => import('./public/Landing'))
 const FindTwitchMomentsGuide = onDemandPage(() => import('./public/FindTwitchMomentsGuide'))
 const TwitchVodTimestampsGuide = onDemandPage(() => import('./public/TwitchVodTimestampsGuide'))
+const GuidesIndex = onDemandPage(() => import('./public/GuidesIndex'))
+const HowMomentsArePickedGuide = onDemandPage(() => import('./public/HowMomentsArePickedGuide'))
+const ReadingTheChatChartGuide = onDemandPage(() => import('./public/ReadingTheChatChartGuide'))
 const Recaps = onDemandPage(() => import('./public/Recaps'))
 
 const Help = onDemandPage(() => import('./public/Help'))
@@ -100,6 +103,9 @@ const OPENING_PAGES: Record<string, { preload: () => Promise<void> }> = {
   '/tools/twitch-vod-timestamp-link': TwitchVodTimestampsGuide,
   '/guides/find-twitch-moments': FindTwitchMomentsGuide,
   '/guides/twitch-vod-timestamps': TwitchVodTimestampsGuide,
+  '/guides': GuidesIndex,
+  '/guides/how-moments-are-picked': HowMomentsArePickedGuide,
+  '/guides/reading-the-chat-chart': ReadingTheChatChartGuide,
   '/recaps': Recaps,
   '/help': Help,
   // The old help pages open a section of Help.
@@ -233,6 +239,9 @@ function PortalRoutes() {
         <Route path="/tools/twitch-vod-timestamp-link" element={<TimestampToolRedirect />} />
         <Route path="/guides/find-twitch-moments" element={<FindTwitchMomentsGuide />} />
         <Route path="/guides/twitch-vod-timestamps" element={<TwitchVodTimestampsGuide />} />
+        <Route path="/guides" element={<GuidesIndex />} />
+        <Route path="/guides/how-moments-are-picked" element={<HowMomentsArePickedGuide />} />
+        <Route path="/guides/reading-the-chat-chart" element={<ReadingTheChatChartGuide />} />
         <Route path="/recaps" element={<Recaps />} />
         <Route path="/help" element={<Help />} />
         {/* Install, the docs, Support and Feedback are sections of Help. */}

@@ -1,5 +1,8 @@
 import FindTwitchMomentsGuide from './routes/public/FindTwitchMomentsGuide'
 import TwitchVodTimestampsGuide from './routes/public/TwitchVodTimestampsGuide'
+import GuidesIndex from './routes/public/GuidesIndex'
+import HowMomentsArePickedGuide from './routes/public/HowMomentsArePickedGuide'
+import ReadingTheChatChartGuide from './routes/public/ReadingTheChatChartGuide'
 import Recaps from './routes/public/Recaps'
 export { GROWTH_PAGES } from './lib/growthPages'
 import { renderToString } from 'react-dom/server'
@@ -28,6 +31,9 @@ export function prerenderPublicPage(path: string): string {
   // The builder's old address shows the guide it moved into; the old help pages show Help. Both point search to the new page.
   const page = path === '/guides/twitch-vod-timestamps' || path === '/tools/twitch-vod-timestamp-link' ? <TwitchVodTimestampsGuide />
     : path === '/guides/find-twitch-moments' ? <FindTwitchMomentsGuide />
+    : path === '/guides' ? <GuidesIndex />
+    : path === '/guides/how-moments-are-picked' ? <HowMomentsArePickedGuide />
+    : path === '/guides/reading-the-chat-chart' ? <ReadingTheChatChartGuide />
     : path === '/recaps' ? <Recaps />
     : path === '/' ? <Landing />
     : ['/help', '/docs', '/support', '/feedback'].includes(path) || path.startsWith('/docs/') ? <Help />

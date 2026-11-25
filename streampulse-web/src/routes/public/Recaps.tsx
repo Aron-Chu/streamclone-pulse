@@ -14,6 +14,6 @@ export default function Recaps() {
       ? <ul className="recap-index">{recaps.map(recap => <li key={recap.path}><a href={recap.path}>{recap.heading}</a><p className="muted">{recap.description}</p></li>)}</ul>
       : <p>No reviewed recaps yet.</p>}
     <div className="public-document__actions"><InstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/analytics">Browse the Hub</Link></div>
-    <nav className="growth-guide__related" aria-label="Related guides"><Link to="/guides/find-twitch-moments">Find and bookmark tracked moments</Link><Link to="/guides/twitch-vod-timestamps">Why a VOD or timestamp may be unavailable</Link><Link to="/help">Get help with StreamPulse</Link></nav>
+    <nav className="growth-guide__related" aria-label="Related guides"><Link to="/guides/find-twitch-moments">Find and bookmark tracked moments</Link><Link to="/guides/twitch-vod-timestamps">Why a VOD or timestamp may be unavailable</Link><Link to="/guides/how-moments-are-picked">See how Moments are picked</Link><Link to="/guides">All guides</Link><Link to="/help">Get help with StreamPulse</Link></nav>
   </article></PublicLayout>
 }
