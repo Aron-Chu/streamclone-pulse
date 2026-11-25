@@ -55,7 +55,8 @@ const installCommands = (lines: string[]) =>
       .replace(/\s#.*$/, '')
       .split(/&&|\|\||[;|]/)
       .flatMap((part) => {
-        const tokens = part.trim().split(/\s+/)
+        // YAML hands `run: "npm ci"` to the shell as npm ci, so a quote around a word is not part of it
+        const tokens = part.trim().split(/\s+/).map((token) => token.replace(/^["']+|["']+$/g, ''))
         const npm = tokens.indexOf('npm')
         if (npm < 0) return []
         const command = tokens.slice(npm)
@@ -105,6 +106,12 @@ describe('the install check itself', () => {
   it('reads a command continued over several lines as one', () => {
     expect(offenders(['run: npm ci \\', '  --ignore-scripts'])).toEqual([])
     expect(offenders(['run: npm \\', '  ci'])).toEqual(['npm ci'])
+  })
+
+  it('reads a quoted run value as YAML gives it to the shell', () => {
+    expect(offenders(['run: "npm ci"'])).toEqual(['npm ci'])
+    expect(offenders(["- run: 'npm install'"])).toEqual(['npm install'])
+    expect(offenders(["- run: 'npm ci --ignore-scripts'", 'run: "npm --prefix web ci --ignore-scripts"'])).toEqual([])
   })
 
   it('finds installs behind options and leaves other commands alone', () => {
