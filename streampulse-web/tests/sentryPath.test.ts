@@ -17,7 +17,7 @@ describe('sanitizePortalPath', () => {
   it('names every fixed public, support and account page instead of /:unknown', () => {
     for (const path of [
       '/', '/docs', '/status', '/privacy', '/terms', '/refunds', '/support', '/feedback', '/discord',
-      '/supporter', '/supporter/thanks', '/changelog',
+      '/supporter', '/supporter/thanks', '/changelog', '/brainchat',
       '/account/sign-in', '/account/confirm', '/account/restore', '/account/link-device',
       '/account/settings', '/account/billing', '/account/billing/return',
       '/account', '/account/moments',

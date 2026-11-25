@@ -1,0 +1,179 @@
+/*
+ * A Moment's own page (/analytics/moments/<stream>/<minute>). It reuses the
+ * clip page's nc-* classes (native-clips.css); only what they don't cover is
+ * here, scoped under .nc-watch and written through the --fma-* / --sp-* tokens.
+ */
+
+/* The Watch pill wraps under the channel name on a narrow screen (the clip page's rule sets no wrap). */
+.nc-library.nc-watch .nc-watch-channel { flex-wrap: wrap; }
+
+/* The picture box takes the player's place: 16:9, a link out to Twitch. */
+.nc-watch .mw-picture { min-width: 0; }
+.nc-watch .mw-picture .nc-thumb { text-decoration: none; }
+
+.nc-watch .mw-gone-text {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+.nc-watch .mw-gone-text span { color: var(--fma-sub); font-size: 12.5px; }
+.nc-watch .mw-picture .nc-thumb[data-unavailable] .mw-gone-text span { color: var(--fma-text); }
+
+/* "Dropped": a line above the grid, not a notice. */
+.nc-watch .mw-dropped {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--fma-border);
+  border-radius: 12px;
+  background: var(--sp-surface-1);
+  color: var(--fma-sub);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/*
+ * While the Moment is on its way the page keeps its final shape: a text placeholder holds its line,
+ * the avatar its circle, and the Watch pill's room is held unseen (on a phone the pill wraps to its
+ * own line, so that line is held too).
+ */
+.nc-watch .mw-skel-text { border-radius: 4px; background: var(--sp-surface-2); color: transparent; }
+.nc-watch .mw-skel-avatar { width: 40px; height: 40px; background: var(--sp-surface-2); }
+.nc-watch .mw-pill-hold { visibility: hidden; }
+
+/*
+ * The strip's chart keeps one box from the first paint, the height of the drawn chart, whether it is
+ * still loading, drawn, or not available, so the track under it never moves. The chart is shorter in
+ * a narrow box (its own 520 px rule).
+ */
+.nc-watch .mw-chart { container-type: inline-size; }
+.nc-watch .mw-chart > :is(.moment-minutes, .moment-minutes-note) { box-sizing: border-box; min-height: 214px; }
+@container (max-width: 520px) {
+  .nc-watch .mw-chart > :is(.moment-minutes, .moment-minutes-note) { min-height: 227px; }
+}
+
+/* Marked places for the strip, the rating row, the comments and Up next. */
+.nc-watch .mw-slot { min-width: 0; margin-top: 14px; }
+.nc-watch .mw-slot:empty { display: none; }
+
+/* The minutes around it: a track over the page's window with one range input on top. */
+.nc-watch .mw-strip { min-width: 0; }
+.nc-watch .mw-track { position: relative; height: 44px; margin-top: 12px; }
+.nc-watch .mw-rail {
+  position: absolute; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px;
+  border-radius: 3px; background: var(--sp-surface-3);
+}
+.nc-watch .mw-clip {
+  position: absolute; top: 50%; height: 14px; margin-top: -7px; min-width: 4px;
+  border-radius: 4px; background: var(--sp-border-strong);
+}
+.nc-watch .mw-minute {
+  position: absolute; top: 4px; bottom: 4px; box-sizing: border-box;
+  border: 2px solid var(--fma-accent-text); border-radius: 8px; pointer-events: none;
+}
+.nc-watch .mw-at {
+  position: absolute; top: 8px; bottom: 8px; width: 2px; margin-left: -1px;
+  background: var(--fma-text); pointer-events: none;
+}
+/* The hit area is 24 px; the dot inside it stays small. */
+.nc-watch .mw-pin {
+  position: absolute; top: -5px; z-index: 2; width: 24px; height: 24px; margin-left: -12px; padding: 0;
+  border: 0; border-radius: 50%; background: none; cursor: pointer;
+}
+.nc-watch .mw-pin::before {
+  content: ''; position: absolute; inset: 5px; box-sizing: border-box;
+  border: 2px solid var(--fma-accent-text); border-radius: 50%; background: var(--sp-surface-2);
+}
+.nc-watch .mw-pin.is-on::before { background: var(--fma-accent-text); }
+.nc-watch .mw-pin:focus-visible { outline: 2px solid var(--fma-accent-text); outline-offset: 0; }
+.nc-watch .mw-range {
+  position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0;
+  opacity: 0; cursor: pointer; touch-action: pan-y;
+}
+.nc-watch .mw-track:has(.mw-range:focus-visible) { outline: 2px solid var(--fma-accent-text); outline-offset: 2px; border-radius: 8px; }
+.nc-watch .mw-strip-times {
+  display: flex; justify-content: space-between; gap: 8px; margin-top: 4px;
+  color: var(--fma-sub); font-size: 12.5px; font-variant-numeric: tabular-nums;
+}
+.nc-watch .mw-strip-times strong { color: var(--fma-text); font-weight: 600; }
+
+/* The rating row and a clip's row: a label, the pressed-state pair, a count. */
+.nc-watch .mw-rating,
+.nc-watch .mw-clip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+.nc-watch .mw-rating-q { color: var(--fma-text); font-weight: 600; font-size: 14px; }
+.nc-watch .mw-rating-tally { font-size: 13px; }
+.nc-watch .mw-clip-row .nc-muted { font-size: 13px; }
+
+/* The comment thread: one thread on the stream's timeline. It reuses the clip thread's nc-comments / nc-add classes. */
+.nc-watch .mw-comments { min-width: 0; }
+.nc-watch .mw-comments-title:focus { outline: none; }
+.nc-watch .mw-comments-sub { margin: -8px 0 0; color: var(--fma-sub); font-size: 13px; }
+.nc-watch .mw-add-chip {
+  display: inline-flex; align-items: center; gap: 2px; align-self: start; width: fit-content;
+  padding: 0 0 0 10px; border: 1px solid var(--sp-border-strong); border-radius: 999px;
+  color: var(--fma-text); font-size: 12.5px; font-variant-numeric: tabular-nums;
+}
+.nc-watch .mw-add-chip button {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0;
+  border: 0; border-radius: 50%; background: none; color: var(--fma-sub); cursor: pointer;
+}
+.nc-watch .mw-add-chip button:hover { color: var(--fma-text); }
+.nc-watch .mw-count { font-variant-numeric: tabular-nums; }
+.nc-watch .mw-comment {
+  display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: start; gap: 12px; min-width: 0;
+}
+.nc-watch .mw-comment:focus { outline: none; }
+.nc-watch .mw-comment:focus-visible { outline: 2px solid var(--fma-accent-text); outline-offset: 4px; border-radius: 8px; }
+.nc-watch .mw-comment-main { min-width: 0; }
+.nc-watch .mw-comment-at {
+  min-height: 24px; padding: 0 2px; border: 0; background: none; color: var(--fma-accent-text);
+  font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.nc-watch .mw-comment-at:hover { text-decoration: underline; }
+.nc-watch .mw-comment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 2px; font-size: 12.5px; }
+.nc-watch .mw-act {
+  min-height: 24px; padding: 0; border: 0; background: none; color: var(--fma-sub);
+  font: inherit; cursor: pointer;
+}
+.nc-watch .mw-act:hover:not(:disabled) { color: var(--fma-text); text-decoration: underline; }
+.nc-watch .mw-act:disabled { cursor: progress; }
+.nc-watch .mw-reasons { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 4px; }
+.nc-watch .mw-reasons p { margin: 0; font-size: 12.5px; }
+
+/* More Moments from this stream: a small picture with the time chip, beside the title. */
+.nc-watch .mw-up-list { margin: 0; padding: 0; list-style: none; }
+.nc-watch .mw-up-row {
+  display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 9px; align-items: start;
+  color: var(--fma-text); text-decoration: none;
+}
+.nc-watch .mw-up-row .nc-thumb { border-radius: 8px; }
+.nc-watch .mw-up-row .nc-thumb-badge { bottom: 5px; padding: 2px 4px; font-size: 11px; }
+.nc-watch .mw-up-title {
+  display: -webkit-box; overflow: hidden; font-size: 13px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.nc-watch .mw-up-row:hover .mw-up-title { text-decoration: underline; }
+.nc-watch .mw-up-row:focus-visible { outline: 2px solid var(--fma-accent-text); outline-offset: 2px; border-radius: 8px; }
+@media (max-width: 560px) {
+  .nc-watch .mw-up-row { grid-template-columns: 120px minmax(0, 1fr); }
+}
+
+/*
+ * The picture's kind on its box, top left (P1): "Stream frame", "Nearby clip", "VOD thumbnail" or
+ * "Game art". In the head it sits beside the box link (hidden from screen readers), so it is read
+ * out. One line that ellipsizes, never wraps; clicks pass through it to the box.
+ */
+.nc-watch .mw-picture { position: relative; }
+.nc-library .nc-thumb > .moment-picture-frame { position: absolute; inset: 0; }
+.nc-library .nc-thumb > img.moment-picture-cover { object-fit: contain; }
+.nc-library.nc-watch .mw-picture-label {
+  top: 8px; bottom: auto; left: 8px; display: block; max-width: calc(100% - 16px);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+}
+.nc-library.nc-watch .mw-up-row .nc-thumb .mw-picture-label { top: 5px; bottom: auto; left: 5px; max-width: calc(100% - 10px); }

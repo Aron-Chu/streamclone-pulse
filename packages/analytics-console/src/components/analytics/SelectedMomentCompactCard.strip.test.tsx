@@ -99,7 +99,7 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect(row?.getAttribute('aria-current')).toBe('true')
     // Play with the 10 s lead-in (alignment verified), and the timed VOD link
     expect(screen.getByRole('button', { name: 'Play VOD from 0:50:39' })).toBeTruthy()
-    const link = screen.getByRole('link', { name: 'Open VOD at 0:50:39' })
+    const link = screen.getByRole('link', { name: 'Open on Twitch at 0:50:39' })
     expect(link.getAttribute('href')).toBe('https://www.twitch.tv/videos/2899924626?t=50m39s')
     expect(link.getAttribute('target')).toBe('_blank')
     // no "× usual" anywhere (F8)
@@ -148,7 +148,7 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     })
     await act(async () => {})
     expect(screen.getByRole('button', { name: 'Play from 0:49:49' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Open VOD at 0:49:49' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Open on Twitch at 0:49:49' })).toBeTruthy()
     expect(document.querySelector('.bkc-mom .r')?.textContent).toBe('none')
     expect(document.querySelector('.mpl-cap')).toBeNull()
   })
@@ -260,12 +260,12 @@ describe('SelectedMomentCompactCard (bar strip)', () => {
     expect(top.querySelector('.bkc-hact')?.contains(screen.getByRole('button', { name: 'Save' }))).toBe(true)
   })
 
-  it("shows the VOD link as 'Open VOD' beside Play (Play already says the time); its name keeps the time", async () => {
+  it("shows the VOD link as 'Open on Twitch' beside Play (Play already says the time); its name keeps the time", async () => {
     const { container } = renderStrip()
     await act(async () => {})
-    const link = screen.getByRole('link', { name: 'Open VOD at 0:50:39' })
+    const link = screen.getByRole('link', { name: 'Open on Twitch at 0:50:39' })
     expect(link.closest('.mpl-link')?.parentElement?.className).toBe('mpl')
-    expect(link.firstChild?.textContent).toBe('Open VOD')
+    expect(link.firstChild?.textContent).toBe('Open on Twitch')
     expect(link.querySelector('.sr-only')?.textContent).toBe('at 0:50:39')
     // one footer less: the link is the VOD panel's, not a separate row of actions
     expect(container.querySelector('.bkc-act')).toBeNull()

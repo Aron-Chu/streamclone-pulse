@@ -2,6 +2,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { loadEnv } from 'vite'
+import { ACCOUNT_HOME_RULES, ACCOUNT_SETTINGS_ALIASES, accountMomentsOn } from './account-redirects.mjs'
 import { policyResults } from './audit-ai-crawl.mjs'
 import { readPilot, metadataForPage } from './recap-pilot.mjs'
 import { textContainsHostedApiOrigin } from '../../scripts/lib/hosted-api-origin.mjs'
@@ -11,26 +13,32 @@ const dist = join(root, '..', 'dist')
 
 const pilotPages = readPilot(join(root, '..', 'content', 'recap-pilot.json'))
 const expected = [
-  ['tools/twitch-vod-timestamp-link/index.html', 'Twitch VOD Timestamp Link Builder — StreamPulse', 'index,follow', 'https://streampulse.stream/tools/twitch-vod-timestamp-link'],
-  ['guides/find-twitch-moments/index.html', 'Find and Bookmark Twitch Reaction Moments — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/find-twitch-moments'],
-  ['guides/twitch-vod-timestamps/index.html', 'Twitch VOD Availability and Timestamps — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
-  ['recaps/index.html', 'Twitch Chat Recaps — StreamPulse', 'index,follow', 'https://streampulse.stream/recaps'],
+  // The builder's old address shows the guide it moved into and points search there.
+  ['tools/twitch-vod-timestamp-link.html', 'Twitch VOD Timestamp Link Builder and Guide — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
+  ['guides/find-twitch-moments.html', 'Find and Bookmark Twitch Reaction Moments — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/find-twitch-moments'],
+  ['guides/twitch-vod-timestamps.html', 'Twitch VOD Timestamp Link Builder and Guide — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
+  ['recaps.html', 'Twitch Chat Recaps — StreamPulse', 'index,follow', 'https://streampulse.stream/recaps'],
   ['index.html', 'StreamPulse: Twitch Chat Stats & Top Moments', 'index,follow', 'https://streampulse.stream/'],
   ['analytics-fallback/index.html', 'StreamPulse Analytics', 'noindex,nofollow', 'https://streampulse.stream/analytics-fallback'],
-  ['analytics/index.html', 'Live Twitch Chat Stats & Top Emotes — StreamPulse', 'index,follow', 'https://streampulse.stream/analytics'],
-  ['docs/index.html', 'Documentation — StreamPulse', 'index,follow', 'https://streampulse.stream/docs'],
-  ['status/index.html', 'Service Status — StreamPulse', 'index,follow', 'https://streampulse.stream/status'],
-  ['privacy/index.html', 'Privacy Policy — StreamPulse', 'index,follow', 'https://streampulse.stream/privacy'],
-  ['terms/index.html', 'Terms of Use — StreamPulse', 'index,follow', 'https://streampulse.stream/terms'],
-  ['refunds/index.html', 'Cancellation and Refunds — StreamPulse', 'index,follow', 'https://streampulse.stream/refunds'],
-  ['withdraw/index.html', 'Withdraw from your contract — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/withdraw'],
-  ['supporter/index.html', 'Pulse Supporter — StreamPulse', 'index,follow', 'https://streampulse.stream/supporter'],
-  ['supporter/thanks/index.html', 'Return to your extension — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/supporter/thanks'],
-  ['account/restore/index.html', 'Restore Supporter — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/account/restore'],
-  ['support/index.html', 'Support — StreamPulse', 'index,follow', 'https://streampulse.stream/support'],
-  ['feedback/index.html', 'Send Feedback — StreamPulse', 'index,follow', 'https://streampulse.stream/feedback'],
-  ['discord/index.html', 'Discord — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/discord'],
-  ['changelog/index.html', 'Release Notes — StreamPulse', 'index,follow', 'https://streampulse.stream/changelog'],
+  ['analytics-console-fallback/index.html', 'StreamPulse Analytics', 'noindex,nofollow', 'https://streampulse.stream/analytics-console-fallback'],
+  ['analytics.html', 'Live Twitch Chat Stats & Top Emotes — StreamPulse', 'index,follow', 'https://streampulse.stream/analytics'],
+  ['help.html', 'Help — StreamPulse', 'index,follow', 'https://streampulse.stream/help'],
+  // The old help pages open a section of Help and point search there.
+  ['docs.html', 'Help — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/help'],
+  ['status.html', 'Service Status — StreamPulse', 'index,follow', 'https://streampulse.stream/status'],
+  ['privacy.html', 'Privacy Policy — StreamPulse', 'index,follow', 'https://streampulse.stream/privacy'],
+  ['terms.html', 'Terms of Use — StreamPulse', 'index,follow', 'https://streampulse.stream/terms'],
+  ['refunds.html', 'Cancellation and Refunds — StreamPulse', 'index,follow', 'https://streampulse.stream/refunds'],
+  ['withdraw.html', 'Withdraw from your contract — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/withdraw'],
+  ['supporter.html', 'Pulse Supporter — StreamPulse', 'index,follow', 'https://streampulse.stream/supporter'],
+  ['supporter/thanks.html', 'Return to your extension — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/supporter/thanks'],
+  // The document Pages serves at /account/restore (public/_redirects): the account card, which has no page heading.
+  ['account-fallback/restore/index.html', 'Restore Supporter — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/account/restore'],
+  ['support.html', 'Help — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/help'],
+  ['feedback.html', 'Help — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/help'],
+  ['discord.html', 'Discord — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/discord'],
+  ['changelog.html', 'Release Notes — StreamPulse', 'index,follow', 'https://streampulse.stream/changelog'],
+  ['brainchat.html', 'BrainChat — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/brainchat'],
   // The 404 is not a page of its own, so it names no canonical URL.
   ['404.html', 'Page not found — StreamPulse', 'noindex,nofollow', null],
 ]
@@ -111,11 +119,12 @@ for (const [relativePath, title, robots, canonical] of expected) {
   if (!html.includes(`<meta name="robots" content="${robots}" />`)) failures.push(`${relativePath}: incorrect robots policy`)
   if (canonical ? !html.includes(`<link rel="canonical" href="${canonical}" />`) : /<link\s+rel="canonical"/i.test(html)) failures.push(`${relativePath}: incorrect canonical URL`)
   // A prerendered page's trailing-slash twin redirects to it (scripts/prerender.mjs slashRedirects).
-  const folder = /^(?!_recap-pages\/|analytics-fallback\/)(.+)\/index\.html$/.exec(relativePath)?.[1]
+  const page = /^(?!_recap-pages\/|analytics-fallback\/|analytics-console-fallback\/|account-fallback\/)(.+?)(?:\/index)?\.html$/.exec(relativePath)?.[1]
+  const folder = page === 'index' || page === '404' ? undefined : page
   if (folder && existsSync(join(dist, '_redirects')) && !readFileSync(join(dist, '_redirects'), 'utf8').split(/\r?\n/).includes(`/${folder}/ /${folder} 301`)) failures.push(`${relativePath}: /${folder}/ does not redirect to /${folder}`)
   failures.push(...linkPreviewFailures(relativePath, html, title, canonical))
   if (!textContainsHostedApiOrigin(html)) failures.push(`${relativePath}: hosted API CSP missing`)
-  if (!/<div id="root"[^>]*>[\s\S]*?<h1\b/.test(html)) failures.push(`${relativePath}: missing meaningful prerendered heading`)
+  if (!relativePath.startsWith('account-fallback/') && !/<div id="root"[^>]*>[\s\S]*?<h1\b/.test(html)) failures.push(`${relativePath}: missing meaningful prerendered heading`)
   if (/https?:\/\/(?:localhost|127\.0\.0\.1)/i.test(html)) failures.push(`${relativePath}: local URL leaked into artifact`)
 }
 
@@ -147,7 +156,7 @@ if (existsSync(join(dist, 'index.html'))) {
   }
 }
 
-for (const route of ['analytics', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'feedback', 'discord', 'changelog']) {
+for (const route of ['analytics', 'help', 'docs', 'status', 'privacy', 'terms', 'refunds', 'supporter', 'support', 'feedback', 'discord', 'changelog']) {
   const aliasPath = join(dist, `${route}.html`)
   if (!existsSync(aliasPath)) failures.push(`${route}.html: missing clean-route Vite fallback alias`)
 }
@@ -180,19 +189,32 @@ if (existsSync(join(dist, '_headers'))) {
 if (existsSync(join(dist, '_redirects'))) {
   const redirects = readFileSync(join(dist, '_redirects'), 'utf8')
   for (const rule of [
-    '/install /docs#extension 302',
-    '/install/ /docs#extension 302',
+    '/install /help#install 302',
+    '/install/ /help#install 302',
+    '/extension /install 302',
+    '/extension/ /install 302',
     '/analytics/streams /analytics 301',
     '/analytics/hub /analytics 301',
     '/atlas /analytics 301',
-    '/docs/getting-started /docs#extension 301',
-    '/docs/coverage /docs#coverage 301',
-    '/docs/api /docs#api 301',
-    '/analytics/:login/:streamId /analytics-fallback/ 200',
-    '/s/:login /analytics-fallback/ 200',
+    '/docs/getting-started /help#install 301',
+    '/docs/coverage /help#coverage 301',
+    '/docs/api /help#api 301',
+    '/analytics/clips/:clipId /analytics-fallback/ 200',
+    '/analytics/newsroom/:storyId /analytics-fallback/ 200',
+    '/analytics/:login/:streamId /analytics-console-fallback/ 200',
+    '/s/:login /analytics-console-fallback/ 200',
+    '/analytics/moments /analytics-fallback/ 200',
+    '/account/sign-in /account-fallback/sign-in/ 200',
   ]) {
     if (!redirects.includes(rule)) failures.push(`_redirects: missing ${rule}`)
   }
+  // Bare /account follows the My Moments switch this build read (scripts/account-redirects.mjs).
+  const lines = redirects.split(/\r?\n/)
+  const momentsOn = accountMomentsOn(loadEnv('production', join(root, '..'), ['VITE_']))
+  const moments = `My Moments ${momentsOn ? 'on' : 'off'}`
+  const [wanted, unwanted] = momentsOn ? [ACCOUNT_HOME_RULES, ACCOUNT_SETTINGS_ALIASES] : [ACCOUNT_SETTINGS_ALIASES, ACCOUNT_HOME_RULES]
+  for (const rule of wanted) if (!lines.includes(rule)) failures.push(`_redirects: missing ${rule} (${moments})`)
+  for (const rule of unwanted) if (lines.includes(rule)) failures.push(`_redirects: ${rule} does not belong in a build with ${moments}`)
 }
 
 if (failures.length > 0) {

@@ -723,7 +723,7 @@ describe('HubDataHealthBanner retry', () => {
     expect(screen.getByText('Could not refresh hub data. Showing the last loaded snapshot if available.')).toBeTruthy()
   })
 
-  it('offers Try again while only aggregate stats are shown', () => {
+  it('offers Try again on the stats-fallback row', () => {
     render(<HubDataHealthBanner loadSource="stats-fallback" hubEndpointOk={false} activitySummary={activity} liveRosterCount={0} onRetry={vi.fn()} />)
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
   })
@@ -755,7 +755,7 @@ describe('HubDataHealthBanner retry', () => {
     expect(container.querySelector('.hx-health-banner')).toBeNull()
     // A poll's read before its deadline keeps the stand-in's own text, not calling it slow yet.
     rerender(<HubDataHealthBanner loadSource="stats-fallback" hubEndpointOk={false} activitySummary={activity} liveRosterCount={0} pending retryDisabled onRetry={vi.fn()} />)
-    expect(screen.getByText('Hub temporarily unavailable — showing aggregate stats only.')).toBeTruthy()
+    expect(screen.getByText('Hub temporarily unavailable — live channels and activity could not load.')).toBeTruthy()
     expect(screen.queryByText('Live data is slow — still loading…')).toBeNull()
     // Given up: the error and Try again.
     rerender(<HubDataHealthBanner loadSource="stats-fallback" hubEndpointOk={false} activitySummary={activity} liveRosterCount={0} error={HUB_TIMEOUT_MESSAGE} onRetry={vi.fn()} />)

@@ -1,3 +1,4 @@
+import { accountJsonRequest, type AccountErrorFactory } from './accountRequest'
 import { validClipId } from './nativeClips'
 
 /**
@@ -12,7 +13,6 @@ import { validClipId } from './nativeClips'
 export const CLIP_REVIEWS_MIN = 10
 export const COMMENT_MAX = 280
 export const COMMENT_MAX_LINES = 3
-const REQUEST_TIMEOUT_MS = 12_000
 
 export type ClipVerdict = 'worth' | 'skip'
 export type ReportReason = 'spam' | 'abuse' | 'other'
@@ -54,29 +54,9 @@ function commentPath(commentId: string, rest: string): string {
   return `/v1/account/clip-comments/${commentId}${rest}`
 }
 
-async function request(method: 'GET' | 'PUT' | 'POST' | 'DELETE', path: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
-  const write = method !== 'GET'
-  const csrf = write ? document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith('__Host-pulse_csrf='))?.slice('__Host-pulse_csrf='.length) : undefined
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-  const response = await fetch(path, {
-    method, credentials: 'same-origin', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer',
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(csrf && /^[a-f0-9]{64}$/.test(csrf) ? { 'X-Pulse-CSRF': csrf } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  if (!response.ok) {
-    let code: string | undefined
-    try {
-      const data: unknown = await response.json()
-      const error = data && typeof data === 'object' ? (data as { error?: unknown }).error : undefined
-      if (typeof error === 'string' && error.length <= 64) code = error
-    } catch { /* A body that isn't JSON leaves only the status. */ }
-    const retryAfter = Number(response.headers?.get?.('Retry-After'))
-    throw new ClipFeedbackError(response.status, code, Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 86_400) : undefined)
-  }
-  if (response.status === 204) return null
-  return response.json()
-}
+const clipError: AccountErrorFactory = (status, code, retryAfterSeconds) => new ClipFeedbackError(status, code, retryAfterSeconds)
+const request = (method: 'GET' | 'PUT' | 'POST' | 'DELETE', path: string, body?: Record<string, unknown>, signal?: AbortSignal) =>
+  accountJsonRequest(method, path, clipError, body, signal)
 
 /** The feedback object, or null when it isn't one (a wrong schema, a different clip). */
 export function toClipFeedback(value: unknown, clipId: string): ClipFeedback | null {

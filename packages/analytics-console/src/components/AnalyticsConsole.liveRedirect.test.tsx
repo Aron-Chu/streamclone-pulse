@@ -24,8 +24,20 @@ const api = vi.hoisted(() => ({
   watchAnalyticsChannel: vi.fn(),
 }))
 
+// The route each chart draw happened on: the channel route about to open a session draws the
+// loading shell, never the chart it is leaving.
+const chartPaths = vi.hoisted(() => [] as string[])
+
 vi.mock('../api.ts', () => api)
-vi.mock('./analytics/AnalyticsChart.tsx', () => ({ default: () => <div data-testid="analytics-chart" /> }))
+vi.mock('./analytics/AnalyticsChart.tsx', async () => {
+  const { useLocation: useChartLocation } = await import('react-router-dom')
+  return {
+    default: function ChartProbe() {
+      chartPaths.push(useChartLocation().pathname)
+      return <div data-testid="analytics-chart" />
+    },
+  }
+})
 vi.mock('./analytics/ConsoleBits.tsx', () => ({
   DataQualityButton: () => null,
   StatCard: ({ label }: { label: string }) => <div data-stat-label>{label}</div>,
@@ -82,6 +94,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  chartPaths.length = 0
   // The stream list never settles in these tests.
   api.getAnalyticsStreams.mockImplementation(() => new Promise(() => undefined))
   api.getAnalyticsStream.mockResolvedValue(null)
@@ -127,6 +140,23 @@ describe('AnalyticsConsole: channel route to the live session', () => {
     await waitFor(() => expect(document.querySelector('[data-stat-label]')?.textContent).toBe('Viewers at end'))
   })
 
+  it('opens it from the hosted live read, which leaves out the chat count: its minutes carry the chat', async () => {
+    api.getAnalyticsLive.mockResolvedValue(endedLiveRead({ viewerSamples: 1, chatMessages: undefined }))
+    renderConsole('/analytics/xqc')
+    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/analytics/xqc/101'))
+    expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1)
+  })
+
+  it('draws the loading shell, not the chart, on the channel route before it opens the session', async () => {
+    api.getAnalyticsLive.mockResolvedValue(endedLiveRead())
+    api.getAnalyticsStream.mockResolvedValue(endedLiveRead({ endedAt: startedAt, lifecycleState: 'confirmed_ended' }, { state: 'historical' }))
+    renderConsole('/analytics/xqc')
+    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/analytics/xqc/101'))
+    await screen.findByTestId('analytics-chart')
+    expect(chartPaths.length).toBeGreaterThan(0)
+    expect(chartPaths.filter(path => path === '/analytics/xqc')).toEqual([])
+  })
+
   it('opens it when the stream list failed too', async () => {
     api.getAnalyticsStreams.mockRejectedValue({ kind: 'server', message: 'internal_error', status: 500 })
     api.getAnalyticsLive.mockResolvedValue(endedLiveRead())
@@ -136,7 +166,8 @@ describe('AnalyticsConsole: channel route to the live session', () => {
 
   it.each([
     ['an unmeasured stream', endedLiveRead({ chatMessages: 0 })],
-    ['a stream with no minute counts', endedLiveRead({ viewerSamples: undefined, chatMessages: undefined })],
+    ['a stream with no minute counts', endedLiveRead({ viewerSamples: undefined, chatMessages: undefined }, { rollups: [] })],
+    ['a stream whose minutes carry no chat', endedLiveRead({ chatMessages: undefined }, { rollups: [{ minuteTs: startedAt, viewerAvg: 100, viewerSamples: 1, chatCount: 0 }] })],
     ['another channel\'s stream', endedLiveRead({ login: 'zchum' })],
     ['a read for another channel', endedLiveRead({}, { channel: 'zchum' })],
     ['an alias of another stream', endedLiveRead({ canonicalStreamId: '100' })],

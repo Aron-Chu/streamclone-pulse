@@ -232,11 +232,18 @@
    own frame — which is why the caption stays in the row rather than a tooltip. */
 /* Every row keeps the 88 px slot, so titles, times and emotes line up row to row;
    with no thumbnail it is a quiet empty tile (Z03, 11-13). */
-.moments-result .moments-card-slot { flex: none; width: 88px; }
-.moments-result .moments-card-slot:empty { aspect-ratio: 16 / 9; border-radius: 4px; background: var(--fma-bg); }
-.moments-result .moments-card-artwork { width: 88px; overflow: hidden; border-radius: 4px; background: var(--fma-bg); }
-.moments-card-artwork img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
-.moments-card-artwork span { display: block; padding: 2px 4px; color: var(--fma-muted); font-size: 11px; line-height: 1.25; }
+/* The slot is always a 16:9 picture over a one-line label (P1, 11-19): the label says what the picture is
+   (stream frame, nearby clip, VOD thumbnail, game art, or none yet), and the fixed height means a row and
+   its loading placeholder are the same height, so nothing moves when a picture or a row arrives. */
+.moments-result .moments-card-slot { flex: none; width: 88px; height: calc(88px * 9 / 16 + 16px); }
+.moments-result .moments-card-artwork { display: block; width: 88px; overflow: hidden; border-radius: 4px; background: var(--fma-bg); }
+.moments-card-pic { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: var(--fma-bg); }
+.moments-card-pic > :is(img, .moment-picture-frame) { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+.moments-card-artwork .moments-card-label { display: block; height: 16px; overflow: hidden; padding: 0 4px; color: var(--fma-muted); font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+/* Shared with the Moment page: a storyboard tile shown through its sprite, and game art drawn whole. */
+.moment-picture-frame { background-repeat: no-repeat; }
+img.moment-picture-cover { object-fit: contain; }
+.moments-card-pic > img.moment-picture-cover { object-fit: contain; }
 
 .moments-result .moments-creator-link { display: flex; align-items: center; gap: 8px; flex: 0 1 11rem; min-width: 0; min-height: 36px; color: var(--fma-text); text-decoration: none; border-radius: 4px; }
 .moments-creator-link > span:last-child { min-width: 0; }
@@ -385,7 +392,9 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-loading__row .moments-avatar { border: 0; }
 .moments-loading__row .moments-row-emotes > i { width: 24px; height: 24px; border-radius: 4px; }
 .moments-loading__row strong.moments-loading__bar { width: fit-content; max-width: 100%; }
-.moments-result.moments-loading__row .moments-card-slot, .moments-loading__row .moments-avatar, .moments-loading__bar, .moments-loading__row .moments-row-emotes > i,
+.moments-loading__row .moments-card-artwork { background: transparent; }
+.moments-loading__row .moments-card-label > i { display: block; width: 60%; height: 8px; margin-top: 4px; border-radius: 3px; }
+.moments-loading__row .moments-card-pic, .moments-loading__row .moments-card-label > i, .moments-loading__row .moments-avatar, .moments-loading__bar, .moments-loading__row .moments-row-emotes > i,
 .moments-loading-top .moments-cover-art, .moments-loading__name, .moments-loading__count, .moments-loading__filters { background: color-mix(in srgb, var(--fma-text) 7%, var(--fma-panel)); }
 /* The games row's and filters' space while Latest first loads: the covers' own frame and the filters' height. */
 .moments-loading-top .moments-cover-art { box-shadow: none; }
@@ -585,7 +594,6 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
 .moments-empty-saved button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 12px 18px; background: #a0f0df; color: #10221e; border: 0; border-radius: 8px; font-weight: 700; text-decoration: none; }
 .moments-empty-saved { padding-block: 16px; }
 @media (max-width: 600px) {
-  .figma-analytics:has(.moments-workspace) .analytics-topnav__actions { display: none; }
   .moments-heading { margin-bottom: 12px; }
   .moments-heading p, .moments-heading > a { display: none; }
   .moments-workspace .moments-filter-toggle { display: inline-flex; min-height: 44px; align-items: center; margin-block: 6px; }
@@ -714,8 +722,7 @@ a.moments-creator-link:hover strong { text-decoration: underline; text-underline
   .moments-explainer[data-open="false"] .moments-explainer-rest { display: none; }
   .moments-workspace .moments-explainer-toggle { display: inline-flex; flex: none; min-height: 44px; margin-block: -13px; padding: 0 2px; border: 0; background: transparent; color: var(--fma-accent-text); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
   .moments-workspace .moments-explainer-toggle:hover:not(:disabled) { background: transparent; color: var(--fma-text); }
-  /* Square game tiles; a tile's count stays in its name for screen readers. */
-  .moments-cover-art { aspect-ratio: 1; }
+  /* Game tiles keep the cover's own 3:4 (Aron, 11-22: squares looked short); a tile's count stays in its name for screen readers. */
   .moments-cover-count, .moments-loading__count { display: none; }
   .moments-loading__filters { width: 92px; height: 44px; margin: 10px 0 6px; }
 }

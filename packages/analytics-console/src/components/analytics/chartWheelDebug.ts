@@ -10,6 +10,7 @@ export type WheelDebugOutcome =
   | 'zoom'
   | 'pan'
   | 'pass:off'
+  | 'pass:unarmed'
   | 'pass:limit'
   | 'pass:scroll-through'
   | 'pass:browser-zoom'

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeApiError } from '../src/lib/apiClient'
 import type { MomentsFeedCategoryFacet, MomentsFeedItem, MomentsFeedSnapshot, MomentsWindowQuery } from '../src/lib/momentsFeed'
@@ -14,21 +14,16 @@ const MIN = 60_000
 // The hub answer of 2026-10-30 07:19Z, trimmed: its rows are aldo_geo, e11ysa, findjeremiah and supertf.
 const capture = normalizePublicHub(JSON.parse(readFileSync(resolve(__dirname, 'fixtures/hub_live_pulse_20261030.json'), 'utf8')))
 
-const feed = vi.hoisted(() => ({ load: vi.fn(), vod: vi.fn() }))
+const feed = vi.hoisted(() => ({ load: vi.fn() }))
 vi.mock('../src/lib/momentsFeed', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/momentsFeed')>()),
   loadMomentsWindow: feed.load,
 }))
-vi.mock('../src/lib/momentsFeedVod', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/lib/momentsFeedVod')>()),
-  momentVods: { peek: () => undefined, read: feed.vod },
-}))
 
 import { formatLiftRatio, formatLiftWords } from '@streampulse/pulse-core'
-import { HubV5BigMoments } from '../src/ui/components/hub/v5/HubV5BigMoments'
 import { HubV5PickingUp, UP_DOWN, UP_FIRST, upOld } from '../src/ui/components/hub/v5/HubV5PickingUp'
 import { feedClockFloor } from '../src/ui/components/hub/v5/hubV5FeedModel'
-import { HubV5TopPeek, TOP_DAY_KEY, useTopToday } from '../src/ui/components/hub/v5/HubV5TopMoments'
+import { HubV5TopList, TOP_DAY_KEY, TOP_LIST_ROWS, useTopToday } from '../src/ui/components/hub/v5/HubV5TopMoments'
 import { hubTopRows, topFeedRows } from '../src/ui/components/hub/v5/hubV5TopModel'
 
 /** The backend as the list reads it: the window, the verdict and the game filter the moments, the total and the games facet. */
@@ -50,37 +45,48 @@ function answer(items: MomentsFeedItem[], q: MomentsWindowQuery): MomentsFeedSna
 let items = fixture.items
 const reads = () => feed.load.mock.calls.map((c) => c[0] as MomentsWindowQuery)
 const rail = () => document.getElementById('latest')!
-const big = () => document.getElementById('big-moments')
-const stage = () => big()!.querySelector<HTMLElement>('.hv5-bm')!
-const front = () => big()!.querySelector<HTMLElement>('.hv5-bm-card[data-pos="0"]')!
-const peek = () => document.querySelector<HTMLElement>('.hv5-f3-peek')!
-const peekRows = () => [...peek().querySelectorAll<HTMLElement>('.hv5-tm-list > .hv5-tm-it')]
+/** Top moments today, the still list under the chart (H1, 11-19). */
+const tops = () => document.getElementById('top-moments')!
+const topList = () => tops().querySelector<HTMLElement>('.hv5-tm-list')!
+const topRows = () => [...tops().querySelectorAll<HTMLElement>('.hv5-tm-list > .hv5-tm-it')]
 /** The ids Top moments today shows (useTopToday's shown list), as the probe writes them. */
 const ids = (): string[] => JSON.parse(screen.getByTestId('ids').textContent!) ?? []
 const source = () => screen.getByTestId('source').textContent
 const upRows = () => [...rail().querySelectorAll<HTMLElement>('.hv5-fd-list > li')]
 
-/** A mouse moving onto or off the carousel, as React reads it (jsdom has no PointerEvent). */
+/** A mouse moving onto or off the list, as React reads it (jsdom has no PointerEvent). */
 function mouse(target: Element, type: 'pointerover' | 'pointerout') {
   const event = new Event(type, { bubbles: true, cancelable: true })
   Object.defineProperties(event, { pointerId: { value: 1 }, pointerType: { value: 'mouse' } })
   fireEvent(target, event)
 }
 
-interface PageProps { attempt: number; hub?: PublicHub | null; nowMs?: number; reading?: boolean; busiest?: HubLivePulseMoment[] }
-function Page({ attempt, hub = null, nowMs = NOW, reading = true, busiest }: PageProps) {
+interface PageProps { attempt: number; hub?: PublicHub | null; nowMs?: number; reading?: boolean; busiest?: HubLivePulseMoment[]; list?: boolean }
+function Page({ attempt, hub = null, nowMs = NOW, reading = true, busiest, list = true }: PageProps) {
   const top = useTopToday({ hub, savedAt: null, reading, attempt, nowMs, busiest })
   return (
     <>
       <output data-testid="ids">{JSON.stringify(top.shown?.rows.map((r) => r.id) ?? null)}</output>
       <output data-testid="source">{top.shown?.source ?? ''}</output>
-      <HubV5TopPeek top={top} nowMs={nowMs} />
-      <HubV5BigMoments top={top} nowMs={nowMs} />
+      {list ? <HubV5TopList top={top} nowMs={nowMs} /> : null}
       <HubV5PickingUp top={top} nowMs={nowMs} />
     </>
   )
 }
-const view = (p: PageProps) => <MemoryRouter><div className="hub-v5"><Page {...p} /></div></MemoryRouter>
+/** The location state a link sent, as the probe writes it. */
+function Where() {
+  const location = useLocation()
+  return <output data-testid="where">{JSON.stringify(location.state ?? null)}</output>
+}
+const view = (p: PageProps) => <MemoryRouter><div className="hub-v5"><Page {...p} /></div><Where /></MemoryRouter>
+
+/** Keyboard focus or not: the element reports :focus-visible as asked (as hubV5ImageUrls.test.tsx does), whatever jsdom makes of it. */
+function focusVisible(on = true) {
+  const matches = Element.prototype.matches
+  return vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector: string) {
+    return selector === ':focus-visible' ? on : matches.call(this, selector)
+  })
+}
 
 beforeEach(() => {
   vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '1')
@@ -88,7 +94,6 @@ beforeEach(() => {
   vi.setSystemTime(NOW)
   items = fixture.items
   feed.load.mockReset().mockImplementation((q: MomentsWindowQuery) => Promise.resolve(answer(items, q)))
-  feed.vod.mockReset().mockResolvedValue(null)
   Element.prototype.scrollIntoView = vi.fn()
 })
 afterEach(() => {
@@ -97,42 +102,94 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('Top moments today from the Moments list (the carousel, M1)', () => {
-  it('shows the day’s top 20 that hold up, with the game chips, All moments and rows 1–3 in the phone peek', async () => {
+describe('Top moments today from the Moments list (the still list, H1)', () => {
+  it('shows the day’s top 20 that hold up, with the game chips, All moments and the first 5 as links to their moments', async () => {
     render(view({ attempt: 1 }))
     await waitFor(() => expect(ids().length).toBeGreaterThan(0))
-    expect(screen.getByRole('heading', { name: 'Top moments today' }).closest('#big-moments')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Top moments today' }).closest('#top-moments')).toBeTruthy()
     expect(reads()).toEqual([{ from: Math.floor((NOW - 24 * 3600_000) / 600_000) * 600_000, sort: 'top', verdict: 'ok', limit: 50, category: null }])
     const snap = answer(items, reads()[0]!)
-    expect(ids()).toEqual(topFeedRows(snap).map((r) => r.id))
+    const rows = topFeedRows(snap)
+    expect(ids()).toEqual(rows.map((r) => r.id))
     expect(ids().length).toBeLessThanOrEqual(20)
-    expect(within(big()!).getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments')
-    const chips = within(within(big()!).getByRole('group', { name: 'Show one game' })).getAllByRole('button').slice(1)
+    expect(within(tops()).getByRole('link', { name: 'All moments →' }).getAttribute('href')).toBe('/analytics/moments')
+    const chips = within(within(tops()).getByRole('group', { name: 'Show one game' })).getAllByRole('button').slice(1)
     // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
-    expect(snap.categories!.map((g) => within(big()!).getByRole('button', { name: `${g.name}, ${g.moments} ${g.moments === 1 ? 'moment' : 'moments'} that hold up today` }))).toEqual(chips)
+    expect(snap.categories!.map((g) => within(tops()).getByRole('button', { name: `${g.name}, ${g.moments} ${g.moments === 1 ? 'moment' : 'moments'} that hold up today` }))).toEqual(chips)
     // the list's (i): ended streams drop out of the list too, until B1
     fireEvent.click(screen.getByRole('button', { name: 'About Top moments today' }))
     const tip = document.querySelector('[data-hub-toggletip-pop]')!.textContent!
     expect(tip).toContain('from the Moments page’s own list')
     expect(tip).toContain('Streams that have ended drop out.')
     fireEvent.click(screen.getByRole('button', { name: 'About Top moments today' }))
-    expect(peekRows()).toHaveLength(3)
-    expect(within(peekRows()[0]!).getByRole('button', { name: /^1\. .+ Open it in Top moments below\.$/ })).toBeTruthy()
+    // five rows, each a link that opens its moment (no carousel to scroll down to)
+    expect(topRows()).toHaveLength(TOP_LIST_ROWS)
+    const first = within(topRows()[0]!).getByRole('link', { name: /^1\. .+ Opens the moment\.$/ })
+    expect(first.getAttribute('href')).toBe(rows[0]!.href)
+    expect(within(tops()).queryAllByRole('button', { name: /^\d\. / })).toHaveLength(0)
     // Picking up has none of the day's rows
     expect(rail().querySelector('.hv5-tm-it')).toBeNull()
   })
 
-  it('brings a peek row’s card to the front of the carousel and the carousel into view', async () => {
+  it('keeps what a read brings waiting while keyboard focus is in the list, so a row never moves under Enter', async () => {
+    const { rerender } = render(view({ attempt: 1 }))
+    await waitFor(() => expect(topRows()).toHaveLength(TOP_LIST_ROWS))
+    const before = ids()
+    const link = topRows()[1]!.querySelector('a')!
+    const keyboard = focusVisible()
+    act(() => link.focus())
+    const top = fixture.items.find((i) => i.id === before[0])!
+    const fresh = { ...top, id: `${top.id}-new`, login: 'newcomer', streamId: 'new-stream', minuteStart: NOW - MIN, score: top.score + 1 }
+    items = [...fixture.items, fresh]
+    rerender(view({ attempt: 2 }))
+    await waitFor(() => expect(feed.load).toHaveBeenCalledTimes(2))
+    await act(async () => {})
+    expect(ids()).toEqual(before)
+    // focus moving between rows keeps it held; leaving the list lets it in
+    act(() => topRows()[2]!.querySelector('a')!.focus())
+    expect(ids()).toEqual(before)
+    act(() => (document.activeElement as HTMLElement).blur())
+    await waitFor(() => expect(ids()[0]).toBe(fresh.id))
+    keyboard.mockRestore()
+  })
+
+  it('holds nothing for a tap’s or a click’s focus, which is not :focus-visible', async () => {
+    const { rerender } = render(view({ attempt: 1 }))
+    await waitFor(() => expect(topRows()).toHaveLength(TOP_LIST_ROWS))
+    const before = ids()
+    const tap = focusVisible(false)
+    act(() => topRows()[1]!.querySelector('a')!.focus())
+    const top = fixture.items.find((i) => i.id === before[0])!
+    const fresh = { ...top, id: `${top.id}-new`, login: 'newcomer', streamId: 'new-stream', minuteStart: NOW - MIN, score: top.score + 1 }
+    items = [...fixture.items, fresh]
+    rerender(view({ attempt: 2 }))
+    await waitFor(() => expect(ids()[0]).toBe(fresh.id))
+    tap.mockRestore()
+  })
+
+  it('lets a waiting read in when the list leaves the page', async () => {
+    const { rerender } = render(view({ attempt: 1 }))
+    await waitFor(() => expect(ids().length).toBeGreaterThan(0))
+    const before = ids()
+    mouse(topList(), 'pointerover')
+    const top = fixture.items.find((i) => i.id === before[0])!
+    const fresh = { ...top, id: `${top.id}-new`, login: 'newcomer', streamId: 'new-stream', minuteStart: NOW - MIN, score: top.score + 1 }
+    items = [...fixture.items, fresh]
+    rerender(view({ attempt: 2 }))
+    await waitFor(() => expect(feed.load).toHaveBeenCalledTimes(2))
+    await act(async () => {})
+    expect(ids()).toEqual(before)
+    // gone with the mouse still over it: no pointerout comes, the unmount lets the read in
+    rerender(view({ attempt: 2, list: false }))
+    await waitFor(() => expect(ids()[0]).toBe(fresh.id))
+  })
+
+  it('tells the moment it opens that it came from the hub', async () => {
     render(view({ attempt: 1 }))
-    await waitFor(() => expect(peekRows()).toHaveLength(3))
-    const third = peekRows()[2]!.querySelector('button')!
-    const name = third.querySelector(':scope > .hv5-vh')!.textContent!.match(/^3\. ([^,]+),/)![1]
-    fireEvent.click(third)
-    await waitFor(() => expect(front().querySelector('strong')!.textContent).toBe(name))
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
-    expect(document.activeElement).toBe(stage())
-    // the peek's link goes down to the carousel
-    expect(within(peek()).getByRole('link', { name: 'Top moments ↓' }).getAttribute('href')).toBe('#big-moments')
+    await waitFor(() => expect(topRows()).toHaveLength(TOP_LIST_ROWS))
+    expect(screen.getByTestId('where').textContent).toBe('null')
+    fireEvent.click(within(topRows()[0]!).getByRole('link'))
+    expect(JSON.parse(screen.getByTestId('where').textContent!)).toEqual({ from: 'hub' })
   })
 
   it('reads a picked game once and links to its moments', async () => {
@@ -142,15 +199,15 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^Overwatch, / }))
     await waitFor(() => expect(reads().at(-1)).toMatchObject({ category: ow, verdict: 'ok', sort: 'top' }))
     expect(reads()).toHaveLength(2)
-    await waitFor(() => expect(within(big()!).getByRole('link', { name: /^All Overwatch moments →$/ }).getAttribute('href')).toBe('/analytics/moments?category=Overwatch'))
+    await waitFor(() => expect(within(tops()).getByRole('link', { name: /^All Overwatch moments →$/ }).getAttribute('href')).toBe('/analytics/moments?category=Overwatch'))
     expect(ids()).toEqual(topFeedRows(answer(items, reads().at(-1)!)).map((r) => r.id))
   })
 
-  it('keeps what a read brings waiting while the mouse is over the carousel, and lets it in when it leaves', async () => {
+  it('keeps what a read brings waiting while the mouse is over the list, and lets it in when it leaves', async () => {
     const { rerender } = render(view({ attempt: 1 }))
     await waitFor(() => expect(ids().length).toBeGreaterThan(0))
     const before = ids()
-    mouse(stage(), 'pointerover')
+    mouse(topList(), 'pointerover')
     const top = fixture.items.find((i) => i.id === before[0])!
     const fresh = { ...top, id: `${top.id}-new`, login: 'newcomer', streamId: 'new-stream', minuteStart: NOW - MIN, score: top.score + 1 }
     items = [...fixture.items, fresh]
@@ -158,7 +215,7 @@ describe('Top moments today from the Moments list (the carousel, M1)', () => {
     await waitFor(() => expect(feed.load).toHaveBeenCalledTimes(2))
     await act(async () => {})
     expect(ids()).toEqual(before)
-    mouse(stage(), 'pointerout')
+    mouse(topList(), 'pointerout')
     await waitFor(() => expect(ids()[0]).toBe(fresh.id))
   })
 })
@@ -276,6 +333,9 @@ describe('Picking up now, the rail (M1 + P1)', () => {
     const sh = vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockImplementation(function (this: Element) { return own(this, 900) })
     const ch = vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (this: Element) { return own(this, 600) })
     const st = vi.spyOn(Element.prototype, 'scrollTop', 'get').mockImplementation(() => scrolled)
+    // measured only in the column (S1, 11-19), by a ResizeObserver, which reports once as it starts observing
+    const mq = wide(true)
+    vi.stubGlobal('ResizeObserver', class { constructor(private readonly cb: () => void) {} observe() { this.cb() } unobserve() {} disconnect() {} })
     try {
       render(view({ attempt: 1, hub: hubWith([hot('alpha', 2, 120, 60)]), nowMs: at }))
       const body = rail().querySelector<HTMLElement>('.hv5-tm-body')!
@@ -290,6 +350,8 @@ describe('Picking up now, the rail (M1 + P1)', () => {
       sh.mockRestore()
       ch.mockRestore()
       st.mockRestore()
+      mq.mockRestore()
+      vi.unstubAllGlobals()
     }
     // the CSS masks only a body with more below, and only in the column from 1536 px, so the last line never sits in the fade
     const css = readFileSync(resolve(__dirname, '../src/ui/components/hub/v5/hub-v5.css'), 'utf8')
@@ -303,20 +365,32 @@ describe('Picking up now, the rail (M1 + P1)', () => {
 describe('Top moments today’s fallbacks', () => {
   const hubRows = hubTopRows(capture).map((r) => r.id)
 
-  it('shows grey rows in the peek while it waits, and never waits forever', async () => {
+  it('shows five grey rows while it waits, and never waits forever', async () => {
     let fail!: (error: unknown) => void
     feed.load.mockImplementation(() => new Promise((_, reject) => { fail = reject }))
     const { rerender } = render(view({ attempt: 0 }))
-    expect(peek().hasAttribute('data-wait')).toBe(true)
-    expect(big()).toBeNull()
+    expect(tops().hasAttribute('data-wait')).toBe(true)
+    expect(tops().querySelectorAll('.hv5-tm-wait > li')).toHaveLength(TOP_LIST_ROWS)
     rerender(view({ attempt: 1 }))
     await waitFor(() => expect(feed.load).toHaveBeenCalledTimes(1))
     // no first answer (the read's 8 seconds ran out): the hub's rows
     rerender(view({ attempt: 1, hub: capture }))
     await act(async () => fail(normalizeApiError(0, {})))
     await waitFor(() => expect(ids()).toEqual(hubRows))
-    expect(peek().hasAttribute('data-wait')).toBe(false)
-    expect(big()).toBeTruthy()
+    expect(tops().hasAttribute('data-wait')).toBe(false)
+    expect(topRows()).toHaveLength(TOP_LIST_ROWS)
+  })
+
+  it('describes the hub’s list of 5 in its (i): its 10 highest-scoring, one row per moment, a busiest minute under 5', async () => {
+    feed.load.mockImplementation(() => Promise.reject(normalizeApiError(404, {})))
+    render(view({ attempt: 1, hub: capture }))
+    await waitFor(() => expect(ids()).toEqual(hubRows))
+    fireEvent.click(screen.getByRole('button', { name: 'About Top moments today' }))
+    const tip = document.querySelector('[data-hub-toggletip-pop]')!.textContent!
+    expect(tip).toContain('the hub sends its 10 highest-scoring, from the 12 chattiest live channels.')
+    expect(tip).toContain('strongest × first, one row per moment.')
+    expect(tip).toContain(`Under ${TOP_LIST_ROWS}, a “Busiest minute” row fills in for other channels`)
+    expect(tip).not.toMatch(/card|carousel|latest 10/)
   })
 
   it('stays on the hub’s rows for the visit after a 404, with no chips', async () => {
@@ -325,7 +399,7 @@ describe('Top moments today’s fallbacks', () => {
     await waitFor(() => expect(ids()).toEqual(hubRows))
     expect(source()).toBe('hub')
     expect(screen.queryByRole('group', { name: 'Show one game' })).toBeNull()
-    expect(within(big()!).getByRole('link', { name: 'All moments →' })).toBeTruthy()
+    expect(within(tops()).getByRole('link', { name: 'All moments →' })).toBeTruthy()
     rerender(view({ attempt: 2, hub: capture }))
     rerender(view({ attempt: 3, hub: capture }))
     await act(async () => {})
@@ -351,8 +425,8 @@ describe('Top moments today’s fallbacks', () => {
     rerender(view({ attempt: 2, hub: capture }))
     await waitFor(() => expect(source()).toBe('feed-old'))
     expect(ids()).toEqual(before)
-    expect(peekRows()[0]!.classList.contains('hv5-tm-old')).toBe(true)
-    expect(peek().className).toContain('hv5-f2-stale')
+    expect(topRows()[0]!.classList.contains('hv5-tm-old')).toBe(true)
+    expect(tops().className).toContain('hv5-f2-stale')
     rerender(view({ attempt: 2, hub: capture, nowMs: NOW + 15 * MIN }))
     expect(ids()).toEqual(before)
     rerender(view({ attempt: 2, hub: capture, nowMs: NOW + 15 * MIN + 1 }))
@@ -363,10 +437,10 @@ describe('Top moments today’s fallbacks', () => {
     expect(source()).toBe('feed')
   })
 
-  it('lets a change of source in at once while the mouse is over the carousel', async () => {
+  it('lets a change of source in at once while the mouse is over the list', async () => {
     const { rerender } = render(view({ attempt: 1, hub: capture }))
     await waitFor(() => expect(ids().length).toBeGreaterThan(0))
-    mouse(stage(), 'pointerover')
+    mouse(topList(), 'pointerover')
     feed.load.mockImplementation(() => Promise.reject(normalizeApiError(503, {})))
     rerender(view({ attempt: 2, hub: capture }))
     await act(async () => {})
@@ -390,7 +464,7 @@ describe('Top moments today’s fallbacks', () => {
     // a game the hub has no rows for: none, and the hub's line says so
     fireEvent.click(within(chips).getByRole('button', { name: /^Overwatch, / }))
     await waitFor(() => expect(ids()).toHaveLength(0))
-    expect(big()!.querySelector('.hv5-bm-q')!.textContent).toBe('No standout moments on streams live now yet.')
+    expect(tops().querySelector('.hv5-fd-quiet')!.textContent).toBe('No standout moments on streams live now yet.')
     fireEvent.click(within(chips).getByRole('button', { name: 'All' }))
     await waitFor(() => expect(ids()).toEqual(all))
   })
@@ -414,32 +488,19 @@ describe('Top moments today’s fallbacks', () => {
   it('says unavailable with no Try again of its own when there is nothing at all (the page banner has the one, Q5b)', async () => {
     feed.load.mockImplementation(() => Promise.reject(normalizeApiError(404, {})))
     const { rerender } = render(view({ attempt: 1, reading: false }))
-    await waitFor(() => expect(big()?.querySelector('.hv5-bm-q')?.textContent).toBe('Unavailable right now.'))
-    expect(within(peek()).getByText('Unavailable right now.')).toBeTruthy()
+    await waitFor(() => expect(within(tops()).getByText('Unavailable right now.')).toBeTruthy())
     expect(rail().querySelector('.hv5-tm-q')!.textContent).toBe('Unavailable right now.')
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
     // a read runs again: grey rows
     rerender(view({ attempt: 1, reading: true }))
-    expect(peek().hasAttribute('data-wait')).toBe(true)
-    expect(big()).toBeNull()
-  })
-
-  it('says live on a card only while the hub’s answer is under 15 minutes old', () => {
-    vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
-    const at = Date.parse(capture.generatedAt)
-    const { rerender } = render(view({ attempt: 1, hub: capture, nowMs: at + 15 * MIN }))
-    expect(front().hasAttribute('data-live')).toBe(true)
-    // the server still sends that answer later: its streams may have ended since
-    rerender(view({ attempt: 1, hub: capture, nowMs: at + 15 * MIN + 1 }))
-    expect(front().hasAttribute('data-live')).toBe(false)
+    expect(tops().hasAttribute('data-wait')).toBe(true)
   })
 
   it('says none yet when the hub has no standout moments, and keeps the link', async () => {
     vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
     render(view({ attempt: 1, hub: { ...capture, livePulseMoments: [] } }))
-    expect(big()!.querySelector('.hv5-bm-q')!.textContent).toBe('No standout moments on streams live now yet.')
-    expect(within(big()!).getByRole('link', { name: 'All moments →' })).toBeTruthy()
-    expect(within(peek()).getByText('No standout moments on streams live now yet.')).toBeTruthy()
+    expect(tops().querySelector('.hv5-fd-quiet')!.textContent).toBe('No standout moments on streams live now yet.')
+    expect(within(tops()).getByRole('link', { name: 'All moments →' })).toBeTruthy()
     expect(feed.load).not.toHaveBeenCalled()
   })
 
@@ -457,10 +518,9 @@ describe('Top moments today’s fallbacks', () => {
       render(view({ attempt: 1, hub: capture, nowMs: at, busiest: fill }))
       // the hub's 7 rows, then 3 of the 4 channels it does not show, the most chat first
       expect(ids()).toEqual([...hubRows, ...['kaicenat', 'caseoh_', 'jynxzi'].map((l) => `busiest|${l}|h-${l}|${at - 180 * MIN}|900`)])
-      expect(big()!.querySelectorAll('.hv5-bm-card')).toHaveLength(10)
-      const last = big()!.querySelector<HTMLElement>('.hv5-bm-card[data-i="9"]')!
-      expect(last.querySelector('.hv5-bm-lbl')!.textContent).toBe('Busiest minute')
-      expect(last.querySelector('.hv5-bm-x')!.textContent).toBe('388chat/min')
+      // the list shows the first 5, the hub's own; the rest are on the Moments page
+      expect(topRows()).toHaveLength(TOP_LIST_ROWS)
+      expect(topRows().some((r) => r.textContent!.includes('Busiest minute'))).toBe(false)
       const kept = JSON.parse(window.localStorage.getItem(TOP_DAY_KEY)!) as { id: string }[]
       expect(kept.map((r) => r.id)).toEqual(hubRows)
     })
@@ -469,9 +529,8 @@ describe('Top moments today’s fallbacks', () => {
       vi.stubEnv('VITE_PUBLIC_MOMENTS_FEED', '')
       window.localStorage.removeItem(TOP_DAY_KEY)
       render(view({ attempt: 1, hub: { ...capture, livePulseMoments: [] }, nowMs: at, busiest: fill.slice(0, 2) }))
-      expect(big()!.querySelector('.hv5-bm-q')).toBeNull()
-      expect(big()!.querySelectorAll('.hv5-bm-card')).toHaveLength(2)
-      expect(peekRows().map((r) => r.textContent)).toEqual([expect.stringContaining('Busiest minute · 1,204 chat/min'), expect.stringContaining('Busiest minute · 412 chat/min')])
+      expect(tops().querySelector('.hv5-fd-quiet')).toBeNull()
+      expect(topRows().map((r) => r.textContent)).toEqual([expect.stringContaining('Busiest minute · 1,204 chat/min'), expect.stringContaining('Busiest minute · 412 chat/min')])
     })
   })
 })
@@ -512,9 +571,9 @@ describe('Picking up now on an old answer (H01, 11-13)', () => {
 describe('Top today’s strength in pulse-core’s words (Z06)', () => {
   it('writes each row’s “6.2× more emotes” as formatLiftWords does, the figure still bold', async () => {
     render(view({ attempt: 1 }))
-    await waitFor(() => expect(peekRows()).toHaveLength(3))
-    const rows = topFeedRows(answer(items, reads()[0]!)).slice(0, 3)
-    const strong = rows.flatMap((row, i) => (row.x != null ? [[row.x, row.kind, peekRows()[i]!] as const] : []))
+    await waitFor(() => expect(topRows()).toHaveLength(TOP_LIST_ROWS))
+    const rows = topFeedRows(answer(items, reads()[0]!)).slice(0, TOP_LIST_ROWS)
+    const strong = rows.flatMap((row, i) => (row.x != null ? [[row.x, row.kind, topRows()[i]!] as const] : []))
     expect(strong.length).toBeGreaterThan(0)
     for (const [x, kind, li] of strong) {
       const phrase = li.querySelector('.hv5-f2-x:not(.hv5-f2-plain)')!

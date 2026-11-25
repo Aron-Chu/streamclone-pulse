@@ -31,6 +31,11 @@
   --sp-live: #ef4444;
   --sp-fs-label: 12px;
   --sp-r: 8px;
+  /* the selected minute's glass stage (11-21): a lift of the panel's own white, a hairline, a top light */
+  --sp-glass: rgb(255 255 255 / .02);
+  --sp-glass-top: rgb(255 255 255 / .045);
+  --sp-glass-line: rgb(255 255 255 / .07);
+  --sp-glass-hi: rgb(255 255 255 / .08);
   --sp-dur-quick: 120ms;
   --sp-ease: cubic-bezier(.16, 1, .3, 1);
   container: bkc-below / inline-size;
@@ -216,13 +221,14 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 
 /* ======================================================================================
    below: a strip in the page's flow under the chart, at every width, so nothing covers the
-   plot. One header row (state line, the bucket's actions, close); then the picture (Play and
-   the VOD link today, the 16:9 frame or the player when there is one) in the left column with
-   the body (the time over the figures) right of it; then the top emotes and the moments, each
-   a row across the card, the emotes as three chips (the hub lock's tablet chips, .hbk-erows)
-   so a name keeps its letters. From 1000 px the picture stops at 420 px and the emotes sit
-   under it, one a row as the hub lock's desktop list, beside the moments. Under 600 px the
-   picture is a 128 px thumbnail beside the time and the rest stacks.
+   plot. One header row (state line, the bucket's actions, close); then the body in one row (the
+   time at the left, the figures at the right); then the picture in a row of its own, centred and
+   up to 880 px wide (round 2, 11-21: the 420 px column made Twitch's player hard to see): Play
+   and Open on Twitch side by side, or the 16:9 frame or the player with the clock line and Open
+   on Twitch under it; then the top emotes and the moments, each a row across the card, the
+   emotes as three chips (the hub lock's tablet chips, .hbk-erows) so a name keeps its letters.
+   From 1000 px the emotes, one a row as the hub lock's desktop list, sit beside the moments.
+   Under 600 px the picture is a 128 px thumbnail beside the time and the rest stacks.
    ====================================================================================== */
 .bkc--below {
   margin-top: 12px;
@@ -236,12 +242,12 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 [data-chart-selected-detail] .bkc--below { margin-top: 0; }
 .bkc--below > .bkc-in {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   column-gap: 24px;
-  grid-template-areas: "top top" "pv body" "emo emo" "mom mom";
+  grid-template-areas: "top" "body" "pv" "emo" "mom";
 }
 /* a gap bar has no picture, emotes or moments: the body takes the row, the time beside the gap's line */
-.bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "body body"; }
+.bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top" "body"; }
 .bkc--below .bkc-h { display: contents; }
 .bkc--below .bkc-top { grid-area: top; }
 .bkc--below .bkc-pvw { grid-area: pv; align-self: start; min-width: 0; margin-top: 12px; container: bkc-pv / inline-size; }
@@ -256,13 +262,22 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
 /* the emotes' and the moments' rules run the card's width (from 1000 px the two sit side by side, and the moments'
    rule reaches back across the column gap to meet the emotes', so it is still one line) */
 .bkc--below :is(.bkc-emo, .bkc-mom) { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--sp-line); }
-/* wide: the picture stops at 420 px; the emotes sit under it beside the moments, one a row with the whole name and
-   the rate at the right (the hub lock's desktop list, .hbk-e) */
+/* from 600 px: the time and the figures share one row, and the picture takes a row of its own, centred, up to 880 px */
+@container bkc-below (min-width: 600px) {
+  .bkc--below .bkc-body:not(:has(> .bkc-gap)) {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 1.3fr); column-gap: 24px; align-items: center;
+  }
+  .bkc--below .bkc-body:not(:has(> .bkc-gap)) > .bkc-fg { margin-top: 0; }
+  .bkc--below .bkc-pvw { justify-self: center; width: 100%; max-width: 880px; margin-top: 16px; }
+}
+/* wide: the emotes sit beside the moments, one a row with the whole name and the rate at the right (the hub lock's
+   desktop list, .hbk-e) */
 @container bkc-below (min-width: 1000px) {
   .bkc--below > .bkc-in {
-    grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
-    grid-template-areas: "top top" "pv body" "emo mom";
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "top top" "body body" "pv pv" "emo mom";
   }
+  .bkc--below .bkc-in:not(:has(.bkc-pvw)) { grid-template-areas: "top top" "body body"; }
   .bkc--below .bkc-body:has(> .bkc-gap) { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
   .bkc--below :is(.bkc-emo, .bkc-mom) { align-self: start; }
   .bkc--below .bkc-mom { margin-left: -24px; padding-left: 24px; }
@@ -271,6 +286,25 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
   .bkc--below .bkc-el li + li { border-top: 1px solid var(--sp-line); }
   .bkc--below .bkc-el :is(img, .bkc-noimg) { grid-row: auto; }
   .bkc--below .bkc-ec { text-align: right; }
+}
+/* 11-21 (Aron: "a glass preview of some sort and organize it a bit better"): from 600 px the time, the figures and
+   the picture (or Twitch's player) sit on one glass stage whose edges are the card's content edges, so the minute and
+   its VOD read as one thing and the player spans the stage under the time; the emotes and the moments stay on the
+   card under it, the stage's edge in place of their rule. A gap bar has no picture and no stage. */
+@container bkc-below (min-width: 600px) {
+  .bkc--below > .bkc-in:has(> .bkc-pvw) { isolation: isolate; }
+  .bkc--below > .bkc-in:has(> .bkc-pvw)::before {
+    content: ""; grid-column: 1 / -1; grid-row: body-start / pv-end; z-index: -1; margin-top: 12px; pointer-events: none;
+    border-radius: var(--sp-r);
+    background: linear-gradient(var(--sp-glass-top), var(--sp-glass));
+    box-shadow: inset 0 1px 0 var(--sp-glass-hi), inset 0 0 0 1px var(--sp-glass-line);
+  }
+  .bkc--below > .bkc-in:has(> .bkc-pvw) > .bkc-body { padding: 16px 16px 0; }
+  .bkc--below > .bkc-in:has(> .bkc-pvw) > .bkc-pvw { justify-self: stretch; max-width: none; padding: 0 16px 16px; }
+  .bkc--below > .bkc-in:has(> .bkc-pvw) > .bkc-emo { margin-top: 16px; padding-top: 0; border-top: 0; }
+}
+@container bkc-below (min-width: 1000px) {
+  .bkc--below > .bkc-in:has(> .bkc-pvw) > .bkc-mom { margin-top: 16px; padding-top: 0; border-top: 0; margin-left: 0; padding-left: 0; }
 }
 @container bkc-below (max-width: 599px) {
   .bkc--below { padding: 10px 12px 12px; }
@@ -388,6 +422,28 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
   .bkc--below .mpl-box.nofr ~ .mpl-link { grid-column: 2; grid-row: 1; margin-top: 0; }
   .bkc--below .mpl-box.nofr ~ .mpl-link .bkc-vod { padding: 0 12px; margin-left: 0; }
 }
+/* round 2 (11-21), from 600 px, the picture's own centred row: with no frame, Play and Open on Twitch side by side in
+   the middle with the reason and the clock line centred under them; with a frame or the player, the 16:9 box takes
+   the row and the clock line (left) and Open on Twitch (right) sit under it. Open on Twitch is a button of Play's
+   height with a quiet ring, so the way out to Twitch reads as clearly as Play. */
+@container bkc-below (min-width: 600px) {
+  /* two flexible side tracks: the reason spans them, so a long reason never widens Play's column and the pair stays
+     in the middle; with no link the one control spans both middle tracks */
+  .bkc--below .mpl:has(> .mpl-box.nofr) { grid-template-columns: minmax(0, 1fr) max-content max-content minmax(0, 1fr); column-gap: 12px; }
+  .bkc--below .mpl-box.nofr > :is(.mpl-go, .mpl-msg) { grid-column: 2; }
+  .bkc--below .mpl-box.nofr ~ .mpl-link { grid-column: 3; }
+  .bkc--below .mpl:not(:has(> .mpl-link)) > .mpl-box.nofr > :is(.mpl-go, .mpl-msg) { grid-column: 2 / 4; justify-self: center; }
+  .bkc--below .mpl-box.nofr ~ .mpl-link .bkc-vod, .bkc--below .bkc-vod {
+    min-height: 42px; padding: 0 16px; margin-left: 0;
+    box-shadow: inset 0 0 0 1px var(--sp-line-strong); color: var(--sp-text-1);
+  }
+  .bkc--below .bkc-vod .ico { color: var(--sp-text-2); }
+  .bkc--below .mpl-box.nofr > .mpl-note { justify-content: center; text-align: center; }
+  .bkc--below .mpl:has(> .mpl-box.nofr) > .mpl-cap { justify-content: center; text-align: center; }
+  .bkc--below .mpl:has(> .mpl-box:is(.fr, .on)) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 16px; }
+  .bkc--below .mpl:has(> .mpl-box:is(.fr, .on)) > .mpl-link { grid-column: 2; grid-row: 2; margin-top: 8px; }
+  .bkc--below .mpl:has(> .mpl-box:is(.fr, .on)) > .mpl-cap { grid-column: 1; grid-row: 2; margin-top: 8px; }
+}
 /* in a picture under 360 px the note keeps only the frame's timing, so Play stays clear */
 @container bkc-pv (max-width: 359px) {
   .bkc--below .mpl-box.fr .mpl-note > span:first-child { display: none; }
@@ -447,6 +503,6 @@ button.bkc-more:hover { color: var(--sp-text-1); background: var(--sp-raised); }
    buttons are 44 px targets at every width) */
 @media (max-width: 767px), (pointer: coarse) {
   .bkc--below .bkc-mr { height: auto; min-height: 44px; }
-  .bkc--below .bkc-vod { min-height: 44px; }
+  .bkc--below .bkc-vod, .bkc--below .mpl-box.nofr ~ .mpl-link .bkc-vod { min-height: 44px; }
   .bkc--below .mpl .mpl-go { min-width: 44px; min-height: 44px; justify-content: center; }
 }

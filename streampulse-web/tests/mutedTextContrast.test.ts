@@ -80,7 +80,7 @@ describe('muted text on dark surfaces reads at 4.5:1 or more', () => {
 
 describe('stale hub lists (G1, 11-02)', () => {
   const css = read('src/ui/components/hub/v5/hub-v5.css')
-  const LIST = '.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track), .hv5-up-old'
+  const LIST = '.hv5-f2-stale :is(.hv5-fd-list, .hv5-tm-list), .hv5-up-old'
   const rule = (selector: string) => {
     const at = css.indexOf(`${selector} {`)
     return at < 0 ? null : css.slice(at + selector.length + 2, css.indexOf('}', at))
@@ -93,7 +93,7 @@ describe('stale hub lists (G1, 11-02)', () => {
   })
 
   it('fade only the pictures in those rows', () => {
-    expect(rule(`.hv5-f2-stale :is(.hv5-fd-list, .hv5-bm-track) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono)`)).toMatch(/opacity: \.55;/)
+    expect(rule(`.hv5-f2-stale :is(.hv5-fd-list, .hv5-tm-list) :is(img, .hv5-mono), .hv5-up-old :is(img, .hv5-mono)`)).toMatch(/opacity: \.55;/)
     // Nothing else under a stale list asks for an opacity.
     const staleRules = [...css.matchAll(/([^{}]*\.(?:hv5-f2-stale|hv5-up-old)[^{}]*)\{([^}]*)\}/g)]
     for (const [, selector, body] of staleRules) {
@@ -103,16 +103,12 @@ describe('stale hub lists (G1, 11-02)', () => {
 })
 
 describe('text on a coloured fill', () => {
-  it('the analytics skip link is the page colour on the teal accent, not white', () => {
-    const nav = read('src/ui/components/analytics/figma-analytics.css')
-    const rule = /\.analytics-topnav__skip:focus-visible \{([^}]*)\}/.exec(nav)?.[1] ?? ''
-    expect(rule).toMatch(/background: var\(--fma-accent\);/)
-    expect(rule).toMatch(/color: var\(--fma-bg\);/)
-    const tokens = read('src/ui/themes/analytics-themes/command-center.css')
-    const accent = /--sp-accent: (#[0-9a-f]{6});/i.exec(tokens)?.[1]
-    const bg = /--sp-bg: (#[0-9a-f]{6});/i.exec(tokens)?.[1]
-    expect(contrast(hex(bg!), hex(accent!))).toBeGreaterThanOrEqual(4.5)
-    // What it was: white on the accent.
-    expect(contrast([255, 255, 255], hex(accent!))).toBeLessThan(2)
+  it('the site skip link is the shared .sc-skip: the primary label on the primary fill (one header, 11-24)', () => {
+    // The pair itself is checked at WCAG AA in siteMenuContrast.test.ts (landing primary button contrast).
+    const rule = /\.sc-skip:focus-visible \{([^}]*)\}/.exec(read('src/ui/tokens.css'))?.[1] ?? ''
+    expect(rule).toMatch(/background: hsl\(var\(--sc-primary\)\);/)
+    expect(rule).toMatch(/color: hsl\(var\(--sc-primary-foreground\)\);/)
+    expect(read('src/ui/components/SiteHeader.tsx')).toContain('className="sc-skip"')
+    expect(read('src/ui/components/site-header.css')).not.toMatch(/__skip/)
   })
 })

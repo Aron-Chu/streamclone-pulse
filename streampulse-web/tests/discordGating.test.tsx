@@ -4,12 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { discordInviteUrl, parseDiscordInviteUrl } from '../src/lib/discord'
 import Discord from '../src/routes/public/Discord'
 import Landing from '../src/routes/public/Landing'
-import Feedback from '../src/routes/public/Feedback'
-import Support from '../src/routes/public/Support'
+import Help from '../src/routes/public/Help'
 import { PublicLayout } from '../src/ui/components/PublicLayout'
 import Terms from '../src/routes/public/Terms'
-import Docs from '../src/routes/public/Docs'
-import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
+import { SiteHeader } from '../src/ui/components/SiteHeader'
 
 // Test-only placeholder invites. Real invite codes never enter the repository.
 const SHORT_INVITE = 'https://discord.gg/sp-test-code'
@@ -84,67 +82,64 @@ describe('Discord entry points', () => {
     expect(screen.queryByText(/Join the Discord/)).toBeNull()
     landing.unmount()
 
-    const support = render(<MemoryRouter><Support /></MemoryRouter>)
+    const help = render(<MemoryRouter><Help /></MemoryRouter>)
     expect(discordLinks()).toEqual([])
-    support.unmount()
-
-    const feedback = render(<MemoryRouter><Feedback /></MemoryRouter>)
-    expect(discordLinks()).toEqual([])
-    expect(screen.queryByTestId('support-discord-line')).toBeNull()
-    feedback.unmount()
+    help.unmount()
 
     render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
     expect(discordLinks()).toEqual([])
   })
 
-  it('shows the nav button, phone icon and footer link on the landing page with a valid invite', async () => {
+  it('shows Discord last in the header on the landing page with a valid invite, and in the phone menu', async () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     render(<MemoryRouter><Landing /></MemoryRouter>)
     await screen.findByRole('heading', { name: /actually reacted to/i })
+    // One button: under 1280 px the same link shows as its 44 px mark (site-header.css).
     const links = discordLinks()
-    expect(links.map(a => a.className.split(' ').find(c => c.startsWith('sl-'))).sort())
-      .toEqual(['sl-discord-icon', 'sl-discord-nav', 'sl-foot__discord'])
-    for (const link of links) {
+    expect(links.map(a => a.className)).toEqual(['site-header__discord'])
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    expect(discordLinks().map(a => a.className)).toEqual(['site-header__discord', 'site-header__discord site-menu__discord'])
+    for (const link of discordLinks()) {
       expect(link.getAttribute('href')).toBe(SHORT_INVITE)
       expect(link.target).toBe('_blank')
       expect(link.rel).toContain('noopener')
       expect(link.getAttribute('aria-label')).toMatch(/Discord.*opens in a new tab/)
     }
-    // Install leads the right-hand group (it steps back at the top of the page), so the nav button stays beside Open the Hub (11-18).
-    const right = document.querySelector('.sl-nav__right')!
-    expect([...right.children].map((el) => [...el.classList].find((c) => c.startsWith('sl-')))).toEqual(['sl-nav__install', 'sl-discord-nav', 'sl-nav__analytics'])
+    // Install and Open the Hub lead the right-hand group (both step back at the top of the page), so Discord
+    // stays at the end instead of mid-bar (11-18, 11-22), then the phone Menu (11-24).
+    const right = document.querySelector('.site-header__actions')!
+    expect([...right.children].map((el) => el.classList[0])).toEqual(['site-header__step', 'site-header__discord', 'site-header__menu'])
+    expect([...right.querySelector('.site-header__step')!.children].map((el) => el.classList.contains('site-header__install') || el.classList.contains('site-header__hub'))).toEqual([true, true])
     // Menu stays the only control named "Menu".
     expect(screen.getAllByRole('button', { name: 'Menu' })).toHaveLength(1)
     expect(screen.queryAllByRole('link', { name: /menu/i })).toHaveLength(0)
-    // Send feedback sits in the footer regardless of Discord.
-    const footer = document.querySelector('footer')!
-    expect(within(footer as HTMLElement).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
+    // Feedback lives on Help, which the shared footer lists.
+    const footer = screen.getByRole('navigation', { name: 'Footer' })
+    expect(within(footer).getByRole('link', { name: 'Help' }).getAttribute('href')).toBe('/help')
   })
 
-  it('adds Send feedback and Discord to the site footer', () => {
-    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', LONG_INVITE)
-    render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
-    const footer = screen.getByRole('navigation', { name: 'Footer' })
-    expect(within(footer).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
-    expect(within(footer).getByRole('link', { name: 'Discord (opens in a new tab)' }).getAttribute('href')).toBe(LONG_INVITE)
-  })
-
-  it('keeps Send feedback in the site footer without an invite', () => {
-    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', '')
-    render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
-    const footer = screen.getByRole('navigation', { name: 'Footer' })
-    expect(within(footer).getByRole('link', { name: 'Send feedback' })).toBeTruthy()
-    expect(within(footer).queryByText('Discord')).toBeNull()
+  it('keeps Discord out of the shared footer, with or without an invite', () => {
+    for (const invite of [LONG_INVITE, '']) {
+      vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', invite)
+      const { unmount } = render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
+      const footer = screen.getByRole('navigation', { name: 'Footer' })
+      expect(within(footer).getByRole('link', { name: 'Help' }).getAttribute('href')).toBe('/help')
+      expect(discordLinks(footer)).toEqual([])
+      unmount()
+    }
   })
 
   it('gives every Discord link a name that contains its visible label (WCAG 2.5.3)', async () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     const landing = render(<MemoryRouter><Landing /></MemoryRouter>)
     await screen.findByRole('heading', { name: /actually reacted to/i })
-    const support = render(<MemoryRouter><Feedback /></MemoryRouter>)
+    const help = render(<MemoryRouter><Help /></MemoryRouter>)
     const site = render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
+    // Each header has one Discord link since 11-24 (its button and its mark are the same link); the phone menu adds one.
+    fireEvent.click(within(site.container).getByRole('button', { name: 'Menu' }))
     const links = discordLinks()
     expect(links.length).toBeGreaterThanOrEqual(5)
+    expect(links.some((link) => link.classList.contains('site-menu__discord'))).toBe(true)
     for (const link of links) {
       const visible = (link.textContent ?? '').replace(/\s+/g, ' ').trim()
       const name = link.getAttribute('aria-label') ?? visible
@@ -152,63 +147,72 @@ describe('Discord entry points', () => {
       if (visible) expect(name.toLowerCase(), link.className).toContain(visible.toLowerCase())
     }
     landing.unmount()
-    support.unmount()
+    help.unmount()
     site.unmount()
   })
 
-  it('adds the quiet Discord line, labelled public, under the feedback card', () => {
+  it('lists the public Discord, labelled public, under Ask us while the private form is open', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
-    render(<MemoryRouter><Feedback /></MemoryRouter>)
-    const line = screen.getByTestId('support-discord-line')
-    expect(line.textContent).toContain('Ideas or just want to chat?')
-    expect(line.textContent).toContain('Anyone there can read it, so keep account problems in this form.')
-    // The configured form's line keeps its wording: the public Discord is visibly labelled public.
-    const link = within(line).getByRole('link', { name: 'Join the public Discord (opens in a new tab)' })
+    render(<MemoryRouter><Help /></MemoryRouter>)
+    const ask = screen.getByTestId('help-ask-public')
+    expect(ask.textContent).toContain('Anyone can read these')
+    const link = within(ask).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })
     expect(link.getAttribute('href')).toBe(SHORT_INVITE)
-    expect(link.textContent).toBe('Join the public Discord')
+    // Listed once: the form's card does not repeat it while the form is open.
+    expect(within(screen.getByTestId('help-feedback')).queryByTestId('feedback-public-alternatives')).toBeNull()
+  })
+
+  it('lists Discord once, in the form card, before the private form opens', () => {
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
+    render(<MemoryRouter><Help /></MemoryRouter>)
+    expect(screen.queryByTestId('help-ask-public')).toBeNull()
+    expect(screen.getByTestId('help-ask-intro').textContent).toBe('Ask in public on Discord or GitHub. The links are below.')
+    const card = within(screen.getByTestId('help-feedback')).getByTestId('feedback-public-alternatives')
+    expect(within(card).getByRole('link', { name: 'Ask in Discord (public, opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
   })
 })
 
 describe('feedback and Discord beyond the landing page', () => {
-  it('puts a Discord button in the public header, and a 44px mark beside Menu, only with an invite', () => {
+  it('puts Discord last in the site header, after the install button, only with an invite', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
     const { unmount } = render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
-    const header = document.querySelector('header.app-nav') as HTMLElement
-    const button = header.querySelector<HTMLAnchorElement>('a.app-nav__discord')!
+    const header = document.querySelector('header.site-header') as HTMLElement
+    const button = header.querySelector<HTMLAnchorElement>('a.site-header__discord')!
     expect(button.getAttribute('href')).toBe(SHORT_INVITE)
     expect(button.textContent).toBe('Discord')
     expect(button.target).toBe('_blank')
     expect(button.getAttribute('aria-label')).toBe('Join the StreamPulse Discord (opens in a new tab)')
-    // The header button sits just before the install button, as on the landing.
-    expect(button.nextElementSibling?.classList.contains('app-nav__install')).toBe(true)
-    expect(header.querySelector('a.app-nav__discord-icon')?.getAttribute('href')).toBe(SHORT_INVITE)
+    // One bar on every page (11-24): install, then Discord, as on the landing; under 1280 px the same link is its mark.
+    expect(button.previousElementSibling?.classList.contains('site-header__install')).toBe(true)
+    expect(header.querySelectorAll('a[href*="discord"]')).toHaveLength(1)
     unmount()
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', '')
     render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
-    expect(document.querySelector('header.app-nav a[href*="discord"]')).toBeNull()
+    expect(document.querySelector('header.site-header a[href*="discord"]')).toBeNull()
   })
 
-  it('shows Discord once on the analytics bar, beside the install button, and not again in the menu', () => {
+  it('shows Discord on the Hub bar the same way, and once more at the foot of the phone menu', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
-    render(<MemoryRouter><AnalyticsTopNav items={[{ label: 'Analytics', to: '/analytics' }]} /></MemoryRouter>)
-    const bar = document.querySelector<HTMLAnchorElement>('a.analytics-topnav__discord')!
+    render(<MemoryRouter><SiteHeader mainId="analytics-main" variant="analytics" /></MemoryRouter>)
+    const bar = document.querySelector<HTMLAnchorElement>('header a.site-header__discord')!
     expect(bar.getAttribute('href')).toBe(SHORT_INVITE)
-    expect(bar.getAttribute('aria-label')).toBe('Discord (opens in a new tab)')
-    expect(bar.previousElementSibling?.classList.contains('analytics-topnav__install')).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Navigation menu' }))
-    const panel = screen.getByRole('link', { name: 'Extension guide' }).parentElement!
-    const links = [...panel.querySelectorAll('a:not(.analytics-topnav__more-nav a)')]
-    expect(links[0].textContent).toBe('Send feedback')
-    expect(links[0].getAttribute('href')).toBe('/feedback')
+    expect(bar.previousElementSibling?.classList.contains('site-header__install')).toBe(true)
     expect(discordLinks()).toEqual([bar])
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    const panel = screen.getByRole('dialog')
+    expect([...panel.querySelectorAll('nav a')].map((a) => a.textContent)).toEqual(['Hub', 'Moments', 'Help', 'Status', 'Changelog', 'Privacy', 'Terms'])
+    const inMenu = panel.querySelector<HTMLAnchorElement>('a.site-menu__discord')!
+    expect(inMenu.getAttribute('href')).toBe(SHORT_INVITE)
+    expect(inMenu.target).toBe('_blank')
+    expect(discordLinks()).toEqual([bar, inMenu])
   })
 
-  it('keeps Send feedback in the analytics menu and drops Discord without an invite', () => {
+  it('drops Discord from the bar and the phone menu without an invite', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', '')
-    render(<MemoryRouter><AnalyticsTopNav items={[{ label: 'Analytics', to: '/analytics' }]} /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Navigation menu' }))
-    expect(screen.getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
+    render(<MemoryRouter><SiteHeader mainId="analytics-main" variant="analytics" /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
     expect(discordLinks()).toEqual([])
   })
 
@@ -219,7 +223,7 @@ describe('feedback and Discord beyond the landing page', () => {
     const text = (contact.textContent ?? '').replace(/\s+/g, ' ')
     expect(text).toContain('Product questions and bug reports: send private feedback or join the Discord.')
     expect(text).not.toMatch(/GitHub issues/i)
-    expect(within(contact).getByRole('link', { name: 'private feedback' }).getAttribute('href')).toBe('/feedback')
+    expect(within(contact).getByRole('link', { name: 'private feedback' }).getAttribute('href')).toBe('/help#feedback')
     expect(within(contact).getByRole('link', { name: 'Discord (opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
     const github = [...contact.querySelectorAll('a')].filter(a => new URL(a.href).hostname === 'github.com')
     expect(github.map(a => a.textContent)).toEqual(['GitHub private vulnerability reporting'])
@@ -232,25 +236,6 @@ describe('feedback and Discord beyond the landing page', () => {
     const text = (screen.getByTestId('terms-contact').textContent ?? '').replace(/\s+/g, ' ')
     expect(text).toContain('Product questions and bug reports: send private feedback.')
     expect(discordLinks()).toEqual([])
-  })
-
-  it('lists private feedback and Discord under "Need help?" on /docs', () => {
-    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
-    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
-    render(<MemoryRouter><Docs /></MemoryRouter>)
-    const help = screen.getByTestId('docs-help')
-    expect(within(help).getByRole('link', { name: 'private feedback' }).getAttribute('href')).toBe('/feedback')
-    expect(within(help).getByRole('link', { name: 'Discord (opens in a new tab)' }).getAttribute('href')).toBe(SHORT_INVITE)
-  })
-
-  it('points "Need help?" at the feedback page, not private feedback, before the form opens', () => {
-    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', SHORT_INVITE)
-    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
-    render(<MemoryRouter><Docs /></MemoryRouter>)
-    const help = screen.getByTestId('docs-help')
-    expect((help.textContent ?? '').replace(/\s+/g, ' ')).toContain('For a bug or an idea, see the feedback page, or ask in the Discord.')
-    expect(within(help).queryByRole('link', { name: 'private feedback' })).toBeNull()
-    expect(within(help).getByRole('link', { name: 'feedback page' }).getAttribute('href')).toBe('/feedback')
   })
 })
 
@@ -274,16 +259,16 @@ describe('/discord page', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
     render(<MemoryRouter><Discord redirect={vi.fn()} /></MemoryRouter>)
     expect(screen.getByTestId('discord-page').textContent).toContain('The server is public, so keep account problems for the private feedback form.')
-    expect(screen.getByRole('link', { name: 'private feedback form' }).getAttribute('href')).toBe('/feedback')
+    expect(screen.getByRole('link', { name: 'private feedback form' }).getAttribute('href')).toBe('/help#feedback')
   })
 
-  it('says the server is not open yet and points at /feedback without a valid invite', () => {
+  it('says the server is not open yet and points at the feedback form on Help without a valid invite', () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/not a code')
     const redirect = vi.fn()
     render(<MemoryRouter><Discord redirect={redirect} /></MemoryRouter>)
     expect(screen.getByRole('heading', { level: 1, name: "The StreamPulse Discord isn't open yet" })).toBeTruthy()
     const page = screen.getByTestId('discord-page')
-    expect(within(page).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
+    expect(within(page).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/help#feedback')
     expect(discordLinks()).toEqual([])
     expect(redirect).not.toHaveBeenCalled()
   })

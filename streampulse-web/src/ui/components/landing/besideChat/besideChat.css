@@ -1,0 +1,341 @@
+/* The extension beside Twitch chat (board extension-brainchat 11-22, ★ E1 push-in; LandingBesideChat.tsx). A 1280x800
+   Twitch-style page drawn in .es-world, which the camera scales and moves (transform only). The player and chat
+   imitate Twitch's own dark page, so their colours are Twitch's, named here; the controls under it use the page's. */
+
+.es-demo {
+  --es-violet: #a78bfa;
+  --es-focus: #c4b5fd;
+  --es-hot: #fb7185;
+  --es-mark: #fde68a;
+  --es-twitch-bg: #0e0e10;
+  --es-twitch-chat: #18181b;
+  --es-twitch-text: #efeff1;
+  width: 100%;
+}
+
+.es {
+  position: relative;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #0b0b0f;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 40px 90px -50px rgb(0 0 0 / 0.9);
+  contain: layout paint;
+  user-select: none;
+}
+
+.es-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 800px;
+  transform-origin: 0 0;
+  will-change: transform;
+  transition: transform 1.15s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* ---- the player ---- */
+.es-player {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 940px;
+  height: 800px;
+  overflow: hidden;
+  background: #15131c;
+  transition: opacity 0.8s ease;
+}
+.es[data-cam='in'] .es-player { opacity: 0.32; }
+.es-player::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.3), transparent 22%, transparent 72%, rgb(0 0 0 / 0.6));
+  pointer-events: none;
+}
+
+/* The stream: a still picture until the three.js stream has drawn (data-scene), and the only picture under reduced
+   motion or without WebGL. The opener for steps 1-4, the setup before the moment for step 5. */
+.es-poster,
+.es-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.es-poster { object-fit: cover; transition: opacity 0.5s ease; }
+.es-poster--jump { opacity: 0; }
+.es[data-beat='4'] .es-poster--jump { opacity: 1; }
+.es-canvas { display: block; opacity: 0; }
+.es[data-scene] .es-canvas { opacity: 1; }
+.es[data-scene] .es-poster { visibility: hidden; }
+
+.es-ptop {
+  position: absolute;
+  z-index: 2;
+  left: 18px;
+  top: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font: 700 15px/20px var(--sc-font);
+}
+.es-ch { padding: 3px 10px; border-radius: 6px; background: rgb(0 0 0 / 0.55); color: #fff; }
+.es-rp { padding: 3px 9px; border-radius: 6px; background: #164e63; color: #a5f3fc; font-size: 14px; }
+
+.es-toast {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 45%;
+  padding: 12px 20px;
+  border: 1px solid rgb(167 139 250 / 0.5);
+  border-radius: 12px;
+  background: rgb(12 12 16 / 0.86);
+  color: #f4f4f5;
+  font: 700 19px/24px var(--sc-font);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.92);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.es[data-beat='4'][data-cam='out'] .es-toast {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  transition-delay: 0.5s;
+}
+
+.es-pbot { position: absolute; z-index: 2; left: 18px; right: 18px; bottom: 16px; }
+.es-tl { position: relative; height: 6px; border-radius: 4px; background: rgb(255 255 255 / 0.24); }
+.es-tl i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+/* From 0:02:00 to where Jump lands (1:36:55), as shares of the 3-hour stream (--es-from, --es-to). */
+.es-fill {
+  left: 0;
+  width: 100%;
+  background: var(--es-violet);
+  transform-origin: 0 50%;
+  transform: scaleX(var(--es-from));
+  transition: transform 0.95s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.es[data-beat='4'] .es-fill { transform: scaleX(var(--es-to)); }
+.es-tl .es-tick {
+  top: -4px;
+  bottom: auto;
+  width: 5px;
+  height: 14px;
+  margin-left: -2.5px;
+  border-radius: 2px;
+  background: var(--es-mark);
+  opacity: 0.8;
+}
+.es-tl .es-tick--hot { background: var(--es-hot); opacity: 1; box-shadow: 0 0 0 3px rgb(251 113 133 / 0.25); }
+.es-time {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 9px;
+  color: #fff;
+  font: 700 15px/1 var(--sc-font-mono);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px #000;
+}
+
+/* ---- the column: Twitch's tabs, then chat or the Pulse panel ---- */
+.es-col {
+  position: absolute;
+  left: 940px;
+  top: 0;
+  width: 340px;
+  height: 800px;
+  overflow: hidden;
+  background: var(--es-twitch-bg);
+  box-shadow: -1px 0 0 rgb(255 255 255 / 0.06);
+}
+.es-col img { display: block; max-width: none; }
+.es-tabs { position: absolute; z-index: 3; left: 0; top: 0; width: 340px; height: 60px; background: var(--es-twitch-bg); }
+.es-tabs img { position: absolute; left: 0; top: 0; width: 340px; height: 59px; transition: opacity 0.25s ease; }
+.es-tab-pulse { opacity: 0; }
+.es:not([data-beat='0']) .es-tab-pulse { opacity: 1; }
+.es-vp { position: absolute; left: 0; top: 60px; width: 340px; height: 740px; overflow: hidden; }
+
+.es-panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 340px;
+  height: 1340px;
+  opacity: 0;
+  transition: opacity 0.35s ease, transform 0.85s cubic-bezier(0.3, 0.7, 0.2, 1);
+  will-change: transform;
+}
+.es-panel img { position: absolute; left: 0; width: 340px; transition: opacity 0.35s ease; }
+.es-p-base { top: 0; height: 1340px; }
+/* The selected-moment card and the "Jumped" line, cut from the same capture at their places on it. */
+.es-p-card { top: 440px; height: 900px; opacity: 0; }
+.es-p-jump { top: 1246px; height: 24px; opacity: 0; }
+.es:not([data-beat='0']) .es-panel { opacity: 1; }
+.es:is([data-beat='3'], [data-beat='4']) .es-p-card { opacity: 1; }
+.es[data-beat='4'] .es-p-jump { opacity: 1; }
+.es-ring {
+  position: absolute;
+  left: 160px;
+  top: 596px;
+  width: 36px;
+  height: 112px;
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px rgb(251 113 133 / 0.8);
+  background: rgb(251 113 133 / 0.1);
+  opacity: 0;
+  transition: opacity 0.35s;
+}
+.es[data-beat='1'] .es-ring { opacity: 1; transition-delay: 0.5s; }
+.es-settings { position: absolute; z-index: 2; left: 0; bottom: 0; width: 340px; height: 60px; opacity: 0; transition: opacity 0.35s; }
+.es:not([data-beat='0']) .es-settings { opacity: 1; }
+
+/* Twitch's chat replay, as the viewer has it before opening Pulse. */
+.es-chat { position: absolute; inset: 0; background: var(--es-twitch-chat); transition: opacity 0.3s ease; contain: layout paint; }
+.es:not([data-beat='0']) .es-chat { opacity: 0; }
+.es-chathead {
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  color: var(--es-twitch-text);
+  font: 600 14px/1 var(--sc-font);
+}
+.es-lines { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; flex-direction: column; gap: 2px; padding: 0 12px 0 16px; }
+.es-cl {
+  display: block;
+  overflow: hidden;
+  color: var(--es-twitch-text);
+  font: 400 14px/28px var(--sc-font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  animation: es-in 0.22s ease-out backwards;
+}
+.es-cl b { font-weight: 700; }
+@keyframes es-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* ---- the pointer: an arrow, or a touch on a phone ---- */
+.es-cursor {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.6));
+  transition: transform 0.75s cubic-bezier(0.45, 0.05, 0.2, 1), opacity 0.3s;
+}
+.es-cursor svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.es-cursor.click { animation: es-press 0.45s ease-out; }
+@keyframes es-press { 40% { scale: 0.84; } }
+.es-demo[data-phone] .es-cursor {
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.35);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.75);
+  filter: none;
+}
+.es-demo[data-phone] .es-cursor svg { display: none; }
+
+/* ---- the caption beside the column (wide screens), while the camera is in ---- */
+.es-cap {
+  position: absolute;
+  z-index: 5;
+  top: 150px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  pointer-events: none;
+}
+.es:is([data-beat='1'], [data-beat='2'], [data-beat='3'])[data-cam='in'] .es-cap {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.45s;
+}
+.es-demo[data-cap='below'] .es-cap { display: none; }
+.es-cap b { display: block; color: var(--es-focus); font: 700 13px/1 var(--sc-font-mono); }
+.es-cap strong { display: block; margin-top: 10px; color: hsl(var(--sc-foreground)); font: 760 24px/1.15 var(--sc-font); letter-spacing: -0.01em; }
+.es-cap p { margin: 10px 0 0; color: hsl(var(--sc-muted-foreground)); font: 400 15px/1.5 var(--sc-font); }
+
+.es-snap,
+.es-snap * { transition: none !important; }
+
+/* ---- the controls under the stage ---- */
+.es-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 14px;
+  margin-top: 16px;
+}
+.es-steps { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.es-step,
+.es-replay {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 999px;
+  color: hsl(var(--sc-muted-foreground));
+  font: 600 13px/1 var(--sc-font);
+  cursor: pointer;
+}
+.es-step { background: transparent; }
+.es-step b { color: #8e8e98; font: 700 11px/1 var(--sc-font-mono); }
+.es-step[aria-current='step'] { color: #f4f4f5; border-color: rgb(167 139 250 / 0.6); background: rgb(124 58 237 / 0.14); }
+.es-step[aria-current='step'] b { color: var(--es-focus); }
+.es-step:hover { color: hsl(var(--sc-foreground)); }
+.es-replay { padding: 0 14px; background: #0f0f12; color: #f4f4f5; }
+.es-replay svg { width: 14px; height: 14px; }
+.es-step:focus-visible,
+.es-replay:focus-visible { outline: 2px solid var(--es-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .es-step,
+  .es-replay { transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease; }
+}
+@media (pointer: coarse) {
+  .es-step,
+  .es-replay { height: 44px; min-width: 44px; justify-content: center; }
+}
+
+/* The step's words under the stage when the caption cannot sit beside the column. On a wide screen they stay for
+   screen readers only (the stage itself is decorative). */
+.es-steps-cap { margin: 12px auto 0; max-width: 34rem; padding: 0 8px; color: hsl(var(--sc-muted-foreground)); font: 400 14px/1.45 var(--sc-font); text-align: center; }
+.es-steps-cap b { color: hsl(var(--sc-foreground)); font-weight: 650; }
+.es-demo[data-cap='beside'] .es-steps-cap {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A phone shows the step numbers; their names stay for screen readers. */
+.es-demo[data-phone] .es-controls { gap: 10px; }
+.es-demo[data-phone] .es-step { padding: 0 13px; }
+.es-demo[data-phone] .es-step span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .es *,
+  .es-demo * { transition: none !important; animation: none !important; }
+}

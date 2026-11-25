@@ -1,0 +1,304 @@
+/* /brainchat: the page head, the in-page demo on a made-up stream, and the closing panel.
+   A plain CSS file the page imports, like support.css, so the page renders on a cold route.
+   Colours come from the global.css :root tokens; one with no token is named here once.
+   No glow, no gradient text. */
+
+.brainchat-page {
+  /* The site's chart colour for chat (sp-chart.css --sp-chat) and the public focus violet. */
+  --bc-chat: #a78bfa;
+  --bc-chat-fill: rgba(167, 139, 250, 0.1);
+  --bc-focus: #c4b5fd;
+  --bc-soon: #fcd34d;
+  --bc-text-2: #d4d4d8;
+  /* Dot colours that tell made-up chatters apart (no names are shown). */
+  --bc-who-1: #22d3ee;
+  --bc-who-2: var(--emerald-400);
+  --bc-who-3: var(--amber-400);
+  --bc-who-4: #fb7185;
+  --bc-who-5: #94a3b8;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  min-width: 0;
+}
+
+/* Head: the "not yet" badge, title and status, centred like the support page head. */
+.brainchat-page__head { width: min(680px, 100%); margin: 0 auto 8px; text-align: center; }
+.brainchat-page__badge { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 6px; background: var(--amber-dim); color: var(--bc-soon); font-size: 0.75rem; font-weight: 700; }
+.brainchat-page__badge > span { width: 6px; height: 6px; border-radius: 50%; background: var(--amber-400); }
+.brainchat-page__head h1 { margin: 12px 0 0; }
+.brainchat-page__lead { margin: 12px auto 0; max-width: 56ch; color: var(--bc-text-2); font-size: 1.125rem; line-height: 1.5; text-wrap: pretty; }
+.brainchat-page__status { margin: 8px auto 0; max-width: 60ch; color: var(--text-muted); font-size: 0.95rem; line-height: 1.5; text-wrap: pretty; }
+.brainchat-page__status strong { color: var(--text-primary); }
+.brainchat-page__note { margin: -12px 0 0; color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+
+/* The three points under the demo. */
+.brainchat-page__how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.brainchat-page__how li { padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--bg-card); }
+.brainchat-page__how svg { width: 20px; height: 20px; color: var(--bc-chat); }
+.brainchat-page__how h2 { margin: 12px 0 4px; color: var(--text-primary); font-size: 1rem; font-weight: 700; line-height: 1.3; }
+.brainchat-page__how p { margin: 0; color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; text-wrap: pretty; }
+.brainchat-page__until h2 { margin-top: 0; }
+
+/* ---- The demo ---- */
+.bc-demo { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--bg-surface); color: var(--text-primary); }
+.bc-demo > * + * { border-top: 1px solid var(--border); }
+.bc-demo__label { margin: 0 0 12px; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; }
+.bc-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.bc-emote { display: inline-flex; flex: none; line-height: 0; }
+/* A stream time inside a sentence. */
+.bc-time { font-family: var(--font-mono); font-size: 0.92em; font-variant-numeric: tabular-nums; }
+
+.bc-demo__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 24px; background: var(--bg-base); }
+.bc-demo__brand { display: inline-flex; align-items: center; gap: 8px; font-size: 0.875rem; font-weight: 700; }
+.bc-demo__stream { display: grid; justify-items: end; gap: 4px; min-width: 0; text-align: right; }
+.bc-demo__title { margin: 0; color: var(--text-primary); font-size: 0.875rem; font-weight: 700; line-height: 1.3; }
+.bc-demo__stream span { color: var(--text-muted); font-size: 0.75rem; }
+
+/* Stream line: people chatting per 10 s, with a mark at each moment and the busiest three as faces. */
+.bc-chart-block, .bc-cards-block, .bc-ask { padding: 20px 24px; }
+.bc-chart { position: relative; height: 160px; }
+.bc-chart__svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.bc-chart__area { fill: var(--bc-chat-fill); }
+.bc-chart__line { fill: none; stroke: var(--bc-chat); stroke-width: 2; stroke-linejoin: round; }
+.bc-peak {
+  position: absolute;
+  left: calc(var(--x) * 1%);
+  top: calc(var(--y) * 1%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bc-chat);
+  box-shadow: 0 0 0 2px var(--bg-surface);
+  transform: translate(-50%, -50%);
+}
+.bc-peak--face { display: grid; place-items: center; width: 28px; height: 28px; background: var(--bg-surface); }
+.bc-peak--unsure { background: var(--bg-surface); border: 2px solid var(--text-muted); width: 10px; height: 10px; }
+.bc-peak.is-selected { box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--bc-focus); }
+.bc-peak.is-match { box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--text-primary); }
+.bc-guide { position: absolute; left: calc(var(--x) * 1%); top: calc(var(--y) * 1%); bottom: 0; border-left: 1px dashed var(--bc-focus); transform-origin: top; pointer-events: none; }
+
+.bc-chips { position: relative; height: 64px; margin-top: 8px; }
+.bc-chip {
+  position: absolute;
+  top: 0;
+  left: calc(var(--x) * 1%);
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--bc-text-2);
+  font: 700 0.75rem/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+.bc-chip--low { top: 36px; }
+.bc-chip--unsure { border-style: dashed; color: var(--text-muted); }
+.bc-chip:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.bc-chip[aria-pressed='true'] { border-color: var(--bc-focus); background: var(--accent-dim); color: var(--text-primary); }
+.bc-chip.is-match { border-color: var(--text-primary); color: var(--text-primary); }
+.bc-axis { position: relative; height: 16px; color: var(--text-muted); font: 500 0.6875rem/16px var(--font-mono); }
+.bc-axis span { position: absolute; left: calc(var(--x) * 1%); transform: translateX(-50%); white-space: nowrap; }
+.bc-axis span:first-child { transform: none; }
+:is(.bc-peak, .bc-chip).is-dim { opacity: 0.3; }
+
+/* Busiest three. */
+.bc-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.bc-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 4px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-card:hover { background: var(--bg-card-hover); }
+.bc-card[aria-pressed='true'] { border-color: var(--accent-border); background: var(--accent-dim); }
+.bc-card__face { grid-row: span 3; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 10px; background: var(--bg-base); }
+.bc-card__when { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font: 500 0.75rem/1.4 var(--font-mono); }
+.bc-card__n { display: inline-grid; place-items: center; min-width: 20px; height: 20px; border-radius: 6px; background: var(--bg-elevated); color: var(--bc-text-2); font-weight: 700; }
+.bc-card__about { color: var(--text-primary); font-size: 0.9375rem; font-weight: 600; line-height: 1.3; }
+.bc-card__pace { color: var(--text-muted); font-size: 0.75rem; line-height: 1.4; }
+
+/* A moment: its chat replay beside BrainChat's read. */
+.bc-moment { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+.bc-replay, .bc-read { min-width: 0; padding: 20px 24px; }
+.bc-replay { border-right: 1px solid var(--border); }
+.bc-replay__head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.bc-replay__title { margin: 0; font-size: 0.875rem; font-weight: 700; }
+.bc-replay__clock { color: var(--text-muted); font: 500 0.75rem/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+.bc-replay__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.bc-replay__toggle:hover { background: var(--bg-card-hover); }
+.bc-replay__toggle svg { width: 14px; height: 14px; }
+.bc-replay__lines {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 272px;
+  margin: 12px 0 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 80px);
+}
+.bc-line { display: flex; align-items: center; gap: 8px; min-height: 24px; color: var(--bc-text-2); font-size: 0.875rem; line-height: 1.35; }
+.bc-line__dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--bc-chat); }
+.bc-line--w1 .bc-line__dot { background: var(--bc-who-1); }
+.bc-line--w2 .bc-line__dot { background: var(--bc-who-2); }
+.bc-line--w3 .bc-line__dot { background: var(--bc-who-3); }
+.bc-line--w4 .bc-line__dot { background: var(--bc-who-4); }
+.bc-line--w5 .bc-line__dot { background: var(--bc-who-5); }
+.bc-line__text { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+
+.bc-pace { margin-top: 12px; }
+.bc-pace__bars { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: end; gap: 4px; height: 44px; }
+.bc-pace__bar { height: calc(var(--h) * 1%); min-height: 2px; background: var(--border); }
+.bc-pace__bar.is-past { background: var(--bc-chat); }
+.bc-pace__anchor { position: absolute; top: -4px; bottom: 0; left: calc(var(--x) * 1%); border-left: 1px dashed var(--text-muted); }
+.bc-pace__head { position: absolute; top: -8px; bottom: 0; left: calc(var(--x) * 1%); width: 2px; background: var(--text-primary); transform: translateX(-50%); }
+.bc-pace__scale { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; color: var(--text-muted); font: 500 0.6875rem/1.4 var(--font-mono); }
+
+.bc-read__kicker { margin: 0; color: var(--text-muted); font: 500 0.75rem/1.4 var(--font-mono); }
+.bc-read__title { margin: 4px 0 16px; color: var(--text-primary); font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; text-wrap: balance; }
+.bc-read__rows { margin: 0; }
+.bc-read__row { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+.bc-read__row dt { color: var(--text-muted); font-size: 0.8125rem; }
+.bc-read__row dd { margin: 0; color: var(--text-primary); font-size: 0.9375rem; font-weight: 600; }
+.bc-said { margin-top: 16px; }
+.bc-said__label { margin: 0 0 4px; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; }
+.bc-said__list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.bc-said__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; padding: 4px 12px; border: 1px solid var(--border); border-radius: var(--radius-button); }
+.bc-said__text { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; color: var(--text-primary); font-size: 0.875rem; overflow-wrap: anywhere; }
+.bc-said__n { flex: none; color: var(--text-muted); font: 500 0.75rem/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+.bc-read__evidence { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; padding: 8px 12px; border-radius: 10px; background: var(--bg-base); color: var(--bc-text-2); font-size: 0.8125rem; line-height: 1.4; }
+.bc-read__pace { margin: 8px 0 0; color: var(--text-muted); font-size: 0.75rem; }
+.bc-read--unsure .bc-read__title { color: var(--bc-text-2); }
+.bc-read__reason { margin: 0; color: var(--text-primary); font-size: 0.9375rem; font-weight: 600; }
+
+/* Ask: three questions, each answered from the moments' own reads. */
+.bc-ask__questions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bc-ask__question {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--bg-card);
+  color: var(--bc-text-2);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.bc-ask__question:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.bc-ask__question[aria-pressed='true'] { border-color: var(--accent-border); background: var(--accent-dim); color: var(--text-primary); }
+.bc-ask__hint { margin: 12px 0 0; color: var(--text-muted); font-size: 0.8125rem; }
+.bc-answer { margin-top: 16px; }
+.bc-answer__steps { margin: 0; color: var(--text-muted); font: 500 0.75rem/1.4 var(--font-mono); }
+.bc-answer__lead { margin: 4px 0 8px; color: var(--text-primary); font-size: 1rem; font-weight: 700; }
+.bc-answer__list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.bc-answer__row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-answer__row:hover { background: var(--bg-card-hover); }
+.bc-answer__row[aria-pressed='true'] { border-color: var(--accent-border); }
+.bc-answer__time { color: var(--text-muted); font: 500 0.75rem/1.4 var(--font-mono); }
+.bc-answer__about { color: var(--text-primary); font-size: 0.875rem; font-weight: 600; }
+.bc-answer__aim { color: var(--text-muted); font-size: 0.8125rem; }
+.bc-answer__left-out { margin: 8px 0 0; color: var(--text-muted); font-size: 0.8125rem; }
+
+/* Times and counts keep their width as they change. */
+:is(.bc-demo__label, .bc-demo__stream, .bc-chip, .bc-axis, .bc-card__when, .bc-card__pace, .bc-replay__clock, .bc-pace__scale,
+  .bc-read__kicker, .bc-read__evidence, .bc-read__pace, .bc-said__n, .bc-answer__steps, .bc-answer__lead, .bc-answer__time, .bc-answer__left-out) {
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.bc-chip, .bc-card, .bc-replay__toggle, .bc-ask__question, .bc-answer__row):focus-visible { outline: 2px solid var(--bc-focus); outline-offset: 2px; }
+
+/* Motion: the line draws once, marks rise as it reaches them, new chat lines rise in,
+   a read's rows rise in order, an answer unfolds. Nothing loops; reduced motion shows the end state. */
+@keyframes bc-rise { from { opacity: 0; transform: translateY(4px); } }
+@keyframes bc-drop { from { transform: scaleY(0); } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .bc-demo[data-intro='pending'] .bc-chart__svg { clip-path: inset(0 100% 0 0); }
+  .bc-demo[data-intro='drawing'] .bc-chart__svg { clip-path: inset(0 0 0 0); transition: clip-path 1200ms cubic-bezier(0.25, 0.7, 0.2, 1); }
+  .bc-demo[data-intro='pending'] :is(.bc-chip, .bc-guide) { opacity: 0; }
+  .bc-demo[data-intro='pending'] .bc-peak { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+  .bc-demo[data-intro='drawing'] :is(.bc-peak, .bc-chip, .bc-guide) {
+    transition: opacity 200ms ease-out, transform 200ms ease-out;
+    transition-delay: calc(var(--x) * 12ms);
+  }
+
+  .bc-line { animation: bc-rise 120ms ease-out both; }
+  .bc-read__title, .bc-read__row, .bc-read__evidence, .bc-read__reason { animation: bc-rise 200ms ease-out both; }
+  .bc-read__row { animation-delay: calc(40ms + var(--i) * 40ms); }
+  .bc-said__row { animation: bc-rise 200ms ease-out both; animation-delay: calc(200ms + var(--i) * 40ms); }
+  .bc-read__evidence { animation-delay: 280ms; }
+  .bc-guide { animation: bc-drop 280ms ease-out both; }
+  .bc-answer { animation: bc-rise 200ms ease-out both; }
+
+  .bc-demo[data-intro='done'] :is(.bc-peak, .bc-chip) { transition: opacity 200ms ease-out, box-shadow 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out; }
+  :is(.bc-card, .bc-ask__question, .bc-answer__row, .bc-replay__toggle) { transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }
+  .bc-pace__bar { transition: background-color 120ms linear; }
+}
+
+/* Tablet and phone. */
+@media (max-width: 760px) {
+  .bc-moment { grid-template-columns: minmax(0, 1fr); }
+  .bc-replay { border-right: 0; border-bottom: 1px solid var(--border); }
+  .bc-cards { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .brainchat-page__how { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 520px) {
+  .bc-demo__bar, .bc-chart-block, .bc-cards-block, .bc-ask, .bc-replay, .bc-read { padding-inline: 16px; }
+  .bc-demo__stream { justify-items: start; text-align: left; }
+  .bc-chart { height: 120px; }
+  .bc-chip { min-width: 24px; height: 24px; padding: 0 4px; }
+  .bc-chip--low { top: 32px; }
+  .bc-replay__lines { height: 232px; }
+  .bc-read__row { grid-template-columns: 112px minmax(0, 1fr); }
+  .bc-answer__row { grid-template-columns: 64px minmax(0, 1fr); }
+  .bc-answer__aim { grid-column: 2; }
+  .bc-axis span:not(:first-child) { font-size: 0.625rem; }
+}

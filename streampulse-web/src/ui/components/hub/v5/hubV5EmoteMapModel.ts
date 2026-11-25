@@ -14,8 +14,9 @@
  * window, and a selected emote shows them per interval with its busiest one,
  * whose streams one hub/moments read lists.
  */
-import type { HubActivityPoint, HubBucketEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
-import { formatHubInt, hubClockRange } from './hubV5Model'
+import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
+import type { HubActivityPoint, HubBucketEmote, HubEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
+import { formatHubInt, hubClock, hubClockRange, momentReasonLabel, momentRowsV5 } from './hubV5Model'
 
 export interface HubEmoteAgg {
   id: string
@@ -128,6 +129,49 @@ export function emoteMapData(points: readonly HubActivityPoint[], bucketMinutes:
   }
 }
 
+/**
+ * What emoteMapData reads from the points, in one pass and without sorting:
+ * the closed count, the first and last closed t, the bucket length, and the
+ * summed counts, list lengths and emote totals of the last 3 closed intervals. A poll that
+ * changes none of these (the usual repeat of the same closed buckets) leaves
+ * the map's data as it was, so its layout and tiles skip; a revised or newly
+ * closed interval changes it.
+ */
+export function emoteMapSignature(points: readonly HubActivityPoint[], bucketMinutes: number): string {
+  let n = 0
+  let first = Infinity
+  // the last 3 closed points by t, newest first
+  const last: HubActivityPoint[] = []
+  for (const p of points) {
+    if (!p || !Number.isFinite(p.t) || p.bucketComplete === false || !Array.isArray(p.topEmotes) || p.topEmotes.length === 0) continue
+    n += 1
+    if (p.t < first) first = p.t
+    let i = last.length
+    while (i > 0 && last[i - 1]!.t < p.t) i -= 1
+    if (i < 3) {
+      last.splice(i, 0, p)
+      if (last.length > 3) last.pop()
+    }
+  }
+  let tail = ''
+  for (const p of last) {
+    let sum = 0
+    for (const e of p.topEmotes!) sum += e && Number.isFinite(e.count) ? e.count : 0
+    tail += `|${p.t}:${p.topEmotes!.length}:${sum}:${p.emotes ?? ''}`
+  }
+  return `${n}|${n ? first : ''}|${bucketMinutes}${tail}`
+}
+
+/** emoteMapData, but the previous result while the points' signature is unchanged. */
+export function keepEmoteMapData(
+  prev: { sig: string; data: HubEmoteMapData | null } | null,
+  points: readonly HubActivityPoint[],
+  bucketMinutes: number,
+): { sig: string; data: HubEmoteMapData | null } {
+  const sig = emoteMapSignature(points, bucketMinutes)
+  return prev && prev.sig === sig ? prev : { sig, data: emoteMapData(points, bucketMinutes) }
+}
+
 /* ---------- pace: the last hour against the emote's own pace, as a change chip ---------- */
 
 export interface EmoteChange {
@@ -200,6 +244,29 @@ export function tilePicUrl(url: string | undefined, px: number, play: boolean, a
 
 /** Provider and name: how the hub's top emotes (the ones with an animated flag) match a tile. */
 export const emoteFlagKey = (prov: string | undefined, name: string) => `${prov || 'other'}|${name}`
+
+const FLAG_SEP = '\n'
+
+/**
+ * The hub's animated top emotes as one string (sorted flag keys, one per
+ * line), so a memo keyed on it survives a poll that sends the same flags in
+ * new objects or a new order.
+ */
+export function animatedFlagsKey(top: readonly HubEmote[] | undefined): string {
+  const keys: string[] = []
+  for (const e of top ?? []) if (e?.animated && e.name) keys.push(emoteFlagKey(e.provider, e.name))
+  return keys.sort().join(FLAG_SEP)
+}
+
+/** The set animatedFlagsKey describes. */
+export function animatedFlagsFromKey(key: string): ReadonlySet<string> {
+  return new Set(key ? key.split(FLAG_SEP) : [])
+}
+
+/** The hub's top emotes that move, by emoteFlagKey: the 7TV ones have a still file. */
+export function animatedFlags(top: readonly HubEmote[] | undefined): ReadonlySet<string> {
+  return animatedFlagsFromKey(animatedFlagsKey(top))
+}
 
 /* ---------- squarified treemap (Bruls, Huizing, van Wijk) ---------- */
 
@@ -938,6 +1005,60 @@ export function emotePerMinute(count: number, bucketMinutes: number): string {
   return r > 0 ? '<0.1' : '0'
 }
 
+/* ---------- a selected emote's chart (4A, 11-22) ---------- */
+
+const NICE = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]
+
+/** The chart's top line: the first round rate a minute at or above the busiest bar's ("500", "10", "2.5", "0.15"). */
+export function emoteNiceTop(rate: number): number {
+  if (!(rate > 0)) return 1
+  const k = 10 ** Math.floor(Math.log10(rate))
+  const m = NICE.find((x) => x * k >= rate * (1 - 1e-9)) ?? 10
+  return Number((m * k).toPrecision(3))
+}
+
+/** A rate a minute on the chart's scale: "936", "12", "2.5", "0.15". */
+export function emoteRateLabel(rate: number): string {
+  return rate >= 9.95 ? formatHubInt(Math.round(rate)) : String(Number(rate.toPrecision(2)))
+}
+
+/** "6-minute bars", "1-hour bars", "36.5-hour bars", "1-day bars". */
+export function emoteBarWords(bucketMinutes: number): string {
+  if (bucketMinutes >= 1440 && bucketMinutes % 1440 === 0) return `${bucketMinutes / 1440}-day bars`
+  if (bucketMinutes >= 60) return `${Math.round(bucketMinutes / 6) / 10}-hour bars`
+  return `${bucketMinutes}-minute bars`
+}
+
+/** "Nov 22, 8:00 AM to 2:00 PM", "Nov 21, 2:00 PM to Nov 22, 2:00 PM"; days alone for day bars. */
+export function emoteSpanWords(start: number, end: number, bucketMinutes: number): string {
+  const day = (t: number) => new Date(t).toLocaleDateString('en-US', DAY)
+  if (bucketMinutes >= 1440) return `${day(start)} to ${day(end - 1)}`
+  return day(start) === day(end)
+    ? `${day(start)}, ${hubClock(start)} to ${hubClock(end)}`
+    : `${day(start)}, ${hubClock(start)} to ${day(end)}, ${hubClock(end)}`
+}
+
+const TICK_STEPS = [5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080]
+
+/**
+ * The marks under the chart: round local times (a day's start for day marks), at most five, none past 86% of the
+ * width where the end label sits; `x` is the share of the width.
+ */
+export function emoteAxisTicks(start: number, end: number): Array<{ x: number; label: string }> {
+  const span = (end - start) / 60_000
+  if (!(span > 0)) return []
+  const step = TICK_STEPS.find((s) => span / s <= 5) ?? Math.ceil(span / 5 / 1440) * 1440
+  const ms = step * 60_000
+  const off = new Date(start).getTimezoneOffset() * 60_000
+  const out: Array<{ x: number; label: string }> = []
+  for (let t = Math.ceil((start - off) / ms) * ms + off; t < end; t += ms) {
+    const x = (t - start) / (end - start)
+    if (x > 0.86) break
+    out.push({ x, label: step >= 1440 ? new Date(t).toLocaleDateString('en-US', DAY) : hubClock(t) })
+  }
+  return out
+}
+
 export interface EmoteDriver {
   m: HubLivePulseMoment
   /** The stream's uses of this emote in that minute. */
@@ -1011,15 +1132,23 @@ export function nearestTile<T extends Rect>(tiles: readonly T[], from: T, dx: nu
 
 /* ---------- the hero's conveyor (R5-15 at Soft; mockup hub-hero.js) ---------- */
 
-export interface ConveyorEmote { url: string; w: number }
+export interface ConveyorEmote {
+  url: string
+  w: number
+  name: string
+  /** The emote map's id for it (provider, picture, name), so the hero's card reads the map's own share. */
+  id: string
+  provider: string
+}
 
 /**
  * The 120 emotes chat used most over the closed intervals (summed from each
  * interval's top 10), each weighted uses^0.6 so an emote used more turns up
- * more often. Only emotes with a picture; no numbers are shown.
+ * more often. Only emotes with a picture. The belt shows no numbers; the card
+ * of the emote under the pointer does (conveyorCardWords).
  */
 export function conveyorEmotes(points: readonly HubActivityPoint[], limit = 120): ConveyorEmote[] {
-  const m = new Map<string, { url: string; n: number }>()
+  const m = new Map<string, { url: string; n: number; name: string; id: string; provider: string }>()
   for (const p of points) {
     if (!p || p.bucketComplete === false || !Array.isArray(p.topEmotes)) continue
     for (const e of p.topEmotes) {
@@ -1027,10 +1156,103 @@ export function conveyorEmotes(points: readonly HubActivityPoint[], limit = 120)
       const k = `${e.name}|${e.imageUrl}`
       const o = m.get(k)
       if (o) o.n += e.count
-      else m.set(k, { url: e.imageUrl, n: e.count })
+      else m.set(k, { url: e.imageUrl, n: e.count, name: e.name, id: emoteMapId(e), provider: e.provider || 'other' })
     }
   }
-  return [...m.values()].sort((a, b) => b.n - a.n).slice(0, limit).map((e) => ({ url: e.url, w: e.n ** 0.6 }))
+  return [...m.values()].sort((a, b) => b.n - a.n).slice(0, limit)
+    .map((e) => ({ url: e.url, w: e.n ** 0.6, name: e.name, id: e.id, provider: e.provider }))
+}
+
+/** One key per emote picture, whatever size or still its URL asks for, so a moment's emote finds its copies on the belt. */
+export function conveyorPicKey(url: string): string {
+  const m = /^https?:\/\/(static-cdn\.jtvnw\.net\/emoticons\/v2|cdn\.7tv\.app\/emote|cdn\.betterttv\.net\/emote|cdn\.frankerfacez\.com\/emote)\/([^/]+)\//.exec(url)
+  return m ? `${m[1]}|${m[2]}` : url
+}
+
+export interface ConveyorSpike {
+  name: string
+  /** The channel's display name. */
+  channel: string
+  /** The emote's count in the spike's minute, as its row on the Hub gives it. */
+  uses: number
+  at: number
+}
+
+/** How long a spike colours the belt: Busiest now's "now". */
+export const CONVEYOR_SPIKE_MS = 5 * 60_000
+/** The row label an emote spike gets on the Hub, from the same wording table. */
+const EMOTE_SPIKE = momentReasonLabel('emote_spike', undefined)
+
+/**
+ * The hero's colour (C3 in the round 4 board's Mix, 11-22): the emotes of an
+ * emote spike that is still on, its minute within 5 minutes of now on a
+ * channel live in the same answer. Each spike lends its top 3 emotes, the ones
+ * its row on the Hub shows. Keyed by picture (two emotes can share a name);
+ * the newest spike wins. Empty when nothing is spiking, and the belt is
+ * then exactly as before.
+ */
+export function conveyorSpikes(
+  moments: readonly HubLivePulseMoment[] | undefined, live: readonly { login: string }[], nowMs: number,
+): ReadonlyMap<string, ConveyorSpike> {
+  const out = new Map<string, ConveyorSpike>()
+  if (!moments?.length || !Number.isFinite(nowMs)) return out
+  const on = new Set(live.map((c) => c.login.toLowerCase()))
+  for (const row of momentRowsV5(moments)) {
+    const at = row.at
+    if (row.label !== EMOTE_SPIKE || at == null || nowMs - at > CONVEYOR_SPIKE_MS || at - nowMs > 60_000) continue
+    if (!on.has(row.login.toLowerCase())) continue
+    const top = (row.moment.topEmotes ?? [])
+      .filter((e) => e?.imageUrl && e.name && Number.isFinite(e.count) && e.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+    for (const e of top) {
+      const url = sanitizeEmoteImageUrl(e.imageUrl)
+      const key = url ? conveyorPicKey(url) : ''
+      if (key && !out.has(key)) out.set(key, { name: e.name, channel: row.displayName, uses: e.count, at })
+    }
+  }
+  return out
+}
+
+export interface ConveyorShares {
+  /** Each emote's share of every use the emote map counts, by the map's id: "21%". */
+  byId: ReadonlyMap<string, string>
+  /** The map's window: "24 h", or the span the hub served. */
+  window: string
+}
+
+/** The emote map's own share for each emote (its "of the map" over the whole window), for the hero's card. */
+export function conveyorShares(data: HubEmoteMapData | null): ConveyorShares | null {
+  if (!data) return null
+  let total = 0
+  for (const a of data.emotes) total += a.c24
+  if (total <= 0) return null
+  return { byId: new Map(data.emotes.map((a) => [a.id, emoteSharePct((a.c24 / total) * 100)])), window: data.windowLabel }
+}
+
+export interface ConveyorWord { text: string; kind?: 'name' | 'fig' }
+/** The separator between the card's parts, always a word of its own. */
+export const CONVEYOR_SEP = ' · '
+
+/**
+ * The card over the emote under the pointer: its live spike ("DinoDance ·
+ * spiking in ohnePixel’s chat now · 115 uses in the spike"), else its share
+ * ("LUL · 21% of emote uses, last 24 h · Twitch"), else its name and provider.
+ */
+export function conveyorCardWords(
+  e: Pick<ConveyorEmote, 'name' | 'id' | 'provider'>, spike: ConveyorSpike | undefined, shares: ConveyorShares | null,
+): ConveyorWord[] {
+  // each " · " is its own word (CONVEYOR_SEP), so the card can keep every "· …" part in one piece when it wraps
+  const out: ConveyorWord[] = [{ text: e.name, kind: 'name' }]
+  if (spike) {
+    out.push({ text: CONVEYOR_SEP }, { text: `spiking in ${spike.channel}’s chat now` }, { text: CONVEYOR_SEP },
+      { text: formatHubInt(spike.uses), kind: 'fig' }, { text: spike.uses === 1 ? ' use in the spike' : ' uses in the spike' })
+    return out
+  }
+  const share = shares?.byId.get(e.id)
+  if (shares && share) out.push({ text: CONVEYOR_SEP }, { text: share, kind: 'fig' }, { text: ` of emote uses, last ${shares.window}` })
+  if (e.provider && e.provider !== 'other') out.push({ text: CONVEYOR_SEP }, { text: providerName(e.provider) })
+  return out
 }
 
 /** Seeded randoms (an LCG), so the rows land the same way on every load. */

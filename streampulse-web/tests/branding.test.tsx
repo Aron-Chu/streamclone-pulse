@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { BrandMark, PEAK_MARK_PATH } from '../src/ui/components/BrandMark'
 import { PublicLayout } from '../src/ui/components/PublicLayout'
-import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
+import { SiteHeader } from '../src/ui/components/SiteHeader'
 
 function renderInRouter(node: React.ReactNode) {
   return render(<MemoryRouter>{node}</MemoryRouter>)
@@ -27,12 +27,10 @@ describe('StreamPulse Peak branding', () => {
     }
   })
 
-  it('uses Peak branding without changing the analytics-home destination', () => {
-    const { container } = renderInRouter(
-      <AnalyticsTopNav items={[{ label: 'Overview', to: '/analytics', end: true }]} />,
-    )
+  it('uses Peak branding on the one site header, whose name goes home (11-24)', () => {
+    const { container } = renderInRouter(<SiteHeader mainId="analytics-main" variant="analytics" />)
     expect(container.querySelector('[data-brand-mark="peak"]')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'StreamPulse Analytics Hub' }).getAttribute('href')).toBe('/analytics')
+    expect(screen.getByRole('link', { name: 'StreamPulse' }).getAttribute('href')).toBe('/')
   })
 
   it('uses Peak branding while preserving every public navigation link', () => {

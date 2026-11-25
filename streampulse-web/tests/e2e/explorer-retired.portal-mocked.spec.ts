@@ -16,7 +16,7 @@ test.describe('retired Pulse Explorer', () => {
   test('is gone from the top navigation', async ({ page }) => {
     await install(page)
     await page.goto('/analytics')
-    await expect(page.getByRole('link', { name: 'All moments', exact: true })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Moments', exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Pulse Explorer' })).toHaveCount(0)
   })
 

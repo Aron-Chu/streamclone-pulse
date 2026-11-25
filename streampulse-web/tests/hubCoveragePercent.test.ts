@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatIncompleteCoveragePercent } from '../src/ui/components/hub/HubActivityChart'
+import { formatIncompleteCoveragePercent } from '../src/ui/components/hub/HubActivityChartV5'
 import { formatCoveragePercent } from '../src/ui/components/hub/HubDataHealthBanner'
 
 describe('IncompleteCoverageNeverFormatsAs100', () => {

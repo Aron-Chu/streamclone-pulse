@@ -29,6 +29,11 @@ export interface MomentMinuteSlot {
   relative: number
   state: 'measured' | 'unrecorded' | 'unmeasured' | 'outside'
   chatPerMin: number | null
+  /**
+   * Emotes counted in a measured minute, only where its rollup carries a total. The
+   * API leaves a zero out, so an absent total is never drawn as zero.
+   */
+  emotesPerMin?: number
 }
 
 export interface MomentMinuteWindow {
@@ -43,7 +48,7 @@ export interface MomentMinuteWindow {
 }
 
 type WindowMoment = Pick<DiscoveryMoment, 'login' | 'streamId' | 'offsetSeconds' | 'at'>
-interface MinutePointPayload { offsetSeconds?: unknown; chatCount?: unknown; chatMissing?: boolean; missing?: unknown }
+interface MinutePointPayload { offsetSeconds?: unknown; chatCount?: unknown; chatMissing?: boolean; missing?: unknown; totalEmoteCount?: unknown }
 interface MinutesPayload { streamId?: unknown; channel?: unknown; startedAt?: unknown; minutes?: unknown }
 
 /**
@@ -103,6 +108,7 @@ export function momentMinuteWindowFromMinutes(moment: WindowMoment, payload: unk
   const momentMinute = atMinute(moment.at) ?? Math.floor((origin + moment.offsetSeconds * 1000) / 60_000)
   const firstInStream = Math.floor(startMs / 60_000) - momentMinute
   const values = new Map<number, number | 'unrecorded' | null>()
+  const emotes = new Map<number, number>()
   let latest = -Infinity
   // The tail read is bounded to 120 rows server-side; never trust more than that.
   for (const row of data.minutes.slice(0, 240) as MinutePointPayload[]) {
@@ -118,6 +124,9 @@ export function momentMinuteWindowFromMinutes(moment: WindowMoment, payload: unk
         : typeof chat === 'number' && Number.isFinite(chat) && chat >= 0 ? chat : null
     // A repeated minute keeps its last row, as the timeline's rollup conversion does.
     values.set(relative, value)
+    const total = row.totalEmoteCount
+    if (row.missing !== true && typeof total === 'number' && Number.isFinite(total) && total >= 0) emotes.set(relative, total)
+    else emotes.delete(relative)
   }
   const slots: MomentMinuteSlot[] = []
   let measuredMinutes = 0
@@ -126,7 +135,8 @@ export function momentMinuteWindowFromMinutes(moment: WindowMoment, payload: unk
     const value = values.get(relative)
     if (typeof value === 'number') {
       measuredMinutes += 1
-      slots.push({ relative, state: 'measured', chatPerMin: value })
+      const emotesPerMin = emotes.get(relative)
+      slots.push(emotesPerMin == null ? { relative, state: 'measured', chatPerMin: value } : { relative, state: 'measured', chatPerMin: value, emotesPerMin })
     } else if (value === 'unrecorded') {
       unrecordedMinutes += 1
       slots.push({ relative, state: 'unrecorded', chatPerMin: null })
@@ -145,7 +155,7 @@ function keptMinutes(payload: unknown): MinutesPayload | null {
   const { streamId, channel, startedAt, minutes } = payload as MinutesPayload
   return { streamId, channel, startedAt, minutes: Array.isArray(minutes)
     ? (minutes.slice(0, 240) as MinutePointPayload[]).map(row => row && typeof row === 'object'
-      ? { offsetSeconds: row.offsetSeconds, chatCount: row.chatCount, chatMissing: row.chatMissing, missing: row.missing } : null)
+      ? { offsetSeconds: row.offsetSeconds, chatCount: row.chatCount, chatMissing: row.chatMissing, missing: row.missing, totalEmoteCount: row.totalEmoteCount } : null)
     : minutes }
 }
 

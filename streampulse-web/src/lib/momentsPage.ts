@@ -25,6 +25,14 @@ function bestLift(moment: Pick<DiscoveryMoment, 'comparison'>): number | null {
   return best
 }
 
+/**
+ * How strongly a moment rose, to pick the one a stream's card leads with: its best
+ * ready ×, a rise from a zero average above any ×, and -1 with nothing to judge by.
+ */
+export function momentStrength(moment: Pick<DiscoveryMoment, 'comparison'>): number {
+  return bestLift(moment) ?? -1
+}
+
 /** Whether Latest lists this moment (see the top of this file). */
 export function shownOnMomentsPage(moment: Pick<DiscoveryMoment, 'offsetSeconds' | 'comparison'>): boolean {
   if (!(moment.offsetSeconds >= MOMENTS_START_SECONDS)) return false
@@ -55,6 +63,8 @@ export interface MomentsGame {
   name: string
   categoryId?: string
   art: string | null
+  /** The streams playing it, where the shared cover lookup (the hub's GameArt) reads a cover the feed did not send. */
+  streamIds: string[]
   moments: number
 }
 
@@ -67,9 +77,13 @@ function coverArt(url: string | undefined, id: string | undefined): string | nul
 }
 
 /** The games in a list, most moments first, then by name (M1, 10-22: the games on top). */
-export function momentsGames(moments: ReadonlyArray<Pick<DiscoveryMoment, 'category' | 'categoryId' | 'boxArtUrl' | 'categoryMetadataRejected'>>): MomentsGame[] {
+export function momentsGames(moments: ReadonlyArray<Pick<DiscoveryMoment, 'category' | 'categoryId' | 'boxArtUrl' | 'categoryMetadataRejected'> & { streamId?: string }>): MomentsGame[] {
+  const streams = new Map<string, Set<string>>()
+  for (const moment of moments) {
+    if (moment.category && moment.streamId) streams.set(moment.category, (streams.get(moment.category) ?? new Set()).add(moment.streamId))
+  }
   return loadedCategories(moments)
-    .map(c => ({ name: c.name, categoryId: c.categoryId, art: coverArt(c.boxArtUrl, c.categoryId), moments: c.count }))
+    .map(c => ({ name: c.name, categoryId: c.categoryId, art: coverArt(c.boxArtUrl, c.categoryId), streamIds: [...streams.get(c.name) ?? []], moments: c.count }))
     .sort((a, b) => b.moments - a.moments || a.name.localeCompare(b.name))
 }
 

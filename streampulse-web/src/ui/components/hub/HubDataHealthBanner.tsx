@@ -90,9 +90,11 @@ export function HubDataHealthBanner({
   }
 
   if (!slowPending && loadSource === 'stats-fallback') {
+    // The hub page draws no aggregate stats, so this row never claims to show them. Top today
+    // reads its own feed and can still load, so the row names only what the hub read feeds.
     messages.push({
       tone: 'warn',
-      text: 'Hub temporarily unavailable — showing aggregate stats only.',
+      text: 'Hub temporarily unavailable — live channels and activity could not load.',
     })
   } else if (!slowPending && !loading && hubEndpointOk && activitySummary.pointCount < 2) {
     messages.push({

@@ -1,6 +1,6 @@
 import { useAnalyticsThemeOptional } from '../providers/AnalyticsThemeProvider'
 
-/** useAnalyticsMotion's switch alone, for pages that should not load GSAP for it. */
+/** The analytics theme's motion switch: on unless the theme turns motion off. */
 export function useAnalyticsMotionEnabled(): boolean {
   return useAnalyticsThemeOptional()?.motionEnabled ?? true
 }

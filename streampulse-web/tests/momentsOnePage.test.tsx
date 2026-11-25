@@ -3,6 +3,8 @@ import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AnalyticsMomentsPage from '../src/routes/analytics/AnalyticsMomentsPage'
 import * as minuteWindow from '../src/lib/momentMinuteWindow'
+import * as discovery from '../src/lib/discoveryMoments'
+import { momentAtKey, momentMinuteAt } from '../src/lib/momentFeedback'
 
 vi.mock('../src/hooks/useMomentProfiles', () => ({ useMomentProfiles: (rows: unknown) => rows }))
 vi.mock('../src/ui/components/analytics/AnalyticsFigmaShell', () => ({ AnalyticsFigmaShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
@@ -44,6 +46,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
+  vi.unstubAllEnvs()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -73,6 +76,39 @@ describe('one Moments page', () => {
     expect(screen.queryByRole('combobox', { name: 'Category' })).toBeNull()
   })
 
+  it('keeps the games row when every moment is one game, so the list does not move when a second game arrives', async () => {
+    const all = hub.data.livePulseMoments.splice(0)
+    hub.data.livePulseMoments.push(all[1]!)
+    try {
+      renderMoments()
+      await waitFor(() => expect(logins()).toEqual(['sodapoppin']))
+      expect(within(covers()).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual([
+        'All games: 1 moment. Shows every game’s moments.',
+        'Minecraft: 1 moment. Shows its moments.',
+      ])
+    } finally {
+      hub.data.livePulseMoments.splice(0, hub.data.livePulseMoments.length, ...all)
+    }
+  })
+
+  // The covers come through the Hub's shared GameArt lookup (Moments stream cards, 11-22), which takes
+  // no loading priority, so the phone's first three are no longer asked for ahead of the rest.
+  it('shows each game’s cover through the Hub’s shared lookup, at three times the tile', async () => {
+    const all = hub.data.livePulseMoments.splice(0)
+    const extra = [['Fortnite', '33214', 'ninja'], ['Chess', '743', 'gmhikaru']].map(([category, categoryId, login]) => ({
+      ...all[0]!, login, displayName: login, streamId: `s-${login}`, category, categoryId, boxArtUrl: `https://static-cdn.jtvnw.net/ttv-boxart/${categoryId}-52x72.jpg`,
+    }))
+    hub.data.livePulseMoments.push(...all, ...extra)
+    try {
+      renderMoments()
+      await waitFor(() => expect(logins()).toHaveLength(5))
+      const pictures = [...covers().querySelectorAll('img')]
+      expect(pictures.map(img => img.getAttribute('src'))).toEqual(['27471', '743', '33214', '509658'].map(id => `https://static-cdn.jtvnw.net/ttv-boxart/${id}-336x450.jpg`))
+    } finally {
+      hub.data.livePulseMoments.splice(0, hub.data.livePulseMoments.length, ...all)
+    }
+  })
+
   it('reads the hub’s game link by Twitch id', async () => {
     renderMoments('/analytics/moments?game=27471')
     await waitFor(() => expect(logins().sort()).toEqual(['pokimane', 'sodapoppin']))
@@ -91,5 +127,83 @@ describe('one Moments page', () => {
     fireEvent.click(within(detail).getByRole('button', { name: 'Show Just Chatting moments' }))
     await waitFor(() => expect(currentUrl).toBe('/analytics/moments?category=Just+Chatting'))
     await waitFor(() => expect(logins()).toEqual(['xqc']))
+  })
+
+  describe('the way in to a Moment’s own page', () => {
+    // A made-up stream that starts 10:00:00Z: offset 660 s is 10:11:00Z, and the hub's wall-clock peak is 37 s into that minute.
+    const fake: { login: string; displayName: string; streamId: string; offsetSeconds: number; label: string; kind: string; chatPerMin: number; emotesPerMin: number
+      category: string; categoryId: string; boxArtUrl: string; at?: number; score: number } = {
+      login: 'fakechan01', displayName: 'FakeChan01', streamId: '9000001', offsetSeconds: 660, label: 'Chat spike', kind: 'chat_spike', chatPerMin: 200, emotesPerMin: 40,
+      category: 'fake-pog', categoryId: '900001', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/900001-52x72.jpg', at: Date.parse('2026-11-14T10:11:37Z'), score: 80,
+    }
+    const asRow = fake as (typeof hub.data.livePulseMoments)[number]
+    beforeEach(() => { hub.data.livePulseMoments.push(asRow) })
+    afterEach(() => { hub.data.livePulseMoments.splice(hub.data.livePulseMoments.indexOf(asRow), 1) })
+
+    const openFake = async () => {
+      renderMoments()
+      await waitFor(() => expect(logins()).toContain('fakechan01'))
+      const row = document.querySelectorAll<HTMLElement>('.moments-result')[logins().indexOf('fakechan01')]
+      fireEvent.click(row.querySelector<HTMLButtonElement>('.moments-card-primary')!)
+      return screen.findByRole('region', { name: /^Selected moment: / })
+    }
+    const stubSource = (occurrenceAt: number | undefined) =>
+      vi.spyOn(discovery, 'checkMomentSource').mockResolvedValue({ vodHref: null, liveHref: null, reason: 'fake', occurrenceAt })
+
+    it('keys the link by the source’s minute when the source has one, not the peak’s', async () => {
+      vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+      stubSource(Date.parse('2026-11-14T10:11:00Z'))
+      const detail = await openFake()
+      const link = await within(detail).findByRole('link', { name: 'Open the Moment’s page' })
+      await waitFor(() => expect(link.getAttribute('href')).toBe('/analytics/moments/9000001/20261114T1011Z'))
+    })
+
+    it('falls back to the minute the peak sits in when the source has none (10:11:37 is 10:11, R89)', async () => {
+      vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+      stubSource(undefined)
+      const detail = await openFake()
+      const link = await within(detail).findByRole('link', { name: 'Open the Moment’s page' })
+      expect(link.getAttribute('href')).toBe('/analytics/moments/9000001/20261114T1011Z')
+    })
+
+    it('keeps a peak late in its minute (10:11:50) on that minute, with or without the source', async () => {
+      vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+      fake.at = Date.parse('2026-11-14T10:11:50Z')
+      try {
+        stubSource(undefined)
+        const detail = await openFake()
+        const link = await within(detail).findByRole('link', { name: 'Open the Moment’s page' })
+        expect(link.getAttribute('href')).toBe('/analytics/moments/9000001/20261114T1011Z')
+      } finally { fake.at = Date.parse('2026-11-14T10:11:37Z') }
+    })
+
+    it('keys the link by the Moment’s own minute when the stream started on a fractional second', async () => {
+      vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+      // Started 10:00:30.4; the 10:11 Moment is 629 s in, so the source's occurrence is 10:10:59.4.
+      const start = Date.parse('2026-11-14T10:00:30.400Z')
+      const key = momentAtKey(momentMinuteAt(start, 629))
+      expect(key).toBe(momentAtKey(Date.parse('2026-11-14T10:11:00Z')))
+      stubSource(start + 629_000)
+      const detail = await openFake()
+      const link = await within(detail).findByRole('link', { name: 'Open the Moment’s page' })
+      await waitFor(() => expect(link.getAttribute('href')).toBe(`/analytics/moments/9000001/${key}`))
+    })
+
+    it('has no link while the page is off', async () => {
+      vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', '')
+      stubSource(Date.parse('2026-11-14T10:11:00Z'))
+      const detail = await openFake()
+      expect(within(detail).queryByRole('link', { name: 'Open the Moment’s page' })).toBeNull()
+    })
+
+    it('has no link when the Moment’s time is unknown', async () => {
+      vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+      stubSource(undefined)
+      delete fake.at
+      try {
+        const detail = await openFake()
+        expect(within(detail).queryByRole('link', { name: 'Open the Moment’s page' })).toBeNull()
+      } finally { fake.at = Date.parse('2026-11-14T10:11:37Z') }
+    })
   })
 })

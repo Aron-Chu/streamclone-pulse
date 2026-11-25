@@ -17,10 +17,9 @@ import {
 import { detectInstallStore, installStoreUrl } from '../src/lib/installBrowser'
 import { InstallCta } from '../src/ui/components/InstallCta'
 import { AppRoutes } from '../src/routes/index'
-import Docs from '../src/routes/public/Docs'
-import Support from '../src/routes/public/Support'
+import Help from '../src/routes/public/Help'
 import Landing from '../src/routes/public/Landing'
-import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
+import { SiteHeader } from '../src/ui/components/SiteHeader'
 import { PublicLayout } from '../src/ui/components/PublicLayout'
 
 const CANONICAL =
@@ -164,8 +163,8 @@ describe('InstallCta', () => {
 
 describe('install CTAs across surfaces', () => {
   it('lists the published Edge and Firefox listings beside Chrome, with honest desktop guidance', () => {
-    render(<MemoryRouter><Docs /></MemoryRouter>)
-    const install = screen.getByRole('heading', { name: /install the streampulse extension/i }).closest('section')!
+    render(<MemoryRouter><Help /></MemoryRouter>)
+    const install = screen.getByRole('heading', { level: 2, name: 'Install' }).closest('section')!
     const firefox = within(install).getByRole('link', { name: 'Add to Firefox' })
     expect(firefox.getAttribute('href')).toBe(FIREFOX_ADDONS_LISTING_URL)
     expect(PUBLIC_SITE.firefoxAddonsListingUrl).toBe(FIREFOX_ADDONS_LISTING_URL)
@@ -176,7 +175,7 @@ describe('install CTAs across surfaces', () => {
     expect(PUBLIC_SITE.edgeAddonsListingUrl).toBe(EDGE_ADDONS_LISTING_URL)
     expect(edge.getAttribute('target')).toBe('_blank')
     expect(edge.getAttribute('rel')).toBe('noopener noreferrer')
-    expect(install.textContent).toContain('On a phone or tablet, open this page on your computer.')
+    expect(install.textContent).toContain('On a phone or tablet? Open this page on your computer.')
     expect(install.textContent).not.toContain('will appear here once its listing is verified')
   })
 
@@ -191,7 +190,7 @@ describe('install CTAs across surfaces', () => {
     for (const link of links) assertSafeCwsLink(link)
   })
 
-  it('public layout, docs, support, and analytics nav expose the CTA', () => {
+  it('public layout, help, and analytics nav expose the CTA', () => {
     const { unmount: u1 } = render(
       <MemoryRouter>
         <PublicLayout>
@@ -199,14 +198,14 @@ describe('install CTAs across surfaces', () => {
         </PublicLayout>
       </MemoryRouter>,
     )
-    for (const link of screen.getAllByRole('link', { name: /Add StreamPulse to Chrome/i })) {
+    for (const link of screen.getAllByRole('link', { name: /Add (StreamPulse )?to Chrome/i })) {
       assertSafeCwsLink(link)
     }
     u1()
 
     const { unmount: u2 } = render(
       <MemoryRouter>
-        <Docs />
+        <Help />
       </MemoryRouter>,
     )
     for (const link of screen.getAllByRole('link', { name: /Add StreamPulse to Chrome/i })) {
@@ -214,19 +213,9 @@ describe('install CTAs across surfaces', () => {
     }
     u2()
 
-    const { unmount: u3 } = render(
-      <MemoryRouter>
-        <Support />
-      </MemoryRouter>,
-    )
-    for (const link of screen.getAllByRole('link', { name: /Add StreamPulse to Chrome/i })) {
-      assertSafeCwsLink(link)
-    }
-    u3()
-
     render(
       <MemoryRouter>
-        <AnalyticsTopNav items={[{ label: 'Hub', to: '/analytics', end: true }]} />
+        <SiteHeader mainId="analytics-main" variant="analytics" />
       </MemoryRouter>,
     )
     const header = screen.getByRole('banner')
@@ -234,7 +223,7 @@ describe('install CTAs across surfaces', () => {
     assertSafeCwsLink(within(header).getByRole('link', { name: 'Add to Chrome' }))
   })
 
-  it('keeps install CTAs visible without overflow on mobile and desktop widths', () => {
+  it('puts the install on public pages in the header button row', () => {
     const { container } = render(
       <MemoryRouter>
         <PublicLayout>
@@ -243,19 +232,16 @@ describe('install CTAs across surfaces', () => {
       </MemoryRouter>,
     )
 
-    for (const width of [360, 1280]) {
-      Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
-      window.dispatchEvent(new Event('resize'))
-      const link = screen.getByRole('link', { name: /Add StreamPulse to Chrome/i })
-      const nav = container.querySelector('.app-nav')
-      expect(link).toBeTruthy()
-      assertSafeCwsLink(link)
-      // Layout contract: CTA is in the nav flex row and does not use fixed overflow-hidden width.
-      expect(nav?.contains(link)).toBe(true)
-      const style = window.getComputedStyle(link)
-      expect(style.display).not.toBe('none')
-      expect(style.visibility).not.toBe('hidden')
-    }
+    // One bar on every page (11-24): the short label, in the button row. Phones hide it (site-header.css): an
+    // extension installs from a computer, and the page's own copy says so.
+    const header = container.querySelector<HTMLElement>('.site-header')!
+    const link = within(header).getByRole('link', { name: 'Add to Chrome' })
+    assertSafeCwsLink(link)
+    expect(link.closest('.site-header__actions')).toBeTruthy()
+    expect(link.getAttribute('data-cta')).toBe('chrome-install-public-nav')
+    const style = window.getComputedStyle(link)
+    expect(style.display).not.toBe('none')
+    expect(style.visibility).not.toBe('hidden')
   })
 })
 
@@ -279,8 +265,8 @@ describe('install entry', () => {
         <AppRoutes />
       </MemoryRouter>,
     )
-    expect(await screen.findByTestId('docs-page')).toBeTruthy()
-    expect(screen.getByTestId('install-location').textContent).toBe(`/docs${search}#extension`)
+    expect(await screen.findByTestId('help-page')).toBeTruthy()
+    expect(screen.getByTestId('install-location').textContent).toBe(`/help${search}#install`)
     for (const link of screen.getAllByRole('link').filter(el =>
       el.hasAttribute('data-cws-listing') || el.getAttribute('href') === FIREFOX_ADDONS_LISTING_URL,
     )) {

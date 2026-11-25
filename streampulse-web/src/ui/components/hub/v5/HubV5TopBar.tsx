@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { HubLiveChannel } from '../../../../lib/publicHub'
 import { InstallCta } from '../../InstallCta'
+import { SiteHeaderStepBack } from '../../SiteHeader'
 import { HubV5Icon } from './HubV5Icon'
 import { HubV5SearchBox } from './HubV5SearchBox'
 import type { HubSearchEmote, HubSearchGame } from './hubV5Model'
@@ -144,13 +145,9 @@ export function HubV5DockSearch({ live, games, emotes }: { live: readonly HubLiv
 
 export function HubV5BarInstall() {
   const promoVisible = useHubV5Search((s) => s.promoVisible)
-  const ref = useRef<HTMLSpanElement>(null)
-  useEffect(() => {
-    if (ref.current) ref.current.inert = promoVisible
-  }, [promoVisible])
   return (
-    <span ref={ref} className="hv5-bar-install" data-hidden={promoVisible ? '' : undefined}>
-      <InstallCta className="analytics-topnav__install" label="short" icon="mark" data-cta="chrome-install-analytics" />
-    </span>
+    <SiteHeaderStepBack hidden={promoVisible}>
+      <InstallCta className="site-header__install" label="short" icon="mark" data-cta="chrome-install-analytics" />
+    </SiteHeaderStepBack>
   )
 }

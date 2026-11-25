@@ -9,7 +9,7 @@ export function AccountFooter({ current }: { current?: 'settings' | 'billing' | 
       {current !== 'moments' && accountMomentsEnabled() ? <Link to="/account/moments">My Moments</Link> : null}
       {current !== 'settings' ? <Link to="/account/settings">Account &amp; devices</Link> : null}
       {current !== 'billing' ? <Link to="/account/billing">Membership &amp; billing</Link> : null}
-      <Link to="/support">Help &amp; support</Link>
+      <Link to="/help">Help</Link>
     </nav>
   </footer>
 }

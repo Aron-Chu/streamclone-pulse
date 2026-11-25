@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState, type FocusEvent } from 'react'
 import type { MomentsGame } from '../../../lib/momentsPage'
+import { GameArt } from '../hub/v5/HubV5Rack'
 
-const initials = (name: string) => name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).toUpperCase() || '?'
 const count = (n: number) => `${n} ${n === 1 ? 'moment' : 'moments'}`
+/** The row's widest tile (112 px, 3:4); GameArt reads it at two to three times this. */
+const COVER_W = 112
+const COVER_H = 150
 
-/** A game's cover; its initials when Twitch sends none or the picture fails. */
+/**
+ * A game's cover through the shared lookup the stream cards and the Hub use: the
+ * feed's exact cover, else Twitch's by name, else the streams playing it (a new
+ * game's by-name cover is Twitch's grey "?"); its initials when none is found.
+ */
 function Cover({ game }: { game: MomentsGame }) {
-  const [failed, setFailed] = useState(false)
   return <span className="moments-cover-art">
-    {game.art && !failed ? <img src={game.art} alt="" width={285} height={380} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : <span>{initials(game.name)}</span>}
+    <GameArt url={game.art ?? undefined} name={game.name} w={COVER_W} h={COVER_H} streamIds={game.streamIds} />
   </span>
 }
 
@@ -25,7 +31,7 @@ export function MomentsGameRow({ games, total, picked, onPick }: {
   const ref = useRef<HTMLUListElement>(null)
   const [edge, setEdge] = useState({ left: false, right: false })
   // a game picked with nothing in this list (a link, or a refresh that moved on) keeps a card, so the pick can be cleared
-  const shown = picked && !games.some(game => game.name === picked) ? [{ name: picked, art: null, moments: 0 }, ...games] : games
+  const shown = picked && !games.some(game => game.name === picked) ? [{ name: picked, art: null, streamIds: [], moments: 0 }, ...games] : games
 
   useEffect(() => {
     const row = ref.current

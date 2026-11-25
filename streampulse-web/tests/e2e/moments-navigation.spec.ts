@@ -1,7 +1,11 @@
 import { test, expect } from '@playwright/test'
 import { installDiscoveryFixture } from './helpers/discoveryFixture'
 import { installHubUxMock } from './helpers/hubUxMock'
+import { answerTwitchLivePictures } from './helpers/twitchLivePictures'
 import { installNewsroomMock } from './helpers/newsroomMock'
+
+// Twitch's live pictures answer as offline here, so no card depends on a real channel being live.
+test.beforeEach(async ({ page }) => { await answerTwitchLivePictures(page) })
 
 /**
  * A time followed by a named zone: "3:30 AM UTC", "8:30 PM MST", "5:30 AM GMT+2". The row's
@@ -142,16 +146,16 @@ test('Latest has one category filter, opaque menus and a working Saved shortlist
   await expect(menu).toHaveCSS('background-color', 'rgb(24, 24, 27)')
   await page.screenshot({ path: 'artifacts/moments-menu.png' })
   await page.keyboard.press('Escape')
-  await page.locator('.moments-result').first().locator('.moments-result-evidence').click()
+  await page.locator('.moments-result').first().locator('.msc-picture').click()
   const selected = page.getByRole('region', { name: /^Selected moment: / })
   await expect(selected).toBeVisible()
-  // In line, the row above the detail carries the occurrence time.
+  // In line, the card above the detail carries the occurrence time: its age, and the time itself on hover.
   const openRow = page.locator('.moments-result').first()
   await expect(openRow.locator('time')).toHaveAttribute('dateTime', /Z$/)
-  await expect(openRow.locator('time')).toContainText(OCCURRENCE_ZONE)
+  await expect(openRow.locator('time')).toHaveAttribute('title', OCCURRENCE_ZONE)
   await expect(page.getByRole('button', { name: /Back to results/ })).toHaveCount(0)
   await selected.getByRole('button', { name: 'Close', exact: true }).click()
-  await page.locator('.moments-result').first().getByRole('button', { name: 'Save', exact: true }).click()
+  await page.locator('.moments-result').first().getByRole('button', { name: /^Save / }).click()
   await expect(page.getByRole('region', { name: /^Selected moment: / })).toHaveCount(0)
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click()
   await expect(page.locator('.moments-result')).toHaveCount(1)
@@ -164,7 +168,9 @@ test('tab switches retain each view’s filters and keep the tab row steady', as
   await installHubUxMock(page)
   await page.goto('/analytics/moments?view=recent&q=xqc&category=Minecraft&sort=oldest')
   await expect(page.locator('.moments-result')).toHaveCount(1)
-  await page.locator('.moments-result').getByRole('button', { name: 'Save', exact: true }).click()
+  await page.locator('.moments-result').getByRole('button', { name: /^Save / }).click()
+  // Reaching Save may scroll a tall card into view; the tab row is measured from the top.
+  await page.evaluate(() => window.scrollTo(0, 0))
   const tabs = page.getByRole('navigation', { name: 'Moment views' })
   const initialTop = await tabs.evaluate(element => element.getBoundingClientRect().top)
 
@@ -253,17 +259,20 @@ test('saving a Moment keeps the control under the pointer', async ({ page }) => 
   await installHubUxMock(page)
   await page.goto('/analytics/moments?view=recent')
   const row = page.locator('.moments-result').first()
-  const save = row.getByRole('button', { name: 'Save', exact: true })
+  const save = row.getByRole('button', { name: /^Save / })
+  // A card is taller than the row was, so its Save can sit near the fold: bring it on
+  // screen (once the card has settled) before taking where the pointer is.
+  await save.scrollIntoViewIfNeeded()
   const before = await save.boundingBox()
   expect(before).not.toBeNull()
   const originalCenter = { x: before!.x + before!.width / 2, y: before!.y + before!.height / 2 }
   await save.click()
-  const saved = row.getByRole('button', { name: 'Saved', exact: true })
+  const saved = row.getByRole('button', { name: /^Remove saved / })
   await expect(saved).toHaveAttribute('aria-pressed', 'true')
   const after = await saved.boundingBox()
   expect(Math.abs(after!.x - before!.x)).toBeLessThan(12)
   await page.mouse.click(originalCenter.x, originalCenter.y)
-  await expect(row.getByRole('button', { name: 'Save', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await expect(row.getByRole('button', { name: /^Save / })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByRole('region', { name: /^Selected moment: / })).toHaveCount(0)
 })
 

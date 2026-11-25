@@ -30,6 +30,9 @@ import {
 // like headers or the heatmap below". The hub zooms over the graph only: its
 // header row, range tabs and the provider lanes below the navigator give the
 // page the wheel.
+//
+// S1 (11-19): over the hub's graph a plain wheel zooms only after a click on it
+// (surface.arm()), so a reader scrolling past the chart is never caught by it.
 
 interface Zone {
   top: number
@@ -159,6 +162,7 @@ for (const [name, open] of Object.entries(CHART_SURFACES)) {
         const hit = await hitAt(page, point.x, y)
         expect(hit.inChart, `${point.label}: the pointer is over the chart (${hit.element})`).toBe(true)
         await page.mouse.move(point.x, y)
+        await surface.arm()
         await page.mouse.wheel(0, -100)
         await surface.settle()
         const readout = await readoutOf(surface).textContent()

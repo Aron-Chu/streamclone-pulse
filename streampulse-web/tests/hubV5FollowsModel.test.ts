@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { HubLiveChannel } from '../src/lib/publicHub'
 import type { TwitchFollows } from '../src/lib/twitchFollows'
 import { HUB_FOLLOWS_COUNT, followsMeta, followsTip, rankFollows } from '../src/ui/components/hub/v5/hubV5FollowsModel'
-import { channelHref, hubClock, hubClockRange, rankBusiest } from '../src/ui/components/hub/v5/hubV5Model'
+import { BUSIEST_PICTURE_LINE, channelHref, hubClock, hubClockRange, rankBusiest } from '../src/ui/components/hub/v5/hubV5Model'
 
 const MIN = 60_000
 const END = Date.UTC(2026, 10, 1, 18, 0)
@@ -125,6 +125,8 @@ describe('followsTip', () => {
       'Channels you follow on Twitch that are in the live pool (480 of the ~1,000 we track). Your other follows can be live on Twitch too.',
       `Ranked like Busiest now: chat messages per minute in the last full 5-minute window (${hubClockRange(END - 5 * MIN, END)}). Channels without that count show viewers and come after.`,
       'The busiest 60 are shown.',
+      // its tiles are Busiest now's, live picture and all (11-22)
+      BUSIEST_PICTURE_LINE,
       `Read from Twitch at ${hubClock(END + 2 * MIN)} for Viewer: Twitch lists 3,200 follows and the 62 most recent are used.`,
       'Only this tab keeps the list, and it is never sent to StreamPulse. Forget clears it.',
     ])
@@ -138,6 +140,6 @@ describe('followsTip', () => {
     ])
     const none = rankFollows([chan('a')], ['a'], 'five_min')
     expect(followsTip(none, follows(['a']), 3, 1_000).split('\n')[1]).toBe('No channel has a full 5-minute chat count right now, so these show viewers.')
-    expect(followsTip(none, follows(['a']), 3, 1_000).split('\n')[2]).toBe(`Read from Twitch at ${hubClock(END)} for Viewer.`)
+    expect(followsTip(none, follows(['a']), 3, 1_000).split('\n').slice(2, 4)).toEqual([BUSIEST_PICTURE_LINE, `Read from Twitch at ${hubClock(END)} for Viewer.`])
   })
 })

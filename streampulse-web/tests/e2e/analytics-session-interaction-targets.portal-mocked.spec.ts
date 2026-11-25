@@ -65,7 +65,7 @@ for (const width of [390, 768]) {
 
 // Compare the actual loading and loaded DOM, rather than duplicating Tailwind height values.
 for (const { width, longName } of [
-  ...[390, 610, 640, 720, 1440].map(width => ({ width, longName: false })),
+  ...[320, 375, 389, 390, 610, 640, 720, 1440].map(width => ({ width, longName: false })),
   { width: 390, longName: true },
 ]) {
   test(`initial chart loading reserve at ${width}px${longName ? ' with a long emote name' : ''}`, async ({ page }, testInfo) => {

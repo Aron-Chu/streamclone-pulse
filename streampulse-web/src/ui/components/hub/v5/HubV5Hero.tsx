@@ -9,12 +9,13 @@
  * runs the emote conveyor at Soft (R5-15, HubV5Conveyor); the mockup's
  * hero-motion switch was a proposal aid and is not ported.
  */
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { HubActivityPoint, HubLiveChannel } from '../../../../lib/publicHub'
 import type { HubSearchEmote, HubSearchGame } from './hubV5Model'
 import { HubV5Avatar } from './HubV5Avatar'
 import { HubV5Conveyor, type HubV5ConveyorRefs } from './HubV5Conveyor'
+import type { ConveyorShares, ConveyorSpike } from './hubV5EmoteMapModel'
 import { HubV5Promo } from './HubV5Promo'
 import { HubV5SearchBox } from './HubV5SearchBox'
 import { channelHref, channelsByViewers, formatHubInt } from './hubV5Model'
@@ -24,15 +25,18 @@ const NO_POINTS: readonly HubActivityPoint[] = []
 
 /** The bottom of the sticky top bar, which the hero's field and install card scroll under. */
 function barBottom(): number {
-  return Math.round(document.querySelector('.analytics-topnav')?.getBoundingClientRect().bottom ?? 0)
+  return Math.round(document.querySelector('.site-header')?.getBoundingClientRect().bottom ?? 0)
 }
 
 /**
+ * `animated`: the hub's animated top emotes (animatedFlags), so the conveyor asks 7TV for their stills.
  * `foot`: beside the scope line, under the hero's rule (Show my Twitch follows, 11-01). `games` and `emotes`: what the search offers besides channels (3A).
  * `waiting`: the hub's first answer is still on its way, so the Try row and the scope line keep their room and nothing below moves when they land.
+ * `spikes` and `shares`: the conveyor's colour and its card (the Mix, 11-22); a click on an emote opens it in Top emotes, locked.
  */
-export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emotes, waiting = false }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; foot?: ReactNode; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[]; waiting?: boolean }) {
+export function HubV5Hero({ live, poolSize, points = NO_POINTS, animated, foot, games, emotes, waiting = false, spikes, shares }: { live: readonly HubLiveChannel[]; poolSize: number; points?: readonly HubActivityPoint[]; animated?: ReadonlySet<string>; foot?: ReactNode; games?: readonly HubSearchGame[]; emotes?: readonly HubSearchEmote[]; waiting?: boolean; spikes?: ReadonlyMap<string, ConveyorSpike>; shares?: ConveyorShares | null }) {
   const store = useHubV5SearchStore()
+  const openEmote = useCallback((name: string) => store.actions.emote?.(name), [store])
   const mastRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
   const fieldRef = useRef<HTMLDivElement>(null)
@@ -67,7 +71,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emo
       if (promo) io.observe(promo)
     }
     watch()
-    const bar = document.querySelector('.analytics-topnav')
+    const bar = document.querySelector('.site-header')
     const ro = bar && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(watch) : null
     if (bar) ro?.observe(bar)
     return () => {
@@ -101,7 +105,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, foot, games, emo
 
   return (
     <header className="hv5-mast" ref={mastRef}>
-      <HubV5Conveyor points={points} refs={conveyorRefs} />
+      <HubV5Conveyor points={points} refs={conveyorRefs} animated={animated} spikes={spikes} shares={shares} onOpen={openEmote} />
       <h1 className="hv5-hero-h" ref={titleRef}>Find your streamer</h1>
       <p className="hv5-hero-sub">Chat, emotes and top moments for the Twitch channels we track, minute by minute.</p>
       <div className="hv5-hero-field" ref={fieldRef}>
