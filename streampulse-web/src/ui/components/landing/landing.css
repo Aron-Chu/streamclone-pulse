@@ -92,14 +92,11 @@
 }
 
 /* The side chat: made-up lines (a name with a dot or a dash, a short reaction) at the network's real pace,
-   never real chat words or who wrote them. The two columns lean back toward the headline like the walls of a
-   hall. */
+   never real chat words or who wrote them. The columns stand upright, as chat does (Aron 11-24). */
 .sl-chatbg {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  perspective: 1300px;
-  perspective-origin: 50% 38%;
 }
 
 .sl-chatbg__col {
@@ -118,14 +115,10 @@
 
 .sl-chatbg__col--left {
   left: 0.75rem;
-  transform-origin: 0 50%;
-  transform: rotateY(28deg);
 }
 
 .sl-chatbg__col--right {
   right: 0.75rem;
-  transform-origin: 100% 50%;
-  transform: rotateY(-28deg);
   mask-image:
     linear-gradient(180deg, transparent 0, rgb(0 0 0 / 1) 18%, rgb(0 0 0 / 1) 74%, transparent 100%),
     linear-gradient(270deg, rgb(0 0 0 / 1) 64%, transparent 100%);
