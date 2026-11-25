@@ -121,7 +121,7 @@ for (const [relativePath, title, robots, canonical] of expected) {
   // A prerendered page's trailing-slash twin redirects to it (scripts/prerender.mjs slashRedirects).
   const page = /^(?!_recap-pages\/|analytics-fallback\/|analytics-console-fallback\/|account-fallback\/)(.+?)(?:\/index)?\.html$/.exec(relativePath)?.[1]
   const folder = page === 'index' || page === '404' ? undefined : page
-  if (folder &&existsSync(join(dist, '_redirects')) && !readFileSync(join(dist, '_redirects'), 'utf8').split(/\r?\n/).includes(`/${folder}/ /${folder} 301`)) failures.push(`${relativePath}: /${folder}/ does not redirect to /${folder}`)
+  if (folder && existsSync(join(dist, '_redirects')) && !readFileSync(join(dist, '_redirects'), 'utf8').split(/\r?\n/).includes(`/${folder}/ /${folder} 301`)) failures.push(`${relativePath}: /${folder}/ does not redirect to /${folder}`)
   failures.push(...linkPreviewFailures(relativePath, html, title, canonical))
   if (!textContainsHostedApiOrigin(html)) failures.push(`${relativePath}: hosted API CSP missing`)
   if (!relativePath.startsWith('account-fallback/') && !/<div id="root"[^>]*>[\s\S]*?<h1\b/.test(html)) failures.push(`${relativePath}: missing meaningful prerendered heading`)

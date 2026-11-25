@@ -180,6 +180,11 @@ function SiteMenu({ discord, pathname }: { discord: string | null; pathname: str
     restoreRef.current = true
     setOpen(false)
   }
+  // A link to the page already open goes nowhere, so it hands focus back to Menu like Close.
+  const closeLink = (item: SiteNavItem) => {
+    if (siteNavCurrent(item, pathname) === 'page') restoreRef.current = true
+    setOpen(false)
+  }
 
   return (
     <>
@@ -214,7 +219,7 @@ function SiteMenu({ discord, pathname }: { discord: string | null; pathname: str
                       aria-current={siteNavCurrent(item, pathname)}
                       onClick={() => {
                         onNavClick(item, pathname)
-                        close()
+                        closeLink(item)
                       }}
                     >
                       {item.label}
@@ -226,7 +231,7 @@ function SiteMenu({ discord, pathname }: { discord: string | null; pathname: str
                       switch (VITE_ACCOUNT_HEADER=1) adds the one link. */}
                   <MenuAccountSlot onNavigate={close} />
                   {SITE_FOOTER_ITEMS.map((item) => (
-                    <Link key={item.to} to={item.to} aria-current={siteNavCurrent(item, pathname)} onClick={close}>
+                    <Link key={item.to} to={item.to} aria-current={siteNavCurrent(item, pathname)} onClick={() => closeLink(item)}>
                       {item.label}
                     </Link>
                   ))}
