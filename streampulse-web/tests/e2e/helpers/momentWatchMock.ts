@@ -63,6 +63,15 @@ export interface MomentWatchOptions {
   categoryId?: string
   /** True: the stream answer carries the archive's verified thumbnail. */
   vodThumbnail?: boolean
+  /**
+   * The channel's other streams in its streams list ("More from {channel}"), with each one's recap top
+   * Moments as offsets. The list names only this stream by default.
+   */
+  otherStreams?: Array<{ streamId: string; startedAt: string; recapOffsets: number[]; vodThumbnail?: boolean }>
+  /** The Moments list's hub snapshot's Moments ("More {game} Moments"), as the hub sends them. None by default. */
+  hubMoments?: unknown[]
+  /** Held until this settles: the answers to the channel's streams list and the hub (the reads behind those two sections). */
+  holdMore?: Promise<void>
 }
 
 export interface MomentWatchServed {
@@ -86,6 +95,13 @@ export interface MomentWatchServed {
   /** GETs of the stream's game segments (/games) and of the channel's Twitch profile. */
   gamesCalls: number
   profileCalls: number
+  /** The channel's streams list reads, as their `limit`: the channel lookup asks for 1, "More from" for 24. */
+  channelStreamsCalls: string[]
+  /** GETs of the hub's Moments snapshot (/v1/public/hub?include=livePulseMoments). */
+  hubCalls: string[]
+  /** GETs of another stream's route and recap, as their stream ids. */
+  otherStreamCalls: string[]
+  otherRecapCalls: string[]
   /** Calls to the API that no mock here answered, as "METHOD /path". Every test ends by expecting none. */
   unmatched: string[]
 }
@@ -104,11 +120,12 @@ const comment = (c: { id: string; at: string; body: string; author: string; ago:
 export async function serveMomentWatch(page: Page, options: MomentWatchOptions = {}): Promise<MomentWatchServed> {
   const {
     signedIn = false, canWrite = signedIn, ended = true, recapOffsets = [OFFSET_SECONDS], feedbackStatus = 200,
-    frame = true, clips = [], categoryId, vodThumbnail = false,
+    frame = true, clips = [], categoryId, vodThumbnail = false, otherStreams = [], hubMoments = [], holdMore,
   } = options
   const served: MomentWatchServed = {
     accountCalls: [], feedbackCalls: 0, ratingCalls: [], commentPosts: [], reports: [], commentQueries: [], feedCalls: [],
-    streamCalls: 0, recapCalls: 0, clipCalls: [], frameCalls: [], gamesCalls: 0, profileCalls: 0, unmatched: [],
+    streamCalls: 0, recapCalls: 0, clipCalls: [], frameCalls: [], gamesCalls: 0, profileCalls: 0,
+    channelStreamsCalls: [], hubCalls: [], otherStreamCalls: [], otherRecapCalls: [], unmatched: [],
   }
   let verdict: 'real' | 'not_real' | null = null
   const comments = EXISTING.map(comment)
@@ -195,6 +212,40 @@ export async function serveMomentWatch(page: Page, options: MomentWatchOptions =
       return frame
         ? json(route, { sheetUrl: SHEET_URL, sheetWidth: 1100, sheetHeight: 620, cropX: 220, cropY: 124, cropW: 220, cropH: 124 })
         : json(route, { reason: 'no_storyboard' }, 404)
+    }
+    // The channel's streams list: this stream, newest, then its other streams.
+    if (pathname === `/v1/portal/analytics/channels/${LOGIN}/streams` && method === 'GET') {
+      served.channelStreamsCalls.push(searchParams.get('limit') ?? '')
+      if (searchParams.get('limit') !== '1') await holdMore
+      return json(route, { items: [
+        { streamId: STREAM_ID, login: LOGIN, displayName: CHANNEL, category: GAME, startedAt: STARTED_AT, ...(ended ? { endedAt: ENDED_AT } : {}) },
+        ...otherStreams.map(({ streamId, startedAt }) => ({ streamId, login: LOGIN, displayName: CHANNEL, category: GAME, startedAt })),
+      ] })
+    }
+    const other = /^\/v1\/portal\/analytics\/streams\/(\d+)(\/recap)?$/.exec(pathname)
+    if (other && other[1] !== STREAM_ID && method === 'GET') {
+      const stream = otherStreams.find(s => s.streamId === other[1])
+      ;(other[2] ? served.otherRecapCalls : served.otherStreamCalls).push(other[1]!)
+      if (!stream) return json(route, { error: 'not_found' }, 404)
+      if (other[2]) return json(route, { streamId: stream.streamId, login: LOGIN, durationSeconds: 7200, topMoments: stream.recapOffsets.map(offsetSeconds => ({ offsetSeconds })) })
+      const vodId = `9${stream.streamId.padStart(9, '0')}`
+      return json(route, {
+        channel: LOGIN, vodId, vodAlignSeconds: 0, vodTiming: { state: 'verified' }, vodDurationSeconds: 9000,
+        ...(stream.vodThumbnail ? { vodArtwork: { vodId, kind: 'archive_thumbnail', url: `https://static-cdn.jtvnw.net/cf_vods/fakevods/${vodId}/thumb/thumb0-640x360.jpg` } } : {}),
+        stream: { streamId: stream.streamId, login: LOGIN, channel: LOGIN, displayName: CHANNEL, category: GAME, startedAt: stream.startedAt, endedAt: new Date(Date.parse(stream.startedAt) + 10_800_000).toISOString() },
+      })
+    }
+    // The Moments list's hub snapshot: the shape the hub contract requires, with these Moments.
+    if (pathname === '/v1/public/hub' && method === 'GET') {
+      served.hubCalls.push(searchParams.toString())
+      await holdMore
+      return json(route, {
+        generatedAt: new Date().toISOString(), poolSize: 0,
+        corpus: { streamsTracked: 0, momentsDetected: 0, chatMessagesProcessed: 0, emotesIndexed: 0, vodsAnalyzed: 0 },
+        coverage: { databaseOk: true, state: 'ok' }, activity: { points: [], channelCount: 0, windowMinutes: 30 },
+        liveChannels: [], moments: [], topEmotes: [], topMovers: [],
+        livePulseMoments: hubMoments, livePulseMomentsStatus: hubMoments.length ? 'ready' : 'no_peaks',
+      })
     }
     if (pathname === '/v1/public/moments' && method === 'GET') {
       served.feedCalls.push(searchParams.toString())

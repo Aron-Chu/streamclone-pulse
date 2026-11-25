@@ -17,6 +17,8 @@ const feedbackOn = switchOn('VITE_PUBLIC_MOMENT_FEEDBACK')
 const watchLink = (page: Page, at: string) => page.getByRole('link', { name: `Watch on Twitch from ${at}` })
 const vodHref = (seconds: number) => `https://www.twitch.tv/videos/${VOD_ID}?t=${seconds}s`
 const pictureLabel = (page: Page) => page.locator('.mw-picture .mw-picture-label')
+/** The hub's newest Moment: the "More {game} Moments" rows are minutes before it. */
+const MORE_HUB_AT = Date.parse('2026-11-24T12:00:00Z')
 
 test.describe('Moment page, read-only', () => {
   // To run these, build and run with VITE_PUBLIC_MOMENT_PAGE=1 exported and VITE_PUBLIC_MOMENT_FEEDBACK unset.
@@ -184,6 +186,80 @@ test.describe('Moment page, read-only', () => {
     expect(pillBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height - 1)
     const widths = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }))
     expect(widths.scroll).toBeLessThanOrEqual(widths.inner)
+    expect(served.unmatched).toEqual([])
+  })
+
+  test('below this stream’s Moments: more from the channel and more in its game, read once the page is idle, moving nothing', async ({ page }) => {
+    const live = (login: string, streamId: string, minutesAgo: number, extra: Record<string, unknown> = {}) => ({
+      login, streamId, displayName: login.replace('fakechan', 'FakeChan'), offsetSeconds: 1800, at: MORE_HUB_AT - minutesAgo * 60_000,
+      label: 'Chat spike', kind: 'chat_spike', score: 1, category: GAME, categoryId: CATEGORY_ID,
+      boxArtUrl: `https://static-cdn.jtvnw.net/ttv-boxart/${CATEGORY_ID}-210x280.jpg`, ...extra,
+    })
+    let release = () => {}
+    const holdMore = new Promise<void>(resolve => { release = resolve })
+    const served = await serveMomentWatch(page, {
+      recapOffsets: [OFFSET_SECONDS, 3000], categoryId: CATEGORY_ID, holdMore,
+      // Its first five minutes are never a Moment (100 s).
+      otherStreams: [{ streamId: '9000002', startedAt: '2026-11-08T18:00:00Z', recapOffsets: [1200, 100, 3000, 3600, 4200], vodThumbnail: true }],
+      hubMoments: [
+        live('fakechan01', '9000003', 0),
+        live('fakechan02', '9100002', 1),
+        live('fakechan03', '9100003', 2, { category: 'Other Fake Game', categoryId: '1000001', boxArtUrl: 'https://static-cdn.jtvnw.net/ttv-boxart/1000001-210x280.jpg' }),
+        live('fakechan02', '9100002', 3, { offsetSeconds: 1500 }),
+        live('fakechan04', '9100004', 4),
+        live('fakechan05', '9100005', 5),
+        live('fakechan06', '9100006', 6),
+      ],
+    })
+    await page.goto(PAGE_PATH)
+    const aside = page.getByRole('complementary')
+    const upNext = aside.locator(`a[href="/analytics/moments/${STREAM_ID}/20261110T1850Z"]`)
+    await expect(upNext).toBeVisible()
+    // The sections ask only once the page is idle and this stream's rows are shown; hold the answers to see what was there before.
+    await expect.poll(() => served.channelStreamsCalls.includes('24')).toBe(true)
+    const heading = page.getByRole('heading', { level: 1, name: 'Moment at 0:40:00' })
+    const before = await Promise.all([heading.boundingBox(), upNext.boundingBox()])
+    release()
+
+    const channel = aside.getByRole('region', { name: `More from ${CHANNEL}` })
+    await expect(channel.getByRole('link')).toHaveCount(3)
+    expect(await channel.getByRole('link').evaluateAll(links => links.map(link => link.getAttribute('href')))).toEqual([
+      '/analytics/moments/9000002/20261108T1820Z', '/analytics/moments/9000002/20261108T1850Z', '/analytics/moments/9000002/20261108T1900Z',
+    ])
+    await expect(channel.getByRole('link').first()).toContainText('Moment at 0:20:00')
+    // A channel row's thumbnail is its stream's, labelled as not this moment.
+    await expect(channel.locator('.nc-thumb img').first()).toHaveAttribute('src', /\/cf_vods\/fakevods\/9009000002\//)
+
+    const game = aside.getByRole('region', { name: `More ${GAME} Moments` })
+    await expect(game.getByRole('link')).toHaveCount(3)
+    // Newest first, one per channel, never this channel or another game.
+    expect(await game.getByRole('link').evaluateAll(links => links.map(link => link.getAttribute('href')))).toEqual([
+      '/analytics/moments/9100002/20261124T1159Z', '/analytics/moments/9100004/20261124T1156Z', '/analytics/moments/9100005/20261124T1155Z',
+    ])
+    await expect(game.getByRole('link').first()).toContainText('FakeChan02')
+    await expect(game.locator('[data-kind="game"] img').first()).toHaveAttribute('src', GAME_ART_URL)
+
+    // In order below "More Moments from this stream", and nothing already shown moved.
+    await expect(aside.getByRole('heading', { level: 2 })).toHaveText(['More Moments from this stream', `More from ${CHANNEL}`, `More ${GAME} Moments`])
+    expect(await Promise.all([heading.boundingBox(), upNext.boundingBox()])).toEqual(before)
+    // One list read for the sections (the channel lookup asks for its newest stream apart), one hub read, one recap per other stream.
+    expect(served.channelStreamsCalls.filter(limit => limit === '24')).toHaveLength(1)
+    expect(served.hubCalls).toEqual(['activityWindow=30m&include=livePulseMoments'])
+    expect(served.otherRecapCalls).toEqual(['9000002'])
+    expect(served.streamCalls).toBe(1)
+    expect(served.recapCalls).toBe(1)
+    expect(served.feedbackCalls).toBe(0)
+    expect(served.unmatched).toEqual([])
+  })
+
+  test('with nothing more from the channel or the game, no section and no message', async ({ page }) => {
+    const served = await serveMomentWatch(page, { recapOffsets: [OFFSET_SECONDS, 3000], categoryId: CATEGORY_ID })
+    await page.goto(PAGE_PATH)
+    const aside = page.getByRole('complementary')
+    await expect(aside.getByRole('link', { name: /^Moment at 0:50:00/ })).toBeVisible()
+    await expect.poll(() => served.hubCalls.length).toBe(1)
+    await expect(aside.getByRole('heading', { level: 2 })).toHaveText(['More Moments from this stream'])
+    await expect(aside.locator('.mw-more')).toHaveCount(0)
     expect(served.unmatched).toEqual([])
   })
 

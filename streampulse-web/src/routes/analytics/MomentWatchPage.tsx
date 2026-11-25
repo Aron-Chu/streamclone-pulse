@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useAfterIdle } from '@streampulse/analytics-console/moment-previews'
@@ -11,6 +11,7 @@ import { fromHubMoment, momentSourceFromAnswer, type CheckedMomentSource, type D
 import { momentRecapLists } from '../../lib/discoveryMomentRecap'
 import { forgetFailedMomentReads, isMomentStreamId, loadMomentRecap, loadMomentStream, untilStopped } from '../../lib/momentReads'
 import { loadCategorySegments, momentGameArtAt, type CategorySegment } from '../../lib/momentCategoryArtwork'
+import { momentGameAt } from '../../lib/momentMoreRows'
 import { lookupTwitchProfile } from '../../lib/channelLookup'
 import { loadMomentsFeedItem } from '../../lib/momentsFeed'
 import { momentsFeedEnabled } from '../../lib/momentsFeedFlag'
@@ -27,6 +28,7 @@ import { MomentComments } from '../../ui/components/moments/watch/MomentComments
 import { RealMomentRating } from '../../ui/components/moments/watch/RealMomentRating'
 import { MomentClipRow } from '../../ui/components/moments/watch/MomentClipRow'
 import { MomentUpNext, type UpNextPictures } from '../../ui/components/moments/watch/MomentUpNext'
+import { MomentMoreRows } from '../../ui/components/moments/watch/MomentMoreRows'
 import { formatStreamOffset } from '../../lib/formatStreamOffset'
 // A shared link opens this page first: it loads the analytics shell's own styles (header, sr-only).
 import '../../ui/components/analytics/figma-analytics.css'
@@ -294,6 +296,12 @@ function MomentWatch({ streamId, momentAt, onAlias }: { streamId: string; moment
   const upNextPictures = useMemo<UpNextPictures | null>(() => idle && around && !hidden ? {
     vodId: source?.vodId ?? null, vodAlignSeconds: source?.vodAlignSeconds ?? null, games,
   } : null, [idle, around, source, hidden, games])
+  // "More from {channel}" and "More {game} Moments" read once the page is idle and this stream's list is
+  // shown, so they land below it. The game is the one at the Moment's minute (undefined while it is read).
+  const [upNextShown, setUpNextShown] = useState(false)
+  const onUpNextSettled = useCallback(() => setUpNextShown(true), [])
+  const streamCategory = shown?.stream.category ?? ''
+  const moreGame = useMemo(() => games === null ? undefined : momentGameAt(games, offsetSeconds, streamCategory), [games, offsetSeconds, streamCategory])
 
   useEffect(() => {
     if (shown) document.title = `${momentHeadline(clip, offsetSeconds)} — ${channelName} — StreamPulse`
@@ -389,7 +397,12 @@ function MomentWatch({ streamId, momentAt, onAlias }: { streamId: string; moment
             <h2 id="mw-upnext-title" className="nc-section-title">More Moments from this stream</h2>
             <MomentUpNext moment={stripMoment} streamStartedAtMs={startedMs}
               live={shown.stream.endedAt === null} artwork={source?.archiveArtwork ?? null} pictures={upNextPictures}
-              holdReads={picture.loading} />
+              holdReads={picture.loading} onSettled={onUpNextSettled} />
+            {/* A Moment its channel hid lists nothing more. */}
+            {hidden ? null : (
+              <MomentMoreRows current={{ streamId: shown.streamId, login: shown.stream.login, momentAt: momentAtKey(minuteStartMs) }}
+                channelName={channelName} game={moreGame} enabled={idle && upNextShown} />
+            )}
           </aside>
         </div>
       </>
