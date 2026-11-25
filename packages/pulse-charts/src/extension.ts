@@ -1,8 +1,8 @@
 /**
  * Curated surface for the StreamPulse extension bundle.
  *
- * The extension must not pull portal-only chart machinery (PulseMultiSignalChart
- * and friends) into its content script, so the extension Vite alias points at
+ * The extension must not pull portal-only chart machinery (the session and hub
+ * charts) into its content script, so the extension Vite alias points at
  * this module instead of the full package index. Keep this list limited to what
  * `src/` actually imports from '@streampulse/pulse-charts'.
  */

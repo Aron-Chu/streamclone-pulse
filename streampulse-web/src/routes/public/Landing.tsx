@@ -23,8 +23,6 @@ import type { HubLiveChannel } from '../../lib/publicHub'
 import { HubV5SearchBox } from '../../ui/components/hub/v5/HubV5SearchBox'
 import { HubV5DockSearch } from '../../ui/components/hub/v5/HubV5TopBar'
 import { HubV5Avatar } from '../../ui/components/hub/v5/HubV5Avatar'
-import { LandingChatNow } from '../../ui/components/landing/LandingChatNow'
-import { CHAT_NOW_POLL_MS } from '../../ui/components/landing/landingChatNowModel'
 import { channelHref, channelsByViewers, formatHubInt, hubCategoryArt, hubSearchEmotes, hubSearchGames, whereChatIs, type HubSearchEmote, type HubSearchGame } from '../../ui/components/hub/v5/hubV5Model'
 import { createHubV5SearchStore, HubV5SearchContext, useHubV5SearchStore } from '../../ui/components/hub/v5/hubV5SearchStore'
 
@@ -245,8 +243,8 @@ function Hero({
 }
 
 export default function Landing() {
-  // One read a minute while the tab is visible (the hook skips hidden tabs): the chat band's "right now" needs fresh counts.
-  const { data, loading } = usePublicHubData({ pollMs: CHAT_NOW_POLL_MS, activityWindow: '30m', projection: 'tickers' })
+  // Marketing needs one bounded snapshot, not a full analytics poll loop.
+  const { data } = usePublicHubData({ pollMs: 0, activityWindow: '30m', projection: 'tickers' })
   const emoteItems = useMemo(() => buildEmoteTicker(data), [data])
   const moverItems = useMemo(() => buildMoverTicker(data), [data])
   const live = data?.liveChannels ?? NO_LIVE
@@ -308,8 +306,6 @@ export default function Landing() {
         <TopNav discord={discord} heroButtons={heroButtons} live={live} games={searchGames} emotes={searchEmotes} />
         <main id="landing-main" tabIndex={-1} className="sl-main" ref={mainRef}>
           <Hero live={live} games={searchGames} emotes={searchEmotes} emoteItems={emoteItems} moverItems={moverItems} />
-          {/* Fastest chats (board 11-22, ★ 1A 2A 3A): the five busiest live chats, in the band before the demo. */}
-          <LandingChatNow hub={data} loading={loading} />
 
           {/* tabIndex: the hero's cue moves focus here, so a keyboard carries on from the demo */}
           <section id="demo" className="sl-section" aria-labelledby="demo-title" tabIndex={-1}>

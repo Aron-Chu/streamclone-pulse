@@ -48,24 +48,6 @@ vi.mock('../src/lib/publicHub', async (importOriginal) => {
   }
 })
 
-vi.mock('../src/lib/publicApi', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/lib/publicApi')>()
-  return {
-    ...actual,
-    fetchPublicStats: () =>
-      Promise.resolve({
-        data: {
-          streamsTracked: 512,
-          momentsDetected: 8400,
-          chatMessagesProcessed: 263_500,
-          emotesIndexed: 206_600,
-          vodsAnalyzed: 1280,
-          updatedAt: new Date().toISOString(),
-        },
-      }),
-  }
-})
-
 function renderLanding() {
   return render(
     <MemoryRouter>
@@ -103,9 +85,8 @@ describe('landing page', () => {
     expect(dock!.hasAttribute('data-shown')).toBe(false)
     expect(document.querySelector<HTMLButtonElement>('.sl-header .hv5-dock-btn')!.hidden).toBe(true)
     // BrainChat, coming later, right after the demo (board extension-brainchat 11-22, ★ B1). The Fastest chats band
-    // keeps its place above the demo even with no hub answer (11-23).
+    // is gone (debloat board 11-24): the hero leads straight to the demo.
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      'Fastest chats',
       expect.stringMatching(/see it beside twitch chat/i),
       'BrainChat',
       'Twitch chat stats by streamer',
@@ -186,9 +167,9 @@ describe('landing page', () => {
     const samples = container.querySelectorAll('details.sl-optional-demo')
     expect(samples).toHaveLength(0)
     expect(container.querySelector('.sl-herobg')).not.toBeNull()
-    // The Fastest chats band holds its place between the hero and the demo, with or without a hub answer (11-23).
-    expect(container.querySelector('main > section:nth-child(2)')?.className).toBe('sl-cn')
-    expect(container.querySelector('main > section:nth-child(3)')?.id).toBe('demo')
+    // The demo follows the hero directly (debloat board 11-24: the Fastest chats band is gone).
+    expect(container.querySelector('main > section:nth-child(2)')?.id).toBe('demo')
+    expect(container.querySelector('.sl-cn')).toBeNull()
     // The hero's cue (★ A1) leads to the demo, which takes focus from it; BrainChat's card follows the demo.
     const cue = screen.getByRole('link', { name: 'See the extension beside Twitch chat' })
     expect(cue.getAttribute('href')).toBe('#demo')

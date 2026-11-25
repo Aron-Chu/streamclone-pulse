@@ -65,7 +65,7 @@ describe('local backend override respects the explicit dev opt-in', () => {
  * The removed beta-key login left `sp.betaKey` in site storage. Every site
  * load deletes it, production included, and leaves every other key alone.
  */
-describe('removed beta-key cleanup', () => {
+describe('removed site keys cleanup', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.resetModules()
@@ -77,32 +77,34 @@ describe('removed beta-key cleanup', () => {
     localStorage.clear()
   })
 
-  it('clearRemovedBetaKey deletes sp.betaKey and leaves other sp.* keys alone', async () => {
+  it('clearRemovedSiteKeys deletes sp.betaKey and sp.hub.recentLogins and leaves other sp.* keys alone', async () => {
     vi.stubEnv('PROD', true)
-    const { clearRemovedBetaKey } = await import('../src/lib/auth')
+    const { clearRemovedSiteKeys } = await import('../src/lib/auth')
     localStorage.setItem('sp.betaKey', 'secret-one')
     localStorage.setItem('sp.hub.recentLogins', '["creator"]')
+    localStorage.setItem('sp.chart.scrollZoom.v1', 'on')
     localStorage.setItem('sp:publicHub:v1:x', '{}')
 
-    clearRemovedBetaKey()
+    clearRemovedSiteKeys()
 
     expect(localStorage.getItem('sp.betaKey')).toBeNull()
-    expect(localStorage.getItem('sp.hub.recentLogins')).toBe('["creator"]')
+    expect(localStorage.getItem('sp.hub.recentLogins')).toBeNull()
+    expect(localStorage.getItem('sp.chart.scrollZoom.v1')).toBe('on')
     expect(localStorage.getItem('sp:publicHub:v1:x')).toBe('{}')
   })
 
   it('does not throw when site storage is blocked', async () => {
-    const { clearRemovedBetaKey } = await import('../src/lib/auth')
+    const { clearRemovedSiteKeys } = await import('../src/lib/auth')
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
       throw new DOMException('blocked', 'SecurityError')
     })
 
-    expect(() => clearRemovedBetaKey()).not.toThrow()
+    expect(() => clearRemovedSiteKeys()).not.toThrow()
   })
 
   it('runs on every page load from the site bootstrap', () => {
     const main = readFileSync(resolve(process.cwd(), 'src/main.tsx'), 'utf8')
     const bootstrap = /async function bootstrap\(\) \{[\s\S]*?\n\}/.exec(main)?.[0] ?? ''
-    expect(bootstrap).toContain('clearRemovedBetaKey()')
+    expect(bootstrap).toContain('clearRemovedSiteKeys()')
   })
 })

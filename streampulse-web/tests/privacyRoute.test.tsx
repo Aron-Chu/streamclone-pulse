@@ -27,7 +27,7 @@ describe('privacy route', () => {
     expect(screen.queryByRole('heading', { name: /operator console/i })).toBeNull()
     expect(screen.queryByRole('heading', { name: /^docs$/i })).toBeNull()
     expect(screen.getByText(/storage\.local/i)).toBeTruthy()
-    expect(screen.getByText(/sp\.hub\.recentLogins/i)).toBeTruthy()
+    expect(screen.queryByText(/sp\.hub\.recentLogins/i)).toBeNull()
     expect(screen.getByText(/sp:publicHub:v1/i)).toBeTruthy()
     expect(screen.getByText(/sp:publicHubProjection:v1/i)).toBeTruthy()
     expect(screen.queryByText(/sp\.betaKey/i)).toBeNull()

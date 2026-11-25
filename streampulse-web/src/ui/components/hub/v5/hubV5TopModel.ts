@@ -24,11 +24,13 @@
 import { compareStreamEdgeLast, formatLiftRatio, streamEdgeLabel, type StreamEdgeKind } from '@streampulse/pulse-core'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import { avatarImage, boxArtImage, checkMoment, clk, EARLY_STREAM_MIN, EARLY_STREAM_WORDS, earlyInStream, edgeFlag, emoteImage, feedStreamEnds, int, momentEdge, topBursts, TOP_BURST_MS, when, type CheckedMoment } from '../../../../lib/momentsChecked'
-import { momentsFeedFrom, type MomentsFeedCategoryFacet, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
-import type { MomentVodRef } from '../../../../lib/momentsFeedVod'
+import { momentsFeedFrom, type MomentsFeedCategoryFacet, type MomentsFeedItem, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
 import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
 import { hubCategoryArt, momentHref, momentRowKey, momentRowsV5 } from './hubV5Model'
 import { momentPageHref } from '../../../../lib/momentPageFlag'
+
+/** What a VOD lookup needs of a moment: a Moments-list item, or a hub moment named the same way. */
+export type MomentVodRef = Pick<MomentsFeedItem, 'id' | 'login' | 'streamId' | 'offsetSeconds'>
 
 /** Rows the list shows. */
 export const TOP_ROWS = 20

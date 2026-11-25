@@ -14,14 +14,10 @@ const MIN = 60_000
 // The hub answer of 2026-10-30 07:19Z, trimmed: its rows are aldo_geo, e11ysa, findjeremiah and supertf.
 const capture = normalizePublicHub(JSON.parse(readFileSync(resolve(__dirname, 'fixtures/hub_live_pulse_20261030.json'), 'utf8')))
 
-const feed = vi.hoisted(() => ({ load: vi.fn(), vod: vi.fn() }))
+const feed = vi.hoisted(() => ({ load: vi.fn() }))
 vi.mock('../src/lib/momentsFeed', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/momentsFeed')>()),
   loadMomentsWindow: feed.load,
-}))
-vi.mock('../src/lib/momentsFeedVod', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/lib/momentsFeedVod')>()),
-  momentVods: { peek: () => undefined, read: feed.vod },
 }))
 
 import { formatLiftRatio, formatLiftWords } from '@streampulse/pulse-core'
@@ -98,7 +94,6 @@ beforeEach(() => {
   vi.setSystemTime(NOW)
   items = fixture.items
   feed.load.mockReset().mockImplementation((q: MomentsWindowQuery) => Promise.resolve(answer(items, q)))
-  feed.vod.mockReset().mockResolvedValue(null)
   Element.prototype.scrollIntoView = vi.fn()
 })
 afterEach(() => {

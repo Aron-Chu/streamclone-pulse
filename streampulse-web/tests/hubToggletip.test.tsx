@@ -7,9 +7,6 @@ import {
   HubToggletip,
   resetHubToggletipForTests,
 } from '../src/ui/components/hub/d3/HubToggletip'
-import { HubBucketCardHost, type HubBucketCardHostProps } from '../src/ui/components/hub/bucket-card/HubBucketCardHost'
-import { HubIntervalSection, type HubIntervalSectionProps } from '../src/ui/components/hub/bucket-card/HubIntervalSection'
-import { resetHubBucketSelectionForTests } from '../src/lib/hubBucketSelection'
 
 const popover = () => document.querySelector<HTMLElement>('.hub-tip-pop')
 
@@ -180,21 +177,5 @@ describe('d3 hub tokens (F2)', () => {
       expect(css).not.toMatch(new RegExp(`^\\s*${token}\\s*:`, 'm'))
     }
     expect(css).toContain('var(--sp-accent, #5eead4)')
-  })
-})
-
-describe('bucket card stubs (U7 fills them)', () => {
-  it('render nothing without a selection', () => {
-    resetHubBucketSelectionForTests()
-    const cardProps: HubBucketCardHostProps = { points: [], bucketMinutes: 6, activityWindow: '24h', category: null }
-    const listProps: HubIntervalSectionProps = { activityWindow: '24h', bucketMinutes: 6 }
-    const { container } = render(
-      <>
-        <HubBucketCardHost {...cardProps} />
-        <HubIntervalSection {...listProps} />
-      </>,
-    )
-    expect(container.innerHTML).toBe('')
-    expect(document.querySelector('.hub-tip-pop')).toBeNull()
   })
 })

@@ -12,7 +12,7 @@ export default defineConfig({
     jsx: 'automatic',
   },
   resolve: {
-    dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query', 'zustand'],
+    dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query'],
     alias: [
       {
         find: /^@streampulse\/pulse-charts\/(.*)$/,
