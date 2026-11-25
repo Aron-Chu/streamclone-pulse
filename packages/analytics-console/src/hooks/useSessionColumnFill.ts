@@ -273,24 +273,33 @@ export function useEdgeFade<T extends HTMLElement>(fade = 24): (el: T | null) =>
       el.style.setProperty('--ft', `${Math.round(clamp(top, 0, fade))}px`)
       el.style.setProperty('--fb', `${Math.round(clamp(rest, 0, fade))}px`)
     }
-    // The first read and row changes wait for the next frame: reading the scroll height inside React's
-    // commit forces the page's layout into that task (mobile TBT, PR #122 bench).
+    // Every read waits for the next frame: reading the scroll height inside React's commit, or on each
+    // scroll event, forces the page's layout into that task (mobile TBT, PR #122 bench; S1 11-19).
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(update)
     }
     schedule()
-    el.addEventListener('scroll', update, { passive: true })
-    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
-    resize?.observe(el)
-    // Rows added or removed change the scroll height without resizing the box.
-    const mutations = typeof MutationObserver === 'undefined' ? null : new MutationObserver(schedule)
-    mutations?.observe(el, { childList: true, subtree: true })
+    el.addEventListener('scroll', schedule, { passive: true })
+    // Rows added or removed change the scroll height without resizing the box, but they resize the list
+    // inside it: the observer watches the box and its direct children. A child swapped in (a loading
+    // state for the list) is observed when it lands. This replaced a subtree MutationObserver, which
+    // re-read the height on every text change in the column (about 500 ms on a phone, S1 11-19).
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule)
+    const watch = () => {
+      if (!resize) return
+      resize.disconnect()
+      resize.observe(el)
+      for (const child of Array.from(el.children)) resize.observe(child)
+    }
+    watch()
+    const swaps = typeof MutationObserver === 'undefined' || !resize ? null : new MutationObserver(() => { watch(); schedule() })
+    swaps?.observe(el, { childList: true })
     detach.current = () => {
       if (frame) cancelAnimationFrame(frame)
       frame = 0
-      el.removeEventListener('scroll', update)
+      el.removeEventListener('scroll', schedule)
       resize?.disconnect()
-      mutations?.disconnect()
+      swaps?.disconnect()
     }
   }, [fade])
 }

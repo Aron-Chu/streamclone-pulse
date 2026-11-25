@@ -78,6 +78,28 @@ describe('moment minute window', () => {
     expect(window.unrecordedMinutes).toBe(2)
   })
 
+  it('carries emotes per minute only where a measured minute counted them', () => {
+    const minutes = [
+      row(-2, { chatCount: 50, totalEmoteCount: 12 }),
+      row(-1, { chatCount: 60 }),
+      row(0, { chatCount: 80, totalEmoteCount: 30 }),
+      row(1, { chatCount: 40, totalEmoteCount: 'many' }),
+      row(2, { missing: true, chatCount: 20, totalEmoteCount: 5 }),
+      row(3, { chatCount: 30, totalEmoteCount: 0 }),
+    ]
+    const window = momentMinuteWindowFromMinutes(moment, payload(minutes), NOW)!
+    const at = (relative: number) => window.slots[relative + 30]
+    expect(at(-2)).toEqual({ relative: -2, state: 'measured', chatPerMin: 50, emotesPerMin: 12 })
+    expect(at(0)).toEqual({ relative: 0, state: 'measured', chatPerMin: 80, emotesPerMin: 30 })
+    // No count, or one that is not a number: the minute stays a chat minute alone.
+    expect(at(-1)).toEqual({ relative: -1, state: 'measured', chatPerMin: 60 })
+    expect(at(1)).toEqual({ relative: 1, state: 'measured', chatPerMin: 40 })
+    // A minute the rollup flags missing carries nothing, whatever its fields say.
+    expect(at(2)).toEqual({ relative: 2, state: 'unmeasured', chatPerMin: null })
+    // Zero emotes is a count.
+    expect(at(3)).toEqual({ relative: 3, state: 'measured', chatPerMin: 30, emotesPerMin: 0 })
+  })
+
   it('is complete only once a minute past the window has arrived', () => {
     // The +10 minute itself may still be accumulating on a live broadcast.
     const through = (last: number) => Array.from({ length: last + 31 }, (_, index) => row(index - 30, { chatCount: 100 }))

@@ -1,139 +1,196 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installMockApi } from './helpers/mockApi'
-import {
-  assertAnimatedTourAdvances,
-  assertAnimatedTourHidesPanelScrollbar,
-  assertPanelHasNoHorizontalOverflow,
-  assertStaticTourNativeScroll,
-  scrollSceneToProgress,
-  scrollTourToStep,
-} from './helpers/scrollTour'
 
-const TOUR_BEATS = [1, 2, 3, 4] as const
-const SCROLL_THROUGH_STEPS = 8
+// The front page's demo beside Twitch chat (board extension-brainchat 11-22, ★ A1 cue, ★ E1 push-in): a Twitch-style
+// page with the extension's column, a three.js stream of a cat on a store shelf (with motion and WebGL) and five steps.
 
-test.describe('landing extension showcase parity', () => {
-  test.beforeEach(async ({ page }) => {
-    await installMockApi(page)
+const CUE = 'See the extension beside Twitch chat'
+
+/** Nothing leaves the machine: the mock API answers what it knows, any other API call gets a 503, other sites are blocked. */
+async function offline(page: Page, baseURL: string | undefined) {
+  const app = new URL(baseURL ?? 'http://127.0.0.1:5173').origin
+  await page.route('**/*', (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.startsWith('/v1/')) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' })
+    if (url.origin !== app) return route.abort('blockedbyclient')
+    return route.continue()
+  })
+  // Registered last, so its routes answer first.
+  await installMockApi(page)
+}
+
+async function openHome(page: Page) {
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15_000 })
+  // The page arrives prerendered and the app then draws it again in place, about a quarter second in. Wait for the
+  // app's own heading (React marks its nodes), so no test holds a prerendered node that is about to be swapped out.
+  await page.waitForFunction(() => {
+    const heading = document.querySelector('#root h1')
+    return heading != null && Object.keys(heading).some((key) => key.startsWith('__reactFiber'))
+  }, null, { timeout: 15_000 })
+}
+
+async function scrollToDemo(page: Page) {
+  await page.locator('#demo .sl-container > div:nth-child(2)').scrollIntoViewIfNeeded()
+  await expect(page.locator('.es-demo .es')).toBeVisible({ timeout: 15_000 })
+}
+
+/** The stage's box, and the content column it sits in. */
+async function stageBox(page: Page) {
+  return page.locator('.es-demo .es').evaluate((stage) => {
+    const box = stage.getBoundingClientRect()
+    const column = stage.closest('.sl-container')!
+    const style = getComputedStyle(column)
+    const outer = column.getBoundingClientRect()
+    const left = outer.left + parseFloat(style.paddingLeft)
+    const right = outer.right - parseFloat(style.paddingRight)
+    return { width: box.width, height: box.height, left: box.left, right: box.right, columnLeft: left, columnRight: right }
+  })
+}
+
+async function assertNoPageOverflow(page: Page) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+}
+
+test.describe('landing demo beside Twitch chat', () => {
+  test.beforeEach(async ({ page, baseURL }) => {
+    await offline(page, baseURL)
   })
 
-  for (const beat of TOUR_BEATS) {
-    test(`pulse panel tour beat ${beat}`, async ({ page }) => {
-      await page.setViewportSize({ width: 1440, height: 900 })
-      await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-      await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
-        timeout: 15_000,
-      })
-
-      await scrollTourToStep(page, beat)
-
-      const panel = page.locator('.sl-xtour__panel .pulse-landing-panel')
-      await expect(panel).toBeVisible()
-      await expect(panel.getByRole('tab', { name: 'Pulse' })).toBeVisible()
-      await expect(panel.getByRole('heading', { name: 'Stream Pulse' })).toBeVisible()
-
-      if (beat === 1) {
-        await expect(panel.getByText('Live now')).toBeVisible()
-        await expect(panel.locator('svg[aria-label="Stream overview chart"]')).toBeVisible()
-      }
-      if (beat === 2) {
-        await expect(panel.getByText('Data coverage')).toBeVisible()
-      }
-      if (beat === 3) {
-        await expect(panel.locator('[data-tour-step="3"].is-live')).toBeVisible()
-      }
-      if (beat === 4) {
-        await expect(panel.getByText(/Past streams/i)).toBeVisible()
-      }
-
-      await assertPanelHasNoHorizontalOverflow(page)
-      await assertAnimatedTourHidesPanelScrollbar(page)
-
-      await expect(panel).toHaveScreenshot(`landing-extension-beat-${beat}.png`, {
-        maxDiffPixelRatio: 0.03,
-      })
-    })
-  }
-
-  for (let i = 0; i < SCROLL_THROUGH_STEPS; i++) {
-    test(`full panel scroll-through step ${i}`, async ({ page }) => {
-      await page.setViewportSize({ width: 1440, height: 900 })
-      await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-      await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
-        timeout: 15_000,
-      })
-
-      const progress = i / (SCROLL_THROUGH_STEPS - 1)
-      await scrollSceneToProgress(page, progress)
-
-      const panel = page.locator('.sl-xtour__panel .pulse-landing-panel')
-      await expect(panel).toBeVisible()
-      await expect(panel.getByRole('tab', { name: 'Pulse' })).toBeVisible()
-      await expect(panel.getByRole('heading', { name: 'Stream Pulse' })).toBeVisible()
-      await expect(panel.locator('[data-tour-step="1"]')).toBeAttached()
-      await expect(panel.locator('[data-tour-step="2"]')).toBeAttached()
-      await expect(panel.locator('[data-tour-step="3"]')).toBeAttached()
-      await expect(panel.locator('[data-tour-step="4"]')).toBeAttached()
-
-      const emoteImg = panel.locator('.pulse-emote-img').first()
-      if (await emoteImg.count()) {
-        const src = await emoteImg.getAttribute('src')
-        expect(src?.startsWith('https://')).toBe(true)
-      }
-
-      await assertPanelHasNoHorizontalOverflow(page)
-      await assertAnimatedTourHidesPanelScrollbar(page)
-
-      await expect(panel).toHaveScreenshot(`landing-extension-scroll-${i}.png`, {
-        maxDiffPixelRatio: 0.03,
-      })
-    })
-  }
-
-  test('reduced motion renders static scrollable panel', async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' })
+  test('the hero cue scrolls to the demo, focuses it and plays it from the top to the jump', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-
-    const tour = page.locator('.sl-xtour')
-    await expect(tour).toHaveAttribute('data-static', '')
-    const panel = tour.locator('.pulse-landing-panel')
-    await expect(panel).toBeVisible()
-    await expect(panel.locator('[data-tour-step="4"]')).toBeVisible()
-    await expect(panel.getByRole('tab', { name: 'Pulse' })).toBeVisible()
-    await assertStaticTourNativeScroll(page)
-
-    await expect(panel).toHaveScreenshot('landing-extension-static-full.png', {
-      maxDiffPixelRatio: 0.03,
-    })
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await openHome(page)
+    const cue = page.getByRole('link', { name: CUE })
+    await expect(cue).toBeVisible()
+    await expect(cue).toHaveAttribute('href', '#demo')
+    await cue.click()
+    await expect(page.locator('#demo')).toBeFocused()
+    // The cue fades once the page has scrolled.
+    await expect(cue).toHaveAttribute('data-gone', '')
+    const stage = page.locator('.es-demo .es')
+    await expect(stage).toBeVisible({ timeout: 15_000 })
+    // Before the run the stage holds step 4; the cue starts it at step 1, then Pulse marks the spike.
+    await expect(stage).toHaveAttribute('data-beat', '1', { timeout: 10_000 })
+    await expect(stage).toHaveAttribute('data-beat', '4', { timeout: 15_000 })
+    await expect(page.locator('.es-step[aria-current="step"]')).toHaveText(/5\s*Lands just before it/)
+    await expect(stage).toHaveAttribute('data-cam', 'out', { timeout: 5_000 })
+    // The clock scrubs in 16 short steps; software WebGL under parallel workers can hold each one back.
+    await expect(page.locator('.es-time span').first()).toHaveText(/^1:3[67]:\d\d$/, { timeout: 10_000 })
+    // Chat lines are text: a made-up name and the line.
+    expect(await page.locator('.es-lines img').count()).toBe(0)
   })
 
-  test('narrow 960px keeps pinned scroll animation', async ({ page }) => {
-    await page.setViewportSize({ width: 960, height: 800 })
-    await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
-      timeout: 15_000,
+  test('the stage keeps the 1120 x 700 shape, fits its column, and draws the stream when WebGL is there', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await openHome(page)
+    await scrollToDemo(page)
+    const box = await stageBox(page)
+    expect(box.width).toBeLessThanOrEqual(1120)
+    expect(Math.abs(box.height - Math.round((box.width * 700) / 1120))).toBeLessThanOrEqual(1)
+    expect(box.left).toBeGreaterThanOrEqual(box.columnLeft - 1)
+    expect(box.right).toBeLessThanOrEqual(box.columnRight + 1)
+    await expect(page.locator('.es-demo')).toHaveAttribute('data-cap', 'beside')
+    for (const picture of ['.es-p-base', '.es-tab-pulse', '.es-settings']) {
+      expect(await page.locator(picture).evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
+    }
+    // The scene needs WebGL 2 on a graphics card; on a software renderer (headless SwiftShader) or none, the
+    // pictures stay. Same rule as hasWebGL() in LandingBesideChat.tsx.
+    const webgl = await page.evaluate(() => {
+      const gl = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: true })
+      if (!gl) return false
+      let renderer = String(gl.getParameter(gl.RENDERER) || '')
+      if (!renderer || /^webkit webgl$/i.test(renderer)) {
+        const info = gl.getExtension('WEBGL_debug_renderer_info')
+        if (info) renderer = String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || renderer)
+      }
+      return !/swiftshader|llvmpipe|softpipe|lavapipe|software|basic render driver/i.test(renderer)
     })
-    await assertAnimatedTourAdvances(page)
+    if (webgl) await expect(page.locator('.es-demo .es')).toHaveAttribute('data-scene', '', { timeout: 15_000 })
+    else await expect(page.locator('.es-poster').first()).toBeVisible()
+    await assertNoPageOverflow(page)
   })
 
-  test('mid laptop 1280x720 keeps pinned scroll animation', async ({ page }) => {
+  test('each step holds still when picked, and Play again runs it from the top', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 })
-    await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
-      timeout: 15_000,
-    })
-    await assertAnimatedTourAdvances(page)
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await openHome(page)
+    await scrollToDemo(page)
+    const stage = page.locator('.es-demo .es')
+    const steps = page.getByRole('group', { name: 'Demo steps' }).getByRole('button')
+    await expect(steps).toHaveCount(5)
+    await steps.nth(2).click()
+    await expect(stage).toHaveAttribute('data-beat', '2')
+    await expect(stage).toHaveAttribute('data-cam', 'in')
+    await expect(steps.nth(2)).toHaveAttribute('aria-current', 'step')
+    await steps.nth(0).click()
+    await expect(stage).toHaveAttribute('data-beat', '0')
+    expect(await page.locator('.es-lines .es-cl').count()).toBeGreaterThan(0)
+    // A step holds: it does not play on by itself.
+    await page.waitForTimeout(2_500)
+    await expect(stage).toHaveAttribute('data-beat', '0')
+    await page.getByRole('button', { name: 'Play again' }).click()
+    await expect(stage).toHaveAttribute('data-beat', '1', { timeout: 10_000 })
   })
 
-  test('narrow reduced motion stays static and native-scrollable', async ({ page }) => {
+  test('a phone gets the tall stage, step numbers and the words under it, with no sideways scroll', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await openHome(page)
+    await expect(page.getByRole('link', { name: CUE })).toBeVisible()
+    await scrollToDemo(page)
+    const demo = page.locator('.es-demo')
+    await expect(demo).toHaveAttribute('data-phone', '')
+    await expect(demo).toHaveAttribute('data-cap', 'below')
+    const box = await stageBox(page)
+    expect(box.height).toBeGreaterThan(box.width)
+    expect(box.height).toBeLessThanOrEqual(640)
+    await expect(page.locator('.es-steps-cap')).toBeVisible()
+    await assertNoPageOverflow(page)
+  })
+
+  test('reduced motion holds one still step with the stream picture and loads no three.js', async ({ page }) => {
+    // The built chunk, or the dev server's module and its pre-bundled three.
+    const scene = /catStreamScene|\/deps\/three\.js|\/three[-.][\w-]*\.js/i
+    const scripts: string[] = []
+    page.on('request', (request) => { if (scene.test(new URL(request.url()).pathname)) scripts.push(request.url()) })
+    await page.setViewportSize({ width: 1440, height: 900 })
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.setViewportSize({ width: 960, height: 800 })
-    await page.goto('/#demo', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: /see it beside twitch chat/i })).toBeVisible({
-      timeout: 15_000,
-    })
-    await assertStaticTourNativeScroll(page)
-    await expect(page.locator('.pulse-landing-panel [data-tour-step="4"]')).toBeVisible()
+    await openHome(page)
+    await page.getByRole('link', { name: CUE }).click()
+    await expect(page.locator('#demo')).toBeFocused()
+    const stage = page.locator('.es-demo .es')
+    await expect(stage).toBeVisible({ timeout: 15_000 })
+    await page.waitForTimeout(1_500)
+    await expect(stage).toHaveAttribute('data-beat', '3')
+    await expect(stage).not.toHaveAttribute('data-scene', '')
+    await expect(page.locator('.es-poster').first()).toBeVisible()
+    expect(scripts).toEqual([])
+  })
+})
+
+test.describe('BrainChat, coming later, under the demo (★ B1)', () => {
+  test.beforeEach(async ({ page, baseURL }) => {
+    await offline(page, baseURL)
+  })
+
+  test('draws the chart, swaps the read-out from its pins and links to the demo page', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openHome(page)
+    const card = page.getByRole('region', { name: 'BrainChat' })
+    await card.scrollIntoViewIfNeeded()
+    await expect(card.getByText('Coming later')).toBeVisible()
+    const pins = card.getByRole('button', { name: /^Moment \d/ })
+    await expect(pins).toHaveCount(3)
+    await expect(pins.first()).toHaveAttribute('aria-pressed', 'true')
+    const title = card.locator('.sl-bc__read h3')
+    const before = await title.textContent()
+    await pins.nth(1).click()
+    await expect(pins.nth(1)).toHaveAttribute('aria-pressed', 'true')
+    await expect(title).not.toHaveText(before ?? '')
+    await expect(card.locator('.sl-bc__chart')).not.toHaveAttribute('data-draw', 'ready')
+    await expect(card.getByRole('link', { name: 'See the demo' })).toHaveAttribute('href', '/brainchat')
+    await assertNoPageOverflow(page)
   })
 })

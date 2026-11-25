@@ -3,13 +3,26 @@
  * the live pool. Channel, Game, Viewers, Chat/min, vs own avg; 10 rows and
  * "Show 10 more"; a filter field and the game chip from Where chat is. A dash
  * means not measured, with the reason for screen readers and on hover.
+ *
+ * Livelier rows (11-21): the game's small cover beside its name (as Picking up
+ * and Where chat is show it), chat/min with Where chat is's purple bar against
+ * the highest chat/min in the list, and "+93%" beside a channel the backend
+ * picked as climbing (hubV5FeedModel feedClimbing), as the rail lists it.
+ *
+ * Rows slide on refresh (3A, Aron 11-22): when a new read lands with the same
+ * filter, game, sort and range, a row that changed place slides from its old
+ * row to its new one in 240 ms (FLIP: only its transform moves), a row new to
+ * the page fades in, and a changed figure fades in. Nothing counts up. Sorting,
+ * filtering, paging, a range switch, the first rows and reduced motion snap.
  */
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { HubLiveChannel } from '../../../../lib/publicHub'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Avatar, HubV5Dash } from './HubV5Avatar'
 import { HubV5Icon } from './HubV5Icon'
+import { GameArt } from './HubV5Rack'
+import { feedPct, type FeedClimbRow } from './hubV5FeedModel'
 import {
   HUB_CHANNEL_SORTS,
   channelChat,
@@ -59,9 +72,32 @@ export interface HubV5ChannelsProps {
   sortRequest?: { id: number; sort: HubChannelSort; dir: 1 | -1 } | null
   /** The window of the hub answer on screen (the old one while a new range loads); on 30m and 24h a screener outage fills Chat/min with the recent average (up to 35 min) (candidate, 10-30). */
   windowKey?: string
+  /** Vetted box art by game name (the page's map from the Moments list); without it a cover is looked up by name. */
+  art?: ReadonlyMap<string, string>
+  /** The backend's climbing picks on screen (the rail's Climbing list); each shows "+93%" beside its name. */
+  climbing?: readonly FeedClimbRow[]
 }
 
-export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, unavailable = false, loading = false, savedAt = null, nowMs, game, onClearGame, sortRequest, windowKey }, ref) {
+const climbWords = (pct: number) => `, ${Math.round(pct)}% busier than the 5 minutes before`
+
+// The public prerender renders the hub with no window.
+const calm = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+const SLIDE: KeyframeAnimationOptions = { duration: 240, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
+const FADE_ROW: KeyframeAnimationOptions = { duration: 200, easing: 'ease-out' }
+const FADE_FIG: KeyframeAnimationOptions = { duration: 180, easing: 'ease-out' }
+const fadeIn = (el: Element | null | undefined, timing: KeyframeAnimationOptions) => {
+  el?.animate?.([{ opacity: 0 }, { opacity: 1 }], timing)
+}
+
+/** What the table showed, to tell a refresh from any other change: its rows in order and their figures. */
+interface ShownRows {
+  live: readonly HubLiveChannel[]
+  view: string
+  order: string[]
+  figs: Map<string, readonly [string, string]>
+}
+
+export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(function HubV5Channels({ live, poolSize, unavailable = false, loading = false, savedAt = null, nowMs, game, onClearGame, sortRequest, windowKey, art, climbing }, ref) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<HubChannelSort>('viewers')
   const [dir, setDir] = useState<1 | -1>(-1)
@@ -86,6 +122,46 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
   const rows = useMemo(() => channelRows(live, { q, game, sort, dir, basis }), [live, q, game, sort, dir, basis])
   const visible = rows.slice(0, n)
   const left = rows.length - visible.length
+  // the bars measure against the highest chat/min in the list as filtered, so they keep their lengths while paging
+  const chatMax = useMemo(() => rows.reduce((max, c) => Math.max(max, channelChat(c, basis) ?? 0), 0), [rows, basis])
+  const climbBy = useMemo(() => new Map((climbing ?? []).map((x) => [x.login, x.pct])), [climbing])
+
+  // 3A: after every commit, note what the table shows; when only the read changed, slide the rows from where they were.
+  // A row's old place is where the row now at its old index sits (rows are one height), so a resize between reads
+  // never reads as a move.
+  const tbodyRef = useRef<HTMLTableSectionElement>(null)
+  const shownRef = useRef<ShownRows | null>(null)
+  const view = `${q}|${game ?? ''}|${sort}|${dir}|${basis}|${windowKey ?? ''}`
+  useLayoutEffect(() => {
+    const figs = new Map(visible.map((c) => {
+      const chat = channelChat(c, basis)
+      return [c.login, [formatHubInt(c.viewers), chat != null ? formatHubRate(chat) : '']] as const
+    }))
+    const prev = shownRef.current
+    shownRef.current = { live, view, order: visible.map((c) => c.login), figs }
+    const body = tbodyRef.current
+    if (!prev || !body || prev.live === live || prev.view !== view || !prev.order.length || calm()) return
+    const trs = Array.from(body.querySelectorAll<HTMLTableRowElement>('tr[data-login]'))
+    const was = new Map(prev.order.map((login, i) => [login, i]))
+    trs.forEach((tr, i) => {
+      const login = tr.dataset.login ?? ''
+      const j = was.get(login)
+      if (j == null || j >= trs.length) {
+        fadeIn(tr, FADE_ROW)
+        return
+      }
+      if (j !== i) {
+        const dy = trs[j]!.offsetTop - tr.offsetTop
+        if (Math.abs(dy) > 0.5) tr.animate?.([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], SLIDE)
+      }
+      const before = prev.figs.get(login)
+      const now = figs.get(login)
+      if (before && now) {
+        if (before[0] !== now[0]) fadeIn(tr.querySelector('.hv5-ch5-vw'), FADE_FIG)
+        if (before[1] !== now[1]) fadeIn(tr.querySelector('.hv5-ch5-cv'), FADE_FIG)
+      }
+    })
+  })
 
   // Sorting re-renders the head; focus stays on the sort button that was pressed.
   useEffect(() => {
@@ -200,26 +276,47 @@ export const HubV5Channels = forwardRef<HTMLElement, HubV5ChannelsProps>(functio
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody ref={tbodyRef}>
           {visible.length ? visible.map((c) => {
             const gm = c.category || '—'
             const chat = channelChat(c, basis)
+            const climb = climbBy.get(c.login.toLowerCase())
             return (
               <tr key={c.login} data-login={c.login}>
                 <td className="c-ch">
                   <Link className="hv5-ch5-n" to={channelHref(c)}>
                     <HubV5Avatar login={c.login} name={c.displayName} src={c.profileImageUrl} size={24} />
                     <span className="hv5-ch5-tx">
-                      <span className="hv5-ch5-nm">{c.displayName || c.login}</span>
+                      {/* the climbing mark rides the name's line, so a long game name on phones never pushes it toward Viewers */}
+                      <span className="hv5-ch5-l1">
+                        <span className="hv5-ch5-nm">{c.displayName || c.login}</span>
+                        {climb != null ? (
+                          <>
+                            <span className="hv5-ch5-up" aria-hidden="true">{feedPct(climb)}</span>
+                            <span className="hv5-vh">{climbWords(climb)}</span>
+                          </>
+                        ) : null}
+                      </span>
                       <span className="hv5-ch5-g2">{gm}</span>
                     </span>
                   </Link>
                 </td>
-                <td className="c-gm">{gm}</td>
-                <td className="r">{formatHubInt(c.viewers)}</td>
+                <td className="c-gm">
+                  {c.category ? (
+                    <span className="hv5-ch5-gm">
+                      <span className="hv5-tm-cv hv5-tm-gm" aria-hidden="true"><GameArt url={art?.get(c.category)} name={c.category} w={18} h={24} streamIds={[c.streamId]} /></span>
+                      <span className="hv5-ch5-gn">{gm}</span>
+                    </span>
+                  ) : gm}
+                </td>
+                <td className="r"><span className="hv5-ch5-vw">{formatHubInt(c.viewers)}</span></td>
                 <td className="r">
-                  {chat != null
-                    ? formatHubRate(chat)
+                  {chat != null ? (
+                    <span className="hv5-ch5-ct">
+                      {chatMax > 0 ? <span className="hv5-gr-bar hv5-ch5-bar" aria-hidden="true"><i style={{ width: `${Math.max(1.5, (chat / chatMax) * 100).toFixed(1)}%` }} /></span> : null}
+                      <span className="hv5-ch5-cv">{formatHubRate(chat)}</span>
+                    </span>
+                  )
                     // the row's own screener reason, so a failed read never reads as a short window (fix, 10-30)
                     : <HubV5Dash why={channelChatWhy(c)} />}
                 </td>

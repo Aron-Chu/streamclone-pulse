@@ -1,7 +1,7 @@
 /**
  * Picking up now (M1 + P1, hub rail board 2026-11-02): the rail is only what is
- * heating up now; the day's moments are in Top moments today, the carousel under
- * the chart (HubV5BigMoments). Every live channel whose chat over the last 5
+ * heating up now; the day's moments are in Top moments today, the list under
+ * the chart (HubV5TopList). Every live channel whose chat over the last 5
  * minutes ran at least 1.5× its own usual, strongest × first, with how many more
  * messages a minute beside it (hubV5FeedModel). Each row opens the stream page.
  *
@@ -14,8 +14,14 @@
  * badges go too (TOP_KEEP_MS), the old rows go: in their place it says it
  * can't tell, with the time it last knew, and shows no count (nor "Show all N").
  * Z06 (11-13): the × reads in pulse-core's words, "6.0× more chat".
+ *
+ * Climbing (11-21): while the chat counts behind it did not load, under its
+ * "can't tell" line it lists the backend's own surge picks from the same hub
+ * answer (hubV5FeedModel feedClimbing: the last 5 minutes against the 5
+ * before), so the column still says what is heating up. Not on a saved copy,
+ * and gone once the answer is older than LIVE lasts.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatLiftRatio } from '@streampulse/pulse-core'
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
@@ -24,11 +30,12 @@ import '../d3/hub-d3-tokens.css'
 import { HubV5Avatar } from './HubV5Avatar'
 import { GameArt } from './HubV5Rack'
 import type { TopToday } from './HubV5TopMoments'
-import { FEED_ADD_MIN, FEED_NOW_MIN, FEED_UP_MIN, feedClockFloor, feedFreshText, feedMore, feedStale, type FeedUpRow } from './hubV5FeedModel'
+import { FEED_ADD_MIN, FEED_NOW_MIN, FEED_UP_MIN, feedClockFloor, feedFreshText, feedMore, feedPct, feedStale, type FeedClimbRow, type FeedUpRow } from './hubV5FeedModel'
 import { channelHref, hubSavedClock } from './hubV5Model'
 import { TOP_KEEP_MS } from './hubV5TopModel'
 
 const H_ID = 'hv5-up-h'
+const C_ID = 'hv5-up-climb-h'
 /** Rows under 1536 px before "Show all N". */
 export const UP_FIRST = 6
 const SEP = <span className="hv5-fd-sep" aria-hidden="true">·</span>
@@ -44,6 +51,30 @@ export const UP_DOWN = "Can't tell right now — chat counts didn't load."
 export const upOld = (clock: string) => `Can't tell right now — last known at ${clock}.`
 
 const upAria = (x: FeedUpRow) => `${x.name}, ${formatLiftRatio(x.x)} times more chat, ${feedMore(x.add)} more messages a minute${x.cat ? `, ${x.cat}` : ''}. Opens the stream page.`
+
+export const CLIMB_TIP = 'While Picking up can’t tell: live channels whose chat and emotes over the last 5 minutes ran at least 60% above '
+  + 'the 5 minutes before, with at least 30 chat messages (or 8 7TV emotes) a minute. Biggest rise first. A shorter, rougher '
+  + 'comparison than Picking up’s, which measures each channel against its own usual.'
+const climbAria = (x: FeedClimbRow) => `${x.name}, ${Math.round(x.pct)}% busier than the 5 minutes before${x.cat ? `, ${x.cat}` : ''}. Opens the stream page.`
+
+function ClimbItem({ x, art }: { x: FeedClimbRow; art: string | null }) {
+  return (
+    <li>
+      <Link className="hv5-fd" to={channelHref({ login: x.login, streamId: x.streamId })}>
+        <span className="hv5-fd-av"><HubV5Avatar login={x.login} name={x.name} src={x.avatar} size={28} /></span>
+        <span className="hv5-fd-tx" aria-hidden="true">
+          <span className="hv5-fd-l1"><span className="hv5-fd-nm">{x.name}</span></span>
+          <span className="hv5-fd-l2">
+            <span className="hv5-f2-x"><b>{feedPct(x.pct)}</b> busier</span>
+            {x.cat ? <>{SEP}<span className="hv5-fd-g">{x.cat}</span></> : null}
+          </span>
+        </span>
+        {x.cat ? <span className="hv5-up-gm" aria-hidden="true"><GameArt url={art ?? undefined} name={x.cat} w={18} h={24} streamIds={[x.streamId]} /></span> : <span />}
+        <span className="hv5-vh">{climbAria(x)}</span>
+      </Link>
+    </li>
+  )
+}
 
 function UpItem({ x, art }: { x: FeedUpRow; art: string | null }) {
   return (
@@ -70,9 +101,23 @@ function UpItem({ x, art }: { x: FeedUpRow; art: string | null }) {
 export interface HubV5PickingUpProps {
   top: Pick<TopToday, 'shown' | 'up' | 'upAsOf' | 'upSaved' | 'art'> & Partial<Pick<TopToday, 'upDown'>>
   nowMs: number
+  /** The backend's surge picks from the hub answer on screen, and when it was made; none on a saved copy (Climbing, 11-21). */
+  climbing?: { rows: readonly FeedClimbRow[]; asOf: number | null }
 }
 
-export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
+const NO_CLIMB: readonly FeedClimbRow[] = []
+
+/**
+ * Climbing's rows as the rail shows them: only in place of an empty "can't tell" (counts down, no rows kept), from
+ * an answer younger than LIVE lasts. Channels marks only these, so the table never points at a list that isn't there.
+ */
+export function climbOnScreen(top: HubV5PickingUpProps['top'], climbing: HubV5PickingUpProps['climbing'], nowMs: number): readonly FeedClimbRow[] {
+  const old = top.upAsOf != null && nowMs - top.upAsOf > TOP_KEEP_MS
+  const asOf = climbing?.asOf ?? null
+  return top.upDown === true && !old && !top.up.up.length && asOf != null && nowMs - asOf <= TOP_KEEP_MS ? climbing?.rows ?? NO_CLIMB : NO_CLIMB
+}
+
+export function HubV5PickingUp({ top, nowMs, climbing }: HubV5PickingUpProps) {
   const { up, upAsOf, upSaved, art } = top
   const rows = up.up
   const n = rows.length
@@ -80,7 +125,6 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
   const wide = useMatchMedia('(min-width: 1536px)')
   const [all, setAll] = useState(false)
   const listed = wide || all ? rows : rows.slice(0, UP_FIRST)
-  const hidden = n - listed.length
 
   // the list scrolls inside the column from 1536 px: its bottom fades only while more of it is below (hub-v5.css)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -89,14 +133,6 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
     const body = bodyRef.current
     setMore(!!body && body.scrollHeight - body.scrollTop - body.clientHeight > 1)
   }, [])
-  useLayoutEffect(() => measureMore())
-  useEffect(() => {
-    const body = bodyRef.current
-    if (!body || typeof ResizeObserver === 'undefined') return undefined
-    const observer = new ResizeObserver(measureMore)
-    observer.observe(body)
-    return () => observer.disconnect()
-  }, [measureMore])
 
   const none = top.shown?.source === 'none'
   // older than LIVE lasts: it can't tell what is picking up now (S1, 11-13)
@@ -107,6 +143,30 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
   const saved = !waiting && upSaved && upAsOf != null ? hubSavedClock(upAsOf, nowMs) : null
   const fresh = waiting ? '' : saved ? `Saved ${saved}` : feedFreshText(upAsOf, nowMs)
   const stale = waiting || down || upAsOf == null || upSaved || feedStale(upAsOf, nowMs)
+  // Climbing: only in place of an empty "can't tell" (climbOnScreen); it greys as the list does past 2 minutes
+  const climbAsOf = climbing?.asOf ?? null
+  const climb = climbOnScreen(top, climbing, nowMs)
+  const climbStale = climbAsOf != null && feedStale(climbAsOf, nowMs)
+  const climbListed = wide || all ? climb : climb.slice(0, UP_FIRST)
+  // "Show all N" counts whichever list is on screen
+  const total = climb.length || n
+  const hidden = total - (climb.length ? climbListed.length : listed.length)
+
+  // Measured only where the list scrolls inside the column (from 1536 px), and only when the body or what is in it
+  // changes size: a ResizeObserver reads after layout, where a layout effect on every render forced one (about
+  // 200 ms on a phone, S1 11-19). A new branch (loading, rows, a line) observes its new children.
+  const branch = waiting ? 'wait' : down ? `down${n}` : n ? 'rows' : 'none'
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!wide || !body || typeof ResizeObserver === 'undefined') {
+      setMore(false)
+      return undefined
+    }
+    const observer = new ResizeObserver(measureMore)
+    observer.observe(body)
+    for (const child of Array.from(body.children)) observer.observe(child)
+    return () => observer.disconnect()
+  }, [measureMore, wide, branch, all])
 
   return (
     <aside
@@ -141,6 +201,18 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
                 {listed.map((x) => <UpItem key={x.login} x={x} art={x.cat ? art.get(x.cat) ?? null : null} />)}
               </ol>
             ) : null}
+            {climb.length ? (
+              <div className={`hv5-up-climb${climbStale ? ' hv5-up-climb-old' : ''}`} data-up-climb="">
+                <div className="hv5-up-ch">
+                  <h3 id={C_ID}>Climbing</h3>
+                  <span className="hv5-meta">last 5 min vs the 5 before</span>
+                  <HubToggletip tip={CLIMB_TIP} label="About Climbing" />
+                </div>
+                <ol className="hv5-fd-list" aria-labelledby={C_ID}>
+                  {climbListed.map((x) => <ClimbItem key={x.login} x={x} art={x.cat ? art.get(x.cat) ?? null : null} />)}
+                </ol>
+              </div>
+            ) : null}
           </>
         ) : n ? (
           <ol className="hv5-fd-list" aria-labelledby={H_ID}>
@@ -149,10 +221,10 @@ export function HubV5PickingUp({ top, nowMs }: HubV5PickingUpProps) {
         ) : (
           <p className="hv5-tm-q">{none ? UP_UNAVAILABLE : saved ? upSavedNone(saved) : UP_NONE}</p>
         )}
-        {!old && (hidden > 0 || (all && !wide && n > UP_FIRST)) ? (
+        {!old && (hidden > 0 || (all && !wide && total > UP_FIRST)) ? (
           <div className="hv5-fd-more">
             <button className="hv5-qb" type="button" aria-expanded={all} onClick={() => setAll((v) => !v)}>
-              {all ? 'Show fewer' : `Show all ${n}`}
+              {all ? 'Show fewer' : `Show all ${total}`}
             </button>
           </div>
         ) : null}

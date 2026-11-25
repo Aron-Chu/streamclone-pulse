@@ -187,10 +187,41 @@ describe('AnalyticsConsole: a channel StreamPulse has never recorded', () => {
     expect(document.querySelector('[data-channel-not-recorded]')).toBeNull()
   })
 
-  it('does not replace a session route', async () => {
+  it('does not replace a session route of a channel with stored streams', async () => {
     api.getAnalyticsStream.mockResolvedValue(null)
+    api.getAnalyticsStreams.mockResolvedValue({
+      channel: 'xqc',
+      items: [{ streamId: '102', login: 'xqc', startedAt, endedAt: '2026-07-11T20:00:00.000Z', title: 'Stored broadcast' }],
+      sources: [],
+      updatedAt: 0,
+    })
     renderConsole('/analytics/xqc/101')
-    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalled())
+    await screen.findByText(/Session not found for/)
+    expect(document.querySelector('[data-channel-not-recorded]')).toBeNull()
+  })
+
+  // S1 (11-19): a wrong stream link for a channel with nothing stored said "Session 123 not found",
+  // six dash tiles and "Pick another stream from the sidebar" beside an empty sidebar.
+  it.each([
+    ['answers 404', () => api.getAnalyticsStream.mockRejectedValue({ kind: 'not_found', message: 'not found', status: 404 })],
+    ['answers nothing', () => api.getAnalyticsStream.mockResolvedValue(null)],
+  ])('shows the never-recorded panel for a stream link of a channel with nothing stored (the stream read %s)', async (_label, arrange) => {
+    arrange()
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'sp_untracked', items: [], sources: [], updatedAt: Date.now() })
+    renderConsole('/analytics/sp_untracked/123')
+
+    const panel = await screen.findByRole('region', { name: 'StreamPulse hasn’t recorded sp_untracked yet' })
+    expect(within(panel).getByRole('link', { name: 'Search tracked channels' }).getAttribute('href')).toBe('/analytics')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('sp_untracked')
+    expect(screen.queryByText(/Session 123 not found/)).toBeNull()
+    expect(screen.queryByText(/Pick another stream from the sidebar/)).toBeNull()
+    expect(screen.queryAllByTestId('stat-card')).toHaveLength(0)
+  })
+
+  it('leaves a missing session to the host fallback (an expired recap) instead of the panel', async () => {
+    api.getAnalyticsStream.mockResolvedValue(null)
+    renderConsole('/analytics/sp_untracked/123', { missingSessionFallback: <p data-testid="host-fallback">Live data for this stream has expired.</p> })
+    expect(await screen.findByTestId('host-fallback')).toBeTruthy()
     expect(document.querySelector('[data-channel-not-recorded]')).toBeNull()
   })
 })

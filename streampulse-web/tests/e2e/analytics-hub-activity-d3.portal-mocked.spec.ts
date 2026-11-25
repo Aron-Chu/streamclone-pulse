@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './helpers/portalMockedTest'
+import { armHubWheel } from './helpers/chartWheelSurfaces'
 import { installHubUxMock } from './helpers/hubUxMock'
 
 // The hub activity card on the shared SpChart core (plan §2.1-§2.3, unit U6):
@@ -164,6 +165,8 @@ for (const { label, viewport, deviceScaleFactor } of VIEWPORTS) {
       let zoomed = 0
       for (const point of points.filter((point) => GRAPH_ROWS.has(point.row))) {
         await page.mouse.move(point.x, point.y)
+        // S1 (11-19): over the graph a plain wheel zooms after a click on it
+        await armHubWheel(page)
         const scrollY = await page.evaluate(() => window.scrollY)
         await page.mouse.wheel(0, -100)
         await expect.poll(() => navigatorWindow(page), { message: `${point.row} at ${Math.round(point.x)}` }).not.toBe(full)

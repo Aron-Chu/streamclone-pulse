@@ -1,3 +1,5 @@
+import { momentPageEnabled } from '../../../lib/momentPageFlag'
+
 export const LATE_LOADING_LINE = 'Still loading. Live data can take a moment.'
 
 /**
@@ -18,7 +20,7 @@ export function MomentLoadingSkeleton({ rows = 5, late = false }: { rows?: numbe
   return <div className="moments-loading">
     {Array.from({ length: rows }, (_, i) => <div className="moments-result moments-loading__row" data-placeholder="" data-late={i === 0 && late ? '' : undefined} key={i}>
       {i === 0 ? <p className="moments-loading-status" role="status">{late ? LATE_LOADING_LINE : ''}</p> : null}
-      <div className="moments-card-slot" aria-hidden="true" />
+      <div className="moments-card-slot" aria-hidden="true"><span className="moments-card-artwork"><span className="moments-card-pic" /><span className="moments-card-label"><i /></span></span></div>
       <div className="moments-creator-link" aria-hidden="true">
         <span className="moments-avatar" />
         <span><strong className="moments-loading__bar">Streamer name</strong><small>Just Chatting</small></span>
@@ -29,7 +31,7 @@ export function MomentLoadingSkeleton({ rows = 5, late = false }: { rows?: numbe
         <div className="moments-result-evidence"><span className="moments-loading__bar">420 chat/min</span><span className="moments-loading__bar">180 emotes/min</span><span>6.2× more emotes</span></div>
       </div>
       <div className="moments-row-emotes" aria-hidden="true"><i /><i /><i /></div>
-      <div className="moments-actions" aria-hidden="true"><a>Analytics →</a><a>View stream timeline</a><span className="moment-save-control"><button type="button" disabled tabIndex={-1}>Save</button></span></div>
+      <div className="moments-actions" aria-hidden="true"><a>Analytics →</a><a>View stream timeline</a>{momentPageEnabled() ? <a>Moment page →</a> : null}<span className="moment-save-control"><button type="button" disabled tabIndex={-1}>Save</button></span></div>
     </div>)}
   </div>
 }

@@ -355,6 +355,17 @@
   .ssr-ev, .ssr-m1 .ssr-sc { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .ssr-m1 { gap: 8px; }
   .ssr-row .ssr-go { margin-left: auto; }
+  /* round 2 (11-21): a numbered list. The rank hangs in a column of its own, so the time, the game and the emotes
+     start on one edge; the emotes take a line of their own under the game (no divider, which wrapped to the start
+     of a line); names still wrap, never cut */
+  .ssr-row { padding-left: 44px; }
+  .ssr-row .ssr-rk { position: absolute; left: 12px; top: 11px; }
+  /* Play sits top right, level with the time, so the game and the emotes have the row's whole width */
+  .ssr-row .ssr-tx { flex: 1 1 auto; }
+  .ssr-row .ssr-m1 { padding-right: 40px; }
+  .ssr-row .ssr-go { position: absolute; top: 6px; right: 12px; margin: 0; }
+  .ssr-row .ssr-m2 { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 6px; }
+  .ssr-row .ssr-m2 .ssr-gm + :is(.ssr-toks, .ssr-nn) { padding-left: 0; border-left: 0; }
 }
 @container ssr-mom (max-width: 400px) {
   .ssr-tok-c { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -117,8 +117,8 @@ describe('moments open in line', () => {
     const listKey = currentKey
     fireEvent.click(primary(0))
     await waitFor(() => expect(openDetail()).not.toBeNull())
-    // Save on the open row keeps it open.
-    fireEvent.click(rows()[0]!.querySelector('.moments-actions button')!)
+    // Save on the open card keeps it open.
+    fireEvent.click(rows()[0]!.querySelector('.msc-save button')!)
     expect(openDetail()).not.toBeNull()
     // Inside the detail stays open.
     fireEvent.pointerDown(openDetail()!)
@@ -194,10 +194,10 @@ describe('moments open in line', () => {
 
   it('closes when the open row is pressed again, and Esc returns focus to its button', async () => {
     renderMoments()
-    fireEvent.click(rows()[1]!.querySelector('.moments-result-evidence')!)
+    fireEvent.click(rows()[1]!.querySelector('.msc-body')!)
     await waitFor(() => expect(openDetail()).not.toBeNull())
     expect(rows()[1]!.nextElementSibling?.id).toBe('moments-selected-detail')
-    fireEvent.click(rows()[1]!.querySelector('.moments-result-evidence')!)
+    fireEvent.click(rows()[1]!.querySelector('.msc-body')!)
     await waitFor(() => expect(openDetail()).toBeNull())
     expect(primary(1).getAttribute('aria-label')).toBe('Emote spike — Open moment for sodapoppin at about 0:14:00 into broadcast')
     fireEvent.click(primary(1))
@@ -583,7 +583,7 @@ describe('the open moment stays where it opened', () => {
     fireEvent.click(primary(0))
     await waitFor(() => expect(openDetail()).not.toBeNull())
     const detail = openDetail()!
-    const other = within(rows()[1]!).getByRole('button', { name: 'Save' })
+    const other = within(rows()[1]!).getByRole('button', { name: /^Save / })
     fireEvent.pointerDown(other)
     fireEvent.click(other)
     expect(other.textContent).toBe('Saved')

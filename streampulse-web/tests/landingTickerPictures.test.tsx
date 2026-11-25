@@ -54,12 +54,12 @@ describe('home ticker pictures', () => {
     const items = buildEmoteTicker(hubWith({
       topEmotes: [
         { name: 'peepoHappy', provider: '7tv', count: 10, sharePct: 1 },
-        { name: 'KEKW', provider: 'twitch', count: 9, sharePct: 1 },
+        { name: 'Kappa', provider: 'twitch', count: 9, sharePct: 1 },
       ],
     }))
     expect(items.map((item) => item.image)).toEqual([
       'https://cdn.7tv.app/emote/01GAZ199Z8000FEWHS6AT5QZV0/1x.webp',
-      'https://static-cdn.jtvnw.net/emoticons/v2/305954168/static/dark/1.0',
+      'https://static-cdn.jtvnw.net/emoticons/v2/25/static/dark/1.0',
     ])
   })
 
@@ -77,5 +77,13 @@ describe('home ticker pictures', () => {
     fireEvent.error(track.querySelector('img') as HTMLImageElement)
     expect(track.querySelector('img')).toBeNull()
     expect(track.querySelector('.sl-ticker__lead')?.textContent).toBe('A')
+  })
+
+  it('keeps the moving strip out of screen readers and search-result snippets', () => {
+    const items: TickerItem[] = [{ lead: 'A', label: 'abc', value: '30/min', tone: 'up' }]
+    const { container } = render(<EmoteTicker variant="b" label="Trending" items={items} />)
+    const marquee = container.querySelector('.sl-ticker__marquee') as HTMLElement
+    expect(marquee.getAttribute('aria-hidden')).toBe('true')
+    expect(marquee.hasAttribute('data-nosnippet')).toBe(true)
   })
 })

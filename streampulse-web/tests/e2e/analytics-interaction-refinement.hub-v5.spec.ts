@@ -65,7 +65,8 @@ for (const width of [390, 768, 1080, 1150, 1262, 1440, 1920]) {
 }
 
 for (const width of [1440, 1535, 1536, 1920]) {
-  // under the chart below 1536 px (B1, 11-11); from 1536 px the sticky column on the right (L1, 11-16)
+  // under the chart below 1536 px (B1, 11-11), beside Top moments today from 1200 px (H1, 11-19); from 1536 px the
+  // sticky column on the right (L1, 11-16)
   const column = width >= 1536
   test(`Picking up now sits ${column ? 'in the right column' : 'under the chart'}, keeping the canvas width at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 })
@@ -87,8 +88,11 @@ for (const width of [1440, 1535, 1536, 1920]) {
       expect(rail.y).toBeLessThan(activity.y + activity.height)
       expect(rail.y + rail.height).toBeGreaterThan(activity.y)
     } else {
+      const top = (await page.locator('#top-moments').boundingBox())!
       expect(rail.y).toBeGreaterThanOrEqual(activity.y + activity.height - 1)
-      expect(Math.abs(rail.x - activity.x)).toBeLessThanOrEqual(1)
+      expect(Math.abs(rail.y - top.y)).toBeLessThanOrEqual(1)
+      expect(Math.abs(top.x - activity.x)).toBeLessThanOrEqual(1)
+      expect(rail.x).toBeGreaterThan(top.x + top.width)
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })

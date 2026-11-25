@@ -1,12 +1,21 @@
-/* UI Latin subset; other scripts retain the existing system-font fallback. */
-@import '@fontsource/inter/latin-400.css';
-@import '@fontsource/inter/latin-500.css';
-@import '@fontsource/inter/latin-600.css';
-@import '@fontsource/inter/latin-700.css';
-@import '@fontsource/inter/latin-800.css';
-@import '@fontsource/inter/latin-900.css';
-@import '@fontsource/ibm-plex-mono/latin-400.css';
-@import '@fontsource/ibm-plex-mono/latin-500.css';
+/* Inter 400-700 and IBM Plex Mono come from themes/analytics-hub-fonts.css (figma-analytics.css,
+   which every page loading this file also loads). The stream page's heavier weights use the same
+   variable file, so the page downloads one Inter file. UI Latin subset; other scripts retain the
+   existing system-font fallback. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 800;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+}
 
 /*
  * Scoped Tailwind preflight for `.sc-analytics-console` only.

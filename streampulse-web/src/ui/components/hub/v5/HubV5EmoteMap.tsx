@@ -33,6 +33,7 @@ import { Link } from 'react-router-dom'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import { loadHubIntervalMoments, readHubIntervalMoments, type HubIntervalMomentsState, type HubIntervalRequest } from '../../../../lib/hubIntervalMoments'
 import type { HubApiWindow } from '../../../../lib/hubWindows'
+import { measureTextWidth } from '../../../../lib/textWidth'
 import type { HubActivityPoint, HubEmote, HubLivePulseMoment } from '../../../../lib/publicHub'
 import { useMatchMedia } from '../../../hooks/useMatchMedia'
 import { HubToggletip } from '../d3/HubToggletip'
@@ -43,27 +44,33 @@ import {
   MAP_VIEW_1X,
   NO_TILE_FITS,
   clampMapView,
+  emoteAxisTicks,
+  emoteBarWords,
   emoteChange,
   emoteDrivers,
+  animatedFlagsFromKey,
+  animatedFlagsKey,
   emoteFlagKey,
   emoteImageAt,
   emoteInWindow,
   emoteIntervalLabel,
   emoteMapChips,
-  emoteMapData,
   emoteMapHeight,
   emoteMapMeta,
   emoteMapNext,
   emoteMapTip,
   emoteMapValue,
   emoteMomentRows,
+  emoteNiceTop,
+  emoteRateLabel,
   emoteSharePct,
   emotePerMinute,
+  emoteSpanWords,
   emoteSpike,
-  emoteWindowLabel,
   emoteWindowWords,
   fieldMapView,
   findMapEmote,
+  keepEmoteMapData,
   mapViewShowing,
   nearestTile,
   paceHeat,
@@ -149,13 +156,6 @@ function heatStyle(a: HubEmoteAgg): CSSProperties | null {
   if (!h) return null
   const c = h.dir === 'up' ? 'var(--hv5-rise)' : 'var(--hv5-cool)'
   return { '--bg': `color-mix(in oklab, ${c} ${h.mix}%, #17171a)`, '--bgh': `color-mix(in oklab, ${c} ${h.mix + 8}%, #1e1e22)` } as CSSProperties
-}
-
-/** 7TV has a still frame only for an animated emote: the hub's top list says which are. */
-function animatedFlags(top: readonly HubEmote[] | undefined): ReadonlySet<string> {
-  const out = new Set<string>()
-  for (const e of top ?? []) if (e.animated) out.add(emoteFlagKey(e.provider, e.name))
-  return out
 }
 
 function Chg({ c, hidden }: { c: EmoteChange; hidden?: boolean }) {
@@ -428,24 +428,125 @@ function EmoteCard({ a, data, win, total }: { a: HubEmoteAgg; data: HubEmoteMapD
   )
 }
 
-const BARS_H = 40
+const CHART_H = 100
 
 /**
- * C1's timeline: a bar per interval of the window, the busiest marked, a faint
- * tick where it made no top 10, nothing where the hub sent no list.
+ * C1's timeline as a chart (4A, 11-22; Aron: "4a looks fine"): a bar per
+ * interval of the window in uses a minute, on a scale whose top line is a round
+ * rate, the busiest bar labelled where it stands, round times under it, a faint
+ * tick where it made no top 10 and nothing where the hub sent no list. A pointer
+ * or the arrow keys (Home, End) read one bar out in the line under it; the keys
+ * also say it to screen readers.
  */
-function SpikeBars({ spike, label }: { spike: EmoteSpike; label: string }) {
+function SpikeChart({ spike, data, view, name, windowWords, busiest, fresh }: {
+  spike: EmoteSpike
+  data: HubEmoteMapData
+  view: HubEmoteWindow
+  name: string
+  windowWords: string
+  busiest: string | null
+  fresh: boolean
+}) {
   const n = spike.bars.length
+  const bm = data.bucketMinutes
+  const slot = bm * 60_000
+  const start = data.t1 - n * slot
+  const top = emoteNiceTop(spike.peakCount / Math.max(1, bm))
   const pad = n > 120 ? 0.08 : 0.14
+  const barH = (c: number) => Math.max(1.2, (c / Math.max(1, bm) / top) * CHART_H)
+  // the bars as two shapes, not one element each: a tap adds a handful of elements, not ~280 (11-22 perf check)
+  const shapes = useMemo(() => {
+    const w = (1 - 2 * pad).toFixed(3)
+    let bars = ''
+    let gaps = ''
+    spike.bars.forEach((c, i) => {
+      if (c === undefined || i === spike.peak) return
+      const x = (i + pad).toFixed(3)
+      if (c === null) {
+        gaps += `M${x} ${CHART_H - 1.6}h${w}v1.6h-${w}z`
+        return
+      }
+      const h = Math.max(1.2, (c / Math.max(1, bm) / top) * CHART_H)
+      bars += `M${x} ${(CHART_H - h).toFixed(2)}h${w}v${h.toFixed(2)}h-${w}z`
+    })
+    return { bars, gaps }
+  }, [spike, pad, bm, top])
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [cur, setCur] = useState(-1)
+  const [said, setSaid] = useState('')
+  const ticks = useMemo(() => emoteAxisTicks(start, data.t1), [start, data.t1])
+  const words = emoteBarWords(bm)
+  const peakX = spike.peak >= 0 ? ((spike.peak + 0.5) / n) * 100 : 50
+  const side = peakX < 30 ? 'l' : peakX > 70 ? 'r' : 'c'
+  const rate = (c: number) => emotePerMinute(c, bm)
+  const read = (i: number) => {
+    const c = spike.bars[i]
+    return {
+      label: emoteIntervalLabel(data, view, start + i * slot),
+      value: c != null ? `${rate(c)}/min` : null,
+      tail: c === null ? 'not in that interval’s top 10' : 'no list for that interval',
+    }
+  }
+  const show = (i: number, keys: boolean) => {
+    setCur(i)
+    if (!keys) return
+    const r = read(i)
+    setSaid(`${r.label} · ${r.value ?? r.tail}`)
+  }
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const to = e.key === 'ArrowRight' ? cur + 1 : e.key === 'ArrowLeft' ? (cur < 0 ? n - 1 : cur - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : null
+    if (to === null) return
+    e.preventDefault()
+    show(Math.max(0, Math.min(n - 1, to)), true)
+  }
+  const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const box = svgRef.current?.getBoundingClientRect()
+    if (!box || box.width <= 0) return
+    show(Math.max(0, Math.min(n - 1, Math.floor(((e.clientX - box.left) / box.width) * n))), false)
+  }
+  const on = cur >= 0 ? read(cur) : null
   return (
-    <svg className="hv5-es-bars" viewBox={`0 0 ${n} ${BARS_H}`} preserveAspectRatio="none" role="img" aria-label={label}>
-      {spike.bars.map((c, i) => {
-        if (c === undefined) return null
-        if (c === null) return <rect key={i} className="hv5-es-gap" x={i + pad} y={BARS_H - 1} width={1 - 2 * pad} height={1} />
-        const h = spike.peakCount > 0 ? Math.max(2, (c / spike.peakCount) * BARS_H) : 2
-        return <rect key={i} className={i === spike.peak ? 'hv5-es-hi' : undefined} x={i + pad} y={BARS_H - h} width={1 - 2 * pad} height={h} />
-      })}
-    </svg>
+    <div className="hv5-es">
+      <div
+        className="hv5-es-c"
+        tabIndex={0}
+        role="group"
+        aria-label={`${name}: uses a minute, ${words}, ${windowWords}${busiest ? `, busiest ${busiest} at ${rate(spike.peakCount)} a minute` : ''}. Arrow keys step through the bars.`}
+        onKeyDown={onKey}
+        onPointerMove={onMove}
+        onPointerLeave={(e) => { if (document.activeElement !== e.currentTarget) setCur(-1) }}
+        onBlur={() => setCur(-1)}
+      >
+        {busiest ? (
+          <span className={`hv5-es-pk hv5-es-pk-${side}`} style={{ left: `${peakX}%` }} aria-hidden="true">{rate(spike.peakCount)}/min <span>{busiest}</span></span>
+        ) : null}
+        <span className={side === 'r' ? 'hv5-es-top' : 'hv5-es-top hv5-es-top-r'} aria-hidden="true">top line {emoteRateLabel(top)}/min</span>
+        <svg ref={svgRef} className="hv5-es-bars" viewBox={`0 0 ${n} ${CHART_H}`} preserveAspectRatio="none" aria-hidden="true">
+          <g className="hv5-es-grid">
+            <line x1={0} x2={n} y1={0.5} y2={0.5} />
+            <line x1={0} x2={n} y1={CHART_H / 2} y2={CHART_H / 2} />
+            <line x1={0} x2={n} y1={CHART_H - 0.5} y2={CHART_H - 0.5} />
+          </g>
+          <path className="hv5-es-b" d={shapes.bars} />
+          <path className="hv5-es-gap" d={shapes.gaps} />
+          {spike.peak >= 0 ? <rect className="hv5-es-hi" x={spike.peak + pad} y={CHART_H - barH(spike.peakCount)} width={1 - 2 * pad} height={barH(spike.peakCount)} /> : null}
+          {cur >= 0 && spike.bars[cur] != null ? (
+            <rect className="hv5-es-on" x={cur + pad} y={CHART_H - barH(spike.bars[cur]!)} width={1 - 2 * pad} height={barH(spike.bars[cur]!)} />
+          ) : null}
+        </svg>
+      </div>
+      <div className="hv5-es-ax" aria-hidden="true">
+        {ticks.map((t) => (
+          <span key={t.x} className={t.x < 0.06 ? 'hv5-es-ax-l' : undefined} style={{ left: `${t.x * 100}%` }}>{t.label}</span>
+        ))}
+        <span className="hv5-es-ax-end">{fresh ? 'now' : hubClock(data.t1)}</span>
+      </div>
+      <p className="hv5-es-read" aria-hidden="true">
+        {on ? <>{on.label} · {on.value ? <b>{on.value}</b> : on.tail}</> : `${words}, ${emoteSpanWords(start, data.t1, bm)}`}
+      </p>
+      <p className="hv5-vh" aria-live="polite">{said}</p>
+      {spike.bars.includes(null) ? <p className="hv5-es-key"><i aria-hidden="true" />not in that interval’s top 10, so not counted</p> : null}
+    </div>
   )
 }
 
@@ -462,9 +563,11 @@ function driverAria(d: EmoteDriver, emote: string): string {
  * comparison. One status line says each state, so a screen reader hears the
  * rows land or the read fail.
  */
-function EmoteDrivers({ a, peakT, bucketMinutes, intervalWindow, behind, avatars }: {
+function EmoteDrivers({ a, peakT, iv, bucketMinutes, intervalWindow, behind, avatars }: {
   a: HubEmoteAgg
   peakT: number
+  /** The interval's clock span, named in the empty line (4A). */
+  iv: string
   bucketMinutes: number
   intervalWindow: HubApiWindow
   /** The backend serves its live-pool fallback: an empty read means the interval isn't in yet. */
@@ -493,7 +596,7 @@ function EmoteDrivers({ a, peakT, bucketMinutes, intervalWindow, behind, avatars
     : state.status === 'zoom-in' ? 'Set the time window to 7 days or less to see streams.'
       : state.status === 'error' || state.status === 'unavailable' ? 'Couldn’t load the streams for that interval.'
         : state.status === 'empty' ? (behind ? 'The streams for that interval aren’t in yet.' : 'No streams were listed for that interval.')
-          : drivers.length ? null : `None of the busiest chats in that interval had ${a.e.name} in their top 3.`
+          : drivers.length ? null : `None of the busiest chats in ${iv} had ${a.e.name} in their top 3.`
   const say = loading
     ? 'Loading the streams for that interval.'
     : note ?? `${drivers.length} ${drivers.length === 1 ? 'stream' : 'streams'} in that interval had ${a.e.name} in their top 3.`
@@ -509,11 +612,12 @@ function EmoteDrivers({ a, peakT, bucketMinutes, intervalWindow, behind, avatars
         <ol className={`hv5-el-cols hv5-es-rows${drivers.length <= 3 ? ' hv5-el-one' : ''}`} key={key}>
           {drivers.map((d, i) => (
             <li key={momentRowKey(d.m)} style={{ animationDelay: `${i * 18}ms` }}>
-              <Link to={momentHref(d.m)} className="hv5-el-r">
+              <Link to={momentHref(d.m)} state={{ from: 'hub' }} className="hv5-el-r">
                 <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
                 <HubV5Avatar login={d.m.login!} name={d.m.displayName || d.m.login!} src={d.m.profileImageUrl || avatars?.get(d.m.login!)} size={24} />
                 <span className="hv5-el-n" aria-hidden="true">{d.m.displayName || d.m.login}<small>{d.m.category || 'No category'}</small></span>
-                <span className="hv5-el-v hv5-es-uses" aria-hidden="true">{formatHubInt(d.uses)} uses</span>
+                {/* one unit with the chart above (4A): uses in its busiest minute */}
+                <span className="hv5-el-v hv5-es-uses" aria-hidden="true"><b>{formatHubInt(d.uses)}</b>/min{d.m.at != null ? ` at ${hubClock(d.m.at)}` : ''}</span>
                 <span className="hv5-el-v hv5-es-at" aria-hidden="true">{d.m.at != null ? `▶ ${hubClock(d.m.at)}` : ''}</span>
                 {/* What screen readers hear: the visible parts are hidden from them, so the name never disagrees with them (WCAG 2.5.3). */}
                 <span className="hv5-vh">{driverAria(d, a.e.name)}</span>
@@ -557,7 +661,13 @@ export function HubV5EmoteMap({
   /** The hub search's emote pick (3A): find it on the map once per n. */
   findRequest?: { name: string; n: number } | null
 }) {
-  const data = useMemo(() => emoteMapData(points, bucketMinutes), [points, bucketMinutes])
+  // one pass over the points per poll: while what the map reads is unchanged, its data (so its layout and tiles) stays the same object
+  const keptRef = useRef<{ sig: string; data: HubEmoteMapData | null } | null>(null)
+  const kept = useMemo(() => keepEmoteMapData(keptRef.current, points, bucketMinutes), [points, bucketMinutes])
+  useLayoutEffect(() => {
+    keptRef.current = kept
+  }, [kept])
+  const data = kept.data
   const phone = useMatchMedia('(max-width: 719px)')
   const reduce = useMatchMedia('(prefers-reduced-motion: reduce)')
   // a phone has no Esc key: Find emote's × clears there (X1, 11-02)
@@ -656,18 +766,27 @@ export function HubV5EmoteMap({
 
   // a field label sits on its frame's top line only as far as the field goes: a narrow field drops the share, then the label
   const [labelFit, setLabelFit] = useState<Record<string, 'name' | 'none'>>({})
+  const labelFamily = useRef<string | null>(null)
   useLayoutEffect(() => {
     const map = mapRef.current
     if (!map || !layout) return undefined
     const measure = () => {
+      // The labels' text is measured on a canvas in their own fonts (600 and 500 12px), so the fit never forces a layout
+      // of the freshly styled map (S1, 11-19). Without a canvas it reads the DOM as before.
+      labelFamily.current ??= getComputedStyle(map).getPropertyValue('--sp-font').trim() || '"Inter", system-ui, sans-serif'
       const next: Record<string, 'name' | 'none'> = {}
-      for (const el of map.querySelectorAll<HTMLElement>('.hv5-em-fl')) {
-        const f = layout.fields.find((x) => x.field === el.dataset.field)
-        const name = el.querySelector('span')?.getBoundingClientRect().width ?? 0
-        const share = el.querySelector('b')?.getBoundingClientRect().width ?? 0
-        if (!f) continue
+      for (const f of layout.fields) {
+        if (f.h < 40) continue
+        let name = measureTextWidth(String(f.name), `600 12px ${labelFamily.current}`)
+        let share = measureTextWidth(String(f.share), `500 12px ${labelFamily.current}`)
+        if (name == null || share == null) {
+          const el = map.querySelector<HTMLElement>(`.hv5-em-fl[data-field="${cssEscape(String(f.field))}"]`)
+          if (!el) continue
+          name = el.querySelector('span')?.getBoundingClientRect().width ?? 0
+          share = el.querySelector('b')?.getBoundingClientRect().width ?? 0
+        }
         // 7 px pads, the dot and its 6 px gap, the name, a 6 px gap, the share; 10 px in from the field and 6 px short of its end
-        const bare = 14 + (el.querySelector('i') ? 13 : 0) + name
+        const bare = 14 + (heat ? 0 : 13) + name
         const room = f.w - 16
         if (bare > room) next[f.field] = 'none'
         else if (bare + 6 + share > room) next[f.field] = 'name'
@@ -694,7 +813,9 @@ export function HubV5EmoteMap({
     fitsRef.current = fits
   }, [fits])
   const playing = useMemo(() => (layout ? playingTiles(layout.tiles, settled, W, VH, fits) : NO_IDS), [layout, settled, W, VH, fits])
-  const animatedSet = useMemo(() => animatedFlags(topEmotes), [topEmotes])
+  // 7TV has a still frame only for an animated emote: the hub's top list says which are
+  const animatedKey = useMemo(() => animatedFlagsKey(topEmotes), [topEmotes])
+  const animatedSet = useMemo(() => animatedFlagsFromKey(animatedKey), [animatedKey])
 
   const hide = useCallback(() => {
     window.clearTimeout(timer.current)
@@ -1132,14 +1253,13 @@ export function HubV5EmoteMap({
   const shareOf = (v: number) => emoteSharePct(layout && layout.total > 0 ? (v / layout.total) * 100 : 0)
   const slot = (data?.bucketMinutes ?? 0) * 60_000
   const busiest = data && spike && spike.peak >= 0 ? emoteIntervalLabel(data, view, spike.peakT) : null
-  const busiestRate = data && spike ? emotePerMinute(spike.peakCount, data.bucketMinutes) : ''
   // the timeline ends at the last closed interval: "now" only while that is recent, as on a saved copy it is not
   const fresh = data ? nowMs - data.t1 <= 2 * slot + 60_000 : false
 
   return (
     <section id="emotes" className="hv5-sec hv5-emotes" aria-labelledby={H_ID} aria-busy={loading || undefined}>
       <div className="hv5-rh hv5-em-rh">
-        <h2 id={H_ID}>Top emotes</h2>
+        <h2 id={H_ID}>Emote map</h2>
         {data ? <HubToggletip tip={emoteMapTip(data)} label="About the emote map" /> : null}
         {data ? (
           <span className="hv5-end">
@@ -1323,35 +1443,40 @@ export function HubV5EmoteMap({
           <div className="hv5-el">
             {selected ? (
               <>
-                <div className="hv5-el-h">
-                  <span className="hv5-el-ti">
-                    <EmotePic a={selected} size={24} />
-                    <b>{selected.e.name}</b>
-                    <span>{shareOf(emoteMapValue(selected, view, data))} of all uses · {providerName(selected.prov)}</span>
+                {/* 4A (11-22): its picture, name and provider, its uses and share, and a clear that never wraps */}
+                <div className="hv5-el-h hv5-el-lk">
+                  <span className="hv5-el-pic"><EmotePic a={selected} size={32} /></span>
+                  <span className="hv5-el-ti"><b>{selected.e.name}</b><span>{providerName(selected.prov)}</span></span>
+                  <span className="hv5-el-facts">
+                    {formatHubInt(emoteMapValue(selected, view, data))} uses in the {windowWords} · {shareOf(emoteMapValue(selected, view, data))} of the map
                   </span>
-                  {hourOk ? <Chg c={emoteChange(selected, data.windowLabel)} /> : null}
-                  <button type="button" className="hv5-el-clear" onClick={() => setSel(null)}>Clear<HubV5Icon name="x" /></button>
+                  <button type="button" className="hv5-el-clear" title="Clear" onClick={() => setSel(null)}><span className="hv5-vh">Clear</span><HubV5Icon name="x" /></button>
                 </div>
+                {hourOk ? (() => {
+                  const c = emoteChange(selected, data.windowLabel)
+                  const tail = !selected.c1h ? 'no top 10 in the last hour' : selected.isNew ? 'this hour: no top 10 before it' : `last hour vs its ${data.windowLabel} pace`
+                  return <p className="hv5-el-pc"><Chg c={c} hidden /><span aria-hidden="true">{tail}</span><span className="hv5-vh">{`Last hour: ${c.words}.`}</span></p>
+                })() : null}
                 {spike ? (
-                  <div className="hv5-es">
-                    <SpikeBars
-                      spike={spike}
-                      label={`${selected.e.name} uses per interval, ${windowWords}${busiest ? `, busiest ${busiest} at ${busiestRate} a minute` : ''}`}
-                    />
-                    <div className="hv5-es-ax" aria-hidden="true">
-                      <span>{emoteWindowLabel(data, view)} {fresh ? 'ago' : 'earlier'}</span>
-                      {busiest ? <span className="hv5-es-pk">Busiest {busiest} · {busiestRate} a minute</span> : null}
-                      <span>{fresh ? 'now' : hubClock(data.t1)}</span>
-                    </div>
-                  </div>
+                  <SpikeChart
+                    key={`${selected.id}|${view}`}
+                    spike={spike}
+                    data={data}
+                    view={view}
+                    name={selected.e.name}
+                    windowWords={windowWords}
+                    busiest={busiest}
+                    fresh={fresh}
+                  />
                 ) : null}
                 {spike && busiest && intervalWindow ? (
                   <>
-                    <p className="hv5-el-sub"><b>Who drove it</b> · streams in that interval with {selected.e.name} in their top 3</p>
+                    <p className="hv5-el-sub"><b>Who drove it</b> · the busiest chats in {busiest} with {selected.e.name} in their top 3</p>
                     <EmoteDrivers
                       key={`${selected.id}|${spike.peakT}`}
                       a={selected}
                       peakT={spike.peakT}
+                      iv={busiest}
                       bucketMinutes={data.bucketMinutes}
                       intervalWindow={intervalWindow}
                       behind={Boolean(historyBehind)}
@@ -1366,7 +1491,7 @@ export function HubV5EmoteMap({
                     <ol className={`hv5-el-cols${spammed.length <= 5 ? ' hv5-el-one' : ''}`} key={`m|${selected.id}`}>
                       {spammed.map((r, i) => (
                         <li key={r.key} style={{ animationDelay: `${i * 18}ms` }}>
-                          <Link to={r.href} className="hv5-el-r">
+                          <Link to={r.href} state={{ from: 'hub' }} className="hv5-el-r">
                             <span className="hv5-el-i" aria-hidden="true">{i + 1}</span>
                             <HubV5Avatar login={r.login} name={r.displayName} src={r.moment.profileImageUrl || avatars?.get(r.login)} size={24} />
                             <span className="hv5-el-n" aria-hidden="true">{r.displayName}<small>{r.moment.category || 'No category'}</small></span>

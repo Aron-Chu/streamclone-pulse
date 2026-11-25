@@ -388,6 +388,8 @@ function HubActivityNavigator({ model, store, windowMinutes, levelMinutes, minVi
       presets={presets}
       wheelSurfaceRef={wheelSurfaceRef}
       wheelAnchor={wheelAnchor}
+      // the hub is read by scrolling past this chart: its wheel zooms after a click on it, or with Ctrl (S1, 11-19)
+      armWheel
       minVisibleCount={minVisibleCount}
       onChange={noop}
       onReset={onReset}

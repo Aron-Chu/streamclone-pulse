@@ -89,54 +89,68 @@ test.beforeEach(async ({ page, baseURL }) => {
 
 test.describe('in-app navigation scroll', () => {
   test('a footer link opens the next page at the top; Back keeps the browser restoration', async ({ page }) => {
-    await page.goto('/docs')
+    await page.goto('/help')
     await scrollToBottom(page)
-    await page.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'Support', exact: true }).click()
-    await expect(page).toHaveURL(/\/support$/)
+    await page.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'Privacy', exact: true }).click()
+    await expect(page).toHaveURL(/\/privacy$/)
     await expect.poll(() => scrollY(page)).toBe(0)
     expect(await topOf(page, 'h1')).toBeGreaterThanOrEqual(0)
 
     await page.goBack()
-    await expect(page).toHaveURL(/\/docs$/)
+    await expect(page).toHaveURL(/\/help$/)
     await expect.poll(() => scrollY(page)).toBeGreaterThan(0)
   })
 
-  test('a pushed /docs#extension link lands on its section below the sticky header', async ({ page }) => {
-    await page.goto('/support')
+  test('a pushed /help#install link lands on its section below the sticky header', async ({ page }) => {
+    await page.goto('/guides/find-twitch-moments')
     await scrollToBottom(page)
-    await page.getByRole('link', { name: /extension setup guide/i }).click()
-    await expect(page).toHaveURL(/\/docs#extension$/)
+    await page.getByRole('link', { name: 'Installation guide' }).click()
+    await expect(page).toHaveURL(/\/help#install$/)
     // .app-shell section[id] carries scroll-margin-top: 6rem (96 px).
-    await expect.poll(() => topOf(page, '#extension')).toBeLessThanOrEqual(100)
-    expect(await topOf(page, '#extension')).toBeGreaterThanOrEqual(90)
+    await expect.poll(() => topOf(page, '#install')).toBeLessThanOrEqual(100)
+    expect(await topOf(page, '#install')).toBeGreaterThanOrEqual(90)
   })
 
-  test('Back to /docs#api leaves the Developer reference the reader closed closed', async ({ page }) => {
-    await page.goto('/docs#api')
+  test('Back to /help#api leaves the Developer reference the reader closed closed', async ({ page }) => {
+    await page.goto('/help#api')
     const details = page.locator('details:has(#api)')
     await expect(details).toHaveAttribute('open', '')
     await details.locator('summary').click()
     await expect(details).not.toHaveAttribute('open', '')
     await scrollToBottom(page)
-    await page.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'Support', exact: true }).click()
-    await expect(page).toHaveURL(/\/support$/)
-    // The reader is on Support: Docs is gone, so Back renders it afresh with the reference closed.
-    await expect(page.getByTestId('docs-page')).toHaveCount(0)
+    await page.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'Privacy', exact: true }).click()
+    await expect(page).toHaveURL(/\/privacy$/)
+    // The reader is on Privacy: Help is gone, so Back renders it afresh with the reference closed.
+    await expect(page.getByTestId('help-page')).toHaveCount(0)
 
     await page.goBack()
-    await expect(page).toHaveURL(/\/docs#api$/)
-    await expect(page.getByTestId('docs-page')).toBeVisible()
+    await expect(page).toHaveURL(/\/help#api$/)
+    await expect(page.getByTestId('help-page')).toBeVisible()
     await page.waitForTimeout(1_200)
     await expect(details).not.toHaveAttribute('open', '')
   })
 
-  // The landing's Developer reference card is gone, so the app's own /docs/api redirect is the
-  // in-app arrival left. Production answers /docs/api with an edge 301 before the app loads.
-  test('the in-app /docs/api redirect opens the collapsed #api section', async ({ page }) => {
-    await page.goto('/docs/api')
-    await expect(page).toHaveURL(/\/docs#api$/)
-    await expect(page.locator('details:has(#api)')).toHaveAttribute('open', '')
-    await expect(page.locator('#api')).toBeInViewport()
+  // Old /docs links open a section of Help. Production answers /docs/api with an edge 301
+  // straight to /help#api; without the edge (this preview, or a /docs#api link) the app moves it there.
+  for (const path of ['/docs/api', '/docs#api']) {
+    test(`the in-app ${path} redirect opens the collapsed #api section on Help`, async ({ page }) => {
+      await page.goto(path)
+      await expect(page).toHaveURL(/\/help#api$/)
+      await expect(page.locator('details:has(#api)')).toHaveAttribute('open', '')
+      await expect(page.locator('#api')).toBeInViewport()
+    })
+  }
+
+  test('an old /support#billing-email link lands on that section of Help', async ({ page }) => {
+    await page.goto('/support#billing-email')
+    await expect(page).toHaveURL(/\/help#billing-email$/)
+    await expect.poll(() => topOf(page, '#billing-email')).toBeLessThanOrEqual(100)
+  })
+
+  test('an old /docs link opens Help at Install', async ({ page }) => {
+    await page.goto('/docs')
+    await expect(page).toHaveURL(/\/help#install$/)
+    await expect(page.getByTestId('help-page')).toBeVisible()
   })
 })
 
@@ -147,24 +161,24 @@ for (const identity of ENTRY_IDENTITY) {
       await useEntryIdentity(page, identity.hidden)
     })
 
-    test('Docs table of contents: Install, Data coverage, then Install again', async ({ page }) => {
-      await page.goto('/docs')
+    test('Help table of contents: Install, Fix problems, then Install again', async ({ page }) => {
+      await page.goto('/help')
       await expectEntryIdentity(page, identity.hidden)
       const toc = page.getByRole('navigation', { name: 'On this page' })
       await toc.getByRole('link', { name: 'Install' }).click()
-      await expect(page).toHaveURL(/\/docs#extension$/)
-      await expect.poll(() => topOf(page, '#extension')).toBeLessThanOrEqual(100)
+      await expect(page).toHaveURL(/\/help#install$/)
+      await expect.poll(() => topOf(page, '#install')).toBeLessThanOrEqual(100)
       await wheelToTop(page)
-      await toc.getByRole('link', { name: 'Data coverage' }).click()
-      await expect(page).toHaveURL(/\/docs#coverage$/)
+      await toc.getByRole('link', { name: 'Fix problems' }).click()
+      await expect(page).toHaveURL(/\/help#fix$/)
       await wheelToTop(page)
 
       await toc.getByRole('link', { name: 'Install' }).click()
-      await expect(page).toHaveURL(/\/docs#extension$/)
+      await expect(page).toHaveURL(/\/help#install$/)
       // Past the settle window: nothing pulls the section away from its 96 px margin.
       await page.waitForTimeout(1_500)
-      expect(await topOf(page, '#extension')).toBeGreaterThanOrEqual(90)
-      expect(await topOf(page, '#extension')).toBeLessThanOrEqual(100)
+      expect(await topOf(page, '#install')).toBeGreaterThanOrEqual(90)
+      expect(await topOf(page, '#install')).toBeLessThanOrEqual(100)
     })
   })
 }
@@ -227,11 +241,11 @@ test.describe('Back to the Moments list', () => {
   // The Moments page remembers the reader's place per history entry; a pushed
   // page opening at the top must not overwrite that place before it is saved.
   const ways = [
-    { name: 'the top-nav Home link', leave: async (page: Page) => {
-      await page.getByRole('button', { name: 'Navigation menu' }).click()
-      await page.locator('.analytics-topnav__more-nav').getByRole('link', { name: 'Home', exact: true }).click()
+    { name: 'the Menu Help link', leave: async (page: Page) => {
+      await page.getByRole('button', { name: 'Menu', exact: true }).click()
+      await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Help', exact: true }).click()
     } },
-    { name: 'a footer link', leave: (page: Page) => page.getByRole('navigation', { name: 'Site links' }).getByRole('link', { name: 'Support', exact: true }).click() },
+    { name: 'a footer link', leave: (page: Page) => page.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'Privacy', exact: true }).click() },
   ] as const
   for (const { name, leave } of ways) {
     test(`returns the reader to their place in Latest after following ${name}`, async ({ page }) => {
@@ -243,7 +257,7 @@ test.describe('Back to the Moments list', () => {
       await scrollToBottom(page)
       // The nonsticky phone menu is reached by wheeling back to the bar. Back
       // restores that actual departure point; the footer case still leaves at the bottom.
-      if (name === 'the top-nav Home link') await wheelToTop(page)
+      if (name === 'the Menu Help link') await wheelToTop(page)
       const left = await scrollY(page)
 
       await leave(page)

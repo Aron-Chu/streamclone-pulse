@@ -26,6 +26,12 @@ interface ImportMetaEnv {
   readonly VITE_SUPPORTER_CHAT_BADGES?: string
   /** Launch switch: `on` shows the Clips tab on Moments (lib/nativeClipsFlag.ts). */
   readonly VITE_PUBLIC_NATIVE_CLIPS?: string
+  /** Launch switch: `on` has the hub's Top moments rail read the Moments feed (lib/momentsFeedFlag.ts). */
+  readonly VITE_PUBLIC_MOMENTS_FEED?: string
+  /** Launch switch: `on` opens each Moment's own page, read-only, /analytics/moments/<stream>/<minute>, and the links into it (lib/momentPageFlag.ts). */
+  readonly VITE_PUBLIC_MOMENT_PAGE?: string
+  /** Launch switch: `on` adds ratings and comments to the Moment page (/v1/account/streams/...) and the sign-in return to it (lib/momentPageFlag.ts). */
+  readonly VITE_PUBLIC_MOMENT_FEEDBACK?: string
   /** Dev only: scripts/dev-fake-twitch.mjs's origin stands in for Twitch behind "Show my Twitch follows" (lib/twitchFollows.ts). */
   readonly VITE_DEV_FAKE_TWITCH?: string
   readonly DEV: boolean

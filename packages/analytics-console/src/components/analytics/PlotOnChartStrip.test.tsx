@@ -144,4 +144,47 @@ describe('PlotOnChartStrip (Emote overlays under the session chart)', () => {
     expect(manage().getAttribute('aria-expanded')).toBe('false')
   })
 
+  it('opens and closes from a click anywhere on the bar; a token’s × only removes it (Aron, 11-22)', () => {
+    const { container } = render(<Harness initial={['Pog', 'LUL']} />)
+    const bar = container.querySelector<HTMLElement>('[data-session-emotes-on-chart]')!
+    // a press on the bar itself is not an outside press
+    fireEvent.pointerDown(screen.getByText('Emotes on chart'))
+    fireEvent.click(screen.getByText('Emotes on chart'))
+    expect(manage().getAttribute('aria-expanded')).toBe('true')
+    fireEvent.pointerDown(bar)
+    fireEvent.click(bar)
+    expect(manage().getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(container.querySelector('[data-session-emote-token="LUL"] span.truncate')!)
+    expect(manage().getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(bar)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Pog from the chart' }))
+    expect(keys()).toBe('LUL')
+    expect(manage().getAttribute('aria-expanded')).toBe('false')
+    // Add emote still toggles once per click, not twice through the bar
+    fireEvent.click(manage())
+    expect(manage().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('a click on the panel’s space or the bar after picking a chip does not close and reopen it; tabbing out closes it', () => {
+    const { container } = render(<><Harness initial={['Pog']} /><button type="button">Elsewhere</button></>)
+    const bar = container.querySelector<HTMLElement>('[data-session-emotes-on-chart]')!
+    fireEvent.click(bar)
+    const panel = document.getElementById(manage().getAttribute('aria-controls')!)!
+    // a real click on a non-focusable area moves focus from the chip to a focusable ancestor (the page's <main>)
+    const clickSpace = (element: HTMLElement) => {
+      fireEvent.pointerDown(element)
+      fireEvent.focusOut(chip(container, 'LUL'), { relatedTarget: container })
+      fireEvent.click(element)
+    }
+    chip(container, 'LUL').focus()
+    clickSpace(panel)
+    expect(manage().getAttribute('aria-expanded')).toBe('true')
+    clickSpace(bar)
+    expect(manage().getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(bar)
+    chip(container, 'LUL').focus()
+    fireEvent.focusOut(chip(container, 'LUL'), { relatedTarget: screen.getByRole('button', { name: 'Elsewhere' }) })
+    expect(manage().getAttribute('aria-expanded')).toBe('false')
+  })
+
 })

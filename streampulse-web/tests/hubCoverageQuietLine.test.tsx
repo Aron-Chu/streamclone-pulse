@@ -82,6 +82,10 @@ describe('hub banner: no buckets row at any coverage', () => {
   it('keeps the stats-fallback branch', () => {
     banner(summary(100, 240), { loadSource: 'stats-fallback', hubEndpointOk: false })
     expect(screen.getByText(/Hub temporarily unavailable/)).toBeTruthy()
+    // The hub page draws no aggregate stats, so the row never claims it shows them.
+    expect(screen.queryByText(/aggregate stats/i)).toBeNull()
+    // Top today reads its own feed and can be on screen, so the row never says moments failed.
+    expect(screen.queryByText(/moments/i)).toBeNull()
   })
 
   it('keeps the slow-read line', () => {

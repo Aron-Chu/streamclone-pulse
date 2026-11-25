@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation } from 'react-router-dom'
 import { AppRoutes, preloadOpeningPage } from './routes/index'
 import {
-  clearRemovedBetaKey,
+  clearRemovedSiteKeys,
   clearStaleLocalBackendOverride,
   isAllowedDevBackendQueryOverride,
   setBackendUrlOverride,
@@ -38,9 +38,10 @@ captureAccountConfirmation()
 captureAccountDeviceCode()
 captureAccountRestore()
 captureTwitchFollowsCallback()
-if (!privateLoad) initPortalSentry()
-// Start the first hub read while the analytics chunk downloads.
+// Start the first hub read while the analytics chunk downloads, before Sentry's setup: the read is
+// the hub's slowest step, and it need not wait for error reporting to start (S1, 11-19).
 primePublicHub()
+if (!privateLoad) initPortalSentry()
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,7 +79,7 @@ function applyDevBackendQueryOverride(): void {
 async function bootstrap() {
   applyDevBackendQueryOverride()
   clearStaleLocalBackendOverride()
-  clearRemovedBetaKey()
+  clearRemovedSiteKeys()
   // A failed load of the opening page is left to the route, which retries and
   // shows its own error.
   await preloadOpeningPage(window.location.pathname).catch(() => undefined)

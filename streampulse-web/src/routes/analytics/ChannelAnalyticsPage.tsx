@@ -2,10 +2,14 @@ import { lazy, Suspense } from 'react'
 import { useParams } from 'react-router-dom'
 import { isChannelRouteLogin } from '../../lib/channelRoute'
 import NotFound from '../public/NotFound'
-import { useRecordHubRecentLogin } from '../../hooks/useRecordHubRecentLogin'
 import { AnalyticsRouteFallback } from '../AnalyticsRouteFallback'
 
-const ConsoleChannelView = lazy(() => import('./ConsoleChannelView'))
+// The console's code starts with this page's view, not after it: every page but a reviewed recap (its summary
+// template is in the document) mounts the console at once.
+const ConsoleChannelView = lazy(() => {
+  if (typeof document !== 'undefined' && !document.getElementById('reviewed-recap-summary')) import('@streampulse/analytics-console').catch(() => {})
+  return import('./ConsoleChannelView')
+})
 
 /**
  * Public, no-login channel analytics for a Twitch channel.
@@ -20,8 +24,6 @@ export default function ChannelAnalyticsPage() {
 }
 
 function ValidChannelAnalyticsPage() {
-  useRecordHubRecentLogin()
-
   return (
     <Suspense fallback={<AnalyticsRouteFallback />}>
       <ConsoleChannelView />

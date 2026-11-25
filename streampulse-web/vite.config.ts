@@ -3,13 +3,12 @@ import react from '@vitejs/plugin-react'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { extensionUiShimsPlugin } from './src/plugins/extensionUiShims'
 import { rewriteReactRouterLocalhostPlugin } from './src/plugins/rewriteReactRouterLocalhost'
 import { assertBuildOnlyAuditRuntimeBoundary } from '../scripts/ci-portal-npm-audit-disposition.mjs'
 import { sentrySourceMapGatePlugin } from './scripts/check-sentry-debug-ids.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-/** Extension checkout root (sibling of streampulse-web/) — landing showcase reuses overlay UI. */
+/** Repository root (parent of streampulse-web/), where the shared packages live. */
 const pulseRoot = resolve(__dirname, '..')
 const pulseRootId = pulseRoot.replace(/\\/g, '/').toLowerCase()
 
@@ -111,7 +110,6 @@ const viteSentryDsn = process.env.VITE_SENTRY_DSN?.trim()
 
 const plugins = [
   react(),
-  extensionUiShimsPlugin(pulseRoot, __dirname),
   rewriteReactRouterLocalhostPlugin(),
   devConnectSrcPlugin(),
   publicEntryBoundaryPlugin(),
@@ -147,8 +145,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    // Discover lazy analytics motion dependencies before the first route visit.
-    include: ['gsap', 'gsap/Flip'],
     // Linked local packages are aliased to source — prebundling freezes a stale
     // snapshot and silently drops props like highlightedGameSegmentKey after edits.
     exclude: [
@@ -158,11 +154,9 @@ export default defineConfig({
     ],
   },
   resolve: {
-    dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query', 'zustand'],
+    dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query'],
     alias: {
       '@': resolve(__dirname, 'src'),
-      // Landing ExtensionShowcase bundles real overlay components from this repo's src/ui.
-      '@pulse-ext/ui': resolve(pulseRoot, 'src/ui'),
       // In-repo RPR-6 packages (src for Vite HMR; typecheck consumes dist via package exports)
       '@streampulse/analytics-console/analytics-chart-motion.css': resolve(
         pulseRoot,
@@ -181,6 +175,11 @@ export default defineConfig({
         pulseRoot,
         'packages/analytics-console/src/chart-navigator.ts',
       ),
+      // A moment's preview picture (match, reads, labels) for the public Moment pages, without the console entry.
+      '@streampulse/analytics-console/moment-previews': resolve(
+        pulseRoot,
+        'packages/analytics-console/src/moment-previews.ts',
+      ),
       '@streampulse/analytics-console': resolve(pulseRoot, 'packages/analytics-console/src/index.tsx'),
       // Activity bar pyramid (hub chat bars) without the whole chart package.
       '@streampulse/pulse-charts/barPyramid': resolve(pulseRoot, 'packages/pulse-charts/src/barPyramid.ts'),
@@ -193,7 +192,6 @@ export default defineConfig({
       'react-dom': resolve(__dirname, 'node_modules/react-dom'),
       'react-router-dom': resolve(__dirname, 'node_modules/react-router-dom'),
       '@tanstack/react-query': resolve(__dirname, 'node_modules/@tanstack/react-query'),
-      zustand: resolve(__dirname, 'node_modules/zustand'),
     },
   },
   build: {
@@ -207,7 +205,6 @@ export default defineConfig({
           // "analytics-d3-20261013" must not send every module to vendor-charts.
           const rel = repoRelativeId(id)
           if (!rel.includes('node_modules') && !rel.includes('packages/')) return
-          if (rel.includes('gsap')) return 'vendor-gsap'
           // Let the bundler split analytics at the route boundary. Assigning all
           // console modules to one manual chunk pulled lazy UI into public entry.
           if (rel.includes('recharts') || rel.includes('d3-')) return 'vendor-charts'

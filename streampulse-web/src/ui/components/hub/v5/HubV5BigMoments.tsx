@@ -20,8 +20,10 @@
  * says so; with one card, no controls.
  * Board 2A (11-02): a card with no × shows its rate a minute under its reason
  * ("Busiest minute", "Early in the stream", "Chat spike · not compared"). A
- * live stream's picture shows only behind a moment under 10 minutes old, and a
- * moment before midnight says how long ago it was, not "Yesterday" (HUB-6).
+ * moment before midnight says how long ago it was, not "Yesterday" (HUB-6). A
+ * live stream's picture now shows behind any of its moments, and the card's
+ * foot says it is the stream now, not the moment (Aron, 11-22; it was only
+ * behind a moment under 10 minutes old, so it almost never showed).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type SyntheticEvent } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -29,7 +31,8 @@ import { formatLiftWords } from '@streampulse/pulse-core'
 import { emoteDisplaySrc } from '../../../../lib/emoteAssetUrl'
 import { int } from '../../../../lib/momentsChecked'
 import { twitchProfileImageRendition } from '../../../../lib/twitchProfileImage'
-import { twitchLivePreviewUrl } from '../../analytics/hubFormat'
+import { liveNowPreviewUrl } from '../../../../../../packages/analytics-console/src/components/analytics/LiveNowTile.tsx'
+import { isTwitchOfflinePreview } from '../../../../../../packages/analytics-console/src/utils/twitchBoxArt.ts'
 import { ResilientImage } from '../../ResilientImage'
 import { HubToggletip } from '../d3/HubToggletip'
 import { HubV5Icon } from './HubV5Icon'
@@ -42,7 +45,6 @@ import {
   bigFrontByEntry,
   bigIntoStream,
   bigLabel,
-  bigLivePicture,
   bigMeter,
   bigMomentCards,
   bigSlideLabel,
@@ -121,6 +123,15 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still, fresh }: 
   const meter = bigMeter(row)
   const into = bigIntoStream(row.offsetSeconds)
   const tab = front ? undefined : -1
+  // the stream's picture now, behind any live moment once it has been in front or beside it (Aron, 11-22: "the preview
+  // never shows"; it was only behind a moment under 10 minutes old). The foot says it is the stream now, not the moment.
+  // A picture that fails or proves to be Twitch's offline picture leaves; one proven keeps showing while the next
+  // 5-minute bucket loads (an <img> keeps its old picture until the new one is ready).
+  const pic = live && seen ? liveNowPreviewUrl(row.login, nowMs, 640, 360) : null
+  const [okPic, setOkPic] = useState<string | null>(null)
+  const [badPic, setBadPic] = useState<string | null>(null)
+  // the shade and its words belong to this 5-minute picture once it is proven live, never an earlier one's
+  const picShown = pic != null && pic !== badPic && okPic === pic
   return (
     // A div: role="group" (the APG carousel slide) is not allowed on an article.
     <div
@@ -134,10 +145,26 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still, fresh }: 
       aria-label={bigSlideLabel(row, i, n)}
       aria-hidden={front ? undefined : true}
     >
-      {live && seen && bigLivePicture(row.at, nowMs) ? (
+      {pic && pic !== badPic ? (
         <>
-          <img className="hv5-bm-bg" src={twitchLivePreviewUrl(row.login, 640, 360)} alt="" draggable={false} decoding="async" referrerPolicy="no-referrer" onError={hide} />
-          <div className="hv5-bm-shade" />
+          {/* crossOrigin before src (React sets props in order), so the offline check can read its pixels */}
+          <img
+            className="hv5-bm-bg"
+            alt=""
+            draggable={false}
+            decoding="async"
+            crossOrigin="anonymous"
+            referrerPolicy="no-referrer"
+            src={pic}
+            data-ok={picShown ? '' : undefined}
+            onLoad={(event) => {
+              void isTwitchOfflinePreview(event.currentTarget)
+                .then((offline) => (offline ? setBadPic(pic) : setOkPic(pic)))
+                .catch(() => setOkPic(pic))
+            }}
+            onError={() => setBadPic(pic)}
+          />
+          {picShown ? <div className="hv5-bm-shade" /> : null}
         </>
       ) : null}
       <div className="hv5-bm-body">
@@ -187,14 +214,17 @@ function BigSlide({ card, i, n, pos, nowMs, live, avatar, seen, still, fresh }: 
           </ul>
         ) : null}
         <div className="hv5-bm-foot">
-          <span className="hv5-bm-t">{bigWhen(row.at, nowMs)}</span>
+          <span className="hv5-bm-t">
+            {bigWhen(row.at, nowMs)}
+            {picShown ? <span className="hv5-bm-pn" aria-hidden="true"> · picture: stream now</span> : null}
+          </span>
           <span className="hv5-bm-act">
             {live ? (
               <a className="hv5-bm-tw" href={bigWatchHref(row.login)} target="_blank" rel="noopener noreferrer" tabIndex={tab} draggable={false}>
                 Watch live <span aria-hidden="true">↗</span>
               </a>
             ) : null}
-            <Link className="hv5-bm-open" to={row.href} tabIndex={tab} draggable={false}>Open in Moments</Link>
+            <Link className="hv5-bm-open" to={row.href} state={{ from: 'hub' }} tabIndex={tab} draggable={false}>Open in Moments</Link>
           </span>
         </div>
       </div>

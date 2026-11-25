@@ -32,10 +32,10 @@ async function breakPageModule(page: Page, name: string) {
   }))
 }
 
-/** Only the site layout has these; nav labels are shared with other shells. */
+/** Only the site layout has #public-main. Both layouts carry the one site header, so a crash leaves exactly one. */
 async function expectNoSiteLayout(page: Page) {
   await expect(page.locator('#public-main')).toHaveCount(0)
-  await expect(page.locator('.app-footer')).toHaveCount(0)
+  await expect(page.locator('.site-header')).toHaveCount(1)
 }
 
 test.describe('portal crash guards (mocked)', () => {
@@ -46,7 +46,7 @@ test.describe('portal crash guards (mocked)', () => {
   for (const hash of ['#%', '#100%', '#%E0%A4%A']) {
     test(`landing ignores the malformed fragment ${hash}`, async ({ page }) => {
       await page.goto(`/${hash}`)
-      await expect(page.locator('.sl-header')).toBeVisible()
+      await expect(page.locator('.site-header')).toBeVisible()
       await expect(page.getByRole('heading', { name: /actually reacted to/i })).toBeVisible()
       await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
     })
@@ -59,7 +59,7 @@ test.describe('portal crash guards (mocked)', () => {
     // Wait for the hub rows themselves: before they arrive there is nothing to crash.
     await expect(page.getByText('channel5').first()).toBeAttached()
     await expect(page.getByRole('heading', { name: 'Find your streamer', exact: true })).toBeVisible()
-    await expect(page.locator('.analytics-topnav')).toBeVisible()
+    await expect(page.locator('.site-header')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
   })
 
@@ -71,7 +71,7 @@ test.describe('portal crash guards (mocked)', () => {
     // Wait for the row whose label was wrong-typed: it shows the generic label instead.
     await expect(page.getByRole('button', { name: /^Measured reaction — Open moment for xQc / })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Moments', exact: true })).toBeVisible()
-    await expect(page.locator('.analytics-topnav')).toBeVisible()
+    await expect(page.locator('.site-header')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
   })
 
@@ -100,15 +100,15 @@ test.describe('portal crash guards (mocked)', () => {
     await expect.poll(() => hubRequests).toBeGreaterThan(0)
   })
 
-  test('a crashing analytics page keeps the analytics top navigation, and its links recover', async ({ page }) => {
+  test('a crashing analytics page keeps the site header, and its links recover', async ({ page }) => {
     await installHubUxMock(page)
     await breakPageModule(page, 'AnalyticsHubV5Page')
     await page.goto('/analytics')
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toBeVisible()
-    await expect(page.locator('.analytics-topnav')).toBeVisible()
+    await expect(page.locator('.site-header')).toBeVisible()
     await expectNoSiteLayout(page)
 
-    await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'All moments' }).click()
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Moments', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Moments', exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0)
   })

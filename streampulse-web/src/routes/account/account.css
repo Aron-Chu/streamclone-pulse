@@ -208,6 +208,23 @@
 .pulse-account .pulse-account-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 20px; font-size: 14px; }
 .pulse-account .pulse-account-links span { color: #5f5f70; }
 .pulse-account .pulse-account-waiting { display: flex; align-items: flex-start; gap: 10px; }
+/* While an account page's code loads, its waiting card holds the height of the
+   page's first render (no answer from the API yet), so the footer stays put when
+   the page replaces it. Each value is that render's shortest height in the band,
+   measured with Inter, so the card is never taller than what replaces it
+   (settings uses its no-webfont height, 450, which is shorter than Inter's 466):
+   wide 541-1440px: sign-in 645 (645-698), settings 450 (466-489), billing 509 (509-559);
+   phone 320-540px: sign-in 640 (640-846), settings 434 (434-526), billing 527 (527-648).
+   Confirm, restore and link-device hold none: their shortest first render fits
+   the room the page keeps under the header. */
+.pulse-account[data-account-wait="sign-in"] { min-height: 645px; }
+.pulse-account[data-account-wait="settings"] { min-height: 450px; }
+.pulse-account[data-account-wait="billing"] { min-height: 509px; }
+@media (max-width: 540px) {
+  .pulse-account[data-account-wait="sign-in"] { min-height: 640px; }
+  .pulse-account[data-account-wait="settings"] { min-height: 434px; }
+  .pulse-account[data-account-wait="billing"] { min-height: 527px; }
+}
 .pulse-account-spinner { flex: none; width: 16px; height: 16px; margin-top: .3em; border: 2px solid #4b4b5a; border-top-color: #c4b5fd; border-radius: 999px; }
 .pulse-account-review h1 { margin-top: 0; font-size: clamp(22px, 2.6vw, 26px); }
 .pulse-account-review h1:focus { outline: none; }

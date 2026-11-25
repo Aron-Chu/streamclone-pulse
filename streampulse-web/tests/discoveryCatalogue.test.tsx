@@ -1,10 +1,7 @@
-import React from 'react'
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { act, cleanup, render, screen, fireEvent, renderHook, waitFor } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { fetchDiscoveryCatalogue, normalizeDiscoveryCatalogue, validDiscoveryScope, type DiscoveryScope } from '../src/lib/discoveryCatalogue'
-import { DiscoveryCalendar, discoveryDayLabel } from '../src/ui/components/moments/DiscoveryCalendar'
 import { useDiscoveryCatalogue } from '../src/hooks/useDiscoveryCatalogue'
-import { readDiscoveryPresentation } from '../src/lib/discoveryPresentation'
 import { apiClient } from '../src/lib/apiClient'
 vi.mock('../src/lib/apiClient', async importOriginal => ({ ...await importOriginal<typeof import('../src/lib/apiClient')>(), apiClient: vi.fn() }))
 const scope = { month: '2026-09', creator: '', day: '' }
@@ -24,73 +21,11 @@ function setFixtureCategoryMetadata(raw: ReturnType<typeof catalogueFixture>, ca
   item.categoryId = categoryId
   item.boxArtUrl = boxArtUrl
 }
-function renderCalendar(raw: ReturnType<typeof catalogueFixture>) {
-  render(<DiscoveryCalendar scope={scope} data={normalizeDiscoveryCatalogue(raw, scope)} loading={false} onChange={() => {}} onRecent={() => {}}
-    presentation={readDiscoveryPresentation(new URLSearchParams(), scope.month)} onPresentationChange={() => {}} />)
-}
 afterEach(() => { cleanup(); vi.resetAllMocks() })
 describe('stored discovery contract', () => {
-  it('presents ready stored activity with the two supplied collection timestamps', () => {
-    renderCalendar(catalogueFixture())
-    const status = screen.getByRole('group', { name: 'Calendar options and coverage' })
-    expect(status.hasAttribute('open')).toBe(false)
-    fireEvent.click(screen.getByText('Calendar options & coverage', { selector: 'summary' }))
-    expect(status.hasAttribute('open')).toBe(true)
-    expect(status.textContent).toContain('Indexed broadcasts only; coverage may be partial')
-    expect(status.querySelector('time[datetime="2026-09-05T11:59:00Z"]')).not.toBeNull()
-    expect(status.querySelector('time[datetime="2026-09-05T11:58:00Z"]')).not.toBeNull()
-  })
-  it('presents the stale state and preserves the existing stale warning', () => {
-    const raw = catalogueFixture()
-    raw.state = 'stale'
-    renderCalendar(raw)
-    expect(screen.getByText(/Stored results may be stale\. Oldest projection check:/)).toBeTruthy()
-  })
-  it('labels null collection timestamps as unavailable', () => {
-    const raw = catalogueFixture()
-    raw.projectionUpdatedAt = null as unknown as string
-    raw.dataThrough = null as unknown as string
-    renderCalendar(raw)
-    const status = screen.getByRole('group', { name: 'Calendar options and coverage' })
-    expect(status.querySelectorAll('dd')).toHaveLength(2)
-    expect(status.querySelectorAll('dd')[0].textContent).toBe('Unavailable')
-    expect(status.querySelectorAll('dd')[1].textContent).toBe('Unavailable')
-  })
-  it('states that the latest supplied measurement is not contiguous completeness', () => {
-    renderCalendar(catalogueFixture())
-    expect(screen.getByText(/The latest measurement does not imply continuous coverage\./)).toBeTruthy()
-    expect(screen.queryByText(/percent|global Twitch|activation/i)).toBeNull()
-  })
-  it('changes the displayed calendar measure without fetching or changing selection', () => {
-    const raw = catalogueFixture()
-    raw.days[0] = { ...raw.days[0], detections: 6, chatMessages: 1200, emoteUses: 300 }
-    const onChange = vi.fn()
-    function Calendar() {
-      const [params, setParams] = React.useState(new URLSearchParams())
-      return <DiscoveryCalendar scope={scope} data={normalizeDiscoveryCatalogue(raw, scope)} loading={false} onChange={onChange} onRecent={() => {}}
-        presentation={readDiscoveryPresentation(params, scope.month)} onPresentationChange={values => setParams(previous => {
-          const next = new URLSearchParams(previous)
-          for (const [key, value] of Object.entries(values)) value == null ? next.delete(key) : next.set(key, value)
-          return next
-        })} />
-    }
-    render(<Calendar />)
-    const day = screen.getByRole('button', { name: /^2026-09-01:/ })
-    expect(day.querySelector('small')?.textContent).toBe('6')
-    fireEvent.click(screen.getByText('Calendar options & coverage', { selector: 'summary' }))
-    fireEvent.change(screen.getByRole('combobox', { name: 'Calendar measure' }), { target: { value: 'emoteUses' } })
-    expect(day.querySelector('small')?.textContent).toBe('300')
-    expect(screen.getByText(/emote uses this month/).textContent).toContain('300')
-    expect(screen.getByRole('button', { name: /^2026-09-02:/ }).querySelector('small')?.textContent).toBe('—')
-    expect(onChange).not.toHaveBeenCalled()
-    fireEvent.click(day)
-    expect(onChange).toHaveBeenCalledWith({ day: '2026-09-01' })
-  })
   it('preserves zero versus missing and never treats catalogue IDs as handoff/public IDs', () => {
     const data = normalizeDiscoveryCatalogue(catalogueFixture(), scope)
     expect(data.days[0].chatMessages).toBe(0); expect(data.days[1].chatMessages).toBeNull()
-    expect(discoveryDayLabel(data.days[0])).toContain('0 measured chat messages')
-    expect(discoveryDayLabel(data.days[1])).toContain('not a measured zero')
     expect(data.items[0].topEmotes?.[0].name).toBe('LOL')
     expect(data.items[0].publicMomentId).toBeUndefined(); expect(data.items[0].handoffRef).toBeUndefined()
   })

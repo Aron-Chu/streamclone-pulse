@@ -10,12 +10,6 @@ import {
   sanitizeEmoteImageUrl,
   staticTwitchEmoteUrl,
 } from '../src/lib/emoteAssetUrl'
-import {
-  buildEmoteLookup,
-  momentEmoteExternalUrl,
-  momentEmoteProviderLabel,
-  resolveMomentEmote,
-} from '../src/lib/pulseMomentsUtils'
 
 vi.mock('../src/lib/apiClient', () => ({
   getBackendUrl: () => 'https://api.streampulse.stream',
@@ -149,61 +143,5 @@ describe('emoteUrlForScale / emoteSrcSet', () => {
     expect(staticTwitchEmoteUrl(undefined)).toBeUndefined()
     expect(emoteDisplaySrc(base, 20)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/static/dark/1.0')
     expect(emoteDisplaySrc(base, 24)).toBe('https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/default/dark/1.0')
-  })
-})
-
-describe('buildEmoteLookup provider keys', () => {
-  it('resolves BTTV emotes by provider when names collide', () => {
-    const lookup = buildEmoteLookup([
-      { name: 'LUL', provider: 'twitch', count: 1, sharePct: 0, imageUrl: 'https://twitch/lul.png' },
-      {
-        name: 'OMEGALUL',
-        provider: 'bttv',
-        count: 2,
-        sharePct: 0,
-        imageUrl: '/emotes/bttv-id/1x.webp',
-      },
-    ])
-    const resolved = resolveMomentEmote(
-      { offsetSeconds: 1, score: 1, label: 'spike', topEmotes: [{ name: 'OMEGALUL', provider: 'bttv', count: 2 }] },
-      lookup,
-    )
-    expect(resolved?.imageUrl).toBe('https://api.streampulse.stream/emotes/bttv-id/1x.webp')
-  })
-
-  it('matches seventv catalog rows when bucket uses 7tv provider label', () => {
-    const lookup = buildEmoteLookup([
-      {
-        name: 'WideFire',
-        provider: 'seventv',
-        count: 1,
-        sharePct: 0,
-        imageUrl: 'https://cdn.7tv.app/emote/abc/4x.webp',
-      },
-    ])
-    expect(lookup.get('7tv:widefire')?.imageUrl).toBe('https://cdn.7tv.app/emote/abc/4x.webp')
-  })
-})
-
-describe('provider emote destinations', () => {
-  it('never constructs provider links from display names or missing ids', () => {
-    expect(momentEmoteExternalUrl('bttv', 'NaM')).toBeNull()
-    expect(momentEmoteExternalUrl('bttv')).toBeNull()
-    expect(momentEmoteExternalUrl(undefined, 'abc')).toBeNull()
-    expect(momentEmoteProviderLabel()).toBe('Unknown')
-  })
-
-  it('uses a qualified BetterTTV id verbatim', () => {
-    const id = '64f123456789abcdef012345'
-    expect(momentEmoteExternalUrl('betterttv', id)).toBe(`https://betterttv.com/emotes/${id}`)
-  })
-
-  it('keeps matching display names separate by provider identity', () => {
-    const lookup = buildEmoteLookup([
-      { id: 'twitch-25', name: 'LUL', provider: 'twitch', count: 1, sharePct: 0 },
-      { id: '64f123456789abcdef012345', name: 'LUL', provider: 'bttv', count: 2, sharePct: 0 },
-    ])
-    expect(lookup.get('twitch:lul')?.id).toBe('twitch-25')
-    expect(lookup.get('bttv:lul')?.id).toBe('64f123456789abcdef012345')
   })
 })

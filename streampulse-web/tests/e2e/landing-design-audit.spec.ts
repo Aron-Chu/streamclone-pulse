@@ -38,13 +38,13 @@ async function collectLandingDom(page: Page) {
       itemCount: el.querySelectorAll('.sl-ticker__item').length,
       sample: el.textContent?.replace(/\s+/g, ' ').trim().slice(0, 240) ?? null,
     }))
-    const navLinks = [...document.querySelectorAll('.sl-menu a, .sl-nav__right a')].map((a) => ({
+    const navLinks = [...document.querySelectorAll('.site-header__links a, .site-header__actions a')].map((a) => ({
       text: a.textContent?.replace(/\s+/g, ' ').trim() ?? '',
       href: a.getAttribute('href'),
       visible: (a as HTMLElement).offsetParent !== null || getComputedStyle(a).display !== 'none',
     }))
-    const skip = document.querySelector('a.sc-skip')
-    const mobileToggle = document.querySelector('.sl-mobile-nav__toggle') as HTMLElement | null
+    const skip = document.querySelector('.site-header a.sc-skip')
+    const mobileToggle = document.querySelector('.site-header__menu') as HTMLElement | null
     const heroCtas = [...document.querySelectorAll('.sl-hero__actions a')].map((a) => ({
       text: a.textContent?.replace(/\s+/g, ' ').trim() ?? '',
       href: a.getAttribute('href'),
@@ -52,6 +52,7 @@ async function collectLandingDom(page: Page) {
     const motionSignatures = {
       emoteRain: Boolean(document.querySelector('.sl-fx')),
       chatBackdrop: Boolean(document.querySelector('.sl-chatbg')),
+      chatRidge: Boolean(document.querySelector('.sl-ridge')),
       tickers: document.querySelectorAll('.sl-ticker').length,
       extensionTour: Boolean(document.querySelector('.sl-xtour, #demo')),
     }
@@ -66,8 +67,8 @@ async function collectLandingDom(page: Page) {
         mobileToggle && getComputedStyle(mobileToggle).display !== 'none' && mobileToggle.offsetParent !== null,
       ),
       motionSignatures,
-      menuDisplay: getComputedStyle(document.querySelector('.sl-menu') ?? document.body).display,
-      navRightDisplay: getComputedStyle(document.querySelector('.sl-nav__right') ?? document.body).display,
+      menuDisplay: getComputedStyle(document.querySelector('.site-header__links') ?? document.body).display,
+      navRightDisplay: getComputedStyle(document.querySelector('.site-header__actions') ?? document.body).display,
     }
   })
 }
@@ -181,9 +182,9 @@ test.describe('landing design audit (deterministic capture)', () => {
 
     expect(firstPaintMeta.git.headShort).toBeTruthy()
     expect(page.url()).toMatch(/\/$|\/\?/)
-    expect(readyDom.hasSkipLink, 'landing must expose a.sc-skip').toBe(true)
-    expect(readyDom.skipHref, 'skip link must target main, not a mid-page demo').toBe('#main')
-    expect(mobileDom.mobileNavToggleVisible, '390px must expose landing mobile nav').toBe(true)
+    expect(readyDom.hasSkipLink, 'the site header must carry its skip link').toBe(true)
+    expect(readyDom.skipHref, 'skip link must target main, not a mid-page demo').toBe('#landing-main')
+    expect(mobileDom.mobileNavToggleVisible, '390px must show the header Menu').toBe(true)
     assertHostedApiOnly(violations)
     await testInfo.attach('landing-evidence', {
       path: path.join(outDir, 'evidence.json'),

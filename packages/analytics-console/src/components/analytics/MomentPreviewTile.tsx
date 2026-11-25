@@ -7,7 +7,8 @@
  * game's sharp cover sits beside it, in the strip's caption; until 10-30 the
  * 210x280 box art was stretched and blurred behind the box and read as a
  * broken preview). Never a stand-in or a live frame. Over it: Play (the caller
- * loads Twitch's player only on click), or a line saying why there is no Play.
+ * loads Twitch's player on click, or paused once a pick settles in the
+ * selected-minute card on a desktop, 11-21), or a line saying why there is no Play.
  * Shared by the bar strip (U14) and the moment rows (U11). Styles:
  * WEB/src/ui/charts/sp-session-strip.css (`.mpl-*`).
  */
@@ -64,6 +65,10 @@ export interface MomentPreviewTileProps {
   onPlay?: () => void
   /** Twitch's player, once the viewer pressed Play: it replaces the picture. */
   player?: ReactNode
+  /** The player was loaded paused, without Play (MomentVodPanel `preview`). */
+  paused?: boolean
+  /** The paused player is about to load: an empty 16:9 box holds its place, so nothing jumps when it comes. */
+  waiting?: boolean
 }
 
 /** The frame note's lines (mockup copy). */
@@ -91,16 +96,17 @@ export function previewNoteLines(args: {
 }
 
 export const MomentPreviewTile = forwardRef<HTMLDivElement, MomentPreviewTileProps>(function MomentPreviewTile(
-  { frame, loading, subject, subjectVodStart, hasArt, recording, playLabel, message, onPlay, player },
+  { frame, loading, subject, subjectVodStart, hasArt, recording, playLabel, message, onPlay, player, paused, waiting },
   ref,
 ) {
   if (player) {
     return (
-      <div ref={ref} className="mpl-box on" tabIndex={-1} data-preview-tile="playing">
+      <div ref={ref} className="mpl-box on" tabIndex={-1} data-preview-tile={paused ? 'preview' : 'playing'}>
         {player}
       </div>
     )
   }
+  if (waiting) return <div ref={ref} className="mpl-box on" aria-hidden="true" data-preview-tile="waiting" />
   const canPlay = Boolean(playLabel && onPlay)
   const lines = loading ? [] : previewNoteLines({ frame, subject, subjectVodStart, recording, hasArt, canPlay })
   if (!sessionHasFrame(frame)) {

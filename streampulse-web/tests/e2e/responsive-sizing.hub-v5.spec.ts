@@ -7,7 +7,7 @@ test('public and analytics route shells reflow across desktop and zoom-sized vie
   const measurements: unknown[] = []
   for (const width of [1440, 1024, 768, 560, 375]) {
     await page.setViewportSize({ width, height: width === 768 ? 450 : 900 })
-    for (const route of ['/docs', '/privacy', '/terms', '/refunds', '/support', '/status', '/supporter', '/account/sign-in', '/analytics/moments', '/analytics/xqc']) {
+    for (const route of ['/help', '/privacy', '/terms', '/refunds', '/guides/twitch-vod-timestamps', '/status', '/supporter', '/account/sign-in', '/analytics/moments', '/analytics/xqc']) {
       await page.goto(route)
       await expect(page.locator('h1').first()).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
@@ -34,21 +34,35 @@ test('landing heading does not grow when crossing the mobile breakpoint', async 
   expect(after).toBeLessThanOrEqual(before)
 })
 
-test('the landing tour reflows on short viewports and restores animation on resize', async ({ page }) => {
+test('the landing demo keeps its stage shape as the window changes, and takes the phone shape when narrow', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')
-  // The demo mounts only once its section scrolls into view (DeferredDemo in Landing.tsx).
-  await page.locator('#demo .sl-demo-placeholder').scrollIntoViewIfNeeded()
-  const tour = page.locator('.sl-xtour')
-  await expect(tour).toBeAttached()
-  await expect(tour).not.toHaveAttribute('data-static')
+  // The demo mounts only once its section scrolls into view (DeferredDemo in Landing.tsx); until then its place is
+  // the stage's own shape.
+  const placeholder = page.locator('#demo .sl-demo-placeholder')
+  await expect(placeholder).toBeAttached()
+  const held = await placeholder.evaluate(el => el.getBoundingClientRect().height)
+  await placeholder.scrollIntoViewIfNeeded()
+  const stage = page.locator('.es-demo .es')
+  await expect(stage).toBeVisible()
+  const size = () => stage.evaluate(el => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height }))
+  const wide = await size()
+  expect(Math.abs(held - wide.height)).toBeLessThanOrEqual(2)
+  expect(wide.width).toBeLessThanOrEqual(1120)
+  expect(Math.abs(wide.height - Math.round(wide.width * 700 / 1120))).toBeLessThanOrEqual(1)
+  // A short window keeps the shape: the page scrolls, the stage does not squash.
   await page.setViewportSize({ width: 1440, height: 450 })
-  await expect(tour).toHaveAttribute('data-static', '')
-  const panel = page.locator('.pulse-landing-panel')
-  expect(await panel.evaluate(el => el.scrollHeight <= el.clientHeight + 2)).toBe(true)
+  expect(await size()).toEqual(wide)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.locator('.es-demo')).toHaveAttribute('data-phone', '')
+  const phone = await size()
+  expect(phone.height).toBeGreaterThan(phone.width)
+  expect(phone.height).toBeLessThanOrEqual(640)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await expect(tour).not.toHaveAttribute('data-static')
+  await expect(page.locator('.es-demo')).not.toHaveAttribute('data-phone', '')
+  expect(await size()).toEqual(wide)
 })
 
 test('analytics uses one readable chip per series and the design plot height', async ({ page }) => {

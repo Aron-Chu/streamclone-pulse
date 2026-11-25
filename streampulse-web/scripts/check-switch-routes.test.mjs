@@ -5,6 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { NOT_SWITCHES, SWITCHES, checkSwitchRoutes, relayPaths, switchesOn } from './check-switch-routes.mjs'
+import { MOMENT_PAGE_RULES, momentPageOn, momentPageRedirects } from './moment-page-redirects.mjs'
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const worker = readFileSync(join(webRoot, 'public/_worker.js'), 'utf8')
@@ -128,4 +129,41 @@ test('the CLI passes with every switch off', { skip: localSwitchOn && 'a local .
   const run = spawnSync(process.execPath, ['scripts/check-switch-routes.mjs', '--mode', 'switch-routes-test'], { cwd: webRoot, env, encoding: 'utf8' })
   assert.equal(run.status, 0, run.stderr)
   assert.match(run.stdout, /no switches on/)
+})
+
+// The other way round: a build with VITE_PUBLIC_MOMENT_PAGE off leaves the Moment page's rewrite lines out of dist/_redirects.
+const redirectsSource = readFileSync(join(webRoot, 'public/_redirects'), 'utf8')
+const rulesOf = (text) => text.split('\n').filter((line) => line.trim() && !line.trim().startsWith('#')).map((line) => line.trim().split(/\s+/)[0])
+
+test('with the switch on, the Moment page keeps both rewrite lines and nothing else changes', () => {
+  for (const value of ['on', '1']) {
+    const out = momentPageRedirects(redirectsSource, { VITE_PUBLIC_MOMENT_PAGE: value })
+    assert.equal(out, redirectsSource)
+    for (const rule of MOMENT_PAGE_RULES) assert.ok(rulesOf(out).includes(rule), rule)
+  }
+})
+
+test('with the switch off, the two 4-segment Moment lines are left out and the Moments list keeps its own', () => {
+  for (const env of [{}, { VITE_PUBLIC_MOMENT_PAGE: 'off' }, { VITE_PUBLIC_MOMENT_PAGE: 'ON' }, { VITE_PUBLIC_MOMENT_PAGE: '' }]) {
+    const out = momentPageRedirects(redirectsSource, env)
+    const rules = rulesOf(out)
+    for (const rule of MOMENT_PAGE_RULES) assert.ok(!rules.includes(rule), `${rule} with ${JSON.stringify(env)}`)
+    assert.ok(rules.includes('/analytics/moments') && rules.includes('/analytics/moments/'))
+    assert.deepEqual(rules, rulesOf(redirectsSource).filter((rule) => !MOMENT_PAGE_RULES.includes(rule)))
+  }
+})
+
+test('only the spellings momentPageEnabled reads turn it on', () => {
+  assert.equal(momentPageOn({ VITE_PUBLIC_MOMENT_PAGE: 'on' }), true)
+  assert.equal(momentPageOn({ VITE_PUBLIC_MOMENT_PAGE: '1' }), true)
+  for (const value of [undefined, '', 'true', 'ON', ' on', '0']) assert.equal(momentPageOn({ VITE_PUBLIC_MOMENT_PAGE: value }), false, String(value))
+})
+
+test('a missing or doubled Moment rule fails the build in either state', () => {
+  const missing = redirectsSource.split('\n').filter((line) => !line.startsWith('/analytics/moments/:streamId/:momentAt/ ')).join('\n')
+  const doubled = `${redirectsSource}\n/analytics/moments/:streamId/:momentAt /analytics-fallback/ 200\n`
+  for (const env of [{}, { VITE_PUBLIC_MOMENT_PAGE: 'on' }]) {
+    assert.throws(() => momentPageRedirects(missing, env), /:momentAt\/ once, found 0/)
+    assert.throws(() => momentPageRedirects(doubled, env), /:momentAt once, found 2/)
+  }
 })

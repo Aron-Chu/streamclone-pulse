@@ -237,12 +237,16 @@ export function pollMomentsFeed(nowMs: number, signal?: AbortSignal): Promise<Mo
   return readPage(nowMs, null, signal)
 }
 
-/** One moment by id (a deep link to a moment the list has not loaded). Null when the feed no longer has it. */
+/**
+ * One moment by id (a deep link to a moment the list has not loaded). Null when the feed answers 404
+ * (it no longer has it). A 200 that is not a well-formed item answer throws: that is unknown, not "gone".
+ */
 export async function loadMomentsFeedItem(id: string, signal?: AbortSignal): Promise<MomentsFeedItem | null> {
   try {
     const { data } = await apiClient<unknown>(`/v1/public/moments?${new URLSearchParams({ id })}`, { signal, timeoutMs: 8000, maxResponseBytes: 64 * 1024, cache: 'default' })
     const body = data as MomentsFeedItemResponse
-    return body && body.schemaVersion === MOMENTS_FEED_SCHEMA_VERSION && isMomentsFeedItem(body.item) ? body.item : null
+    if (body && body.schemaVersion === MOMENTS_FEED_SCHEMA_VERSION && isMomentsFeedItem(body.item)) return body.item
+    throw new Error('unexpected moments feed answer')
   } catch (error) {
     if (isApiError(error) && error.status === 404) return null
     throw error

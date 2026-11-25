@@ -1,4 +1,4 @@
-import type { HubActivityMomentMarker } from '../ui/components/hub/HubActivityChart'
+import type { HubActivityMomentMarker } from '../ui/components/hub/HubActivityChartV5'
 
 export type HubChartAnnotationKind = 'spike' | 'moment'
 
