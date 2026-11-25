@@ -111,7 +111,7 @@ describe('website analytics privacy disclosure', () => {
   it('discloses voluntary US processing, event limits, withdrawal limits and separate extension plans', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     const policy = screen.getByTestId('privacy-policy').textContent ?? ''
-    expect(policy).toContain('Last updated: November 2, 2026')
+    expect(policy).toContain('Last updated: November 25, 2026')
     expect(policy).toContain('never your entered link, timestamp or generated URL')
     expect(policy).toContain('Only submitting includes the fixed Yes or Not yet answer')
     expect(policy).toContain('no person profile, persistent survey history or free-text answer is created')
