@@ -16,10 +16,9 @@ export default defineConfig({
     jsx: 'automatic',
   },
   resolve: {
-    dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query', 'zustand'],
+    dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', '@tanstack/react-query'],
     alias: [
       { find: '@', replacement: resolve(__dirname, 'src') },
-      { find: '@pulse-ext/ui', replacement: resolve(pulseRoot, 'src/ui') },
       {
         find: '@streampulse/analytics-console/analytics-chart-motion.css',
         replacement: resolve(analyticsConsoleRoot, 'analytics-chart-motion.css'),
@@ -53,7 +52,6 @@ export default defineConfig({
       { find: 'react-dom', replacement: resolve(__dirname, 'node_modules/react-dom') },
       { find: 'react-router-dom', replacement: resolve(__dirname, 'node_modules/react-router-dom') },
       { find: '@tanstack/react-query', replacement: resolve(__dirname, 'node_modules/@tanstack/react-query') },
-      { find: 'zustand', replacement: resolve(__dirname, 'node_modules/zustand') },
     ],
   },
   test: {

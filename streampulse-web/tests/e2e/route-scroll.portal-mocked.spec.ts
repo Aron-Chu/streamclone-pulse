@@ -241,9 +241,9 @@ test.describe('Back to the Moments list', () => {
   // The Moments page remembers the reader's place per history entry; a pushed
   // page opening at the top must not overwrite that place before it is saved.
   const ways = [
-    { name: 'the top-nav Help link', leave: async (page: Page) => {
-      await page.getByRole('button', { name: 'Navigation menu' }).click()
-      await page.locator('.analytics-topnav__more-nav').getByRole('link', { name: 'Help', exact: true }).click()
+    { name: 'the Menu Help link', leave: async (page: Page) => {
+      await page.getByRole('button', { name: 'Menu', exact: true }).click()
+      await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Help', exact: true }).click()
     } },
     { name: 'a footer link', leave: (page: Page) => page.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'Privacy', exact: true }).click() },
   ] as const
@@ -257,7 +257,7 @@ test.describe('Back to the Moments list', () => {
       await scrollToBottom(page)
       // The nonsticky phone menu is reached by wheeling back to the bar. Back
       // restores that actual departure point; the footer case still leaves at the bottom.
-      if (name === 'the top-nav Help link') await wheelToTop(page)
+      if (name === 'the Menu Help link') await wheelToTop(page)
       const left = await scrollY(page)
 
       await leave(page)

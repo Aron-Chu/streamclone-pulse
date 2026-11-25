@@ -21,6 +21,11 @@ export interface Part {
   moment(m: HeroMoment, nowMs: number): void
   /** The layer is back on screen, or the tab is shown again, after time passed without frames. */
   resume?(): void
+  /**
+   * True when nothing on the layer needs a frame from script: what moves is left to the browser. A layer without
+   * it needs every frame while it is on screen.
+   */
+  idle?(now: number): boolean
   dispose(): void
 }
 
@@ -60,12 +65,16 @@ export function makeChip(parent: HTMLElement, tone?: 'moment') {
   el.className = `sl-bgchip${tone ? ` sl-bgchip--${tone}` : ''}`
   parent.appendChild(el)
   let last = ''
+  let cachedHalf = -1
+  let lastLeft = ''
+  let lastTop = ''
   return {
     el,
     show({ text, small, emote }: ChipText) {
       const key = `${emote?.name ?? ''}|${text}|${small ?? ''}`
       if (key !== last) {
         last = key
+        cachedHalf = -1
         el.replaceChildren()
         if (emote && !failedEmotes.has(emote.name)) el.appendChild(emoteImg(emote, 18))
         const b = document.createElement('span')
@@ -84,9 +93,21 @@ export function makeChip(parent: HTMLElement, tone?: 'moment') {
     },
     /** Centre the chip over (x, y), clamped to the layer's width. */
     at(x: number, y: number, width: number) {
-      const half = (el.offsetWidth || 160) / 2
-      el.style.left = `${clamp(x, half + 12, Math.max(half + 12, width - half - 12)).toFixed(1)}px`
-      el.style.top = `${y.toFixed(1)}px`
+      if (cachedHalf < 0) {
+        const w = el.offsetWidth
+        if (w > 0) cachedHalf = w / 2
+      }
+      const half = cachedHalf >= 0 ? cachedHalf : 80
+      const nextLeft = `${clamp(x, half + 12, Math.max(half + 12, width - half - 12)).toFixed(1)}px`
+      const nextTop = `${y.toFixed(1)}px`
+      if (nextLeft !== lastLeft) {
+        lastLeft = nextLeft
+        el.style.left = nextLeft
+      }
+      if (nextTop !== lastTop) {
+        lastTop = nextTop
+        el.style.top = nextTop
+      }
     },
     dispose() {
       el.remove()

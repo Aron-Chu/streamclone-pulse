@@ -273,10 +273,10 @@ function testTypeScriptDeclarations(consumerDir, tarballs) {
   )
   writeFileSync(
     join(tsConsumer, 'consume.ts'),
-    `import type { MomentRef } from '@streampulse/pulse-core'\n` +
+    `import type { RecapMomentLike } from '@streampulse/pulse-core'\n` +
       `import { mergeRecapMoments } from '@streampulse/pulse-core'\n` +
       `export const _probe: typeof mergeRecapMoments = mergeRecapMoments\n` +
-      `export type _Ref = MomentRef\n`,
+      `export type _Ref = RecapMomentLike\n`,
   )
   run('npm', ['install', '--ignore-scripts'], tsConsumer)
   run('npx', ['tsc', '-p', 'tsconfig.json'], tsConsumer)

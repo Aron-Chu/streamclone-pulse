@@ -42,14 +42,7 @@ const deadFiles = [
  * Single-owner source checks: file must NOT contain the given needle.
  * @type {Array<{ file: string, needle: string, why: string }>}
  */
-const forbiddenInSource = [
-  {
-    file: join(repoRoot, 'packages/pulse-charts/src/PulseMultiSignalChart.tsx'),
-    needle: 'data-chart-viewport-controls',
-    why: 'viewport controls belong in the shared ChartNavigator under the plot, '
-      + 'not floating over the plot where they covered the viewer peak',
-  },
-]
+const forbiddenInSource = []
 
 /** @type {string[]} */
 const errors = []
@@ -75,7 +68,7 @@ for (const { file, needle, why } of forbiddenInSource) {
 // plot, hosted in an unpositioned [data-session-chart-navigator] element. The
 // only other view control is the toolbar's one range seg
 // ([data-session-range-seg], SessionChartToolbar.tsx). The retired
-// PulseMultiSignalChart stays in its package but is never mounted.
+// PulseMultiSignalChart is deleted and must not come back.
 const analyticsDir = join(repoRoot, 'packages/analytics-console/src/components/analytics')
 const consoleChartFile = join(analyticsDir, 'AnalyticsChart.tsx')
 const sessionPartFiles = [
@@ -141,7 +134,7 @@ if (existsSync(consoleChartFile)) {
   }
 }
 
-// D7: PulseMultiSignalChart stays in its package, unmounted.
+// D7: the deleted PulseMultiSignalChart is never imported or mounted again.
 const sourceRoots = [join(repoRoot, 'packages/analytics-console/src'), join(webRoot, 'src')]
 const mountsRetiredChart = /import\s*\{[^}]*\bPulseMultiSignalChart(?:Inner)?\b[^}]*\}\s*from|from\s*['"][^'"]*\/PulseMultiSignalChart(?:\.tsx?)?['"]|<PulseMultiSignalChart(?:Inner)?\b/
 for (const root of sourceRoots) {

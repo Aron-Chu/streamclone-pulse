@@ -16,7 +16,6 @@ vi.mock('../src/lib/streamcloneAnalytics', () => ({
   setupStreamcloneAnalyticsApi: () => { loads.api += 1 },
   usesLocalAnalyticsBackend: () => false,
 }))
-vi.mock('../src/ui/motion/useAnalyticsMotion', () => ({ useAnalyticsMotion: () => ({ fadeThemeCenter: () => undefined }) }))
 vi.mock('../src/ui/components/analytics/HubBackendSourceBanner', () => ({ HubBackendSourceBanner: () => null }))
 vi.mock('../src/ui/components/analytics/AnalyticsFigmaShell', () => ({
   AnalyticsFigmaShell: ({ children }: { children: ReactNode }) => <div data-testid="figma-shell">{children}</div>,

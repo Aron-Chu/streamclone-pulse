@@ -12,7 +12,6 @@ import Refunds from './routes/public/Refunds'
 import Withdraw from './routes/public/Withdraw'
 import Supporter from './routes/public/Supporter'
 import SupporterThanks from './routes/public/SupporterThanks'
-import AccountRestore from './routes/account/AccountRestore'
 import Discord from './routes/public/Discord'
 import Status from './routes/public/Status'
 import Changelog from './routes/public/Changelog'
@@ -37,7 +36,6 @@ export function prerenderPublicPage(path: string): string {
     : path === '/withdraw' ? <Withdraw />
     : path === '/supporter' ? <Supporter />
     : path === '/supporter/thanks' ? <SupporterThanks />
-    : path === '/account/restore' ? <AccountRestore />
     : path === '/discord' ? <Discord />
     : path === '/status' ? <Status />
     : path === '/changelog' ? <Changelog />
@@ -45,7 +43,7 @@ export function prerenderPublicPage(path: string): string {
     // The hub as it first renders, waiting on its data: main.tsx loads it before the first render, so it never flashes.
     : path === '/analytics' ? <QueryClientProvider client={new QueryClient()}><AnalyticsHubV5Page /></QueryClientProvider>
     // Stream, channel and recap documents keep the loading shell: their pages load after the first render.
-    : ['/analytics-fallback', '/setup', '/login'].includes(path)
+    : path === '/analytics-fallback'
       ? <><AnalyticsRouteFallback /><noscript><style>{'[data-analytics-route-skeleton]{display:none}'}</style><PublicLayout><article className="panel public-document"><h1>StreamPulse Analytics</h1>
         <p>Explore aggregate Twitch activity, timestamped moments, emotes, and tracked channels.</p>
         <p>Live measurements load when JavaScript is available. Coverage and freshness are shown with the data.</p>

@@ -136,7 +136,7 @@ describe('hub rows with wrong-typed fields', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByRole('heading', { name: 'Find your streamer' })).toBeTruthy()
-    expect(screen.getByRole('navigation', { name: 'Analytics navigation' })).toBeTruthy()
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
     expect(screen.getAllByText('pokimane').length).toBeGreaterThan(0)
   })
 })

@@ -4,12 +4,10 @@
  * Exercises current hub components — not a full hub page mount.
  */
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PRODUCTION_BACKEND_URL } from '../src/lib/auth'
 import type { ActivitySummary } from '../src/lib/hubActivitySummary'
 import { AnalyticsHubSidebar } from '../src/ui/components/analytics/AnalyticsHubSidebar'
-import { FigmaLiveChannelRail } from '../src/ui/components/analytics/FigmaLiveChannelRail'
 import { HubDataHealthBanner } from '../src/ui/components/hub/HubDataHealthBanner'
 import { COMMAND_CENTER_LABELS } from '../src/ui/themes/commandCenterLabels'
 
@@ -39,20 +37,6 @@ describe('hub empty / honesty (ported from excluded landing tests)', () => {
     expect(labels).toEqual(['Overview', 'Moments', 'Emotes', 'Channels'])
     expect(screen.queryByRole('button', { name: /Moments feed/i })).toBeNull()
     expect(screen.queryByText(/Featured session analytics/i)).toBeNull()
-  })
-
-  it('shows honest empty live rail copy without watchlist CTA', () => {
-    render(
-      <MemoryRouter>
-        <FigmaLiveChannelRail channels={[]} />
-      </MemoryRouter>,
-    )
-    expect(screen.getByText('No channel activity supplied — search a channel to open analytics.')).toBeTruthy()
-    // An empty supplied list is not evidence that every channel is offline.
-    expect(screen.queryByText(/No channels live right now/i)).toBeNull()
-    expect(
-      screen.queryByText(/add channels to your watchlist to see live analytics/i),
-    ).toBeNull()
   })
 
   it('shows stats-fallback health banner without exposing hosted API hostname', () => {

@@ -14,30 +14,31 @@ const dist = join(root, '..', 'dist')
 const pilotPages = readPilot(join(root, '..', 'content', 'recap-pilot.json'))
 const expected = [
   // The builder's old address shows the guide it moved into and points search there.
-  ['tools/twitch-vod-timestamp-link/index.html', 'Twitch VOD Timestamp Link Builder and Guide — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
-  ['guides/find-twitch-moments/index.html', 'Find and Bookmark Twitch Reaction Moments — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/find-twitch-moments'],
-  ['guides/twitch-vod-timestamps/index.html', 'Twitch VOD Timestamp Link Builder and Guide — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
-  ['recaps/index.html', 'Twitch Chat Recaps — StreamPulse', 'index,follow', 'https://streampulse.stream/recaps'],
+  ['tools/twitch-vod-timestamp-link.html', 'Twitch VOD Timestamp Link Builder and Guide — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
+  ['guides/find-twitch-moments.html', 'Find and Bookmark Twitch Reaction Moments — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/find-twitch-moments'],
+  ['guides/twitch-vod-timestamps.html', 'Twitch VOD Timestamp Link Builder and Guide — StreamPulse', 'index,follow', 'https://streampulse.stream/guides/twitch-vod-timestamps'],
+  ['recaps.html', 'Twitch Chat Recaps — StreamPulse', 'index,follow', 'https://streampulse.stream/recaps'],
   ['index.html', 'StreamPulse: Twitch Chat Stats & Top Moments', 'index,follow', 'https://streampulse.stream/'],
   ['analytics-fallback/index.html', 'StreamPulse Analytics', 'noindex,nofollow', 'https://streampulse.stream/analytics-fallback'],
   ['analytics-console-fallback/index.html', 'StreamPulse Analytics', 'noindex,nofollow', 'https://streampulse.stream/analytics-console-fallback'],
-  ['analytics/index.html', 'Live Twitch Chat Stats & Top Emotes — StreamPulse', 'index,follow', 'https://streampulse.stream/analytics'],
-  ['help/index.html', 'Help — StreamPulse', 'index,follow', 'https://streampulse.stream/help'],
+  ['analytics.html', 'Live Twitch Chat Stats & Top Emotes — StreamPulse', 'index,follow', 'https://streampulse.stream/analytics'],
+  ['help.html', 'Help — StreamPulse', 'index,follow', 'https://streampulse.stream/help'],
   // The old help pages open a section of Help and point search there.
-  ['docs/index.html', 'Help — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/help'],
-  ['status/index.html', 'Service Status — StreamPulse', 'index,follow', 'https://streampulse.stream/status'],
-  ['privacy/index.html', 'Privacy Policy — StreamPulse', 'index,follow', 'https://streampulse.stream/privacy'],
-  ['terms/index.html', 'Terms of Use — StreamPulse', 'index,follow', 'https://streampulse.stream/terms'],
-  ['refunds/index.html', 'Cancellation and Refunds — StreamPulse', 'index,follow', 'https://streampulse.stream/refunds'],
-  ['withdraw/index.html', 'Withdraw from your contract — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/withdraw'],
-  ['supporter/index.html', 'Pulse Supporter — StreamPulse', 'index,follow', 'https://streampulse.stream/supporter'],
-  ['supporter/thanks/index.html', 'Return to your extension — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/supporter/thanks'],
-  ['account/restore/index.html', 'Restore Supporter — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/account/restore'],
-  ['support/index.html', 'Help — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/help'],
-  ['feedback/index.html', 'Help — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/help'],
-  ['discord/index.html', 'Discord — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/discord'],
-  ['changelog/index.html', 'Release Notes — StreamPulse', 'index,follow', 'https://streampulse.stream/changelog'],
-  ['brainchat/index.html', 'BrainChat — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/brainchat'],
+  ['docs.html', 'Help — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/help'],
+  ['status.html', 'Service Status — StreamPulse', 'index,follow', 'https://streampulse.stream/status'],
+  ['privacy.html', 'Privacy Policy — StreamPulse', 'index,follow', 'https://streampulse.stream/privacy'],
+  ['terms.html', 'Terms of Use — StreamPulse', 'index,follow', 'https://streampulse.stream/terms'],
+  ['refunds.html', 'Cancellation and Refunds — StreamPulse', 'index,follow', 'https://streampulse.stream/refunds'],
+  ['withdraw.html', 'Withdraw from your contract — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/withdraw'],
+  ['supporter.html', 'Pulse Supporter — StreamPulse', 'index,follow', 'https://streampulse.stream/supporter'],
+  ['supporter/thanks.html', 'Return to your extension — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/supporter/thanks'],
+  // The document Pages serves at /account/restore (public/_redirects): the account card, which has no page heading.
+  ['account-fallback/restore/index.html', 'Restore Supporter — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/account/restore'],
+  ['support.html', 'Help — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/help'],
+  ['feedback.html', 'Help — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/help'],
+  ['discord.html', 'Discord — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/discord'],
+  ['changelog.html', 'Release Notes — StreamPulse', 'index,follow', 'https://streampulse.stream/changelog'],
+  ['brainchat.html', 'BrainChat — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/brainchat'],
   // The 404 is not a page of its own, so it names no canonical URL.
   ['404.html', 'Page not found — StreamPulse', 'noindex,nofollow', null],
 ]
@@ -118,11 +119,12 @@ for (const [relativePath, title, robots, canonical] of expected) {
   if (!html.includes(`<meta name="robots" content="${robots}" />`)) failures.push(`${relativePath}: incorrect robots policy`)
   if (canonical ? !html.includes(`<link rel="canonical" href="${canonical}" />`) : /<link\s+rel="canonical"/i.test(html)) failures.push(`${relativePath}: incorrect canonical URL`)
   // A prerendered page's trailing-slash twin redirects to it (scripts/prerender.mjs slashRedirects).
-  const folder = /^(?!_recap-pages\/|analytics-fallback\/|analytics-console-fallback\/)(.+)\/index\.html$/.exec(relativePath)?.[1]
-  if (folder && existsSync(join(dist, '_redirects')) && !readFileSync(join(dist, '_redirects'), 'utf8').split(/\r?\n/).includes(`/${folder}/ /${folder} 301`)) failures.push(`${relativePath}: /${folder}/ does not redirect to /${folder}`)
+  const page = /^(?!_recap-pages\/|analytics-fallback\/|analytics-console-fallback\/|account-fallback\/)(.+?)(?:\/index)?\.html$/.exec(relativePath)?.[1]
+  const folder = page === 'index' || page === '404' ? undefined : page
+  if (folder &&existsSync(join(dist, '_redirects')) && !readFileSync(join(dist, '_redirects'), 'utf8').split(/\r?\n/).includes(`/${folder}/ /${folder} 301`)) failures.push(`${relativePath}: /${folder}/ does not redirect to /${folder}`)
   failures.push(...linkPreviewFailures(relativePath, html, title, canonical))
   if (!textContainsHostedApiOrigin(html)) failures.push(`${relativePath}: hosted API CSP missing`)
-  if (!/<div id="root"[^>]*>[\s\S]*?<h1\b/.test(html)) failures.push(`${relativePath}: missing meaningful prerendered heading`)
+  if (!relativePath.startsWith('account-fallback/') && !/<div id="root"[^>]*>[\s\S]*?<h1\b/.test(html)) failures.push(`${relativePath}: missing meaningful prerendered heading`)
   if (/https?:\/\/(?:localhost|127\.0\.0\.1)/i.test(html)) failures.push(`${relativePath}: local URL leaked into artifact`)
 }
 

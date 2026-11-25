@@ -1,23 +1,27 @@
 const BACKEND_OVERRIDE_KEY = 'sp.backendUrlOverride'
-/** Saved by the removed beta-key login; no build reads it any more. */
-const REMOVED_BETA_KEY = 'sp.betaKey'
+/**
+ * Site keys no build reads any more: the removed beta-key login's, and the recent-channels list channel pages
+ * wrote but nothing showed.
+ */
+const REMOVED_SITE_KEYS = ['sp.betaKey', 'sp.hub.recentLogins'] as const
 
 export const DEFAULT_PRODUCTION_BACKEND_URL = 'https://api.streampulse.stream'
-const TAILNET_DEV_HOST_PARTS = ['laptop', 'worker'] as const
+/**
+ * The tailnet dev machine's host name, in dev builds only. Production builds fold `import.meta.env.DEV` to false
+ * and drop the name; they ignore local backends anyway.
+ */
+const TAILNET_DEV_HOST: string | null = import.meta.env.DEV ? ['laptop', 'worker'].join('') : null
 
-function tailnetDevHost(): string {
-  return TAILNET_DEV_HOST_PARTS.join('')
-}
-
-/** True for localhost / laptopworker StreamPulse backend dev — not used by default portal dev. */
+/** True for a localhost or tailnet dev StreamPulse backend; not used by default portal dev. */
 export function isLocalDevBackendUrl(url: string): boolean {
   const normalized = url.trim().replace(/\/+$/, '')
   if (!normalized) return false
   try {
     const host = new URL(normalized).hostname.toLowerCase()
-    return host === 'localhost' || host === '127.0.0.1' || host === tailnetDevHost()
+    return host === 'localhost' || host === '127.0.0.1' || (TAILNET_DEV_HOST !== null && host === TAILNET_DEV_HOST)
   } catch {
-    return /localhost|127\.0\.0\.1|:8081/i.test(normalized) || normalized.toLowerCase().includes(tailnetDevHost())
+    return /localhost|127\.0\.0\.1|:8081/i.test(normalized)
+      || (TAILNET_DEV_HOST !== null && normalized.toLowerCase().includes(TAILNET_DEV_HOST))
   }
 }
 
@@ -81,16 +85,17 @@ export function clearStaleLocalBackendOverride(): void {
 }
 
 /**
- * Delete the key the removed beta-key login left in site storage, so returning
- * visitors do not keep a dead secret. Unlike the override cleanup above this
- * runs in production too. The extension's own beta key lives in
- * chrome.storage and is not touched here.
+ * Delete the keys removed features left in site storage, so returning visitors do not keep a dead secret or a
+ * list of channels they opened. Unlike the override cleanup above this runs in production too. The extension's
+ * own beta key lives in chrome.storage and is not touched here.
  */
-export function clearRemovedBetaKey(): void {
-  try {
-    localStorage.removeItem(REMOVED_BETA_KEY)
-  } catch {
-    /* storage blocked */
+export function clearRemovedSiteKeys(): void {
+  for (const key of REMOVED_SITE_KEYS) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      /* storage blocked */
+    }
   }
 }
 

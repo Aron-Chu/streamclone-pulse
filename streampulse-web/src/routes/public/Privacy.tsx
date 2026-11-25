@@ -468,8 +468,7 @@ export default function Privacy() {
             stored by StreamPulse with that account.
           </li>
           <li>
-            <strong>Portal localStorage</strong> — stores recently opened Twitch channel logins
-            (<code>sp.hub.recentLogins</code>, capped list), public hub/analytics cache entries keyed by
+            <strong>Portal localStorage</strong> — stores public hub/analytics cache entries keyed by
             backend URL and activity window (<code>sp:publicHub:v1:…</code>, a hub copy that may be shown,
             marked as cached, for up to about 6 hours; <code>sp:publicHubProjection:v1:…</code>, Moments
             and ticker copies used for about 10 minutes), browser-saved moments and any notes you add to them

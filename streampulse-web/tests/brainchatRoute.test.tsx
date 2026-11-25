@@ -77,7 +77,7 @@ describe("extension BrainChat card destination", () => {
 
     expect(read('scripts/prerender.mjs')).toMatch(/path: 'brainchat',\s+title: 'BrainChat — StreamPulse',/)
     expect(read('scripts/prerender.mjs')).toMatch(/canonicalPath: '\/brainchat',\s+robots: 'noindex,nofollow',/)
-    expect(read('scripts/check-public-pages.mjs')).toContain("['brainchat/index.html', 'BrainChat — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/brainchat']")
+    expect(read('scripts/check-public-pages.mjs')).toContain("['brainchat.html', 'BrainChat — StreamPulse', 'noindex,nofollow', 'https://streampulse.stream/brainchat']")
     expect(read('scripts/check-public-links.mjs')).toMatch(/EXTERNALLY_PUBLISHED = \[[^\]]*'\/brainchat'/)
     expect(read('public/sitemap.xml')).not.toContain('https://streampulse.stream/brainchat')
   })

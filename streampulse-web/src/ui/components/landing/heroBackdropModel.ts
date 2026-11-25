@@ -4,19 +4,83 @@ import { findHeroEmote } from './heroEmotes'
 
 /**
  * What the front page's background is drawn from: the hub read the page already makes (live channels, the
- * last 30 one-minute points and the live moments). Counted, never invented: a chat line stands for a batch
- * of counted messages in a public channel, never for words or who wrote them (PRODUCT.md, rollup-first).
+ * last 30 one-minute points and the live moments). The side chat's lines are made up and say so on hover; their
+ * pace follows the network's chat per minute, and they carry more emotes when that chat is emote-heavy. No line
+ * carries real chat words or who wrote them (PRODUCT.md, rollup-first).
  */
 
 export interface ChatSource {
-  /** The public channel name a line shows. */
+  /** The public channel name, for the search. */
   name: string
   login: string
   chatPerMin: number
   viewers: number
-  /** Emotes per chat message (0-1), so a line carries an emote about as often as that chat does. */
+  /** Emotes per chat message (0-1); the side chat adds emotes to its lines more often when this is high. */
   emoteShare: number
 }
+
+/** A made-up side chat line. */
+export interface MadeUpLine {
+  /** Always has a dot or a dash, which a Twitch login cannot, so no line reads as a real account's words. */
+  user: string
+  /** Empty for a line that is only an emote. */
+  text: string
+}
+
+/**
+ * Short, ordinary chat reactions. Made-up names that point at no real person or channel, and nothing about
+ * StreamPulse. More lines than two full columns hold at 1440 x 900 (38), so none shows twice at once.
+ */
+export const MADE_UP_CHAT: readonly MadeUpLine[] = [
+  { user: 'couch.potato', text: 'nahhh that clip' },
+  { user: 'w.enjoyer', text: 'W' },
+  { user: 'marcus.tt', text: 'bro what was that' },
+  { user: 'vip.lurker', text: '' },
+  { user: 'clip.it.pls', text: 'someone clip that' },
+  { user: 'lurker-mode', text: 'just got here' },
+  { user: 'night.owl', text: 'LMAO' },
+  { user: 'tab.hoarder', text: 'mods??' },
+  { user: 'pixel-pal42', text: 'chat is moving' },
+  { user: 'nocap.fr', text: 'that was insane' },
+  { user: 'vod-gang', text: 'watching the VOD after' },
+  { user: 'react.goblin', text: '' },
+  { user: 'big.spender', text: 'W stream' },
+  { user: 'casual-viewer', text: 'what happened lol' },
+  { user: 'gifted.sub', text: 'lets goooo' },
+  { user: 'ranked-grind', text: 'one more game' },
+  { user: 'spam.lol', text: '' },
+  { user: 'honest-take', text: 'nahhh' },
+  { user: 'late.again', text: 'what did I miss' },
+  { user: 'chat-goblin', text: 'HOLY' },
+  { user: 'mid.laner', text: 'no shot' },
+  { user: 'hydrate.pls', text: 'hydrate chat' },
+  { user: 'cozy.viewer', text: 'this song tho' },
+  { user: 'jump-scare', text: 'AAAA' },
+  { user: 'gg.wp', text: 'GG' },
+  { user: 'brb-snack', text: 'brb' },
+  { user: 'tilted.one', text: 'unlucky' },
+  { user: 'replay-pls', text: 'REPLAY' },
+  { user: 'first.timer', text: 'chat is wild' },
+  { user: 'no-sleep', text: 'NO WAY' },
+  { user: 'snack.break', text: 'back from snacks' },
+  { user: 'low.ping', text: 'that timing tho' },
+  { user: 'map-reader', text: 'wrong way lol' },
+  { user: 'chair.spin', text: 'clean' },
+  { user: 'side-quest', text: 'side quest time' },
+  { user: 'calm.down', text: 'chat calm down' },
+  { user: 'emote.only', text: '' },
+  { user: 'tea.time', text: 'storytime' },
+  { user: 'speed-run', text: 'on WR pace??' },
+  { user: 'aim.check', text: 'how did that hit' },
+  { user: 'sleepy.cat', text: 'one more then bed' },
+  { user: 'meme-review', text: '10/10' },
+  { user: 'old.timer', text: 'been here since day 1' },
+  { user: 'patch-notes', text: 'this is so broken' },
+  { user: 'early.bird', text: 'first' },
+  { user: 'coin.flip', text: 'called it' },
+  { user: 'deep.lore', text: 'the lore is crazy' },
+  { user: 'hype-train', text: 'HYPE' },
+]
 
 const finiteNonNeg = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0
 
@@ -38,8 +102,9 @@ export function chatSources(live: readonly HubLiveChannel[], max = 60): ChatSour
 export const PER_LINE_STEPS = [50, 100, 250, 500, 1000, 2500, 5000, 10_000, 25_000, 50_000] as const
 
 /**
- * How many counted messages one line stands for: the smallest round step that keeps each of the two
- * columns at about one new line a second or slower, so a line can be read.
+ * The side chat's pace step: the smallest round number of counted messages per new line that keeps each of the
+ * two columns at about one new line a second or slower, so a line can be read. The lines are made up; this only
+ * sets how fast they come.
  */
 export function perLine(totalChatPerMin: number, linesPerSecPerColumn = 1): number {
   const total = finiteNonNeg(totalChatPerMin) ? totalChatPerMin : 0

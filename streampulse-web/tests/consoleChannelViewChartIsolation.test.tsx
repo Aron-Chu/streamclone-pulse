@@ -16,10 +16,6 @@ vi.mock('../src/lib/streamcloneAnalytics', () => ({
   usesLocalAnalyticsBackend: () => false,
 }))
 
-vi.mock('../src/ui/motion/useAnalyticsMotion', () => ({
-  useAnalyticsMotion: () => ({ fadeThemeCenter: () => undefined }),
-}))
-
 vi.mock('../src/ui/components/analytics/HubBackendSourceBanner', () => ({
   HubBackendSourceBanner: () => null,
 }))

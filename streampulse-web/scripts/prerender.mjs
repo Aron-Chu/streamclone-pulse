@@ -103,7 +103,7 @@ function builtAssetPaths(markup) {
 // Reuse the Vite source aliases/shims; no second page copy and no browser/network fetch.
 const loaded = await loadConfigFromFile({ command: 'serve', mode: 'production' }, undefined, root)
 if (!loaded) throw new Error('Missing Vite configuration for public prerender')
-const nativePackages = ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query', 'zustand']
+const nativePackages = ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query']
 const aliases = Object.fromEntries(Object.entries(loaded.config.resolve?.alias ?? {})
   .filter(([name]) => !nativePackages.includes(name)))
 // The account documents' card: the route fallback's account variant, rendered
@@ -161,13 +161,6 @@ const routes = [
     title: 'Return to your extension — StreamPulse',
     description: 'Return to StreamPulse to check your membership after Checkout.',
     canonicalPath: '/supporter/thanks',
-    robots: 'noindex,nofollow',
-  },
-  {
-    path: 'account/restore',
-    title: 'Restore Supporter — StreamPulse',
-    description: 'Confirm a requested Supporter restore for your extension.',
-    canonicalPath: '/account/restore',
     robots: 'noindex,nofollow',
   },
   {
@@ -276,20 +269,6 @@ const routes = [
     title: 'BrainChat — StreamPulse',
     description: 'BrainChat reads Twitch chat around a moment and says what it was about. Coming later.',
     canonicalPath: '/brainchat',
-    robots: 'noindex,nofollow',
-  },
-  {
-    path: 'setup',
-    title: 'StreamPulse Analytics',
-    description: 'This legacy StreamPulse route redirects to public analytics.',
-    canonicalPath: '/analytics',
-    robots: 'noindex,nofollow',
-  },
-  {
-    path: 'login',
-    title: 'StreamPulse Analytics',
-    description: 'This legacy StreamPulse route redirects to public analytics.',
-    canonicalPath: '/analytics',
     robots: 'noindex,nofollow',
   },
 ]
@@ -406,8 +385,8 @@ function renderShell(metadata) {
   return html.replace(boundary, () => `<!--public-root:start-->${markup}<!--public-root:end-->`)
 }
 
-// Each prerendered page answers at one URL: Pages would also serve its folder's index.html at the
-// trailing-slash URL, so that twin moves to the page, unless public/_redirects already sends it somewhere.
+// Each prerendered page answers at one URL: its trailing-slash twin moves to the page, unless
+// public/_redirects already sends it somewhere.
 // Pages applies a redirect even where an asset matches; first match wins, so these go first.
 function slashRedirects(source, paths) {
   const rules = paths.filter((path) => !source.split('\n').some((line) => line.startsWith(`/${path}/ `))).map((path) => `/${path}/ /${path} 301`)
@@ -424,17 +403,14 @@ for (const route of routes) {
     writeFileSync(indexPath, html)
     continue
   }
-  const dir = join(dist, route.path)
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'index.html'), html)
-  // Vite preview's HTML fallback resolves clean `/route` requests as
-  // `/route.html`, while static hosts generally resolve `/route/index.html`.
-  // Emit both so cold documents receive the same route-specific prerender.
-  writeFileSync(join(dist, `${route.path}.html`), html)
+  // Pages and Vite preview both serve /route from route.html, and the rule above sends /route/ there,
+  // so a route/index.html copy would never be served. Keep route.html: with only route/index.html,
+  // Pages sends /route to /route/ and that rule sends it back, a redirect loop.
+  const file = join(dist, `${route.path}.html`)
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, html)
 }
 
-mkdirSync(join(dist, 'docs', 'getting-started'), { recursive: true })
-writeFileSync(join(dist, 'docs', 'getting-started', 'index.html'), renderShell(routes.find((route) => route.path === 'docs')))
 writeFileSync(
   join(dist, '404.html'),
   renderShell({

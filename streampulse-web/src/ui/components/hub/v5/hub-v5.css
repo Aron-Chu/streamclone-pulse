@@ -151,17 +151,6 @@
 .hv5-dis { grid-area: meas; margin-top: 32px; }
 .hv5-sec { min-width: 0; }
 
-@media (max-width: 719px) {
-  /* Keep only the existing 44px search action reachable once the nonsticky
-     phone bar and hero have scrolled away. The full bar stays in page flow. */
-  .analytics-topnav .hv5-dock-btn[data-docked] {
-    position: fixed;
-    top: 8px;
-    right: var(--fa-gutter);
-    z-index: 1;
-    background: var(--fma-bg);
-  }
-}
 /* B1 (11-11): desktop takes the phone's order, in the two columns 720 px already used; only the emote map and Where chat is share a row */
 @media (min-width: 720px) {
   .hub-v5.hub-d3 {
@@ -1038,8 +1027,10 @@
    11-18: the field's slot is all the room between the links and the buttons, and the field (380 px at most)
    sits on the bar's middle, or as near it as that room allows (HubV5TopBar sets --hv5-dock-shift). It rises
    into the bar as the hero's field goes up under it and sinks back out when that field returns; the install
-   button does the same with the hero's card. */
-.analytics-topnav .hv5-dock {
+   button does the same with the hero's card (SiteHeaderStepBack, site-header.css).
+   11-24: the bar is the site header (SiteHeader). These rules start with .figma-analytics, so after a visit
+   here they leave the front page's header, which docks the same box its own way (landing.css), alone. */
+.figma-analytics .site-header .hv5-dock {
   position: relative;
   flex: 1 1 0;
   min-width: 0;
@@ -1048,13 +1039,12 @@
   transform: translateY(10px);
   transition: opacity 140ms ease-in, transform 160ms cubic-bezier(.4, 0, 1, 1), visibility 0s linear 160ms;
 }
-.analytics-topnav .hv5-dock[data-shown] { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.figma-analytics .site-header .hv5-dock[data-shown] { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
 @media (min-width: 1100px) {
-  .analytics-topnav:has(> .hv5-dock) .analytics-topnav__links { flex-grow: 0; }
-  .analytics-topnav .hv5-dock > .hv5-search { width: min(100%, 380px); margin-inline: auto; translate: var(--hv5-dock-shift, 0px) 0; }
+  .figma-analytics .site-header .hv5-dock > .hv5-search { width: min(100%, 380px); margin-inline: auto; translate: var(--hv5-dock-shift, 0px) 0; }
 }
 @media (min-width: 1100px) and (prefers-reduced-motion: no-preference) {
-  .analytics-topnav .hv5-dock[data-shown] { transition: opacity 200ms ease-out, transform 320ms cubic-bezier(.16, 1, .3, 1), visibility 0s; }
+  .figma-analytics .site-header .hv5-dock[data-shown] { transition: opacity 200ms ease-out, transform 320ms cubic-bezier(.16, 1, .3, 1), visibility 0s; }
 }
 .hv5-dock .hv5-search .hv5-field {
   height: 40px;
@@ -1069,14 +1059,11 @@
 .hv5-dock .hv5-search .hv5-kbd { line-height: 20px; padding: 0 6px; }
 .hv5-dock .hv5-sugg { top: 46px; }
 .hv5-dock-btn { display: none; }
-.hv5-bar-install { display: contents; }
-.hv5-bar-install .analytics-topnav__install { transition: opacity 200ms ease-out, visibility 0s linear 0s, background-color 140ms ease, color 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1), translate 320ms cubic-bezier(.16, 1, .3, 1); }
-.hv5-bar-install[data-hidden] .analytics-topnav__install { opacity: 0; visibility: hidden; translate: 0 8px; transition-duration: 140ms, 0s, 140ms, 140ms, 260ms, 160ms; transition-delay: 0s, 160ms, 0s, 0s, 0s, 0s; transition-timing-function: ease-in, linear, ease, ease, cubic-bezier(.34, 1.56, .64, 1), cubic-bezier(.4, 0, 1, 1); }
 @media (max-width: 1099px) {
   /* The narrow row (2026-11-02). Open, it is a full row under the bar whose height is one grid row (1fr); closed it is
      display none, so the bar never shifts. The clip holds the field inside the row while it grows, then frees the
      suggestion list below it (the motion block under this one sets the timing). */
-  .analytics-topnav .hv5-dock {
+  .figma-analytics .site-header .hv5-dock {
     order: 10;
     flex: 1 0 100%;
     max-width: none;
@@ -1084,8 +1071,8 @@
     grid-template-rows: 1fr;
     clip-path: inset(0 -100vmax -100vh);
   }
-  .analytics-topnav .hv5-dock > .hv5-search { min-height: 0; }
-  .analytics-topnav .hv5-dock:not([data-open]) {
+  .figma-analytics .site-header .hv5-dock > .hv5-search { min-height: 0; }
+  .figma-analytics .site-header .hv5-dock:not([data-open]) {
     display: none;
     opacity: 0;
     transform: translateY(-6px);
@@ -1101,30 +1088,18 @@
     height: 44px;
     margin-left: auto;
     padding: 0;
-    border: 1px solid var(--fma-border);
-    border-radius: 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
     background: transparent;
     color: inherit;
     cursor: pointer;
   }
-  /* hover as the bar's other icon button (the More menu's) */
+  /* hover as the bar's outline buttons */
   .hv5-dock-btn:hover { background: var(--fma-dim); color: var(--fma-text); }
   .hv5-dock-btn[aria-expanded="true"] { border-color: var(--sp-accent, #5eead4); }
   .hv5-dock-btn .hv5-ico { width: 18px; height: 18px; }
   .hv5-dock-btn[hidden] { display: none; }
-  .hv5-dock-btn:not([hidden]) ~ .analytics-topnav__actions { margin-left: 0; }
-}
-/* 721-819 px: next to the search button the bar's install fits only as its browser mark (the name stays for screen readers). */
-@media (min-width: 721px) and (max-width: 819px) {
-  .hv5-bar-install .analytics-topnav__install { justify-content: center; width: 44px; padding: 0; }
-  .hv5-bar-install .install-cta__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
+  .hv5-dock-btn:not([hidden]) ~ .site-header__actions { margin-left: 0; }
 }
 @media (pointer: coarse) {
   .hv5-dock .hv5-search .hv5-field input { font-size: 16px; }
@@ -1164,17 +1139,13 @@
     .hv5-dock-btn:not([hidden]) { opacity: 0; translate: 0 8px; }
   }
 }
-@keyframes hv5-dock-drop { from { opacity: 0; translate: 0 -8px; } }
-@media (max-width: 719px) and (prefers-reduced-motion: no-preference) {
-  .analytics-topnav .hv5-dock-btn[data-docked] { animation: hv5-dock-drop 320ms cubic-bezier(.16, 1, .3, 1); }
-}
 @media (max-width: 1099px) and (prefers-reduced-motion: no-preference) {
-  .analytics-topnav .hv5-dock {
+  .figma-analytics .site-header .hv5-dock {
     transition: opacity 160ms ease, transform 160ms ease, grid-template-rows 160ms cubic-bezier(.22, 1, .36, 1), display 160ms allow-discrete, clip-path 0s linear 160ms;
   }
-  .analytics-topnav .hv5-dock:not([data-open]) { transition-delay: 0s; }
+  .figma-analytics .site-header .hv5-dock:not([data-open]) { transition-delay: 0s; }
   @starting-style {
-    .analytics-topnav .hv5-dock[data-open] {
+    .figma-analytics .site-header .hv5-dock[data-open] {
       opacity: 0;
       transform: translateY(-6px);
       grid-template-rows: 0fr;
@@ -1183,7 +1154,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .analytics-topnav .hv5-dock, .hv5-bar-install .analytics-topnav__install { transition: none; }
+  .figma-analytics .site-header .hv5-dock { transition: none; }
 }
 
 /* ---------- 2. Busiest now: the Strip (busiest-variants.css shared + Tiles + Carousel + Strip) ---------- */

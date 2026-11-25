@@ -8,7 +8,7 @@ import { resolvePageMetadata } from '../src/lib/pageMetadata'
 import { AppRoutes } from '../src/routes/index'
 import { PublicLayout } from '../src/ui/components/PublicLayout'
 import { SiteFooter } from '../src/ui/components/SiteFooter'
-import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
+import { SiteHeader } from '../src/ui/components/SiteHeader'
 
 const NAV = [['Hub', '/analytics'], ['Moments', '/analytics/moments'], ['Help', '/help']]
 const FOOTER = [['Status', '/status'], ['Changelog', '/changelog'], ['Privacy', '/privacy'], ['Terms', '/terms']]
@@ -26,12 +26,12 @@ describe('shared site navigation', () => {
     expect(SITE_FOOTER_ITEMS.map((item) => [item.label, item.to])).toEqual(FOOTER)
   })
 
-  it('gives the site header and the analytics bar the same links', () => {
+  it('gives the site pages and the analytics pages the same header links', () => {
     const site = render(<MemoryRouter><PublicLayout><p>page</p></PublicLayout></MemoryRouter>)
-    expect(links(screen.getByRole('navigation', { name: 'Main Navigation' }))).toEqual(NAV)
+    expect(links(screen.getByRole('navigation', { name: 'Main' }))).toEqual(NAV)
     site.unmount()
-    render(<MemoryRouter><AnalyticsTopNav items={SITE_NAV_ITEMS} /></MemoryRouter>)
-    expect(links(screen.getByRole('navigation', { name: 'Analytics navigation' }))).toEqual(NAV)
+    render(<MemoryRouter><SiteHeader mainId="analytics-main" variant="analytics" /></MemoryRouter>)
+    expect(links(screen.getByRole('navigation', { name: 'Main' }))).toEqual(NAV)
   })
 
   it('puts the destinations, then the site information, in the shared footer', () => {

@@ -24,10 +24,6 @@ vi.mock('../src/lib/momentsFeed', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/momentsFeed')>()),
   loadMomentsWindow: feed.load,
 }))
-vi.mock('../src/lib/momentsFeedVod', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/lib/momentsFeedVod')>()),
-  momentVods: { peek: () => undefined, read: () => Promise.resolve(null) },
-}))
 
 afterEach(() => {
   cleanup()

@@ -260,16 +260,18 @@ for (const width of [360, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     await installHubUxMock(page)
     await page.goto('/analytics')
-    const bar = page.locator('.analytics-topnav')
+    const bar = page.locator('.site-header')
     await expect(bar).toBeVisible()
-    // Below 720px the page links move into the menu and Add to Chrome hides,
-    // so only what is shown is measured: links, install, Discord, the menu button.
-    const trigger = bar.getByRole('button', { name: 'Navigation menu' })
-    await expect(trigger).toBeVisible()
-    const shown = await bar.locator('.analytics-topnav__links a:visible, .analytics-topnav__install:visible, .analytics-topnav__discord:visible').all()
+    // Below 720px the page links move into Menu and Add to Chrome hides; from 720px there is no Menu.
+    // Only what is shown is measured: links, install, Discord, the search button, Menu.
+    const phone = width < 720
+    const trigger = bar.getByRole('button', { name: 'Menu', exact: true })
+    if (phone) await expect(trigger).toBeVisible()
+    else await expect(trigger).toBeHidden()
+    const shown = await bar.locator('.site-header__links a:visible, .site-header__install:visible, .site-header__discord:visible, .hv5-dock-btn:visible').all()
     // From 720px the three page links sit on the bar; below it they are hidden, not squeezed.
-    if (width < 720) await expect(bar.locator('.analytics-topnav__links')).toBeHidden()
-    else await expect(bar.locator('.analytics-topnav__links a:visible')).toHaveCount(3)
+    if (phone) await expect(bar.locator('.site-header__links')).toBeHidden()
+    else await expect(bar.locator('.site-header__links a:visible')).toHaveCount(3)
     const expectTapTarget = async (target: Locator, name: string) => {
       const box = await target.boundingBox()
       expect(box, name).not.toBeNull()
@@ -278,17 +280,20 @@ for (const width of [360, 390, 768, 1024, 1440]) {
       expect(box!.x, name).toBeGreaterThanOrEqual(0)
       expect(box!.x + box!.width, name).toBeLessThanOrEqual(width + 1)
     }
-    for (const target of [...shown, trigger]) await expectTapTarget(target, (await target.textContent())?.trim() || 'header control')
+    for (const target of [...shown, ...(phone ? [trigger] : [])]) {
+      await expectTapTarget(target, (await target.getAttribute('aria-label')) || (await target.textContent())?.trim() || 'header control')
+    }
     await assertNoPageOverflow(page)
-    // The menu: at every width it holds the site information; on phones the page links too.
+    if (!phone) return
+    // Menu, on phones: a drawer with the three pages, then the site information.
     await trigger.click()
-    const menu = bar.locator('.analytics-topnav__more-links')
-    await expect(menu).toHaveAttribute('data-state', 'open')
-    await expect(menu).toHaveCSS('opacity', '1')
+    const menu = page.getByRole('dialog', { name: 'StreamPulse' })
+    await expect(menu).toBeVisible()
+    await page.locator('.site-menu').evaluate(node => Promise.allSettled(node.getAnimations({ subtree: true }).map(animation => animation.finished)))
     const menuLinks = await menu.locator('a:visible').all()
-    expect(menuLinks.length).toBeGreaterThanOrEqual(width < 720 ? 7 : 4)
+    expect(menuLinks.length).toBeGreaterThanOrEqual(7)
     for (const link of menuLinks) await expectTapTarget(link, `menu: ${(await link.textContent())?.trim()}`)
-    await expect(menu.getByRole('link', { name: 'Help', exact: true })).toHaveCount(width < 720 ? 1 : 0)
+    await expect(menu.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Help', exact: true })).toHaveCount(1)
     await assertNoPageOverflow(page)
   })
 }

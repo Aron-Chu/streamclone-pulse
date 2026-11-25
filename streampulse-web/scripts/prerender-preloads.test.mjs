@@ -56,11 +56,11 @@ describe.skipIf(!fresh)('prerendered documents (dist/)', () => {
   })
 
   it('only the analytics documents open the picture hosts, without crossorigin', () => {
-    for (const path of ['analytics/index.html', 'analytics-fallback/index.html', 'analytics-console-fallback/index.html']) {
+    for (const path of ['analytics.html', 'analytics-fallback/index.html', 'analytics-console-fallback/index.html']) {
       const doc = head(read(path))
       for (const host of imageHosts) expect(doc, `${path} opens ${host}`).toContain(`<link rel="preconnect" href="${host}" />`)
     }
-    for (const path of ['index.html', 'help/index.html', 'status/index.html', 'account-fallback/sign-in/index.html']) {
+    for (const path of ['index.html', 'help.html', 'status.html', 'account-fallback/sign-in/index.html']) {
       const doc = head(read(path))
       for (const host of imageHosts) expect(doc, `${path} leaves out ${host}`).not.toContain(host)
     }
@@ -94,14 +94,11 @@ describe.skipIf(!fresh)('prerendered documents (dist/)', () => {
   // 11-23: a band added after JavaScript started moved the front page. The Geist swap is held still by the size-matched
   // stand-in instead of a preload: preloaded, Geist landed before the app mounted and the app's headline became a
   // second, later largest paint.
-  it('no page preloads the page font, and the home document holds the Fastest chats band', () => {
+  it('no page preloads the page font', () => {
     const font = /<link rel="preload"[^>]*as="font"/
-    for (const path of ['index.html', 'help/index.html', 'status/index.html', 'analytics/index.html']) {
+    for (const path of ['index.html', 'help.html', 'status.html', 'analytics.html']) {
       expect(head(read(path)), `${path} leaves Geist to its stylesheet`).not.toMatch(font)
     }
-    const html = read('index.html')
-    expect(root(html)).toContain('class="sl-cn"')
-    expect(head(html)).toContain('<noscript><style>.sl-cn { display: none; }</style></noscript>')
   })
 
   it('no prerendered document names a source path', () => {

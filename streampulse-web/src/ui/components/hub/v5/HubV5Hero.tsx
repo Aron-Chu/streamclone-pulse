@@ -25,7 +25,7 @@ const NO_POINTS: readonly HubActivityPoint[] = []
 
 /** The bottom of the sticky top bar, which the hero's field and install card scroll under. */
 function barBottom(): number {
-  return Math.round(document.querySelector('.analytics-topnav')?.getBoundingClientRect().bottom ?? 0)
+  return Math.round(document.querySelector('.site-header')?.getBoundingClientRect().bottom ?? 0)
 }
 
 /**
@@ -71,7 +71,7 @@ export function HubV5Hero({ live, poolSize, points = NO_POINTS, animated, foot, 
       if (promo) io.observe(promo)
     }
     watch()
-    const bar = document.querySelector('.analytics-topnav')
+    const bar = document.querySelector('.site-header')
     const ro = bar && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(watch) : null
     if (bar) ro?.observe(bar)
     return () => {

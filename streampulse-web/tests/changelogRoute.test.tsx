@@ -124,7 +124,7 @@ describe('extension "Release details" destination (OP1-FUN-003)', () => {
     expect(html).not.toContain('Page not found')
 
     expect(read('scripts/prerender.mjs')).toMatch(/path: 'changelog',\s+title: 'Release Notes — StreamPulse',/)
-    expect(read('scripts/check-public-pages.mjs')).toContain("['changelog/index.html', 'Release Notes — StreamPulse', 'index,follow', 'https://streampulse.stream/changelog']")
+    expect(read('scripts/check-public-pages.mjs')).toContain("['changelog.html', 'Release Notes — StreamPulse', 'index,follow', 'https://streampulse.stream/changelog']")
     expect(read('scripts/check-public-links.mjs')).toMatch(/EXTERNALLY_PUBLISHED = \[[^\]]*'\/changelog'/)
     // It shows only released versions, so it is offered to search engines: indexed, and in the sitemap.
     expect(read('scripts/prerender.mjs')).toMatch(/canonicalPath: '\/changelog',\s+robots: 'index,follow',/)

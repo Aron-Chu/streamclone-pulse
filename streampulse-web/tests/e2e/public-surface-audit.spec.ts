@@ -203,14 +203,14 @@ test.describe('public surface audit', () => {
     await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(page.locator('#public-main')).toBeFocused()
-    const menu = page.getByRole('button', { name: 'Menu' })
+    const menu = page.getByRole('button', { name: 'Menu', exact: true })
     await menu.click()
     await expect(menu).toHaveAttribute('aria-expanded', 'true')
     await page.keyboard.press('Escape')
     await expect(menu).toBeFocused()
     await expect(menu).toHaveAttribute('aria-expanded', 'false')
     await menu.click()
-    await page.getByRole('navigation', { name: 'Main Navigation' }).getByRole('link', { name: 'Help', exact: true }).click()
+    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Help', exact: true }).click()
     await expect(page).toHaveURL(/\/help$/)
     expect(mutations.filter((entry) => /collector|analytics\/.*\/watch/i.test(entry))).toEqual([])
   })
@@ -218,17 +218,18 @@ test.describe('public surface audit', () => {
   test('landing menu traps focus, closes with Escape, exposes public routes, and labels samples', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/')
-    const menu = page.getByRole('button', { name: 'Menu' })
+    const menu = page.getByRole('button', { name: 'Menu', exact: true })
     await menu.click()
     const dialog = page.getByRole('dialog', { name: 'StreamPulse' })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByRole('link', { name: 'Hub', exact: true })).toHaveAttribute('href', '/analytics')
     await expect(dialog.getByRole('link', { name: 'Moments', exact: true })).toHaveAttribute('href', '/analytics/moments')
     await expect(dialog.getByRole('link', { name: 'Help', exact: true })).toHaveAttribute('href', '/help')
-    // The drawer's primary button once inherited the text-link colour (#eee on #fafafa, about 1.06:1).
-    const openAnalytics = dialog.getByRole('link', { name: 'Open the Hub' })
-    await expect(openAnalytics).toBeVisible()
-    const contrast = await openAnalytics.evaluate((element) => {
+    // The drawer's links are read on its own panel (a drawer button once inherited the text-link colour,
+    // #eee on #fafafa, about 1.06:1).
+    const hub = dialog.getByRole('link', { name: 'Hub', exact: true })
+    await expect(hub).toBeVisible()
+    const contrast = await hub.evaluate((element) => {
       const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number)
       const lum = (value: string) => {
         const [r, g, b] = rgb(value).map((channel) => {
@@ -237,8 +238,8 @@ test.describe('public surface audit', () => {
         })
         return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
       }
-      const style = getComputedStyle(element)
-      const [hi, lo] = [lum(style.color), lum(style.backgroundColor)].sort((x, y) => y - x)
+      const panel = element.closest('.site-menu__panel')!
+      const [hi, lo] = [lum(getComputedStyle(element).color), lum(getComputedStyle(panel).backgroundColor)].sort((x, y) => y - x)
       return (hi! + 0.05) / (lo! + 0.05)
     })
     expect(contrast).toBeGreaterThanOrEqual(4.5)

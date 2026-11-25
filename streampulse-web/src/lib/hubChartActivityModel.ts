@@ -18,7 +18,7 @@ import {
   classifyMomentMarker,
   type HubChartAnnotation,
 } from './hubChartMarkers'
-import type { HubActivityMomentMarker } from '../ui/components/hub/HubActivityChart'
+import type { HubActivityMomentMarker } from '../ui/components/hub/HubActivityChartV5'
 
 /** Chart-only slice — excludes trust-line / refresh / poll metadata. */
 export interface HubChartActivityInputs {

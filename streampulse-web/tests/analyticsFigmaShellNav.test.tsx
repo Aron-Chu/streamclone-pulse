@@ -16,14 +16,14 @@ function renderShell() {
 describe('AnalyticsFigmaShell navigation', () => {
   it('lists the site destinations under their shared names, and keeps a way home', () => {
     renderShell()
-    const nav = screen.getByRole('navigation', { name: 'Analytics navigation' })
+    const nav = screen.getByRole('navigation', { name: 'Main' })
     expect(within(nav).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Hub', '/analytics'],
       ['Moments', '/analytics/moments'],
       ['Help', '/help'],
     ])
-    expect(screen.getByRole('link', { name: 'StreamPulse Analytics Hub' }).getAttribute('href')).toBe('/analytics')
-    // The home page is one click away in the shared footer.
+    // The site's name goes home (one header on every page, 11-24), as the shared footer's does.
+    expect(screen.getByRole('link', { name: 'StreamPulse' }).getAttribute('href')).toBe('/')
     expect(screen.getByRole('link', { name: 'StreamPulse home' }).getAttribute('href')).toBe('/')
   })
 

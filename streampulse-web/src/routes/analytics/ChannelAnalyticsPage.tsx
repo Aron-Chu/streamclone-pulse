@@ -2,7 +2,6 @@ import { lazy, Suspense } from 'react'
 import { useParams } from 'react-router-dom'
 import { isChannelRouteLogin } from '../../lib/channelRoute'
 import NotFound from '../public/NotFound'
-import { useRecordHubRecentLogin } from '../../hooks/useRecordHubRecentLogin'
 import { AnalyticsRouteFallback } from '../AnalyticsRouteFallback'
 
 // The console's code starts with this page's view, not after it: every page but a reviewed recap (its summary
@@ -25,8 +24,6 @@ export default function ChannelAnalyticsPage() {
 }
 
 function ValidChannelAnalyticsPage() {
-  useRecordHubRecentLogin()
-
   return (
     <Suspense fallback={<AnalyticsRouteFallback />}>
       <ConsoleChannelView />

@@ -7,11 +7,11 @@ import { mountRidge } from './ridge'
 import type { Part, Pointer, SearchEvent } from './shared'
 
 /**
- * The front page's background (mix 03): counted chat columns, the emote rain and the chat ridge, on one
+ * The front page's background (mix 03): the side chat columns, the emote rain and the chat ridge, on one
  * animation loop. Loaded as its own chunk after the page is idle. The loop stops while the tab is hidden,
  * and the hero's layers stop while the hero is scrolled away.
  *
- * Its motion is slow (drops rise 15-32 px a second, the light takes 9 s across), so it draws 30 frames a
+ * Its motion is slow (drops rise 15-32 px a second, the light crosses a line in about 4.3 s, every 6 s), so it draws 30 frames a
  * second, 20 while the extension demo's 3D scene draws, and 60 (or the display's rate, when lower) only while
  * something quick is on: the pointer over the background, a live moment's burst, the lines rising (11-23: an idle hero
  * kept a laptop-class main thread 95 % busy). Between drawn frames it waits on a timer, not on the display: every
@@ -64,7 +64,7 @@ const QUICK_POINTER_MS = 1500
 const QUICK_MOMENT_MS = 4800
 /** ...and after a rebuild, while the lines rise. */
 const QUICK_BUILD_MS = 2200
-const UI_SELECTOR = 'a, button, input, select, textarea, [role="button"], [role="option"], [role="listbox"], .sl-header, .sl-search, .sl-tickwrap, .sl-hero__actions'
+const UI_SELECTOR = 'a, button, input, select, textarea, [role="button"], [role="option"], [role="listbox"], .site-header, .sl-search, .sl-tickwrap, .sl-hero__actions'
 
 export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: EventTarget | null) => boolean }): HeroBackdropController {
   let rainHost: HTMLElement | null = null
@@ -131,7 +131,10 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
         const was = stageVisible
         stageVisible = entries.some((e) => e.isIntersecting)
         // Back on screen: time passed without frames, so each layer draws afresh once.
-        if (stageVisible && !was) for (const p of stageParts) p.resume?.()
+        if (stageVisible && !was) {
+          for (const p of stageParts) p.resume?.()
+          start()
+        }
       })
       io.observe(stage)
     }
@@ -146,6 +149,7 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
     const nowMs = Date.now()
     if (!reduced) quick(QUICK_MOMENT_MS)
     for (const p of parts()) p.moment(m, nowMs)
+    plan()
   }
 
   function nextBeat() {
@@ -205,7 +209,16 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
       // the pointer or a scroll asks for one at once.
       last = 0
       slow = window.setTimeout(start, 1000)
-    } else plan()
+    } else if (needsFrames(now)) plan()
+    // Otherwise nothing on screen needs script: the loop sleeps until the pointer, the search, a moment, a resize or
+    // the hero coming back on screen wakes it.
+    else last = 0
+  }
+
+  /** A layer on screen still moving from script, or one that cannot say. */
+  function needsFrames(now: number) {
+    if (rain && !(rain.idle?.(now) ?? false)) return true
+    return stageVisible && stageParts.some((p) => !(p.idle?.(now) ?? false))
   }
 
   let disposed = false
@@ -282,6 +295,7 @@ export function createHeroBackdrop({ isSearchInput }: { isSearchInput: (target: 
     const ev: SearchEvent = e.type === 'focusin' ? 'focus' : e.type === 'focusout' ? 'blur' : 'input'
     const value = (e.target as HTMLInputElement).value ?? ''
     for (const p of parts()) p.search(ev, value)
+    plan()
   }
   const onResize = () => {
     window.clearTimeout(resizeTimer)

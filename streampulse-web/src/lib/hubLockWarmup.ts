@@ -61,10 +61,13 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   })
 }
 
+const tabHidden = () => typeof document !== 'undefined' && document.hidden
+
 /**
  * Reads each bucket the cache lacks, one at a time, and only while the limiter
- * is idle. Stops at the first failure or when `signal` aborts. Returns how many
- * calls it made.
+ * is idle. Stops at the first failure, when `signal` aborts, or when the tab
+ * hides (a hidden tab's warm-up only spends reads nobody will click). Returns
+ * how many calls it made.
  */
 export async function warmHubBuckets(
   bucketTs: readonly number[],
@@ -74,10 +77,10 @@ export async function warmHubBuckets(
 ): Promise<number> {
   let calls = 0
   for (const t of bucketTs.slice(0, HUB_WARM_MAX)) {
-    if (signal.aborted) break
+    if (signal.aborted || tabHidden()) break
     if (readBucketMomentsResponse(t, activityWindow)) continue
-    while (hubIntervalBusy() && !signal.aborted) await pause(IDLE_POLL_MS, signal)
-    if (signal.aborted) break
+    while (hubIntervalBusy() && !signal.aborted && !tabHidden()) await pause(IDLE_POLL_MS, signal)
+    if (signal.aborted || tabHidden()) break
     calls += 1
     try {
       const state = await loadHubIntervalMoments({ t, activityWindow, bucketMinutes }, { signal })

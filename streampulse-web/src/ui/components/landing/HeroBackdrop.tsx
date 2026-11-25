@@ -15,7 +15,7 @@ type IdleWindow = Window & {
 }
 
 /**
- * The front page's background (Aron's mix 03, 11-22): counted chat columns in the gutters, a faint shuffled
+ * The front page's background (Aron's mix 03, 11-22): made-up side chat at the network's real pace in the gutters, a faint shuffled
  * emote rain, and the chat ridge at the bottom of the first screen, all drawn from the hub read the page
  * already makes. Client only: it mounts after the page, stays out of the prerendered HTML, and its code is
  * a chunk loaded once the page is idle. Decorative, so hidden from assistive technology.

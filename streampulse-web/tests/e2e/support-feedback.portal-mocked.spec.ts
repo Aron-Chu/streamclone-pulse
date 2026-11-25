@@ -277,25 +277,32 @@ test.describe('configured build', () => {
     expect(await radios.nth(0).evaluate(element => getComputedStyle(element).opacity)).toBe('0')
   })
 
-  test('landing nav links stay on one line beside the Discord button just above the Menu breakpoint', async ({ page, baseURL }) => {
+  test('landing header keeps one row with the page links beside the search and buttons from the Menu breakpoint up', async ({ page, baseURL }) => {
+    test.setTimeout(120_000)
     await page.setViewportSize({ width: 1100, height: 800 })
     await mockNetwork(page, baseURL)
     await page.goto('/')
-    await expect(page.locator('.sl-nav')).toBeVisible()
-    test.skip(await page.locator('.sl-nav--discord').count() === 0, 'build has no VITE_PUBLIC_DISCORD_INVITE_URL, so the nav has no Discord button')
+    await expect(page.locator('.site-header')).toBeVisible()
+    test.skip(await page.locator('.site-header .site-header__discord').count() === 0, 'build has no VITE_PUBLIC_DISCORD_INVITE_URL, so the header has no Discord button')
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
     const wrapped: string[] = []
-    for (let width = 961; width <= 1100; width++) {
+    for (let width = 720; width <= 1100; width++) {
       await page.setViewportSize({ width, height: 800 })
       const row = await page.evaluate(() => {
-        const links = [...document.querySelectorAll<HTMLElement>('.sl-menu a')].map(link => link.getBoundingClientRect().height)
-        const nav = document.querySelector<HTMLElement>('.sl-nav')!
-        const menu = document.querySelector<HTMLElement>('.sl-menu')!.getBoundingClientRect()
-        const right = document.querySelector<HTMLElement>('.sl-nav__right')!.getBoundingClientRect()
-        return { links, overflow: nav.scrollWidth - nav.clientWidth, overlap: menu.right > right.left, page: document.documentElement.scrollWidth - innerWidth }
+        const nav = document.querySelector<HTMLElement>('.site-header')!
+        const links = [...nav.querySelectorAll<HTMLElement>('.site-header__links a')].map(link => Math.round(link.getBoundingClientRect().top))
+        const menu = nav.querySelector<HTMLElement>('.site-header__links')!.getBoundingClientRect()
+        // The next thing on the row: the docked search's control (its holder is display: contents, so it has no
+        // box of its own), else the buttons.
+        const next = [...nav.querySelectorAll<HTMLElement>('.sl-dock *, .site-header__actions')]
+          .filter(element => element.checkVisibility({ visibilityProperty: true }))
+          .map(element => element.getBoundingClientRect())
+          .filter(rect => rect.width > 0)
+          .reduce((first, rect) => (rect.left < first.left ? rect : first))
+        return { links, bar: nav.getBoundingClientRect().height, overflow: nav.scrollWidth - nav.clientWidth, overlap: menu.right > next.left, page: document.documentElement.scrollWidth - innerWidth }
       })
-      // Hub, Moments and Help.
-      const oneLine = row.links.length === 3 && row.links.every(height => height === row.links[0] && height < 40)
+      // Hub, Moments and Help, on the bar's one 56 px row.
+      const oneLine = row.links.length === 3 && row.links.every(top => top === row.links[0]) && row.bar <= 56
       if (!oneLine || row.overflow > 0 || row.overlap || row.page > 0) wrapped.push(`${width}: ${JSON.stringify(row)}`)
     }
     expect(wrapped).toEqual([])

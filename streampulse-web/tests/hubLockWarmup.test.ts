@@ -105,6 +105,32 @@ describe('warmHubBuckets', () => {
     await expect(run).resolves.toBe(1)
     expect(t.pending).toHaveLength(1)
   })
+
+  it('stops when the tab hides', async () => {
+    const t = deferred()
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    try {
+      const run = warmHubBuckets([T0, T0 + B, T0 + 2 * B], '24h', 6, new AbortController().signal)
+      await flush()
+      hidden.mockReturnValue(true)
+      t.pending[0]!.resolve()
+      await expect(run).resolves.toBe(1)
+      expect(t.pending).toHaveLength(1)
+    } finally {
+      hidden.mockRestore()
+    }
+  })
+
+  it('reads nothing when the tab starts hidden', async () => {
+    const t = deferred()
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    try {
+      await expect(warmHubBuckets([T0], '24h', 6, new AbortController().signal)).resolves.toBe(0)
+      expect(t.pending).toHaveLength(0)
+    } finally {
+      hidden.mockRestore()
+    }
+  })
 })
 
 describe('bar rest', () => {
