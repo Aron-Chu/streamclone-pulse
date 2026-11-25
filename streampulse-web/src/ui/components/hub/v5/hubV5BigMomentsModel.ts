@@ -7,8 +7,9 @@
  * per moment (11-02: was one per channel, which left 3 cards from the hub's
  * ten). Since board 2A (11-02) a card may have no ×: a moment early in its
  * stream or one not compared shows its rate, and a "Busiest minute" fills in.
- * Pure functions. The carousel that drew them was retired in H1 (11-19); Top
- * moments today's rows still use bigWhen for their time.
+ * Pure functions. The carousel that drew them left the Hub on 11-25; Top moments
+ * today's rows still use bigWhen for their time, and MomentStreamCard uses
+ * bigLivePicture.
  */
 import { formatLiftRatio } from '@streampulse/pulse-core'
 import { momentRowClock } from '../../../../lib/formatStreamOffset'

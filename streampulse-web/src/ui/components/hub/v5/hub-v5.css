@@ -58,9 +58,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   column-gap: 24px;
-  /* H1 (11-19): who is hot, which emotes, when it spiked, then the full lists; the big-moments carousel keeps its row
-     (hub-v5-big-moments.css) */
-  grid-template-areas: "mast" "fol" "busy" "emr" "act" "intv" "rail" "emo" "games" "chan" "meas";
+  /* H1 (11-19): who is hot, which emotes, when it spiked, then the full lists; Top moments today is a still list since
+     the carousel left (11-25) */
+  grid-template-areas: "mast" "fol" "busy" "emr" "act" "intv" "tops" "rail" "emo" "games" "chan" "meas";
   color: var(--sp-text-1);
   font: 400 13px/1.4 var(--sp-font);
   font-variant-numeric: tabular-nums;
@@ -155,7 +155,7 @@
 @media (min-width: 720px) {
   .hub-v5.hub-d3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas";
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "tops tops" "rail rail" "emo games" "chan chan" "meas meas";
   }
 }
 @media (max-width: 719px) {
@@ -2490,17 +2490,19 @@
 }
 
 /* A1 (11-12) paired Top today with Busiest now from 1200 px; since 11-22 (2B) Top today is off the page and Busiest now
-   takes the whole row. */
+   takes the whole row. The two lists that follow each other, Top moments today and Picking up now, sit side by side
+   without changing the DOM order, each filling its own column so no hole opens between them (11-16, 11-25). */
 @media (min-width: 1200px) {
-  .hub-v5.hub-d3 { grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "rail rail" "emo games" "chan chan" "meas meas"; }
+  .hub-v5.hub-d3 { grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "tops rail" "emo games" "chan chan" "meas meas"; }
   .hv5-busiest { margin-top: 12px; width: 100%; max-width: none; }
+  .hv5-tops, .hv5-latest { width: 100%; max-width: none; }
 }
 /* L1 (11-16): from 1536 px Picking up now is the column on the right again, as on 11-08 before B1 (11-11) moved it under
    the chart. It runs from Busiest now down and stays in view while the page scrolls; under 1536 px B1's order stays. */
 @media (min-width: 1536px) {
   .hub-v5.hub-d3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px;
-    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy rail" "emr emr rail" "act act rail" "intv intv rail" "emo games rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy rail" "emr emr rail" "act act rail" "intv intv rail" "tops tops rail" "emo games rail" "chan chan rail" "meas meas rail";
   }
   .hv5-latest { position: sticky; top: 72px; align-self: start; margin-top: 12px; }
   /* the whole list is in the column and scrolls inside the window (scrollbar hidden), its last rows fading while more is
@@ -2578,17 +2580,22 @@
    later width wins. */
 .hub-v5 .hv5-busiest .hv5-bzv-down { margin-top: 8px; font: 500 12px/16px var(--sp-font); color: var(--sp-text-2); }
 .hub-v5.hub-d3[data-counts-down] {
-  grid-template-areas: "mast" "fol" "busy" "emr" "act" "intv" "rail" "emo" "chan" "meas";
+  grid-template-areas: "mast" "fol" "busy" "emr" "act" "intv" "tops" "rail" "emo" "chan" "meas";
 }
 @media (min-width: 720px) {
   .hub-v5.hub-d3[data-counts-down] {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "rail rail" "emo emo" "chan chan" "meas meas";
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "tops tops" "rail rail" "emo emo" "chan chan" "meas meas";
+  }
+}
+@media (min-width: 1200px) {
+  .hub-v5.hub-d3[data-counts-down] {
+    grid-template-areas: "mast mast" "fol fol" "busy busy" "emr emr" "act act" "intv intv" "tops rail" "emo emo" "chan chan" "meas meas";
   }
 }
 @media (min-width: 1536px) {
   .hub-v5.hub-d3[data-counts-down] {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px;
-    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy rail" "emr emr rail" "act act rail" "intv intv rail" "emo emo rail" "chan chan rail" "meas meas rail";
+    grid-template-areas: "mast mast mast" "fol fol fol" "busy busy rail" "emr emr rail" "act act rail" "intv intv rail" "tops tops rail" "emo emo rail" "chan chan rail" "meas meas rail";
   }
 }

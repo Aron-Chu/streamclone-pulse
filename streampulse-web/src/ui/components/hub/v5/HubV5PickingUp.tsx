@@ -10,8 +10,8 @@
  * the right again (L1, 11-16, as on 11-08): the whole list is in it and scrolls
  * inside it, its bottom fading while more is below.
  *
- * H01 (11-13): once its data is over 15 minutes old, when the carousel's LIVE
- * badges go too (TOP_KEEP_MS), the old rows go: in their place it says it
+ * H01 (11-13): once its data is over 15 minutes old (TOP_KEEP_MS), the old rows
+ * go: in their place it says it
  * can't tell, with the time it last knew, and shows no count (nor "Show all N").
  * Z06 (11-13): the × reads in pulse-core's words, "6.0× more chat".
  *
