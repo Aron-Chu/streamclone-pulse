@@ -109,6 +109,15 @@ describe('SiteHeader (one bar on every page, 11-24)', () => {
     expect(document.body.style.overflow).toBe('')
   })
 
+  it('hands focus back to Menu when a drawer link is for the page already open', () => {
+    renderAt('/analytics/')
+    const menu = screen.getByRole('button', { name: 'Menu' })
+    fireEvent.click(menu)
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pages' })).getByRole('link', { name: 'Hub' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(menu)
+  })
+
   it('keeps Tab inside the open drawer', () => {
     renderAt('/analytics')
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }))

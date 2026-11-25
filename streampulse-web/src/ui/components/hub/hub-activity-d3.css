@@ -362,9 +362,14 @@
   .hub-act .lr .te { display: none; }
 }
 
-
-/* ---------- phone ---------- */
-@media (max-width: 719px) {
+/* ---------- narrow tablet and phone: the stacked card ---------- */
+/* The tablet row leaves viewers what is left after 128 + 172 + 180 px; its line (figure,
+   "viewers (sample)", "· N live in sample") needs about 326 px, so a card needs 866 px.
+   Narrower than that (and a few px of room for rounding), the card takes its phone form:
+   the header wraps its chips onto their own line and drops its note (both ran past the card
+   below about 812 px), and the readout stacks. It asks the card's own width, not the
+   window's, because a classic scrollbar takes about 15 px of the window. */
+@container hubact (max-width: 869px) {
   .hub-act .rh {
     flex-wrap: wrap;
     row-gap: 2px;
@@ -378,7 +383,6 @@
      than run past the card. */
   .hub-act .toggles { order: 3; flex-basis: 100%; flex-wrap: wrap; row-gap: 4px; }
   .hub-act .rh .meta { display: none; }
-  .hub-act .tg { padding: 0 8px; }
   .hub-act .lr .pt { display: none; }
   .hub-act .lr [data-k="viewers"] .l2 { display: none; }
   .hub-act .lr .lv { display: block; }
@@ -406,6 +410,11 @@
   }
   .hub-act .lr .fig { font-size: 22px; line-height: 26px; text-align: left; }
   .hub-act .lr .l2 { white-space: normal; height: auto; }
+}
+
+/* ---------- phone ---------- */
+@media (max-width: 719px) {
+  .hub-act .tg { padding: 0 8px; }
   .hub-act .lane .nm {
     left: 4px !important;
     padding: 0 4px;

@@ -150,8 +150,10 @@ export function mountEmoteRain(host: HTMLElement): Part {
     return { x: d.hx + s * d.sw, y }
   }
 
-  function setRate(d: Drop, rate: number) {
-    if (Math.abs(rate - d.rate) < 0.01 && !(rate === 0 && d.rate !== 0)) return
+  /** Skips steps under 1% while easing; a settled rate is always applied, since the loop may stop after it. */
+  function setRate(d: Drop, rate: number, settled: boolean) {
+    if (rate === d.rate) return
+    if (!settled && Math.abs(rate - d.rate) < 0.01 && !(rate === 0 && d.rate !== 0)) return
     d.rate = rate
     d.rise?.updatePlaybackRate(rate)
   }
@@ -263,7 +265,7 @@ export function mountEmoteRain(host: HTMLElement): Part {
         const glow = glowing && d.e && glowing === d.e.name ? 1 : 0
         const fx = Math.max(d.focus, glow, d === hovered ? 1 : 0)
         look(d, fx, d === hovered)
-        setRate(d, d === hovered ? 0 : speed * (1 - 0.8 * d.focus))
+        setRate(d, d === hovered ? 0 : speed * (1 - 0.8 * d.focus), speed === target && d.focus === near)
       }
       for (let i = bursts.length - 1; i >= 0; i--) {
         const b = bursts[i]
