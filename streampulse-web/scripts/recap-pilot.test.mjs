@@ -177,3 +177,12 @@ test('the production manifest has no synthetic review candidates', () => {
   const manifest = JSON.parse(readFileSync(new URL('../content/recap-pilot.json', import.meta.url), 'utf8'))
   assert.doesNotMatch(JSON.stringify(manifest), /fixturechan|Synthetic fixture/)
 })
+
+test('recap dates read as a plain UTC day, with the exact time kept in the tag', () => {
+  const page = validate(fixture({ startedAt: '2026-10-30T23:30:00Z' }))
+  const html = renderRecapSummary(page)
+  assert.match(html, /Stream started <time datetime="2026-10-30T23:30:00Z">Oct 30, 2026<\/time>\./)
+  assert.match(html, /Reviewed <time datetime="[^"]+">[A-Z][a-z]{2} \d{1,2}, \d{4}<\/time>\./)
+  // No raw ISO stamp is left in the text a reader sees.
+  assert.doesNotMatch(html.replace(/datetime="[^"]*"/g, ''), /\d{4}-\d{2}-\d{2}T/)
+})

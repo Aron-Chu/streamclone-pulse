@@ -1,0 +1,408 @@
+/* The one site header (SiteHeader.tsx; board one-header ★ A, 11-24): one 56 px bar on every page, the front
+   page's, the Hub's and the help pages'. Its page colour, text and muted text are the site tokens on :root
+   (tokens.css), so they are the same on every page; the values with no token are written here. The skip link
+   is the shared .sc-skip. Link and button rules start with .site-header and a class so they outrank the site's
+   plain a and a:hover colours. */
+.site-header {
+  --site-header-gutter: 24px;
+  --site-header-bg: hsl(var(--sc-background));
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* 8 px between the bar's controls, as between its buttons; the 10 px row gap is for the Hub's search row. */
+  gap: 10px 8px;
+  min-height: 56px;
+  padding: 6px var(--site-header-gutter);
+  /* The bottom line is drawn inside the padding, so the bar is 56 px: its 44 px row and 6 px above and below. */
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  background: hsl(var(--sc-background) / 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: hsl(var(--sc-foreground));
+  font-family: var(--sc-font, var(--font));
+  line-height: 1.25;
+}
+
+.site-header .site-header__brand {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 44px;
+  margin-right: 14px;
+  color: hsl(var(--sc-foreground));
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.site-header .site-header__brand:hover { color: #fff; }
+
+.site-header__mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 0.46rem;
+}
+
+.site-header__links {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The lit page: a grey pill and white words (★, no teal). Hub stays lit on the channel pages under it. */
+.site-header .site-header__links .site-header__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 0.86rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.site-header .site-header__links .site-header__link:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: hsl(var(--sc-foreground));
+}
+
+.site-header .site-header__links .site-header__link[aria-current] {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.site-header__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The steps-back wrapper (SiteHeaderStepBack): only groups, so its buttons sit in the row as the others do. */
+.site-header__step { display: contents; }
+
+/* Add to Chrome and the front page's Open the Hub: outline buttons with the Hub bar's border. They draw 38 px (the
+   board) inside the site's 44 px tap target: 3 px of clear border all round, which the side margins give back,
+   so the row keeps the board's spacing. Hover fills only the drawn button (background-clip). */
+.site-header .site-header__actions :is(.site-header__install, .site-header__hub) {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  height: 44px;
+  margin-inline: -3px;
+  padding: 0 0.8rem;
+  border: 3px solid transparent;
+  border-radius: 11px;
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  color: #f4f4f5;
+  font-size: 0.82rem;
+  font-weight: 650;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.site-header .site-header__actions :is(.site-header__install, .site-header__hub):hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+/* Discord, last: Blurple, its word from 1280 px and a 44 px mark below. */
+.site-header .site-header__discord,
+.site-menu .site-header__discord {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  height: 38px;
+  padding: 0 0.8rem 0 0.7rem;
+  border-radius: 8px;
+  background: #5865f2;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 650;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.site-header .site-header__discord:hover,
+.site-menu .site-header__discord:hover {
+  background-color: #4752c4;
+  color: #fff;
+}
+
+/* In the bar, the 38 px button sits in a 44 px tap target, as the install does. */
+.site-header .site-header__discord {
+  height: 44px;
+  margin-inline: -3px;
+  border: 3px solid transparent;
+  border-radius: 11px;
+  background-clip: padding-box;
+}
+
+/* Their focus ring sits 2 px off the drawn button, as on the other controls. */
+.site-header .site-header__actions :is(.site-header__install, .site-header__hub):focus-visible,
+.site-header .site-header__discord:focus-visible {
+  outline-offset: -1px;
+}
+
+@media (max-width: 1279px) {
+  .site-header .site-header__discord {
+    width: 44px;
+    height: 44px;
+    margin-inline: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+  }
+  .site-header .site-header__discord:focus-visible { outline-offset: 2px; }
+  .site-header .site-header__discord span { display: none; }
+}
+
+/* Menu, and the drawer's Close: phones only. */
+.site-header__menu,
+.site-menu__close {
+  display: none;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 44px;
+  padding: 0 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--sc-foreground));
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.site-header__menu:hover,
+.site-menu__close:hover { background: rgba(255, 255, 255, 0.06); }
+
+.site-menu__close { display: inline-flex; }
+
+header.site-header :is(a, button):focus-visible,
+.site-menu :is(a, button):focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+}
+
+/* The approved press (2026-11-02): a small dip that springs back. Install and Open the Hub also rise into the
+   bar as the page's own copies go up under it, and sink back out when they return (the hub a beat after
+   install), keeping their places so Discord never moves. */
+@media (prefers-reduced-motion: no-preference) {
+  .site-header .site-header__actions :is(.site-header__install, .site-header__hub),
+  .site-header .site-header__discord,
+  .site-header__menu,
+  .site-menu__close {
+    transition: opacity 200ms ease-out, visibility 0s linear 0s, translate 320ms cubic-bezier(.16, 1, .3, 1),
+      background-color 140ms ease, color 140ms ease, scale 260ms cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .site-header .site-header__actions .site-header__hub { transition-delay: 60ms, 60ms, 60ms, 0s, 0s, 0s; }
+  .site-header .site-header__actions :is(.site-header__install, .site-header__hub, .site-header__discord):active,
+  .site-header__menu:active,
+  .site-menu__close:active {
+    scale: 0.96;
+    transition-duration: 140ms, 0s, 320ms, 140ms, 140ms, 70ms;
+  }
+}
+
+.site-header .site-header__step[data-hidden] > * {
+  opacity: 0;
+  visibility: hidden;
+  translate: 0 8px;
+}
+/* Stepping back is quicker than rising in; with reduced motion both are instant (no transition above). */
+@media (prefers-reduced-motion: no-preference) {
+  .site-header .site-header__step[data-hidden] > * {
+    transition-duration: 140ms, 0s, 160ms, 140ms, 140ms, 260ms;
+    transition-delay: 0s, 160ms, 0s, 0s, 0s, 0s;
+    transition-timing-function: ease-in, linear, cubic-bezier(.4, 0, 1, 1), ease, ease, cubic-bezier(.34, 1.56, .64, 1);
+  }
+}
+
+/* The front page's Open the Hub needs room beside the search button and install. */
+@media (max-width: 819px) {
+  .site-header .site-header__actions .site-header__hub { display: none; }
+}
+
+/* With the header account entry (VITE_ACCOUNT_HEADER=1) it ends the row. */
+.site-header--account > .account-entry { flex: none; margin-left: 8px; }
+
+/* Phones: the name, the search button where the page has a search, the Discord mark and Menu. The page links
+   move into Menu, install goes (it is no use on a phone), and the bar scrolls away with the page. */
+@media (max-width: 719px) {
+  .site-header {
+    --site-header-gutter: 16px;
+    position: relative;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--site-header-bg);
+  }
+  /* The name gives way first, so the row never wraps whatever the font: it starts from nothing, grows to its
+     own width and no further, and only past that is cut with an ellipsis. */
+  .site-header .site-header__brand {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: max-content;
+    margin-right: auto;
+  }
+  .site-header .site-header__brand span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .site-header__links { display: none; }
+  .site-header .site-header__actions { margin-left: 0; }
+  .site-header .site-header__actions :is(.site-header__install, .site-header__hub) { display: none; }
+  .site-header__menu { display: inline-flex; }
+  .site-header .hv5-dock-btn { margin-left: 0; }
+  /* Once the hero's field has gone up with the bar, the search button stays pinned at the top right. */
+  .site-header .hv5-dock-btn[data-docked] {
+    position: fixed;
+    top: 8px;
+    right: var(--site-header-gutter);
+    z-index: 1;
+    background: var(--site-header-bg);
+  }
+}
+
+@keyframes site-header-dock-drop { from { opacity: 0; translate: 0 -8px; } }
+@media (max-width: 719px) and (prefers-reduced-motion: no-preference) {
+  .site-header .hv5-dock-btn[data-docked] { animation: site-header-dock-drop 320ms cubic-bezier(.16, 1, .3, 1); }
+}
+
+/* 320-374 px: 6 px between the controls and a slimmer Menu, so the whole name still fits beside them at 360. */
+@media (max-width: 374px) {
+  .site-header { column-gap: 6px; }
+  .site-header .site-header__actions { gap: 6px; }
+  .site-header__menu { padding: 0 0.65rem; }
+}
+
+/* 320-359 px: Menu keeps its 44 px target and its name, and shows only its mark. */
+@media (max-width: 359px) {
+  .site-header__menu { width: 44px; padding: 0; }
+  .site-header__menu-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* The drawer, from the right over a fading backdrop. Its pages first and large, then the site's information
+   pages, then Discord. */
+.site-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  color: #eee;
+  font-family: var(--sc-font, var(--font));
+  line-height: 1.25;
+}
+
+.site-menu__backdrop {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: rgb(0 0 0 / 65%);
+}
+
+.site-menu__panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(22rem, 100%);
+  overflow-y: auto;
+  padding: 0 16px 20px;
+  border-left: 1px solid #33333e;
+  background: #101016;
+}
+
+.site-menu__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+}
+
+.site-menu__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.site-menu__main,
+.site-menu__more {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+.site-menu .site-menu__main a {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: #eee;
+  font-size: 1.05rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.site-menu .site-menu__main a:hover { background: rgba(255, 255, 255, 0.05); color: #fff; }
+
+.site-menu .site-menu__main a[aria-current] {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.site-menu__more {
+  margin-top: 4px;
+  border-top: 1px solid #26262e;
+}
+
+.site-menu .site-menu__more a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: hsl(var(--sc-muted-foreground));
+  font-size: 0.92rem;
+  text-decoration: none;
+}
+
+.site-menu .site-menu__more a:hover { color: #fff; }
+
+.site-menu .site-menu__discord {
+  width: 100%;
+  height: 44px;
+  margin-top: 12px;
+  padding: 0;
+}
+
+@keyframes site-menu-fade { from { opacity: 0; } }
+@keyframes site-menu-slide { from { translate: 100% 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  .site-menu__backdrop { animation: site-menu-fade 200ms cubic-bezier(.16, 1, .3, 1); }
+  .site-menu__panel { animation: site-menu-slide 200ms cubic-bezier(.16, 1, .3, 1); }
+}

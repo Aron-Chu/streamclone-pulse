@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-vi.mock('../src/lib/sentry', () => ({ Sentry: {}, sanitizePortalPath: (path: string) => path }))
+vi.mock('../src/lib/sentry', () => ({ reportPortalError: () => {} }))
 import { isModuleLoadError, PortalErrorBoundary } from '../src/ui/PortalErrorBoundary'
 
 describe('portal page-load recovery', () => {

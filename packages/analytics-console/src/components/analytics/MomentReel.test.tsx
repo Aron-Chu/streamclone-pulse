@@ -249,6 +249,32 @@ describe('SessionRecapMomentsStrip reel', () => {
     expect(hero.classList.contains('scrubbing')).toBe(false)
   })
 
+  it("a scrub tile whose sheet fails to load gives way to the moment's own picture", async () => {
+    vi.stubGlobal('PointerEvent', MouseEvent)
+    // jsdom loads no pictures, so the test answers for each sheet
+    const images: { src: string; onerror: (() => void) | null }[] = []
+    vi.stubGlobal('Image', class {
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      src = ''
+      constructor() {
+        images.push(this)
+      }
+    })
+    // the tiles past 1000 s sit on a second sheet
+    configure(async (_vod: string, offset: number) => ({ ...tileFor(offset), sheetUrl: SHEET(offset > 1000 ? 1 : 0) }))
+    render(reel({ vodId: VOD, vodAlignSeconds: ALIGN }))
+    await waitFor(() => expect(card(1).dataset.momentFrame).toBe('frame'))
+    const hero = card(1)
+    vi.spyOn(hero, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 300, height: 169, right: 300, bottom: 169, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    fireEvent.pointerEnter(hero)
+    fireEvent.pointerMove(hero, { clientX: 300 })
+    await waitFor(() => expect(hero.querySelector('.ssr-rc-at')!.textContent).toBe('about 0:20:50'))
+    act(() => images.find((image) => image.src === SHEET(1))!.onerror?.())
+    expect(hero.querySelector('.ssr-rc-at')!.textContent).toBe('about 0:08:23')
+    expect(hero.querySelector<HTMLElement>('[data-moment-card-frame]')!.style.backgroundImage).toContain(SHEET(0))
+  })
+
   it('row mode keeps rows (the reel is the strip mode only)', () => {
     render(reel({ lockMode: 'row' }))
     expect(cards()).toHaveLength(0)

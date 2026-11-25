@@ -33,8 +33,17 @@ export const REFUNDS_PATH = '/refunds'
 export const SUPPORTER_PATH = '/supporter'
 
 /**
- * The private feedback form. Only the StreamPulse team reads what is sent
- * there; the extension's "Send feedback" opens this page. /support keeps an
- * element with id `send-feedback` that links here, so older links still land.
+ * The Help page: install, fix problems, ask us. /docs, /support, /feedback and
+ * /install open one of its sections (src/routes/index.tsx).
+ */
+export const HELP_PATH = '/help'
+
+/** The private feedback form, at the end of the Help page. Only the StreamPulse team reads what is sent there. */
+export const HELP_FEEDBACK_PATH = '/help#feedback'
+
+/**
+ * The address the extension's "Send feedback" opens (src/shared/portalLinks.ts).
+ * It opens the form on the Help page, at HELP_FEEDBACK_PATH; links on this site
+ * go there directly.
  */
 export const FEEDBACK_PATH = '/feedback'

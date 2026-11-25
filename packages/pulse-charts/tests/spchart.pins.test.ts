@@ -3,7 +3,6 @@ import { bandBox } from '../src/sp/band.ts'
 import { gapRuns, runsPath, viewerGapRuns } from '../src/sp/gaps.ts'
 import { spLayout } from '../src/sp/layout.ts'
 import { linePaths, slotAverages } from '../src/sp/lines.ts'
-import { overviewPath } from '../src/sp/overview.ts'
 import { clusterPins, pinClusterSpan } from '../src/sp/pins.ts'
 import { clockTicks, compact, elapsedTicks, formatElapsed, formatInt, niceTicks } from '../src/sp/scale.ts'
 import type { SpChartData } from '../src/sp/types.ts'
@@ -98,30 +97,6 @@ describe('lines', () => {
     expect(p.solid).toBe('M0.5 90L1.5 90')
     expect(p.dots).toBe('M3.5 90h0')
     expect(p.dashed).toBe('M5.5 90L6.5 90')
-  })
-})
-
-describe('overviewPath', () => {
-  it('returns one closed path over the full data at the finest level with 2 px per slot', () => {
-    const chat = Float64Array.from({ length: 1440 }, (_, i) => (i < 720 ? 10 : 20))
-    const o = overviewPath(chat, 600)!
-    expect(o.width).toBe(600)
-    expect(o.height).toBe(22)
-    expect(o.d.startsWith('M0 22')).toBe(true)
-    expect(o.d.endsWith('L600 22Z')).toBe(true)
-    // 5-min slots (600 * 5 / 1440 >= 2): 288 slots, two points each
-    expect(o.d.match(/L/g)!.length).toBe(288 * 2 + 1)
-    // the busiest slot reaches the full amplitude (22 - 18 = 4)
-    expect(o.d).toContain(' 4L')
-    expect(o.d).toContain(' 13L')
-    expect(overviewPath([], 600)).toBeNull()
-    expect(overviewPath(chat, 0)).toBeNull()
-  })
-
-  it('never draws a coverage-2 sample', () => {
-    const chat = [5, 5, 1000, 5]
-    const o = overviewPath(chat, 400, { coverage: [0, 0, 2, 0], height: 20, amplitude: 10 })!
-    expect(o.d).toBe('M0 20L0 10L100 10L100 10L200 10L200 20L300 20L300 10L400 10L400 20Z')
   })
 })
 

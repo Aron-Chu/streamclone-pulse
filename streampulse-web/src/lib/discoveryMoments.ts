@@ -114,16 +114,27 @@ export function uniqueDiscoveryMoments(moments: DiscoveryMoment[]): DiscoveryMom
   return [...unique.values()].sort((a, b) => (b.at ?? 0) - (a.at ?? 0) || a.key.localeCompare(b.key))
 }
 
-export interface CheckedMomentSource { vodHref: string | null; vodOffsetSeconds?: number; archiveArtwork?: import('./archiveArtwork').ArchiveArtwork; handoffRef?: string; liveHref: string | null; liveExpiresAt?: number; occurrenceAt?: number; reason: string; pendingArchive?: boolean; retryable?: boolean; lookupFailed?: boolean }
+/** `vodId` and `vodAlignSeconds` come only with a verified `vodHref`: the same proof a nearby clip needs. */
+export interface CheckedMomentSource { vodHref: string | null; vodOffsetSeconds?: number; vodId?: string; vodAlignSeconds?: number; archiveArtwork?: import('./archiveArtwork').ArchiveArtwork; handoffRef?: string; liveHref: string | null; liveExpiresAt?: number; occurrenceAt?: number; reason: string; pendingArchive?: boolean; retryable?: boolean; lookupFailed?: boolean }
+/** The stream route's answer, as far as a moment's source reads it. */
+export interface MomentStreamAnswer { channel?: string; vodId?: string; vodAlignSeconds?: number; vodArtwork?: unknown;
+  vodDurationSeconds?: number; vodTiming?: { state?: string; reason?: string };
+  handoffRef?: string;
+  availability?: { vodId?: string; vodState?: string };
+  stream?: { streamId?: string; channel?: string; login?: string; displayName?: string; title?: string; category?: string; categoryId?: string;
+    startedAt?: string; endedAt?: string | null; vodId?: string; lifecycleState?: string; lifecycleObservedAt?: string } }
 /** One selected-object read. Never remap an old stream onto the current broadcast. */
-export async function checkMomentSource(moment: DiscoveryMoment, signal: AbortSignal, refreshHandoff = false): Promise<CheckedMomentSource> {
-  const { data } = await apiClient<{ channel?: string; vodId?: string; vodAlignSeconds?: number; vodArtwork?: unknown;
-    vodDurationSeconds?: number; vodTiming?: { state?: string; reason?: string };
-    handoffRef?: string;
-    availability?: { vodId?: string; vodState?: string };
-    stream?: { streamId?: string; channel?: string; login?: string; startedAt?: string; vodId?: string; lifecycleState?: string; lifecycleObservedAt?: string } }>(
+export async function checkMomentSource(moment: DiscoveryMoment, signal: AbortSignal, refreshHandoff = false,
+  /** Given the stream answer as read, before it is checked (the list keeps it for the Moment page). */
+  onAnswer?: (data: MomentStreamAnswer) => void): Promise<CheckedMomentSource> {
+  const { data } = await apiClient<MomentStreamAnswer>(
     `/v1/portal/analytics/streams/${encodeURIComponent(moment.streamId)}${refreshHandoff ? `?momentOffsetSeconds=${encodeURIComponent(String(moment.offsetSeconds))}` : ''}`,
     { signal, timeoutMs: 8000, cache: refreshHandoff ? 'no-store' : undefined })
+  if (onAnswer && data && typeof data === 'object') onAnswer(data)
+  return momentSourceFromAnswer(moment, data, refreshHandoff)
+}
+/** The source check on an answer already read (the Moment page reads the stream once for its head too). */
+export function momentSourceFromAnswer(moment: Pick<DiscoveryMoment, 'login' | 'streamId' | 'offsetSeconds'>, data: MomentStreamAnswer, refreshHandoff = false): CheckedMomentSource {
   const stream = data.stream
   const suppliedLogins = [data.channel, stream?.channel, stream?.login].filter(login => login != null && login !== '')
   if (stream?.streamId !== moment.streamId || suppliedLogins.length === 0
@@ -162,7 +173,8 @@ export async function checkMomentSource(moment: DiscoveryMoment, signal: AbortSi
   }
   const startedAt = measurementTimeMs(stream.startedAt)
   const occurrenceAt = startedAt == null ? undefined : measurementTimeMs(startedAt + moment.offsetSeconds * 1000) ?? undefined
-  return { vodHref, vodOffsetSeconds, occurrenceAt, pendingArchive, retryable, lookupFailed, archiveArtwork: vodHref ? verifiedArchiveArtwork(data.vodArtwork, vodId) : undefined,
+  return { vodHref, vodOffsetSeconds, vodId: vodHref ? vodId : undefined, vodAlignSeconds: vodHref ? data.vodAlignSeconds : undefined,
+    occurrenceAt, pendingArchive, retryable, lookupFailed, archiveArtwork: vodHref ? verifiedArchiveArtwork(data.vodArtwork, vodId) : undefined,
     // Saved records deliberately omit transport capabilities. Accept a refreshed
     // reference only from the offset-scoped exact-source response, and only when
     // that same response proves a usable VOD mapping.

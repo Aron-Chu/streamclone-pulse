@@ -56,7 +56,8 @@ export function EmoteTicker({ variant, label, icon, items }: EmoteTickerProps) {
         {icon}
         {label}
       </span>
-      <div className="sl-ticker__marquee" aria-hidden="true">
+      {/* Live numbers that change by the minute: kept out of search-result snippets, where they would go stale. */}
+      <div className="sl-ticker__marquee" aria-hidden="true" data-nosnippet="">
         <div className="sl-ticker__track">
           <TickerItems items={items} round={round} />
         </div>

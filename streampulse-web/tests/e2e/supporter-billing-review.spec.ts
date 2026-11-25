@@ -14,17 +14,29 @@ test('analytics support navigation at desktop and mobile sizes', async ({ page }
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/analytics')
-    const menu = page.locator('.analytics-topnav__more')
-    const trigger = menu.getByRole('button', { name: 'Navigation menu', exact: true })
-    await trigger.click()
-    await expect(menu.getByRole('link', { name: 'Pulse Supporter' })).toBeVisible()
+    const header = page.locator('.site-header')
+    const trigger = header.getByRole('button', { name: 'Menu', exact: true })
+    // Wide screens have no Menu: the bar holds the pages, and the footer the site information.
+    let menu = header
+    if (width < 720) {
+      await trigger.click()
+      menu = page.getByRole('dialog', { name: 'StreamPulse' })
+      await expect(menu.getByRole('link', { name: 'Status', exact: true })).toBeVisible()
+    } else {
+      await expect(trigger).toBeHidden()
+      await expect(page.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'Status', exact: true })).toBeVisible()
+    }
+    // Supporter, refunds and recaps are off the menus; their pages stay reachable.
+    await expect(menu.getByRole('link', { name: 'Pulse Supporter' })).toHaveCount(0)
     // Until Continue with Twitch is public, the menu links no tester sign-in,
     // closed billing action or extension connection code.
     await expect(menu.locator('a[href^="/account"]')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
     await page.screenshot({ path: info.outputPath(`analytics-menu-${width}.png`), animations: 'disabled' })
-    await trigger.press('Escape')
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    if (width < 720) {
+      await page.keyboard.press('Escape')
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    }
   }
 })
 

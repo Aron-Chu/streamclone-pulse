@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AnalyticsConsole } from './AnalyticsConsole.tsx'
@@ -41,7 +42,12 @@ vi.mock('./analytics/ConsoleBits.tsx', () => ({
   CoverageStartMetaItem: () => null,
   VodAvailabilityChip: () => null,
 }))
-vi.mock('./analytics/StreamSidebar.tsx', () => ({ StreamSidebar: () => <div>Stream rail</div> }))
+// The rail lists its streams' ids, so a test can see what the sidebar was given.
+vi.mock('./analytics/StreamSidebar.tsx', () => ({
+  StreamSidebar: ({ streams }: { streams?: Array<{ streamId: string }> }) => (
+    <div>Stream rail<ul data-testid="rail">{streams?.map(s => <li key={s.streamId}>{s.streamId}</li>)}</ul></div>
+  ),
+}))
 vi.mock('./analytics/TopEmoteTable.tsx', () => ({ TopEmoteTable: () => null }))
 vi.mock('./analytics/MomentReviewPanel.tsx', () => ({
   MomentReviewPanel: () => <div>Moment details</div>,
@@ -105,7 +111,22 @@ const verifiedSessionDetail = {
   stream: { ...detail.stream, lifecycleState: 'confirmed_ended', vodId: '2222222222' },
 }
 
-function renderConsole(layer2LoadMode: 'eager' | 'staged' = 'eager', entry = `/analytics/xqc/${streamId}`) {
+// A channel list of `count` rows, newest first, this session among them.
+function listRows(count: number) {
+  return Array.from({ length: count }, (_, at) => ({
+    streamId: at === 0 ? streamId : `older-${at}`,
+    login: 'xqc',
+    startedAt: new Date(Date.parse(startedAt) - at * 86_400_000).toISOString(),
+    viewerSamples: 1,
+    chatMessages: 10,
+  }))
+}
+
+function renderConsole(
+  layer2LoadMode: 'eager' | 'staged' = 'eager',
+  entry = `/analytics/xqc/${streamId}`,
+  props: { missingSessionFallback?: ReactNode } = {},
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   })
@@ -115,7 +136,7 @@ function renderConsole(layer2LoadMode: 'eager' | 'staged' = 'eager', entry = `/a
         <Routes>
           <Route
             path="/analytics/:login/:streamId?"
-            element={<AnalyticsConsole layer2LoadMode={layer2LoadMode} />}
+            element={<AnalyticsConsole layer2LoadMode={layer2LoadMode} {...props} />}
           />
         </Routes>
       </MemoryRouter>
@@ -163,8 +184,8 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
       expect(screen.queryByText(/^live$/i)).toBeNull()
       await act(async () => { await vi.advanceTimersByTimeAsync(90_000) })
       expect(api.getStreamMinutesTail).not.toHaveBeenCalled()
-      // (fix, 10-30) VOD-4: the list is two reads, the first 12 rows then 100.
-      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2)
+      // One list read: a first page under 12 rows is the whole list.
+      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1)
       expect(screen.queryByText(/^live$/i)).toBeNull()
     } finally { vi.useRealTimers() }
   })
@@ -204,6 +225,8 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
   it('does not keep refetching the channel stream list on an ended session route', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
+      api.getAnalyticsStreams.mockImplementation((_login: string, limit: number) =>
+        Promise.resolve({ items: listRows(limit === 12 ? 12 : 30) }))
       renderConsole()
       await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
       // (fix, 10-30) VOD-4: the list is two reads, the first 12 rows then 100.
@@ -214,6 +237,20 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(90_000) })
       expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2)
       expect(api.watchAnalyticsChannel).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reads the list once when its first page holds fewer than 12 rows: that page is the whole list', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      renderConsole()
+      await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
+      await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledWith('xqc', 12))
+      await act(async () => { await vi.advanceTimersByTimeAsync(90_000) })
+      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1)
+      expect(api.getAnalyticsStreams).not.toHaveBeenCalledWith('xqc', 100)
     } finally {
       vi.useRealTimers()
     }
@@ -385,6 +422,111 @@ describe('AnalyticsConsole staged Layer 2 queries', () => {
     expect(api.getSyncStatus).not.toHaveBeenCalled()
   })
 
+  it('starts the summary, recap and status reads from the session answer, before the page draws it', async () => {
+    const drawnAtCall: Record<string, boolean> = {}
+    const answer = (name: string, value: unknown) => () => {
+      drawnAtCall[name] = document.body.textContent?.includes('Staging fixture') ?? false
+      return Promise.resolve(value)
+    }
+    api.getStreamSummary.mockImplementation(answer('summary', { metrics: {} }))
+    api.getPulseStreamRecap.mockImplementation(answer('recap', { streamId, topMoments: [] }))
+    api.getStreamStatus.mockImplementation(answer('status', null))
+    renderConsole('staged')
+
+    await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
+    await waitFor(() => expect(Object.keys(drawnAtCall).sort()).toEqual(['recap', 'status', 'summary']))
+    expect(drawnAtCall).toEqual({ summary: false, recap: false, status: false })
+    // The page's own reads reuse those answers.
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(api.getStreamSummary).toHaveBeenCalledTimes(1)
+    expect(api.getPulseStreamRecap).toHaveBeenCalledTimes(1)
+    expect(api.getStreamStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['finds no session', () => Promise.resolve(null)],
+    ['answers 404', () => Promise.reject({ kind: 'not_found', message: 'not found', status: 404 })],
+  ])('starts no summary, recap or status read when the session read %s', async (_label, read) => {
+    api.getAnalyticsStream.mockImplementation(read)
+    renderConsole('staged')
+
+    await screen.findByRole('heading', { name: `Session ${streamId} not found` })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(api.getStreamSummary).not.toHaveBeenCalled()
+    expect(api.getPulseStreamRecap).not.toHaveBeenCalled()
+    expect(api.getStreamStatus).not.toHaveBeenCalled()
+  })
+
+  it('keeps the meta line visible with its reserved height until the summary read settles', async () => {
+    let summary: (value: unknown) => void = () => undefined
+    api.getStreamSummary.mockImplementation(() => new Promise(resolve => { summary = resolve }))
+    renderConsole('staged')
+    const meta = () => document.querySelector('[data-session-meta]')
+
+    await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
+    await waitFor(() => expect(meta()?.hasAttribute('data-session-meta-settling')).toBe(true))
+    expect(meta()?.hasAttribute('data-session-meta-pending')).toBe(false)
+
+    await act(async () => summary({ metrics: {} }))
+    await waitFor(() => expect(meta()?.hasAttribute('data-session-meta-settling')).toBe(false))
+    expect(meta()?.hasAttribute('data-session-meta-pending')).toBe(false)
+  })
+
+  it('keeps the reserved height until the channel list, the only read naming the archive, answers', async () => {
+    // A numeric id needs no list to name its session, as on the site.
+    const numericId = '320567744986'
+    let list: (value: unknown) => void = () => undefined
+    api.getAnalyticsStream.mockResolvedValue({ ...detail, stream: { ...detail.stream, streamId: numericId } })
+    api.getAnalyticsStreams.mockImplementation(() => new Promise(resolve => { list = resolve }))
+    renderConsole('staged', `/analytics/xqc/${numericId}`)
+    const meta = () => document.querySelector('[data-session-meta]')
+
+    await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
+    await waitFor(() => expect(api.getStreamSummary).toHaveBeenCalled())
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(meta()?.hasAttribute('data-session-meta-settling')).toBe(true)
+    expect(document.querySelector('[data-session-watch-vod]')).toBeNull()
+
+    await act(async () => list({ items: [{ ...listRows(1)[0], streamId: numericId, vodId: '3333333333' }] }))
+    await waitFor(() => expect(meta()?.hasAttribute('data-session-meta-settling')).toBe(false))
+    expect(document.querySelector('[data-session-watch-vod]')?.getAttribute('href')).toContain('3333333333')
+  })
+
+  it('does not wait on the channel list for the archive when the session read names it', async () => {
+    const numericId = '320567744986'
+    api.getAnalyticsStream.mockResolvedValue({
+      ...verifiedSessionDetail,
+      stream: { ...verifiedSessionDetail.stream, streamId: numericId },
+    })
+    api.getAnalyticsStreams.mockImplementation(() => new Promise(() => undefined))
+    renderConsole('staged', `/analytics/xqc/${numericId}`)
+    const meta = () => document.querySelector('[data-session-meta]')
+
+    await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
+    await waitFor(() => expect(meta()?.hasAttribute('data-session-meta-settling')).toBe(false))
+    expect(document.querySelector('[data-session-watch-vod]')?.getAttribute('href')).toContain('2222222222')
+  })
+
+  it('reads no stream list or games while a stand-in waits on a missing session', async () => {
+    api.getAnalyticsStream.mockRejectedValue({ kind: 'not_found', message: 'not found', status: 404 })
+    renderConsole('eager', '/analytics/xqc/320567744986', { missingSessionFallback: <p>Stand-in for the session</p> })
+
+    await screen.findByText('Stand-in for the session')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(api.getAnalyticsStreams).not.toHaveBeenCalled()
+    expect(api.getStreamGameSegments).not.toHaveBeenCalled()
+  })
+
+  it('reads the stream list and games once the session read answers, with a stand-in ready', async () => {
+    api.getAnalyticsStream.mockResolvedValue({ ...detail, stream: { ...detail.stream, streamId: '320567744986' } })
+    renderConsole('eager', '/analytics/xqc/320567744986', { missingSessionFallback: <p>Stand-in for the session</p> })
+
+    await screen.findByText('Staging fixture', { selector: '[data-session-title]' })
+    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledWith('xqc', 12))
+    await waitFor(() => expect(api.getStreamGameSegments).toHaveBeenCalledWith('320567744986'))
+    expect(screen.queryByText('Stand-in for the session')).toBeNull()
+  })
+
   it('enables heatmap and sync immediately after explicit tab engagement', async () => {
     renderConsole('staged')
 
@@ -507,7 +649,47 @@ describe('AnalyticsConsole Stream Recap slot', () => {
       limit === 12 ? Promise.resolve({ items: [] }) : new Promise(() => undefined))
     renderConsole('eager', '/analytics/xqc')
 
-    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledWith('xqc', 100))
+    await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledWith('xqc', 12))
     await waitFor(() => expect(recapSlot()).toBeNull())
+    // An empty first page is the whole list: no 100-row read follows it.
+    expect(api.getAnalyticsStreams).not.toHaveBeenCalledWith('xqc', 100)
+  })
+
+  it('keeps polling the channel route from the first page while that page is the whole list', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      api.getAnalyticsStreams.mockResolvedValue({ items: [] })
+      renderConsole('eager', '/analytics/xqc')
+      await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1))
+      await act(async () => { await vi.advanceTimersByTimeAsync(31_000) })
+      expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2)
+      expect(api.getAnalyticsStreams).not.toHaveBeenCalledWith('xqc', 100)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the sidebar on the polling first page after Refresh, so a stream that starts later shows up', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const railIds = () => [...screen.getByTestId('rail').querySelectorAll('li')].map(li => li.textContent)
+    try {
+      // no stream yet: the channel route stays, and polls its first page (the whole list)
+      api.getAnalyticsStreams.mockResolvedValue({ items: [] })
+      renderConsole('eager', '/analytics/xqc')
+      await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(1))
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Refresh data' }))
+      await waitFor(() => expect(api.getAnalyticsStreams).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh data' }).hasAttribute('disabled')).toBe(false))
+      // Refresh reads the list the sidebar shows: the first page, never a one-off 100-row read
+      expect(api.getAnalyticsStreams).not.toHaveBeenCalledWith('xqc', 100)
+
+      // a stream starts; the first page is still the whole list, and its next poll brings it to the sidebar
+      api.getAnalyticsStreams.mockResolvedValue({ items: listRows(1) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(31_000) })
+      await waitFor(() => expect(railIds()).toContain(streamId))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

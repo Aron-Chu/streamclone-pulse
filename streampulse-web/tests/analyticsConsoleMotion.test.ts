@@ -1,22 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lerpScalar } from '@streampulse/analytics-console/motion/useSmoothedScalar'
 import { lerpActivityLayout } from '@streampulse/analytics-console/utils/emotePlotSelection'
-
-describe('lerpScalar', () => {
-  it('steps toward target with alpha', () => {
-    expect(lerpScalar(0, 100, 0.5)).toBe(50)
-    expect(lerpScalar(50, 100, 0.5)).toBe(75)
-  })
-
-  it('converges near target after repeated steps', () => {
-    let current = 0
-    const target = 240
-    for (let i = 0; i < 24; i += 1) {
-      current = lerpScalar(current, target, 0.35)
-    }
-    expect(Math.abs(current - target)).toBeLessThan(0.05)
-  })
-})
 
 describe('lerpActivityLayout', () => {
   it('returns collapsed layout at progress 0', () => {

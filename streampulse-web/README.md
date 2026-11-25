@@ -80,6 +80,8 @@ every switch off it prints `no switches on` and passes. It is read-only.
 |--------|-----------------|
 | `VITE_PUBLIC_MOMENTS_FEED` (`on`/`1`) | `/v1/public/moments` |
 | `VITE_PUBLIC_NATIVE_CLIPS` (`on`/`1`) | `/v1/public/clips` |
+| `VITE_PUBLIC_MOMENT_PAGE` (`on`/`1`) | none to check; prints a note (it reads the public stream and recap routes the stream page already uses) |
+| `VITE_PUBLIC_MOMENT_FEEDBACK` (`on`/`1`) | none the check can see; prints a note. Keep it off until the backend feedback flag, its migrations and the edge relay for ratings and comments are live, and confirm those by hand |
 | `VITE_TWITCH_SIGNIN` (`1`) | `/v1/account/auth/twitch/{start,complete}`, `/v1/account/identities/twitch/link`, `/v1/account/sessions/revoke-all` (relay) |
 | `VITE_ACCOUNT_MOMENTS` (`1`) | `/v1/account/history/{list,forget,settings}`, `/v1/account/saves/{list,update}`, `/v1/account/{export,delete}` (relay) |
 | `VITE_ACCOUNT_HEADER` (`1`) | `/v1/account/me` (relay) |

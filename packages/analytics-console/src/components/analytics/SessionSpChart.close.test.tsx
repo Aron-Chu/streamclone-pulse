@@ -116,6 +116,30 @@ describe('SessionSpChart selection closes (A3)', () => {
     expect(document.activeElement).toBe(svg)
   })
 
+  it('a pinned minute stays pinned while the Emotes on chart bar and its panel are used (Aron, 11-22)', () => {
+    const { container, spy, svg } = renderConsole({ minutes: 90 })
+    clickMinute(svg, 20)
+    expect(detailShown(container)).toBe(true)
+    const bar = container.querySelector<HTMLElement>('[data-session-emotes-on-chart]')!
+    const press = (element: Element) => {
+      fireEvent.pointerDown(element)
+      fireEvent.click(element)
+    }
+    // the bar's own space and an emote's name open the panel; neither is outside the chart
+    press(bar)
+    const toggle = container.querySelector('[data-chart-overlay-toggle]')!
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    press(document.getElementById(toggle.getAttribute('aria-controls')!)!)
+    press(bar)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(spy).not.toHaveBeenLastCalledWith(null)
+    expect(detailShown(container)).toBe(true)
+    // a press outside both still closes the pinned minute
+    fireEvent.pointerDown(document.body)
+    expect(spy).toHaveBeenLastCalledWith(null)
+    expect(detailShown(container)).toBe(false)
+  })
+
   it('a first plot detail waits for the animation-frame callback; a swap keeps it mounted', () => {
     const { container, svg } = renderConsole({ minutes: 90 })
     const pointAt = (minute: number) => {

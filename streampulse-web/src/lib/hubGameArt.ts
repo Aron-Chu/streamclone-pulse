@@ -3,8 +3,9 @@
  * its grey "?" cover; Where chat is, 11-02). A live stream's own game list
  * (loadCategoryArtwork) has the game's exact cover by its id. The hub's
  * GameArt asks here only once a by-name cover has proved to be the
- * placeholder, so most games never cost a read. Reads go one at a time, at
- * most GAME_ART_STREAMS a game and GAME_ART_READS a page load. What they find
+ * placeholder, so most games never cost a read. Up to GAME_ART_LANES games are
+ * looked up at once (one at a time held six covers back about 3 s, S1 11-19),
+ * at most GAME_ART_STREAMS a game and GAME_ART_READS a page load. What they find
  * is kept in localStorage, a cover for 7 days and a miss for 6 hours (30
  * minutes when the reads found nothing at all, which may be failed reads).
  */
@@ -14,6 +15,8 @@ export const GAME_ART_KEY = 'sp:gameArt:v1'
 export const GAME_ART_READS = 12
 /** Streams a game is looked up in at most. */
 export const GAME_ART_STREAMS = 3
+/** Games looked up at once; a game's own streams are still read one after another. */
+export const GAME_ART_LANES = 3
 const FOUND_MS = 7 * 24 * 60 * 60_000
 const MISS_MS = 6 * 60 * 60_000
 const EMPTY_MS = 30 * 60_000
@@ -25,7 +28,8 @@ let kept: Record<string, Entry> | null = null
 const listeners = new Set<() => void>()
 const asked = new Set<string>()
 let reads = 0
-let queue: Promise<void> = Promise.resolve()
+let lanes: Promise<void>[] = []
+let lane = 0
 
 function entries(): Record<string, Entry> {
   if (kept) return kept
@@ -70,13 +74,15 @@ export function subscribeGameArt(listener: () => void): () => void {
 /**
  * Look the game's cover up in the game lists of streams playing it, the first
  * GAME_ART_STREAMS of `streamIds` until one has it (a stream's list can lag its
- * live category by a while), once a page load, after the reads queued before it.
+ * live category by a while), once a page load, in the next of GAME_ART_LANES lanes.
  */
 export function askGameArt(name: string, streamIds: readonly (string | null | undefined)[]): void {
   const ids = [...new Set(streamIds.filter((id): id is string => !!id))].slice(0, GAME_ART_STREAMS)
   if (!ids.length || asked.has(name) || reads >= GAME_ART_READS || gameArtFor(name) !== undefined) return
   asked.add(name)
-  queue = queue.then(async () => {
+  const i = lane
+  lane = (lane + 1) % GAME_ART_LANES
+  lanes[i] = (lanes[i] ?? Promise.resolve()).then(async () => {
     // only the game asked about: a list's other games may have a by-name cover its ids lack
     let url: string | null = null
     let any = false
@@ -107,5 +113,6 @@ export function resetGameArtForTests(): void {
   kept = null
   asked.clear()
   reads = 0
-  queue = Promise.resolve()
+  lanes = []
+  lane = 0
 }

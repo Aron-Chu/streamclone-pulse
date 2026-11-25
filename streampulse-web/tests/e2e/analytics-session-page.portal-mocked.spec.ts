@@ -211,7 +211,7 @@ test.describe('analytics session page shell, d3-v2 session-original (mocked)', (
     })
     expect(room, 'the stream column runs past the list').toBeGreaterThan(40)
     const listTop = await box.evaluate(node => node.getBoundingClientRect().top + window.scrollY)
-    const barBottom = await page.locator('.analytics-topnav').evaluate(node => Math.round(node.getBoundingClientRect().bottom))
+    const barBottom = await page.locator('.site-header').evaluate(node => Math.round(node.getBoundingClientRect().bottom))
     expect(barBottom).toBe(56)
     await page.evaluate(y => window.scrollTo(0, y), listTop - 72 + Math.min(room, 240))
     await expect.poll(() => box.evaluate(node => Math.round(node.getBoundingClientRect().top))).toBe(72)

@@ -8,7 +8,18 @@ export const BUCKET_MOMENTS_CACHE_READY_MS = 30 * 60 * 1000
 export const BUCKET_MOMENTS_CACHE_EMPTY_MS = 2 * 60 * 1000
 
 const STORAGE_PREFIX = 'sp:bucketMoments:v2:'
+const MAX_MEMORY_ENTRIES = 64
 const memory = new Map<string, BucketMomentsCacheEntry>()
+
+function setMemoryEntry(key: string, entry: BucketMomentsCacheEntry): void {
+  memory.delete(key)
+  memory.set(key, entry)
+  while (memory.size > MAX_MEMORY_ENTRIES) {
+    const oldest = memory.keys().next().value
+    if (oldest === undefined) break
+    memory.delete(oldest)
+  }
+}
 
 interface BucketMomentsCacheEntry {
   version: 2
@@ -114,7 +125,7 @@ function readEntry(
 
   const stored = readStorageEntry(bucketT, activityWindow)
   if (!stored) return null
-  memory.set(key, stored)
+  setMemoryEntry(key, stored)
   return stored
 }
 
@@ -142,7 +153,7 @@ export function writeBucketMomentsCache(
     response,
   }
   const key = bucketMomentsCacheKey(bucketT, activityWindow)
-  memory.set(key, entry)
+  setMemoryEntry(key, entry)
   writeStorageEntry(entry)
   for (const listener of [...writeListeners]) listener()
 }

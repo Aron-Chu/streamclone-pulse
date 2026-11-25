@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
+import { answerTwitchLivePictures } from './helpers/twitchLivePictures'
 import { installNewsroomMock, newsroomFixture } from './helpers/newsroomMock'
 import portalTimingFixture from '../fixtures/portal_vod_timing_v1.json' with { type: 'json' }
 
@@ -118,6 +119,7 @@ test('late recap responses cannot overwrite a different selection and failed evi
 })
 
 test.beforeEach(async ({ page }) => {
+  await answerTwitchLivePictures(page)
   // Mock-only: an API read a test does not answer (the open moment's minutes, among
   // others) fails here, never against production. Routes added later take precedence.
   await page.route('**/v1/**', route => route.fulfill({ status: 503, json: { error: 'unmocked_endpoint' } }))
@@ -356,12 +358,12 @@ test('creator links open the channel while History is hidden; a History creator 
 
 test('in-page Back does not leave a detail entry that browser Back reopens', async ({ page }) => {
   await page.goto('/analytics')
-  await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'All moments', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Moments', exact: true }).click()
   await page.locator('.moments-result').first().getByRole('button', { name: 'Open moment' }).click()
   await expect(page.locator('.moments-detail')).toBeVisible()
   // Revisit this detail after unmounting the page: its return origin must be
   // stored on the history entry, not only in a component ref.
-  await page.getByRole('navigation', { name: 'Analytics navigation' }).getByRole('link', { name: 'Analytics', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Hub', exact: true }).click()
   await page.goBack()
   await expect(page.locator('.moments-detail')).toBeVisible()
   await page.getByRole('button', { name: 'Close', exact: true }).click()
@@ -413,7 +415,7 @@ test('storage failure has one workspace warning rather than a warning per card',
   await page.goto('/analytics/moments')
   await expect(page.locator('.moments-result')).toHaveCount(2)
   await expect(page.getByText('Saved data could not be read.', { exact: false })).toHaveCount(1)
-  await page.locator('.moments-result').first().getByRole('button', { name: 'Save', exact: true }).click()
+  await page.locator('.moments-result').first().getByRole('button', { name: /^Save / }).click()
   await expect(page.getByText('Saved for this session only.', { exact: true })).toHaveCount(1)
   await expect(page.getByText('Saved data could not be read.', { exact: false })).toHaveCount(1)
 })
@@ -459,12 +461,12 @@ test('recent hub artwork is display-only, request-free per card, and suppressed 
   const first = page.locator('.moments-result').first()
   await expect(first.locator('.moments-card-artwork img')).toHaveAttribute('src', artwork.url)
   await expect(first.locator('.moments-card-artwork img')).toHaveAttribute('loading', 'lazy')
-  await expect(first.locator('.moments-row-emotes')).toHaveCount(1)
+  await expect(first.locator('.msc-emotes, .msc-emote')).toHaveCount(1)
   await expect(page.locator('.moments-result').nth(1).locator('.moments-card-artwork')).toHaveCount(0)
   await expect(page.locator('.moments-result').nth(1)).toContainText('Chat spike')
   await expect(first.locator('.moments-card-artwork').getByRole('button')).toHaveCount(0)
   expect(sourceChecks).toBe(0)
-  await first.getByRole('button', { name: 'Save', exact: true }).click()
+  await first.getByRole('button', { name: /^Save / }).click()
   expect(await page.evaluate(() => localStorage.getItem('streampulse.saved-moments.v2'))).not.toContain(artwork.url)
   expect(sourceChecks).toBe(0)
   const artworkBounds = await first.locator('.moments-card-artwork').boundingBox()
@@ -478,21 +480,40 @@ test('recent hub artwork is display-only, request-free per card, and suppressed 
   await expect(first.locator('.moments-card-artwork')).toHaveCount(0)
 })
 
+test('a young moment shows its stream’s live picture only once Twitch’s answer proves the stream live', async ({ page }) => {
+  // Only xQc is live on Twitch here; any other channel's picture answers with Twitch's offline one.
+  await answerTwitchLivePictures(page, ['xqc'])
+  // The mock's first moment is one six-minute bucket back from the last whole bucket, so
+  // 6 to 12 minutes old by the wall clock. Hold the page 4 minutes back: the moment is then
+  // 2 to 8 minutes old, under the 10-minute rule, and the mock's reply (stamped with the
+  // wall clock) stays inside the 5-minute skew every measurement time is read with.
+  await page.clock.setFixedTime(Date.now() - 4 * 60_000)
+  await page.goto('/analytics/moments')
+  const first = page.locator('.moments-result').first()
+  await expect(first.locator('.msc-picture')).toHaveAttribute('data-picture', 'photo')
+  await expect(first.locator('img.msc-photo')).toHaveAttribute('src', /\/previews-ttv\/live_user_xqc-640x360\.jpg$/)
+  await expect(first.locator('.msc-source')).toHaveText('Live now')
+  await expect(first.locator('img.msc-probe')).toHaveCount(0)
+  const second = page.locator('.moments-result').nth(1)
+  await expect(second.locator('.msc-picture')).toHaveAttribute('data-picture', /^(line|emotes)$/)
+  await expect(second.locator('img.msc-photo')).toHaveCount(0)
+})
+
 test('moment cards keep background, keyboard, Save, analytics, and emote interactions independent', async ({ page }) => {
   await page.goto('/analytics/moments')
   const first = page.locator('.moments-result').first()
   await expect(first).toHaveAttribute('aria-label', 'xQc Twitch emote spike at about 0:07:00 into broadcast')
-  // One row shape in every state: the measured rates and the emote strip are
-  // always the row's evidence, and a row never embeds a player.
-  await expect(first.locator('.moments-result-evidence')).toContainText('chat/min')
+  // The card's picture is its evidence (its minutes, or its emotes when they
+  // cannot be read), and a card never embeds a player.
+  await expect(first.locator('.msc-picture')).toHaveAttribute('data-picture', /^(line|emotes|photo)$/)
   await expect(first.locator('iframe')).toHaveCount(0)
   const primary = first.locator('.moments-card-primary')
   await expect(primary).toHaveAccessibleName('Twitch emote spike — Open moment for xQc at about 0:07:00 into broadcast')
   await expect(primary).toContainText('Twitch emote spike')
-  await expect(first.locator('.moments-result-timing')).toContainText('about 0:07:00 into broadcast')
+  await expect(first.locator('.msc-at')).toHaveText('about 0:07:00 in')
   await expect(primary).not.toHaveAttribute('aria-pressed')
-  await expect(first.locator('.moments-row-emotes')).toHaveCount(1)
-  const emote = first.locator('.moments-row-emotes > span').first()
+  await expect(first.locator('.msc-emotes, .msc-emote')).toHaveCount(1)
+  const emote = first.locator('.msc-emotes > span, .msc-emote').first()
   // A closed detail stays in the DOM (inert, aria-hidden) for its 200 ms collapse, and a
   // press made while Close is still stepping back in history waits for it. So wait on the
   // row's own state, never on `.moments-detail` being visible: that can be the closing copy.
@@ -506,22 +527,22 @@ test('moment cards keep background, keyboard, Save, analytics, and emote interac
     await expect(primary).toHaveAttribute('aria-expanded', 'false')
     await expect(page.locator('.moments-detail')).toHaveCount(0)
   }
-  await emote.hover()
-  await expect(emote).toHaveAttribute('title', /DinoDance/)
+  // The card's emotes are its picture, so a press on one opens the moment like the rest of it.
+  await expect(emote).toBeVisible()
   await emote.click()
   await isOpen()
   await expect(primary).toHaveAttribute('aria-current', 'true')
   // Pressed again, the open row closes its moment, and its name says so.
   await expect(primary).toHaveAccessibleName('Twitch emote spike — Close moment for xQc at about 0:07:00 into broadcast')
-  await expect(first.locator('.moments-row-emotes')).toHaveCount(1)
+  await expect(first.locator('.msc-emotes, .msc-emote')).toHaveCount(1)
   await closeDetail()
 
-  await first.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(first.getByRole('button', { name: 'Saved', exact: true })).toBeVisible()
+  await first.getByRole('button', { name: /^Save / }).click()
+  await expect(first.getByRole('button', { name: /^Remove saved / })).toHaveText('Saved')
   await expect(page.locator('.moments-detail')).toHaveCount(0)
   await expect(primary).toHaveAttribute('aria-expanded', 'false')
 
-  const evidence = await first.locator('.moments-result-evidence').boundingBox()
+  const evidence = await first.locator('.msc-picture').boundingBox()
   expect(evidence).not.toBeNull()
   await page.mouse.click(evidence!.x + evidence!.width / 2, evidence!.y + evidence!.height / 2)
   await isOpen()
@@ -551,8 +572,8 @@ test('moment cards keep background, keyboard, Save, analytics, and emote interac
 test('cached recent moments render immediately, then converge to the healthy refresh', async ({ page }) => {
   await page.goto('/analytics/moments')
   await expect(page.locator('.moments-result')).toHaveCount(2)
-  const cacheState = await page.evaluate(() => Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith('sp:publicHubProjection:v1:'))).map(key => ({ key, value: JSON.parse(localStorage.getItem(key) || '{}') })))
-  expect(cacheState, JSON.stringify(cacheState)).not.toHaveLength(0)
+  // The saved copy is written in idle time (up to 2 s, publicHubCache's plan §2.6), so wait for it rather than read it the instant the list draws.
+  await expect.poll(() => page.evaluate(() => Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter(key => key?.startsWith('sp:publicHubProjection:v1:')).length), { timeout: 4_000 }).toBeGreaterThan(0)
   await installHubUxMock(page, { mode: 'empty', hubDelayMs: 700 })
   await page.reload({ waitUntil: 'domcontentloaded' })
   // Latest's empty copy says why and where next (S1, 11-13)
@@ -651,7 +672,7 @@ for (const width of [390, 768, 1440]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     if (width <= 768) {
       const geometry = await page.evaluate(() => {
-        const header = document.querySelector('.analytics-topnav')!.getBoundingClientRect()
+        const header = document.querySelector('.site-header')!.getBoundingClientRect()
         const controls = ['.moments-result.is-selected .moments-card-primary', '.moments-detail-head'].map(selector => {
           const bounds = document.querySelector(selector)!.getBoundingClientRect()
           return { selector, top: bounds.top, bottom: bounds.bottom }

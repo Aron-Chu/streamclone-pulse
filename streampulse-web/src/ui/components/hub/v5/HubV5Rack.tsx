@@ -1,13 +1,13 @@
 /**
- * Where chat is as the ranked rack (R5-22, mockup d3-v5 hub-rack.js /
- * hub-rack.css; the header and hover card from hub-r4.js and hub-r5e.css).
- * Aron rejected the covers-first layouts as "low resolution and slightly
- * distracting": here each game keeps a small cover (30 × 40, else its
- * initials) and the share goes into a bar in chat purple, so the eye lands on
- * where chat is. 10 rows; 16 in two columns of 8 when the block is 620 px or
- * wider. A row is a button: it lists the game's channels in Channels (pressed),
- * again shows every channel. Hover (after 90 ms) or keyboard focus shows the
- * game's card.
+ * Where chat is (9A, 11-22; board artifacts/hub-audit-board-20261122 Q9): one
+ * share bar for the top eight games and the rest, then the eight as rows. Each
+ * row keeps the game's cover to the left of its name (Aron, 11-22: "the actual
+ * game played card to the left the game name"; 27 × 36, else its initials),
+ * then its tone, share and channel count. It replaces the ranked rack
+ * (R5-22: 10 rows of bars, 16 in two columns). A row is a button: it lists the
+ * game's channels in Channels (pressed), again shows every channel; the pressed
+ * game's part of the bar takes the accent. Hover (after 90 ms) or keyboard
+ * focus shows the game's card.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -19,7 +19,6 @@ import { isTwitchPlaceholderBoxArt, twitchBoxArtByName } from '../../../../../..
 import {
   HUB_CHAT_COUNTS_DOWN,
   HUB_NO_CATEGORY,
-  HUB_RACK_NARROW_ROWS,
   HUB_RACK_ROWS,
   boxArtAt,
   channelChat,
@@ -35,6 +34,18 @@ import {
 import { isFocusVisible, placeHubV5Card } from './hubV5HoverCard'
 
 const H_ID = 'hv5-gm-h'
+/** The eight rows' tones, chat purple stepping down to greys, and the rest of the games (9A). */
+const GAME_TONES = [
+  'var(--hv5-chat)',
+  'color-mix(in oklab, var(--hv5-chat) 72%, var(--sp-panel))',
+  'color-mix(in oklab, var(--hv5-chat) 50%, var(--sp-panel))',
+  'color-mix(in oklab, var(--hv5-chat) 32%, var(--sp-panel))',
+  'color-mix(in oklab, var(--sp-text-3) 82%, var(--sp-panel))',
+  'color-mix(in oklab, var(--sp-text-3) 62%, var(--sp-panel))',
+  'color-mix(in oklab, var(--sp-text-3) 44%, var(--sp-panel))',
+  'color-mix(in oklab, var(--sp-text-3) 30%, var(--sp-panel))',
+] as const
+const REST_TONE = 'var(--sp-line-strong)'
 
 /**
  * A game's cover: the vetted art, else Twitch's box art by name, else one a
@@ -128,7 +139,8 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavaila
   unavailable?: boolean
 }) {
   const list = games.all.slice(0, HUB_RACK_ROWS)
-  const max = list[0]?.chatShare || 1
+  const restShare = games.all.slice(HUB_RACK_ROWS).reduce((sum, g) => sum + g.chatShare, 0)
+  const restCount = games.all.length - list.length
   const secRef = useRef<HTMLElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const [on, setOn] = useState<{ name: string; el: HTMLElement } | null>(null)
@@ -198,17 +210,27 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavaila
       </div>
       {list.length ? (
         <>
+          {/* one bar of the shares: the eight rows' tones, then the rest of the games in one part */}
+          <div
+            className="hv5-gs"
+            role="img"
+            aria-label={`${list.map((g) => `${g.name} ${g.chatShare.toFixed(1)}%`).join(', ')}${restCount ? `, and ${restCount} more ${restCount === 1 ? 'game' : 'games'} ${restShare.toFixed(1)}%` : ''}`}
+          >
+            {list.map((g, i) => (
+              <i key={g.name} style={{ flexGrow: g.chatShare, background: game === g.name ? 'var(--hv5-accent)' : GAME_TONES[i] }} />
+            ))}
+            {restCount > 0 && restShare > 0 ?<i style={{ flexGrow: restShare, background: REST_TONE }} /> : null}
+          </div>
           <ol className="hv5-gr-list" aria-labelledby={H_ID}>
-            {list.map((g) => {
+            {list.map((g, i) => {
               const pressed = game === g.name
               const n = g.rows.length
               return (
                 <li key={g.name}>
                   <button type="button" className="hv5-gr" data-game={g.name} aria-pressed={pressed} onClick={onRow(g)}>
-                    <span className="hv5-gr-art"><GameArt url={art.get(g.name)} name={g.name} w={30} h={40} streamIds={g.rows.map((c) => c.streamId)} /></span>
+                    <span className="hv5-gr-art"><GameArt url={art.get(g.name)} name={g.name} w={27} h={36} streamIds={g.rows.map((c) => c.streamId)} /></span>
                     <span className="hv5-gr-nm" aria-hidden="true">{g.name}</span>
-                    <span className="hv5-gr-v" aria-hidden="true">{g.chatShare.toFixed(1)}%</span>
-                    <span className="hv5-gr-bar" aria-hidden="true"><i style={{ width: `${Math.max(1.5, (g.chatShare / max) * 100).toFixed(1)}%` }} /></span>
+                    <span className="hv5-gr-v" aria-hidden="true"><i className="hv5-gr-sw" style={{ background: pressed ? 'var(--hv5-accent)' : GAME_TONES[i] }} />{g.chatShare.toFixed(1)}%</span>
                     <span className="hv5-gr-c" aria-hidden="true">{formatHubInt(n)} {n === 1 ? 'channel' : 'channels'}</span>
                     {/* Its words for screen readers; an aria-label would not match the row's own text (WCAG 2.5.3). */}
                     <span className="hv5-vh">{gameAria(g, pressed, games.basis)}</span>
@@ -217,8 +239,7 @@ export function HubV5Rack({ games, game, onGame, art, avatars, loading, unavaila
               )
             })}
           </ol>
-          <p className="hv5-gr-foot hv5-gr-f10">{rackFoot(games, HUB_RACK_NARROW_ROWS)}</p>
-          <p className="hv5-gr-foot hv5-gr-f16">{rackFoot(games, HUB_RACK_ROWS)}</p>
+          <p className="hv5-gr-foot">{rackFoot(games, HUB_RACK_ROWS)}</p>
         </>
       ) : loading ? (
         <div className="hv5-gr-skel" aria-hidden="true" />

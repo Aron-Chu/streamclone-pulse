@@ -1,3 +1,127 @@
 /* Portal-wide Geist — match hosted Pages landing (https://streampulse-web.pages.dev/). */
 @import '@fontsource-variable/geist/wght.css';
 @import '@fontsource-variable/geist-mono/wght.css';
+
+/* Until Geist lands, Arial stands in at Geist's width and line metrics, so the swap moves no text (front page layout
+   shift, 11-23). Each weight band uses the Arial face Geist's width there was measured against in Chromium (sample:
+   the front page's lines plus a pangram): size-adjust = Geist width / Arial width; ascent and descent are Geist's
+   1.005 and 0.295 em, divided by the size-adjust. Only the latin range Geist's own latin file covers, so other scripts
+   fall through to the rest of the stack as before. Android has no Arial: 'Geist Fallback Roboto' below does the same
+   with Roboto there.
+   Keep the five bands: one band per Arial face measured worse (the phone headline wraps differently) and saved only
+   3 of the 30 local lookups, which come one per font size and weight, not one per band (11-24). */
+@font-face {
+  font-family: 'Geist Fallback';
+  font-weight: 100 449;
+  src: local('Arial'), local('ArialMT');
+  size-adjust: 102.7%;
+  ascent-override: 97.86%;
+  descent-override: 28.72%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist Fallback';
+  font-weight: 450 549;
+  src: local('Arial'), local('ArialMT');
+  size-adjust: 105%;
+  ascent-override: 95.71%;
+  descent-override: 28.1%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist Fallback';
+  font-weight: 550 649;
+  src: local('Arial Bold'), local('Arial-BoldMT');
+  size-adjust: 100.2%;
+  ascent-override: 100.3%;
+  descent-override: 29.44%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist Fallback';
+  font-weight: 650 749;
+  src: local('Arial Bold'), local('Arial-BoldMT');
+  size-adjust: 102.2%;
+  ascent-override: 98.34%;
+  descent-override: 28.86%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist Fallback';
+  font-weight: 750 900;
+  src: local('Arial Bold'), local('Arial-BoldMT');
+  size-adjust: 105.4%;
+  ascent-override: 95.35%;
+  descent-override: 27.99%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Android's stand-in: Roboto at Geist's width, measured the same way against Roboto Regular, Medium, Bold and Black
+   (the 750-900 band against the headline at 850). Without it, Android falls through to native Roboto, which is about
+   11 % narrower in the headline weight: at 360-390 px the headline takes 3 lines instead of Geist's 4, so the page
+   jumps ~40 px when Geist lands. Where a named face is missing (newer Android ships one variable Roboto), that band
+   falls through to the stack as before. Where Arial exists, only a character Arial lacks reaches it (Windows front
+   page: 2 failed lookups, no first-paint cost). */
+@font-face {
+  font-family: 'Geist Fallback Roboto';
+  font-weight: 100 449;
+  src: local('Roboto'), local('Roboto Regular'), local('Roboto-Regular');
+  size-adjust: 102%;
+  ascent-override: 98.53%;
+  descent-override: 28.92%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist Fallback Roboto';
+  font-weight: 450 549;
+  src: local('Roboto Medium'), local('Roboto-Medium');
+  size-adjust: 104.6%;
+  ascent-override: 96.08%;
+  descent-override: 28.2%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist Fallback Roboto';
+  font-weight: 550 649;
+  src: local('Roboto Bold'), local('Roboto-Bold');
+  size-adjust: 106.3%;
+  ascent-override: 94.54%;
+  descent-override: 27.75%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist Fallback Roboto';
+  font-weight: 650 749;
+  src: local('Roboto Bold'), local('Roboto-Bold');
+  size-adjust: 108.6%;
+  ascent-override: 92.54%;
+  descent-override: 27.16%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist Fallback Roboto';
+  font-weight: 750 900;
+  src: local('Roboto Black'), local('Roboto-Black');
+  size-adjust: 112.8%;
+  ascent-override: 89.1%;
+  descent-override: 26.15%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}

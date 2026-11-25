@@ -10,7 +10,7 @@ vi.mock('../src/routes/analytics/ChannelAnalyticsPage', () => ({
   default: () => <main aria-label="Stream page">Stream route</main>,
 }))
 
-const publicPaths = ['/', '/docs', '/status', '/privacy'] as const
+const publicPaths = ['/', '/help', '/status', '/privacy'] as const
 
 function LocationProbe() {
   const { pathname, search, hash } = useLocation()
@@ -100,6 +100,14 @@ describe('route smoke', () => {
 
 describe('clip addresses without the clip page', () => {
   it.each(['/analytics/clips/BraveClipSlug-abc_1', '/analytics/clips'])('%s is not found, never a channel named "clips"', async path => {
+    renderPath(path)
+    expect(await screen.findByTestId('not-found')).toBeTruthy()
+    expect(screen.queryByRole('main', { name: 'Stream page' })).toBeNull()
+  })
+})
+
+describe('Moment page addresses without the Moment page', () => {
+  it.each(['/analytics/moments/9000001/20261114T1040Z', '/analytics/moments/9000001/20261114T1040Z/'])('%s is not found, never a channel named "moments"', async path => {
     renderPath(path)
     expect(await screen.findByTestId('not-found')).toBeTruthy()
     expect(screen.queryByRole('main', { name: 'Stream page' })).toBeNull()

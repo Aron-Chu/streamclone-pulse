@@ -3,26 +3,11 @@
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PulseMultiSignalChartInner } from '../packages/pulse-charts/src/PulseMultiSignalChart.tsx'
-import type { ChartMinuteRollup } from '../packages/pulse-charts/src/types.ts'
 import { PulseOverviewChart } from '../src/ui/PulseOverviewChart.tsx'
 import { prepareChartRollups } from '../src/ui/chatActivityEmotes.ts'
 import type { ExtensionRollup, PulsePayload } from '../src/shared/messages.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-const streamStartedAt = '2026-09-19T00:00:00.000Z'
-
-function sharedPoint(offsetSeconds: number, missing = false): ChartMinuteRollup {
-  return {
-    minuteTs: new Date(Date.parse(streamStartedAt) + offsetSeconds * 1000).toISOString(),
-    viewerAvg: 100,
-    viewerSamples: 1,
-    chatCount: 20,
-    totalEmoteCount: 5,
-    missing,
-  }
-}
 
 function overviewPoint(offsetSeconds: number, missing = false): ExtensionRollup {
   return { offsetSeconds, viewerCount: 100, chatCount: 20, sevenTvEmoteCount: 5, missing }
@@ -116,49 +101,6 @@ describe('chart empty-gap selection', () => {
     expect(select.mock.calls.map(([index]) => index)).toEqual([1, 3, 5, 3, 5, 1])
   })
 
-  it('skips missing shared-chart buckets during keyboard navigation and keeps measured zeroes selectable', () => {
-    const rollups = [
-      sharedPoint(0, true),
-      sharedPoint(60),
-      sharedPoint(120, true),
-      { ...sharedPoint(180), viewerAvg: 0, chatCount: 0, totalEmoteCount: 0 },
-      sharedPoint(240, true),
-      sharedPoint(300),
-      sharedPoint(360, true),
-    ]
-    const select = vi.fn()
-    const hover = vi.fn()
-    renderChart(
-      <PulseMultiSignalChartInner
-        rollups={rollups}
-        streamStartedAt={streamStartedAt}
-        durationSeconds={360}
-        onSelectRollup={select}
-        onHoverRollupChange={hover}
-        motionEnabled={false}
-        variant="console"
-        chromeless
-      />,
-    )
-    const chart = container?.querySelector('svg')
-    if (!chart) throw new Error('Shared chart did not render')
-
-    for (const [key, index, commit] of [
-      ['Home', 1, 'Enter'],
-      ['ArrowRight', 3, ' '],
-      ['ArrowDown', 5, 'Enter'],
-      ['ArrowUp', 3, 'Enter'],
-      ['End', 5, 'Enter'],
-      ['Home', 1, 'Enter'],
-    ] as const) {
-      pressKey(chart, key)
-      expect(hover).toHaveBeenLastCalledWith(rollups[index])
-      pressKey(chart, commit)
-      expect(select).toHaveBeenLastCalledWith(rollups[index])
-    }
-    expect(select.mock.calls.map(([rollup]) => rollup)).toEqual([1, 3, 5, 3, 5, 1].map(index => rollups[index]))
-  })
-
   it.each(['Enter', ' '])('rejects %s when an overview preview becomes missing after a refresh', key => {
     const select = vi.fn()
     const hover = vi.fn()
@@ -180,33 +122,6 @@ describe('chart empty-gap selection', () => {
     expect(hover).toHaveBeenLastCalledWith(null)
   })
 
-  it.each(['Enter', ' '])('rejects %s when a shared-chart preview becomes missing after a refresh', key => {
-    const select = vi.fn()
-    const hover = vi.fn()
-    const render = (missing: boolean) => (
-      <PulseMultiSignalChartInner
-        rollups={[sharedPoint(0, missing), sharedPoint(60)]}
-        streamStartedAt={streamStartedAt}
-        durationSeconds={60}
-        onSelectRollup={select}
-        onHoverRollupChange={hover}
-        motionEnabled={false}
-        variant="console"
-        chromeless
-      />
-    )
-    renderChart(render(false))
-    const chart = container?.querySelector('svg')
-    if (!chart) throw new Error('Shared chart did not render')
-    pressKey(chart, 'Home')
-    expect(hover).toHaveBeenLastCalledWith(sharedPoint(0))
-    act(() => root?.render(render(true)))
-
-    pressKey(chart, key)
-    expect(select).not.toHaveBeenCalled()
-    expect(hover).toHaveBeenLastCalledWith(null)
-  })
-
   it('does not preview or select all-missing overview buckets', () => {
     const select = vi.fn()
     const hover = vi.fn()
@@ -223,49 +138,6 @@ describe('chart empty-gap selection', () => {
     for (const key of ['Home', 'End', 'ArrowLeft', 'ArrowRight', 'Enter', ' ']) pressKey(plot, key)
     expect(select).not.toHaveBeenCalled()
     expect(hover).not.toHaveBeenCalled()
-  })
-
-  it('does not expose keyboard selection for an all-missing shared chart', () => {
-    const select = vi.fn()
-    renderChart(
-      <PulseMultiSignalChartInner
-        rollups={[sharedPoint(0, true), sharedPoint(60, true)]}
-        streamStartedAt={streamStartedAt}
-        durationSeconds={60}
-        onSelectRollup={select}
-        motionEnabled={false}
-        variant="console"
-        chromeless
-      />,
-    )
-
-    expect(container?.querySelector('svg')).toBeNull()
-    expect(select).not.toHaveBeenCalled()
-  })
-
-  it.each(['sparse', 'missing'] as const)('ignores shared-chart %s gaps but selects measured buckets', gap => {
-    const rollups = [sharedPoint(0), ...(gap === 'missing' ? [sharedPoint(300, true)] : []), sharedPoint(600)]
-    const select = vi.fn()
-    const plot = renderPlot(
-      <PulseMultiSignalChartInner
-        rollups={rollups}
-        selectedRollup={rollups[0]}
-        streamStartedAt={streamStartedAt}
-        durationSeconds={600}
-        onSelectOffset={select}
-        motionEnabled={false}
-        variant="console"
-        chromeless
-      />,
-      '[data-chart-touch-action]',
-    )
-    const bounds = plot.getBoundingClientRect()
-
-    click(plot, bounds.left + bounds.width / 2, bounds.top + 1)
-    expect(select).not.toHaveBeenCalled()
-
-    click(plot, bounds.right, bounds.top + 1)
-    expect(select).toHaveBeenCalledExactlyOnceWith(600)
   })
 
   it.each(['sparse', 'missing'] as const)('preserves overview selection inside %s gaps', gap => {
@@ -378,77 +250,5 @@ describe('chart empty-gap selection', () => {
       expect(select).toHaveBeenLastCalledWith(1)
     }
     expect(select).toHaveBeenCalledTimes(2)
-  })
-
-  it('preserves shared rollup selection in a gap and still toggles the selected endpoint', () => {
-    const rollups = [sharedPoint(0), sharedPoint(600)]
-    const select = vi.fn()
-    const plot = renderPlot(
-      <PulseMultiSignalChartInner
-        rollups={rollups}
-        selectedRollup={rollups[0]}
-        streamStartedAt={streamStartedAt}
-        durationSeconds={600}
-        onSelectRollup={select}
-        motionEnabled={false}
-        variant="console"
-        chromeless
-      />,
-      '[data-chart-touch-action]',
-    )
-    const bounds = plot.getBoundingClientRect()
-
-    click(plot, bounds.left + bounds.width / 2, bounds.top + 1)
-    expect(select).not.toHaveBeenCalled()
-
-    click(plot, bounds.left, bounds.top + 1)
-    expect(select).toHaveBeenCalledExactlyOnceWith(null)
-  })
-
-  it('keeps authored reaction selections available inside a rollup gap', () => {
-    const reaction = { offsetSeconds: 300, score: 80, durationSeconds: 30 }
-    const select = vi.fn()
-    const plot = renderPlot(
-      <PulseMultiSignalChartInner
-        rollups={[sharedPoint(0), sharedPoint(600)]}
-        reactionPoints={[reaction]}
-        streamStartedAt={streamStartedAt}
-        durationSeconds={600}
-        onSelectReactionMoment={select}
-        showSpikes
-        motionEnabled={false}
-        variant="console"
-        chromeless
-      />,
-      '[data-chart-touch-action]',
-    )
-    const bar = container?.querySelector('[data-reaction-bar]')
-    expect(bar).not.toBeNull()
-    click(plot,
-      Number(bar?.getAttribute('x')) + Number(bar?.getAttribute('width')) / 2,
-      Number(bar?.getAttribute('y')) + Number(bar?.getAttribute('height')) / 2)
-    expect(select).toHaveBeenCalledExactlyOnceWith(reaction)
-  })
-
-  it.each(['chat', 'emotes'] as const)('preserves measured %s lane selection', signal => {
-    const select = vi.fn()
-    const plot = renderPlot(
-      <PulseMultiSignalChartInner
-        rollups={[sharedPoint(0), sharedPoint(60), sharedPoint(120)]}
-        streamStartedAt={streamStartedAt}
-        durationSeconds={120}
-        onSelectOffset={select}
-        motionEnabled={false}
-        variant="console"
-        chromeless
-      />,
-      '[data-chart-touch-action]',
-    )
-    const bar = container?.querySelectorAll(`[data-activity-bar="${signal}"]`)[1]
-    expect(bar).toBeTruthy()
-    click(plot,
-      Number(bar?.getAttribute('x')) + Number(bar?.getAttribute('width')) / 2,
-      Number(bar?.getAttribute('y')) + Number(bar?.getAttribute('height')) / 2)
-    expect(select).toHaveBeenCalledExactlyOnceWith(60)
   })
 })

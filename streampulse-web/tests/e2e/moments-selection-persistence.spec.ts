@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
+import { answerTwitchLivePictures } from './helpers/twitchLivePictures'
+
+// Twitch's live pictures answer as offline here, so no card depends on a real channel being live.
+test.beforeEach(async ({ page }) => { await answerTwitchLivePictures(page) })
 
 test('the next selected moment retains its evidence after the collection is replaced', async ({ page }) => {
   await page.route('**/v1/**', route => route.fulfill({ json: {} }))

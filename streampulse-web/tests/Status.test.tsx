@@ -7,7 +7,7 @@ vi.mock('../src/lib/apiClient', async importOriginal => ({
   ...await importOriginal<typeof import('../src/lib/apiClient')>(),
   getBackendUrl: () => 'https://api.streampulse.stream',
 }))
-vi.mock('../src/lib/sentry', () => ({ portalReleaseShort: () => 'v1.2.3' }))
+vi.mock('../src/lib/portalRelease', () => ({ portalReleaseShort: () => 'v1.2.3' }))
 
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -25,6 +25,34 @@ const overall = () => screen.getByTestId('status-overall').textContent
 
 describe('public Status', () => {
   beforeEach(() => vi.restoreAllMocks())
+
+  it('shows the cards at once while checking, with the probe line where "Checked" goes', async () => {
+    let answer: (value: Response) => void = () => {}
+    vi.stubGlobal('fetch', vi.fn()
+      .mockReturnValueOnce(new Promise<Response>(resolve => { answer = resolve }))
+      .mockResolvedValueOnce(response({ ok: true })))
+    render(<MemoryRouter><Status /></MemoryRouter>)
+    expect(overall()).toBe('Checking systems…')
+    expect(rows()).toEqual({ 'Website': 'Checking…', 'Live chat tracking': 'Checking…', 'Twitch panel data': 'Checking…' })
+    // Nothing between the header and the cards that could collapse when the checks answer.
+    const grid = document.querySelector('.status-grid')!
+    expect(grid.previousElementSibling!.tagName).toBe('HEADER')
+    const probing = screen.getByTestId('status-probing')
+    expect(probing.textContent).toBe('Probing StreamPulse services…')
+    expect(probing.previousElementSibling).toBe(grid)
+    expect(screen.queryByTestId('status-checked')).toBeNull()
+
+    answer(response({ status: 'operational', components: { api: 'operational', corpus: 'operational', coverage: 'operational' } }))
+    const checked = await screen.findByTestId('status-checked')
+    // The Checked line takes the probe line's place, in the same type and spacing.
+    expect(screen.queryByTestId('status-probing')).toBeNull()
+    expect(checked.previousElementSibling).toBe(grid)
+    for (const name of ['mt-4', 'text-sm', 'text-zinc-400']) {
+      expect(probing.classList.contains(name), name).toBe(true)
+      expect(checked.classList.contains(name), name).toBe(true)
+    }
+    expect(rows()).toEqual({ 'Website': 'Working', 'Live chat tracking': 'Working', 'Twitch panel data': 'Working' })
+  })
 
   it('shows three plain rows, each Working, Slow or Down, and when it was checked', async () => {
     vi.stubGlobal('fetch', vi.fn()

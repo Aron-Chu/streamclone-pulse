@@ -45,7 +45,8 @@ describe('public product analytics consent boundary', () => {
   it('classifies only the three supported tools and guides, without their inputs', () => {
     expect(analytics.publicPageCategory('/tools/twitch-vod-timestamp-link/')).toBe('tool')
     expect(analytics.publicPageCategory('/guides/find-twitch-moments')).toBe('guide')
-    expect(analytics.publicPageCategory('/guides/twitch-vod-timestamps')).toBe('guide')
+    // The timestamp builder opens this guide, so it counts as the tool.
+    expect(analytics.publicPageCategory('/guides/twitch-vod-timestamps')).toBe('tool')
     expect(analytics.publicPageCategory('/tools/private-input')).toBeNull()
     expect(analytics.publicPageCategory('/guides/unreviewed')).toBeNull()
   })

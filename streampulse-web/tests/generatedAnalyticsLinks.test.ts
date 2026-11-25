@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { buildAnalyticsHref } from '../src/lib/analyticsLinks'
-import { resolvePreferredChannelStreamId } from '../src/hooks/useChannelPageData'
 
 describe('generated analytics links stay identity-bound at roster scale', () => {
   it('keeps 500 same-day histories bound to immutable stream IDs and hash time', () => {
@@ -17,10 +16,6 @@ describe('generated analytics links stay identity-bound at roster scale', () => 
       expect(href).toBe(`/analytics/creator_${index}/stream-${index}-20260904#t=${index + 1}`)
       expect(href).not.toContain('?t=')
     }
-
-    const sameDayHistory = roster.slice(0, 24).map(row => ({ streamId: row.streamId, live: false }))
-    expect(resolvePreferredChannelStreamId(sameDayHistory, roster[499].streamId)).toBe(roster[499].streamId)
-    expect(resolvePreferredChannelStreamId(sameDayHistory)).toBe(roster[0].streamId)
   })
 
   it('models query-preserving aliases without admitting network-derived identity', () => {

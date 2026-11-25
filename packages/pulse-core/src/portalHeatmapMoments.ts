@@ -1,12 +1,13 @@
 import { buildMomentScoreModel, momentScoreReasonLabel } from './momentScore.ts'
 import {
+  buildMomentScoringContext,
+  catalogTopEmotes,
   computeStreamBaselines,
   detectPickReason,
   fallbackMomentScore100,
   type CatalogTopEmote,
   type MomentScoringRollup,
   type RollupEmoteHit,
-  topEmotesFromRollup,
 } from './momentScoring.ts'
 import { resolveEmoteImageUrl } from './emoteImageUrl.ts'
 import type { HeatmapEmote, ReplayHeatmapPoint } from './types/heatmap.ts'
@@ -175,13 +176,19 @@ export function rollupFallbackMomentCandidates(
 
   const baselines = computeStreamBaselines(dataRollups)
   const hasReactionCoverage = dataRollups.some(rollupHasReactionData)
+  // Built once for the whole list, not per minute, so a long stream ranks in linear time.
+  const scoringContext = buildMomentScoringContext(dataRollups)
+  const topEmotesOf = catalogTopEmotes(catalog)
 
   const rows: FallbackRow[] = dataRollups.map(rollup => {
     const reason = detectPickReason(rollup, baselines, catalog)
+    const topEmotes = topEmotesOf(rollup, 3)
+    // The same sort cut at 3 instead of 1, so its first entry is the top emote.
+    const topEmote = topEmotes[0]
     const scoreModel = buildMomentScoreModel({
-      fallbackScore100: fallbackMomentScore100(rollup, baselines, dataRollups),
+      fallbackScore100: fallbackMomentScore100(rollup, baselines, dataRollups, scoringContext),
       fallbackReason: reason,
-      fallbackTopEmotes: topEmotesFromRollup(rollup, 3, catalog).map(emote => ({
+      fallbackTopEmotes: topEmotes.map(emote => ({
         id: emote.key,
         name: emote.name,
         imageUrl: emote.image_url ?? '',
@@ -189,7 +196,6 @@ export function rollupFallbackMomentCandidates(
         provider: emote.provider ?? 'unknown',
       })),
     })
-    const topEmote = topEmotesFromRollup(rollup, 1, catalog)[0]
     const score = Math.round(scoreModel.score)
     return {
       minuteTs: rollup.minuteTs ?? '',

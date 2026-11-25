@@ -28,6 +28,11 @@ import {
 // and horizontal swipes pan; Ctrl/Meta+wheel stay the browser's zoom. The page
 // is never trapped: a zoom-out at the full range, a wheel outside the chart,
 // and a page scroll that sweeps the plot under the pointer all scroll the page.
+//
+// S1 (11-19): the hub is read by scrolling past
+// its chart, so a plain wheel there zooms only after a click on the chart (until
+// the pointer leaves it), and Ctrl+wheel over it zooms the chart, as a map does.
+// The stream chart is unchanged. surface.arm() is that click on the hub.
 
 type Mode = 'default' | 'off' | 'alt'
 
@@ -114,6 +119,8 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
         for (const profile of ZOOM_PROFILES) {
           await reset(surface)
           const point = await center(page, surface)
+          // Alt zooms at once; a plain wheel over the hub chart needs the click first.
+          if (mode === 'default') await surface.arm()
           const scrollBefore = await scrollYOf(page)
           if (mode === 'alt') await page.keyboard.down('Alt')
           const kept = await sendProfile(page, point, profile, mode === 'alt' ? { altKey: true } : {})
@@ -147,10 +154,11 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       }
     })
 
-    test('Shift+wheel and horizontal swipes pan a zoomed view; Ctrl/Meta+wheel stay browser zoom', async ({ page }) => {
+    test('Shift+wheel and horizontal swipes pan a zoomed view; Ctrl/Meta+wheel stay browser zoom (Ctrl zooms the hub chart)', async ({ page }) => {
       const surface = await open(page)
       await reset(surface)
       let point = await center(page, surface)
+      await surface.arm()
       for (let notch = 0; notch < 4; notch += 1) await page.mouse.wheel(0, -100)
       await surface.settle()
       const zoomed = await windowOf(surface)
@@ -176,16 +184,20 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       expect(await scrollYOf(page)).toBe(scrollBefore)
 
       // Ctrl/Meta+wheel (and a touchpad pinch, which arrives as Ctrl+wheel)
-      // are never taken from the browser, in any mode.
+      // are never taken from the browser, in any mode, except that Ctrl+wheel
+      // over the hub chart zooms the chart (S1). Meta+wheel stays the browser's.
+      const ctrlZoomsChart = surface.name === 'hub'
       for (const scrollZoom of [true, false]) {
         await setScrollZoom(surface, scrollZoom)
         for (const modifiers of [{ ctrlKey: true }, { metaKey: true }, { ctrlKey: true, altKey: true }]) {
           const kept = await sendProfile(page, point, { name: 'modified', lines: -3 }, modifiers)
-          expect(kept, JSON.stringify(modifiers)).toBe(1)
+          const chartTakesIt = ctrlZoomsChart && modifiers.ctrlKey === true
+          expect(kept, JSON.stringify(modifiers)).toBe(chartTakesIt ? 0 : 1)
         }
       }
       await surface.settle()
-      expect((await windowOf(surface)).count).toBe(zoomed.count)
+      if (ctrlZoomsChart) expect((await windowOf(surface)).count, 'Ctrl+wheel zoomed the hub chart in').toBeLessThan(zoomed.count)
+      else expect((await windowOf(surface)).count).toBe(zoomed.count)
     })
 
     test('the page is never trapped: a zoom-out at the full range scrolls the page, a zoom-in at the floor is held only mid-gesture', async ({ page }) => {
@@ -205,6 +217,7 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       // Zoom in all the way in one gesture: the notches past the floor are taken.
       await page.waitForTimeout(600)
       await center(page, surface)
+      await surface.arm()
       const atFloorScroll = await scrollYOf(page)
       for (let notch = 0; notch < 28; notch += 1) await page.mouse.wheel(0, -100)
       await surface.settle()
@@ -257,9 +270,10 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       expect(sweep.filter(entry => entry.prevented).length, 'every sweep event scrolled the page').toBe(0)
       expect(await windowOf(surface), 'the sweep did not zoom').toEqual(zoomed)
 
-      // After 600 ms of quiet, a wheel over the plot zooms (out, here).
+      // After 600 ms of quiet, a wheel over the plot zooms (out, here); on the hub, after its click.
       await page.waitForTimeout(600)
       await center(page, surface)
+      await surface.arm()
       const still = await scrollYOf(page)
       await page.mouse.wheel(0, 100)
       await surface.settle()
@@ -282,6 +296,7 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
         await target.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
         const box = (await target.boundingBox())!
         await page.mouse.move(box.x + Math.min(10, box.width / 2), box.y + box.height / 2)
+        await surface.arm()
         const before = await scrollYOf(page)
         await page.mouse.wheel(0, -120)
         await surface.settle()
@@ -293,6 +308,7 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       // The navigator track is a zoom surface.
       const track = (await surface.navigator.locator('.hx-chart-navigator__track').boundingBox())!
       await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2)
+      await surface.arm()
       const before = await scrollYOf(page)
       await page.mouse.wheel(0, -100)
       await surface.settle()
@@ -338,6 +354,7 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       const surface = await open(page)
       await expect(toggleOf(surface)).toHaveAttribute('aria-pressed', 'true')
       let point = await center(page, surface)
+      await surface.arm()
       await page.mouse.wheel(0, -100)
       await surface.settle()
       expect((await windowOf(surface)).count).toBeLessThan(surface.full)
@@ -353,6 +370,7 @@ for (const [surfaceName, open] of Object.entries(SURFACES)) {
       await page.waitForTimeout(600)
       point = await center(page, surface)
       await page.mouse.move(point.x, point.y)
+      await surface.arm()
       await page.mouse.wheel(0, -100)
       await surface.settle()
       expect((await windowOf(surface)).count).toBeLessThan(surface.full)
@@ -374,6 +392,8 @@ test.describe('wheel zoom at the owner window (2048x1018 at 125%)', () => {
       for (const profile of [ZOOM_PROFILES[0]!, ZOOM_PROFILES[3]!]) {
         await reset(surface)
         const point = await center(page, surface)
+        // no setup beyond the hub's click on its chart (S1)
+        await surface.arm()
         await sendProfile(page, point, profile)
         await surface.settle()
         counts.push((await windowOf(surface)).count)

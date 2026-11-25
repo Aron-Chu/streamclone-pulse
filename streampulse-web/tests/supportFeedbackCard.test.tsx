@@ -1,8 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import Feedback from '../src/routes/public/Feedback'
-import Support from '../src/routes/public/Support'
+import Help from '../src/routes/public/Help'
 
 type Captured = { key: string | null; body: Record<string, unknown> }
 
@@ -39,11 +38,41 @@ function respondWith(...replies: Array<() => Response | Promise<Response>>) {
   return fetchMock
 }
 
+/** The form is in view as the card mounts, so the bot check loads at once. */
+class FormInView {
+  constructor(private readonly callback: IntersectionObserverCallback) {}
+  observe(target: Element) {
+    this.callback([{ isIntersecting: true, target } as unknown as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+  }
+  unobserve() {}
+  disconnect() {}
+  takeRecords() { return [] }
+}
+
+/** The form is further down the page: nothing is in view until `show()`. */
+function formOutOfView() {
+  const seen: { target: Element; rootMargin?: string }[] = []
+  let report: IntersectionObserverCallback = () => {}
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: IntersectionObserverCallback, private readonly options?: IntersectionObserverInit) { report = callback }
+    observe(target: Element) { seen.push({ target, rootMargin: this.options?.rootMargin }) }
+    unobserve() {}
+    disconnect() {}
+    takeRecords() { return [] }
+  })
+  return {
+    seen,
+    show: () => act(() => report(seen.map(({ target }) => ({ isIntersecting: true, target }) as unknown as IntersectionObserverEntry), {} as IntersectionObserver)),
+  }
+}
+
+const turnstileScript = () => document.querySelector('script[data-streampulse-turnstile]')
+
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) => () =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } })
 
 async function renderCard() {
-  render(<MemoryRouter><Feedback /></MemoryRouter>)
+  render(<MemoryRouter><Help /></MemoryRouter>)
   await waitFor(() => expect(screen.getByTestId('support-form')).toBeTruthy())
 }
 
@@ -62,6 +91,7 @@ function widgetError(code: string): unknown {
 
 beforeEach(() => {
   vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
+  vi.stubGlobal('IntersectionObserver', FormInView)
   installTurnstile()
 })
 
@@ -508,9 +538,9 @@ describe('support feedback card', () => {
     expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
     expect((within(blocked).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Blocked iframe')
     expect(within(blocked).getByTestId('feedback-public-alternatives')).toBeTruthy()
-    // The page header still describes an open form, and Discord is listed once.
-    expect(screen.getByTestId('feedback-private-badge')).toBeTruthy()
-    expect(screen.queryByTestId('support-discord-line')).toBeNull()
+    // The card still describes an open form, and the public places are listed once, in the card.
+    expect(screen.getByTestId('help-feedback-sub').textContent).toBe('Report a problem or share an idea. No account needed.')
+    expect(screen.queryByTestId('help-ask-public')).toBeNull()
     expect(resets).toBe(2)
     expect(fetchMock).not.toHaveBeenCalled()
 
@@ -540,7 +570,7 @@ describe('support feedback card', () => {
   it('shows the blocked panel when the check script cannot load, and Try again loads it afresh', async () => {
     delete window.turnstile
     respondWith()
-    render(<MemoryRouter><Feedback /></MemoryRouter>)
+    render(<MemoryRouter><Help /></MemoryRouter>)
     await waitFor(() => expect(document.querySelector('script[data-streampulse-turnstile]')).toBeTruthy())
     const first = document.querySelector('script[data-streampulse-turnstile]') as HTMLScriptElement
     act(() => { first.dispatchEvent(new Event('error')) })
@@ -705,97 +735,156 @@ describe('support feedback card', () => {
   })
 })
 
-describe('page outline', () => {
-  it.each(['1x00000000000000000000AA', ''])('puts the /support h1 before the feedback link card (site key %j)', (key) => {
-    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', key)
-    render(<MemoryRouter><Support /></MemoryRouter>)
-    const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
-    expect(headings[0]!.tagName).toBe('H1')
-    expect(headings[0]!.textContent).toBe('Support & Troubleshooting')
-    expect(document.querySelectorAll('h1')).toHaveLength(1)
-    // "Private" only while the form can take a message.
-    expect(headings[1]!.textContent).toBe(key ? 'Send private feedback' : 'Send feedback')
-    // The extension is also built for Edge and Firefox, so the subtitle does not say Chrome.
-    expect(screen.getByText('Troubleshooting for the Twitch extension, coverage states, and the Hub.')).toBeTruthy()
-    expect(document.querySelector('.support-page__head')!.textContent).not.toContain('Chrome')
+describe('loading the bot check', () => {
+  afterEach(() => { document.querySelectorAll('script[data-streampulse-turnstile]').forEach(s => s.remove()) })
+
+  it('asks for nothing from Cloudflare while the form is out of view and unused', async () => {
+    delete window.turnstile
+    const view = formOutOfView()
+    respondWith()
+    await renderCard()
+    expect(turnstileScript()).toBeNull()
+    expect(renderOpts).toBeNull()
+    // Watched with a margin, so the check starts loading just before the form scrolls in.
+    expect(view.seen.map(({ target, rootMargin }) => [target, rootMargin])).toEqual([[screen.getByTestId('support-form'), '200px 0px']])
   })
 
-  it.each(['1x00000000000000000000AA', ''])('gives /feedback one h1 that names the form (site key %j)', (key) => {
-    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', key)
-    render(<MemoryRouter><Feedback /></MemoryRouter>)
-    const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
-    expect(headings[0]!.tagName).toBe('H1')
-    expect(headings[0]!.textContent).toBe('Send feedback')
-    expect(document.querySelectorAll('h1')).toHaveLength(1)
-    expect(document.getElementById('send-feedback')!.getAttribute('aria-labelledby')).toBe('feedback-title')
+  it('loads the check when the form comes near the viewport', async () => {
+    const view = formOutOfView()
+    respondWith()
+    await renderCard()
+    expect(renderOpts).toBeNull()
+    view.show()
+    await waitFor(() => expect(renderOpts).not.toBeNull())
+    expect(renderOpts).toMatchObject({ sitekey: '1x00000000000000000000AA', appearance: 'interaction-only' })
+  })
+
+  it('loads the check on the first focus in the form, then sends with its token', async () => {
+    formOutOfView()
+    respondWith(json(200, { case_id: 'case-focus' }))
+    await renderCard()
+    expect(renderOpts).toBeNull()
+    act(() => { message().focus() })
+    await waitFor(() => expect(renderOpts).not.toBeNull())
+    typeMessage('Focus first')
+    consent()
+    issue('tok-focus')
+    send()
+    await screen.findByTestId('support-form-success')
+    expect(requests[0]!.body.turnstile_token).toBe('tok-focus')
+  })
+
+  it('loads the check on the first input, and asks for the script only once', async () => {
+    delete window.turnstile
+    formOutOfView()
+    respondWith()
+    await renderCard()
+    fireEvent.input(message(), { target: { value: 'Typed without focus (autofill)' } })
+    await waitFor(() => expect(turnstileScript()).toBeTruthy())
+    act(() => { message().focus() })
+    expect(document.querySelectorAll('script[data-streampulse-turnstile]')).toHaveLength(1)
+  })
+
+  it('a Send before the token arrives still waits for the check, as before', async () => {
+    formOutOfView()
+    const fetchMock = respondWith()
+    await renderCard()
+    act(() => { message().focus() })
+    typeMessage('Quick send')
+    consent()
+    send()
+    expect(await screen.findByText('Still checking that you are not a bot. Try again in a moment.')).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
-describe('/support link card', () => {
-  it('keeps the send-feedback anchor and links it to /feedback instead of embedding the form', () => {
-    render(<MemoryRouter><Support /></MemoryRouter>)
-    const card = screen.getByTestId('support-feedback-link')
-    expect(card.id).toBe('send-feedback')
-    expect(card.textContent).toMatch(/Only the StreamPulse team reads it\. No account needed\./)
-    expect(within(card).getByTestId('support-feedback-link-lock')).toBeTruthy()
-    expect(within(card).getByRole('link', { name: 'Send feedback' }).getAttribute('href')).toBe('/feedback')
-    expect(screen.queryByTestId('support-form')).toBeNull()
-    expect(screen.queryByTestId('support-form-unavailable')).toBeNull()
-    // Troubleshooting content stays on /support.
-    expect(screen.getByRole('heading', { name: 'Extension not appearing on Twitch' })).toBeTruthy()
+describe('page outline', () => {
+  it.each(['1x00000000000000000000AA', ''])('gives /help one h1 before its sections and the form (site key %j)', (key) => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', key)
+    render(<MemoryRouter><Help /></MemoryRouter>)
+    const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
+    expect(headings[0]!.tagName).toBe('H1')
+    expect(headings[0]!.textContent).toBe('Help')
+    expect(document.querySelectorAll('h1')).toHaveLength(1)
+    // "Private" only while the form can take a message.
+    expect([...document.querySelectorAll('h2')].map((heading) => heading.textContent))
+      .toEqual(['Install', 'Fix problems', 'Ask us', key ? 'Send private feedback' : 'Send feedback'])
+    expect(document.getElementById('feedback')!.getAttribute('aria-labelledby')).toBe('feedback-title')
+    // The extension is also built for Edge and Firefox, so the title area does not say Chrome.
+    expect(document.querySelector('.support-page__head')!.textContent).not.toContain('Chrome')
+  })
+})
+
+describe('/help sections', () => {
+  it('keeps every old Docs and Support anchor, the status line and the form on one page', async () => {
+    await renderCard()
+    for (const id of ['install', 'hub', 'guides', 'fix', 'coverage', 'billing-email', 'api', 'ask', 'contact', 'security', 'feedback']) {
+      expect(document.getElementById(id), id).toBeTruthy()
+    }
+    expect(screen.getByRole('heading', { name: 'The Chat / Pulse switch is missing' })).toBeTruthy()
+    const status = screen.getByTestId('help-status')
+    expect(within(status).getByRole('link', { name: 'service status' }).getAttribute('href')).toBe('/status')
+    expect(within(screen.getByRole('navigation', { name: 'On this page' })).getAllByRole('link').map((link) => link.getAttribute('href')))
+      .toEqual(['#install', '#fix', '#ask'])
   })
 
   it('sends security reports to GitHub private vulnerability reporting', () => {
-    render(<MemoryRouter><Support /></MemoryRouter>)
-    const security = screen.getByTestId('support-security-report')
+    render(<MemoryRouter><Help /></MemoryRouter>)
+    const security = screen.getByTestId('help-security-report')
     expect(security.textContent).not.toMatch(/has not been published/)
     const link = within(security).getByRole('link', { name: 'GitHub private vulnerability reporting (opens in a new tab)' })
     expect(link.getAttribute('href')).toBe('https://github.com/Aron-Chu/streamclone-pulse/security/advisories/new')
     expect(link.getAttribute('rel')).toBe('noopener noreferrer')
-    expect(security.textContent).toMatch(/Do not post vulnerability details in public issues, on Discord or in the feedback form\./)
+    expect(security.textContent).toMatch(/Don't post vulnerability details in public issues, on Discord or in the form\./)
   })
 
-  it('before launch says the private form opens soon and sends readers to where they can ask', () => {
+  it('lists the public places under Ask us while the form is open, labelled public', async () => {
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
+    await renderCard()
+    const ask = screen.getByTestId('help-ask-public')
+    expect(within(ask).getAllByRole('link').map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Open a public issue on GitHub (opens in a new tab)',
+      'Ask in the public Discord (opens in a new tab)',
+    ])
+    expect(screen.getByTestId('help-ask-intro').textContent)
+      .toBe('Ask in public on Discord or GitHub, or send the team a private message with the form below.')
+  })
+
+  it('before launch says the private form opens soon and lists where to ask in public once', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
-    render(<MemoryRouter><Support /></MemoryRouter>)
-    const card = screen.getByTestId('support-feedback-link')
+    vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
+    render(<MemoryRouter><Help /></MemoryRouter>)
+    const card = screen.getByTestId('help-feedback')
     expect(within(card).getByRole('heading', { level: 2 }).textContent).toBe('Send feedback')
-    expect(screen.getByTestId('support-feedback-link-sub').textContent)
+    expect(screen.getByTestId('help-feedback-sub').textContent)
       .toBe('Our private form opens soon. Until then, you can ask in public.')
-    expect(card.textContent).not.toMatch(/Only the StreamPulse team reads it|Send private feedback|isn't taking messages/)
-    // No lock icon beside copy that says the private form is not open yet.
-    expect(within(card).queryByTestId('support-feedback-link-lock')).toBeNull()
-    // The button says what the page offers today instead of "Send feedback".
-    expect(within(card).queryByRole('link', { name: /Send feedback/ })).toBeNull()
-    expect(within(card).getByRole('link', { name: 'See where to ask' }).getAttribute('href')).toBe('/feedback')
-    // The contact line no longer calls the closed form private either.
-    const contact = document.getElementById('contact') as HTMLElement
-    expect(contact.textContent).toMatch(/For bugs and ideas use the feedback page\./)
-    expect(within(contact).getByRole('link', { name: 'feedback page' }).getAttribute('href')).toBe('/feedback')
+    expect(card.textContent).not.toMatch(/Send private feedback|isn't taking messages/)
+    expect(screen.queryByTestId('feedback-private-note')).toBeNull()
+    expect(screen.queryByTestId('help-ask-public')).toBeNull()
+    expect(screen.getByTestId('help-ask-intro').textContent).toBe('Ask in public on Discord or GitHub. The links are below.')
+    expect(screen.getAllByRole('link', { name: /Discord/ })
+      .filter(a => !a.closest('header, footer, nav'))).toHaveLength(1)
   })
 })
 
-describe('/feedback page', () => {
+describe('/help feedback form', () => {
   it('says the form is private and needs no account, with email only for a reply', async () => {
     await renderCard()
     expect(screen.getByTestId('feedback-private-note').textContent).toBe('Private. Only the StreamPulse team reads it; nothing here is posted publicly.')
-    expect(screen.getByRole('heading', { level: 1 }).parentElement!.textContent).toMatch(/No account needed\./)
-    expect(screen.getByTestId('feedback-private-badge').textContent).toBe('Private feedback')
-    expect(screen.getByTestId('feedback-page-sub').textContent)
-      .toBe('Spotted a problem or have an idea? Tell the StreamPulse team here. No account needed.')
+    expect(screen.getByRole('heading', { level: 2, name: 'Send private feedback' })).toBeTruthy()
+    expect(screen.getByTestId('help-feedback-sub').textContent).toBe('Report a problem or share an idea. No account needed.')
     expect(screen.getByText(/optional, only if you.d like a reply/)).toBeTruthy()
     // The reply-consent box appears only once an email is typed; the send consent is always there.
     expect(screen.queryByLabelText('I consent to being contacted at this email about this report.')).toBeNull()
     expect(consentBox()).toBeTruthy()
     fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: 'reader@example.com' } })
     expect(screen.getByLabelText('I consent to being contacted at this email about this report.')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Support & Troubleshooting' }).getAttribute('href')).toBe('/support')
   })
 
   it('before launch (no site key) lists only the public places to ask, Discord first', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
-    render(<MemoryRouter><Feedback /></MemoryRouter>)
+    render(<MemoryRouter><Help /></MemoryRouter>)
     const off = screen.getByTestId('support-form-unavailable')
     expect(screen.queryByTestId('support-form')).toBeNull()
     // The header says the form opens soon; the card does not repeat an outage message.
@@ -823,49 +912,47 @@ describe('/feedback page', () => {
     const off = await screen.findByTestId('support-form-unavailable')
     expect(off.textContent).toMatch(/The private feedback form is unavailable right now, so your message was not sent\./)
     expect(within(off).getByRole('button', { name: 'Copy safe diagnostics' })).toBeTruthy()
-    expect(screen.queryByTestId('feedback-soon-badge')).toBeNull()
+    expect(screen.getByTestId('help-feedback-sub').textContent).toBe("The private form isn't taking messages right now.")
   })
 
-  it('drops the private note and the second Discord line while the form is unavailable', () => {
+  it('drops the private note and the Ask us Discord while the form is unavailable', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
-    render(<MemoryRouter><Feedback /></MemoryRouter>)
+    render(<MemoryRouter><Help /></MemoryRouter>)
     expect(screen.getByTestId('support-form-unavailable')).toBeTruthy()
     expect(screen.queryByTestId('feedback-private-note')).toBeNull()
-    expect(screen.queryByTestId('support-discord-line')).toBeNull()
+    expect(screen.queryByTestId('help-ask-public')).toBeNull()
     expect(screen.getAllByRole('link', { name: /Discord/ })
       .filter(a => !a.closest('header, footer, nav'))).toHaveLength(1)
   })
 
   it('says the private form opens soon, not that it is down, before launch', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
-    render(<MemoryRouter><Feedback /></MemoryRouter>)
+    render(<MemoryRouter><Help /></MemoryRouter>)
     expect(screen.getByTestId('support-form-unavailable')).toBeTruthy()
-    expect(screen.queryByTestId('feedback-private-badge')).toBeNull()
-    expect(screen.getByTestId('feedback-soon-badge').textContent).toBe('Form opens soon')
-    expect(screen.getByTestId('feedback-page-sub').textContent)
+    expect(screen.getByTestId('help-feedback-sub').textContent)
       .toBe('Our private form opens soon. Until then, you can ask in public.')
     const head = screen.getByRole('heading', { level: 1 }).parentElement!
     expect(head.textContent).not.toMatch(/Tell the StreamPulse team here|Private feedback|isn't taking messages|right now/)
   })
 
-  it('shows no "opens soon" badge on a configured build', async () => {
+  it('says the form is open, not opening soon, on a configured build', async () => {
     await renderCard()
-    expect(screen.queryByTestId('feedback-soon-badge')).toBeNull()
-    expect(screen.getByTestId('feedback-private-badge')).toBeTruthy()
+    expect(screen.getByTestId('help-feedback-sub').textContent).toBe('Report a problem or share an idea. No account needed.')
+    expect(screen.queryByText(/opens soon/)).toBeNull()
   })
 
-  it('lists the public Discord once after a failed send, and brings the quiet line back on retry', async () => {
+  it('lists the public Discord once after a failed send, and brings Ask us back on retry', async () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
     respondWith(json(500, { error: 'boom' }), json(201, { case_id: 'case-retry-1' }))
     await renderCard()
-    expect(screen.getByTestId('support-discord-line')).toBeTruthy()
+    expect(screen.getByTestId('help-ask-public')).toBeTruthy()
     typeMessage('Charts are blank')
     consent()
     issue('tok-1')
     send()
     await screen.findByTestId('support-form-error')
-    const alternatives = screen.getByTestId('feedback-public-alternatives')
+    const alternatives = within(screen.getByTestId('help-feedback')).getByTestId('feedback-public-alternatives')
     // A configured build keeps its wording after a failed send: GitHub first,
     // then the Discord labelled public, with no "Ask in Discord" or extra arrow.
     const publicLinks = within(alternatives).getAllByRole('link')
@@ -876,26 +963,26 @@ describe('/feedback page', () => {
     expect(publicLinks[1]!.textContent).toBe('Ask in the public Discord')
     expect(publicLinks[1]!.querySelector('svg.lucide-arrow-up-right')).toBeNull()
     expect(alternatives.textContent).not.toContain('Ask in Discord')
-    expect(screen.queryByTestId('support-discord-line')).toBeNull()
+    expect(screen.queryByTestId('help-ask-public')).toBeNull()
     expect(screen.getAllByRole('link', { name: /Discord/ })
       .filter(a => !a.closest('header, footer, nav'))).toHaveLength(1)
-    // The form is still open, so the header and the private note stay.
-    expect(screen.getByTestId('feedback-private-badge')).toBeTruthy()
+    // The form is still open, so its line and the private note stay.
+    expect(screen.getByTestId('help-feedback-sub').textContent).toBe('Report a problem or share an idea. No account needed.')
     expect(screen.getByTestId('feedback-private-note')).toBeTruthy()
 
     issue('tok-2')
     send()
     await screen.findByTestId('support-form-success')
-    expect(screen.queryByTestId('feedback-public-alternatives')).toBeNull()
-    expect(screen.getByTestId('support-discord-line')).toBeTruthy()
+    expect(within(screen.getByTestId('help-feedback')).queryByTestId('feedback-public-alternatives')).toBeNull()
+    expect(screen.getByTestId('help-ask-public')).toBeTruthy()
   })
 
-  it('drops the private note and the Discord line when a send finds the form switched off', async () => {
+  it('drops the private note and the Ask us Discord when a send finds the form switched off', async () => {
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', 'https://discord.gg/sp-test-code')
     respondWith(json(503, { error: 'disabled' }))
     await renderCard()
     expect(screen.getByTestId('feedback-private-note')).toBeTruthy()
-    expect(screen.getByTestId('support-discord-line')).toBeTruthy()
+    expect(screen.getByTestId('help-ask-public')).toBeTruthy()
     typeMessage('Is this on?')
     consent()
     issue('tok-1')
@@ -903,11 +990,10 @@ describe('/feedback page', () => {
     const off = await screen.findByTestId('support-form-unavailable')
     expect(off.textContent).toMatch(/so your message was not sent/)
     expect(screen.queryByTestId('feedback-private-note')).toBeNull()
-    expect(screen.queryByTestId('support-discord-line')).toBeNull()
-    expect(screen.queryByTestId('feedback-private-badge')).toBeNull()
-    // A configured build that finds intake off is a real outage, so the header says so.
-    expect(screen.getByTestId('feedback-page-sub').textContent).toMatch(/The private form isn't taking messages right now\./)
-    expect(screen.queryByTestId('feedback-soon-badge')).toBeNull()
+    expect(screen.queryByTestId('help-ask-public')).toBeNull()
+    // A configured build that finds intake off is a real outage, so the card says so.
+    expect(screen.getByTestId('help-feedback-sub').textContent).toMatch(/The private form isn't taking messages right now\./)
+    expect(screen.queryByText(/opens soon/)).toBeNull()
     const discordLink = within(off).getByRole('link', { name: 'Ask in the public Discord (opens in a new tab)' })
     expect(discordLink.textContent).toBe('Ask in the public Discord')
     expect(off.textContent).not.toContain('Ask in Discord')
@@ -927,7 +1013,7 @@ describe('/feedback page', () => {
   it('hides Discord from the public alternatives without a valid invite', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '')
     vi.stubEnv('VITE_PUBLIC_DISCORD_INVITE_URL', '')
-    render(<MemoryRouter><Feedback /></MemoryRouter>)
+    render(<MemoryRouter><Help /></MemoryRouter>)
     const off = screen.getByTestId('support-form-unavailable')
     expect(within(off).queryByText(/Discord/)).toBeNull()
     expect(within(off).getByRole('link', { name: 'Open a public issue on GitHub (opens in a new tab)' })).toBeTruthy()
@@ -957,6 +1043,6 @@ describe('/feedback page', () => {
     send()
     const done = await screen.findByTestId('support-form-success')
     expect(done.textContent).toContain('case-feedback-1')
-    expect(screen.queryByTestId('feedback-public-alternatives')).toBeNull()
+    expect(within(screen.getByTestId('help-feedback')).queryByTestId('feedback-public-alternatives')).toBeNull()
   })
 })
