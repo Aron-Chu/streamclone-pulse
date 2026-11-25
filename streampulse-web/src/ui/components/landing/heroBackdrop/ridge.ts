@@ -11,9 +11,10 @@ import { clamp, makeChip, mixRgb, NO_PART, rgba, tokenRgb, type Part, type Point
  * per-channel lines did (11-22); only the series lines answer a hover. A minute that was not recorded is a
  * gap in every line that touches it.
  *
- * Motion (none under reduced motion): the lines rise from flat when the page opens, a soft light runs along
- * them from the oldest minute to the newest, and a live moment swells its minute and ripples into the lines
- * beside it while its label shows.
+ * Motion (none under reduced motion): the lines rise from flat when the page opens, and from that first second a
+ * light runs along them from the oldest minute to the newest, every 6 s, lifting each line a little as it passes,
+ * so a visitor who leaves after a few seconds has still seen the field move. A live moment swells its minute and
+ * ripples into the lines beside it while its label shows.
  */
 
 const ZF = 6
@@ -28,7 +29,18 @@ const LINES_PHONE = 9
 const LINE_GAP_PX = 32
 const ENTER_MS = 1000
 const ENTER_STAGGER_MS = 45
-const SWEEP_MS = 9000
+const SWEEP_MS = 6000
+/**
+ * The running light starts a light's width before the oldest minute on every line (the farthest line runs 0.1
+ * ahead), so it slides in rather than popping on, and it reaches the nearest line within the first second.
+ */
+const SWEEP_FROM = -0.2
+const SWEEP_SPAN = 1.4
+/** Half the running light's width, in line widths. */
+const SWEEP_HALF = 0.1
+/** How far the running light lifts a line where it passes (line heights run 0.1-0.7), and over what half-width. */
+const LIFT = 0.07
+const LIFT_HALF = 0.06
 const MARK_MS = 4200
 const SWELL = 0.24
 const SWELL_FALL_MS = 800
@@ -173,12 +185,22 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
     return v
   }
 
+  /** The running light's lift at line l, minute i: most under the light, none beyond LIFT_HALF either side. */
+  function lift(l: number, i: number, now: number) {
+    if (reduced || quiet) return 0
+    const u = i / (COLS - 1)
+    const d = (u - lightAt(l, now)) / LIFT_HALF
+    if (d <= -1 || d >= 1) return 0
+    const c = Math.cos((d * Math.PI) / 2)
+    return LIFT * c * c * (0.4 + 0.6 * centre(u)) * (phone ? 0.6 : 1)
+  }
+
   function points(l: number, now: number): Array<[number, number]> {
     const Z = lineZ(l)
     const py = (pn.y * 0.03 * F) / Z
     const e = rise(l, now)
     const out: Array<[number, number]> = []
-    for (let i = 0; i < COLS; i++) out.push([colX(i, Z), HY + (F * (CAM - AMP * (base[l][i] * e + swell(l, i, now)))) / Z + py])
+    for (let i = 0; i < COLS; i++) out.push([colX(i, Z), HY + (F * (CAM - AMP * ((base[l][i] + lift(l, i, now)) * e + swell(l, i, now)))) / Z + py])
     return out
   }
 
@@ -222,27 +244,34 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
   const centre = (u: number) => 1 - 0.65 * clamp(1 - Math.abs(u - 0.5) / 0.22, 0, 1)
 
   /** Where the running light is (0-1 across a line) on the nearest line; each farther line is up to 0.1 ahead. */
-  const sweepAt = (now: number) => (((now - born) % SWEEP_MS) / SWEEP_MS) * 1.5 - 0.25
+  const sweepAt = (now: number) => (((now - born) % SWEEP_MS) / SWEEP_MS) * SWEEP_SPAN + SWEEP_FROM
+  const lightAt = (l: number, now: number) => sweepAt(now) + (1 - depthOf(l)) * 0.1
+  /**
+   * How far either side of the light a line changes: the light itself, or its lift plus the smoothing, which
+   * carries a moved point a minute and a half along the curve.
+   */
+  const reach = Math.max(SWEEP_HALF, LIFT_HALF + 1.5 / (COLS - 1))
   /** Whether the running light is on any line now. */
   const sweepShows = (now: number) => {
     const u = sweepAt(now)
-    return u + 0.1 > -0.08 && u < 1.08
+    return u + 0.1 > -reach && u < 1 + reach
   }
 
-  /** The x-range the running light covers at `now`, across every line, or null when it is on none. */
+  /** The x-range the running light changes at `now`, across every line, or null when it is on none. */
   function sweepBand(now: number): [number, number] | null {
     if (reduced || quiet) return null
-    const sweepU = sweepAt(now)
     let lo = Infinity
     let hi2 = -Infinity
     for (let l = 0; l < L; l++) {
-      const u = sweepU + (1 - depthOf(l)) * 0.1
-      if (!(u > -0.08 && u < 1.08)) continue
+      const u = lightAt(l, now)
+      if (!(u > -reach && u < 1 + reach)) continue
       const Z = lineZ(l)
       const x0 = colX(0, Z)
       const x1 = colX(COLS - 1, Z)
-      lo = Math.min(lo, x0 + (x1 - x0) * clamp(u - 0.08, 0, 1))
-      hi2 = Math.max(hi2, x0 + (x1 - x0) * clamp(u + 0.08, 0, 1))
+      // At a line's ends the cut that hides the lines behind it closes off the canvas, so a lifted first or
+      // last minute moves ink out to the canvas edge.
+      lo = Math.min(lo, u - reach < 0 ? 0 : x0 + (x1 - x0) * Math.min(u - reach, 1))
+      hi2 = Math.max(hi2, u + reach > 1 ? W : x0 + (x1 - x0) * Math.max(u + reach, 0))
     }
     return lo <= hi2 ? [lo, hi2] : null
   }
@@ -262,8 +291,8 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
   }
 
   /**
-   * The whole picture, or with `onlyLight` the strip the running light left and the one it is in now: when
-   * nothing else moved, the rest of the canvas already holds the same pixels.
+   * The whole picture, or with `onlyLight` the strip the running light (and its lift) left and the one it is in
+   * now: when nothing else moved, the rest of the canvas already holds the same pixels.
    */
   function draw(now: number, onlyLight = false) {
     const next = sweepBand(now)
@@ -288,7 +317,6 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
       g!.clearRect(0, 0, W, H)
     }
     drawn = []
-    const sweepU = sweepAt(now)
     /** The lowest ink drawn so far: below it the canvas is still clear, so a cut there changes nothing. */
     let inkTo = -Infinity
     for (let l = 0; l < L; l++) {
@@ -327,15 +355,15 @@ export function mountRidge(canvas: HTMLCanvasElement, stage: HTMLElement, data: 
 
       // The light that runs from the oldest minute to the newest; the far lines a beat ahead of the near ones.
       if (!reduced && !quiet) {
-        const u = sweepU + (1 - depth) * 0.1
-        if (u > -0.08 && u < 1.08) {
-          const boost = (row ? 0.34 : 0.22) * centre(u) * (phone ? 0.6 : 1) * rise(l, now)
+        const u = lightAt(l, now)
+        if (u > -SWEEP_HALF && u < 1 + SWEEP_HALF) {
+          const boost = (row ? 0.55 : 0.36) * centre(u) * (phone ? 0.6 : 1) * rise(l, now)
           const sweepTone = row ? mixRgb(INK, toneOf(row), 0.55) : INK
           const sg = g!.createLinearGradient(pts[0][0], 0, pts[COLS - 1][0], 0)
           const stop = (p: number, al: number) => sg.addColorStop(clamp(p, 0, 1), rgba(sweepTone, al))
-          stop(u - 0.08, 0)
+          stop(u - SWEEP_HALF, 0)
           stop(u, boost)
-          stop(u + 0.08, 0)
+          stop(u + SWEEP_HALF, 0)
           g!.strokeStyle = sg
           g!.lineWidth = (row ? 1.5 : 1.1) + depth * 0.5
           strokeRuns(l, pts)

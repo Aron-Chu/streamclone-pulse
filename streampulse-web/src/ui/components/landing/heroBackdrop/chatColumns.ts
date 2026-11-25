@@ -1,19 +1,20 @@
 import { emoteDeck, findHeroEmote, HERO_EMOTES, isWideEmote, type HeroEmote } from '../heroEmotes'
-import { perLine, type ChatSource, type HeroMoment } from '../heroBackdropModel'
+import { MADE_UP_CHAT, perLine, type ChatSource, type HeroMoment, type MadeUpLine } from '../heroBackdropModel'
 import { formatHubInt } from '../../hub/v5/hubV5Model'
 import { feedAgo } from '../../hub/v5/hubV5FeedModel'
 import { emoteImg, failedEmotes, makeChip, NO_PART, type Part, type Pointer, type SearchEvent } from './shared'
 
 /**
- * Counted chat: two columns in the gutters, rebuilt from counts instead of invented messages. A line stands
- * for a batch of counted messages in one channel and shows the channel's public name with blank bars where
- * the words would be: never the words, never who wrote them. Chat per minute sets the pace. Hovering pauses
- * a column so a line can be read; typing a channel in the search lights its lines; a live moment adds its
- * own line. The columns lean back toward the headline. DOM and CSS 3D, no library.
+ * The side chat: two columns in the gutters. Each line is made up: a name with a dot or a dash, which a Twitch
+ * login cannot have, and a short reaction. Never real chat words or who wrote them (PRODUCT.md, rollup-first).
+ * What is real: the pace, from the network's chat per minute; more emotes when that chat is emote-heavy; and a
+ * live moment's own line. Hovering pauses a column so a line can be read, and says the line is made up. Typing
+ * a channel in the search lights its moment lines (the made-up lines belong to no channel). The columns lean
+ * back toward the headline. DOM and CSS 3D, no library.
  */
 
 const LH = 27
-/** Below this width a column cannot hold a channel name and a bar. */
+/** Below this width a column cannot hold a name and a few words. */
 const MIN_COL = 120
 /**
  * A new line slides the column up: the offset falls by e^-7 a second and stops under 0.2 px. The browser's
@@ -100,54 +101,75 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
   const R = Math.random
   const total = sources.reduce((s, c) => s + c.chatPerMin, 0)
   const step = perLine(total)
-  // New lines a second in each column: one line per `step` counted messages, split across the two columns.
+  // New lines a second in each column: one per `step` counted messages, split across the two columns, so the
+  // network's pace sets the speed (never slower than a line every 8 s).
   const rate = Math.max(0.12, total / step / 60 / 2)
+  // Lines with words carry an emote more often when the network's chat is emote-heavy; a few lines are only one.
+  const emoteShare = total > 0 ? sources.reduce((s, c) => s + c.emoteShare * c.chatPerMin, 0) / total : 0
   const visible = Math.ceil(cols[0].el.clientHeight / LH) + 2
   const deck = emoteDeck(HERO_EMOTES, R)
   const pickEmote = () => deck((e) => failedEmotes.has(e.name) || isWideEmote(e))
-  const byLogin = new Map(sources.map((s) => [s.login, s]))
+  const pace = `Real pace: ${formatHubInt(total)} chat/min across ${formatHubInt(sources.length)} channels`
   let query = ''
-  const matches = (s: ChatSource) => !!query && (s.name.toLowerCase().startsWith(query) || s.login.startsWith(query))
 
-  function pickSource(): ChatSource | undefined {
-    let sum = 0
-    const w = sources.map((c) => {
-      const v = c.chatPerMin * (matches(c) ? 40 : 1)
-      sum += v
-      return v
-    })
-    let x = R() * sum
-    for (let i = 0; i < sources.length; i++) if ((x -= w[i]) <= 0) return sources[i]
-    return sources[0]
+  const shuffled = () => {
+    const out = MADE_UP_CHAT.slice()
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(R() * (i + 1))
+      ;[out[i], out[j]] = [out[j], out[i]]
+    }
+    return out
+  }
+  // The made-up lines come round in a shuffled order, each once before any repeats, and a line still on screen
+  // in either column waits: two full columns hold fewer lines than the list.
+  let bag: MadeUpLine[] = []
+  function nextLine(withText = false): MadeUpLine {
+    const onScreen = new Set<string>()
+    for (const c of cols) for (const ln of c.lines) if (ln.dataset.user) onScreen.add(ln.dataset.user)
+    const fits = (l: MadeUpLine) => !onScreen.has(l.user) && (!withText || !!l.text)
+    if (!bag.some(fits)) bag = shuffled().concat(bag)
+    for (let i = bag.length - 1; i >= 0; i--) if (fits(bag[i])) return bag.splice(i, 1)[0]
+    // Only when every line is already on screen (a very tall window).
+    return bag.pop() as MadeUpLine
   }
 
+  /** While the search names a live channel, that channel's moment lines light up. */
   function tone(el: HTMLElement) {
-    const s = byLogin.get(el.dataset.login ?? '')
-    const m = !!s && matches(s)
-    el.classList.toggle('is-match', m)
-    el.classList.toggle('is-dim', !!query && !m && !el.classList.contains('is-moment'))
+    const login = el.dataset.login
+    const name = (el.dataset.name ?? '').toLowerCase()
+    el.classList.toggle('is-match', !!query && !!login && (login.startsWith(query) || name.startsWith(query)))
   }
 
-  function countedLine(s: ChatSource): HTMLElement {
+  function fill(el: HTMLElement, line: MadeUpLine, e: HeroEmote | undefined) {
+    el.dataset.user = line.user
+    const name = document.createElement('b')
+    name.textContent = `${line.user}:`
+    name.style.setProperty('--sl-name-h', String(hue(line.user)))
+    el.replaceChildren(name)
+    if (line.text) {
+      const msg = document.createElement('span')
+      msg.className = 'sl-chatbg__msg'
+      msg.textContent = line.text
+      el.appendChild(msg)
+    }
+    if (!e) return
+    const img = emoteImg(e, 19)
+    // A line that is only an emote whose picture fails would be a bare name, so it takes a line with words.
+    if (!line.text) img.addEventListener('error', () => fill(el, nextLine(true), undefined), { once: true })
+    el.appendChild(img)
+  }
+
+  function chatLine(): HTMLElement {
+    let line = nextLine()
+    let e: HeroEmote | undefined
+    // A line that is only an emote needs one to show. Under reduced motion there are none (no animated pictures,
+    // nothing to download), and every emote may have failed to load; then it gives way to a line with words.
+    if (!line.text) e = reduced ? undefined : pickEmote()
+    if (!line.text && !e) line = nextLine(true)
+    else if (line.text && !reduced && R() < emoteShare * 0.6) e = pickEmote()
     const el = document.createElement('div')
     el.className = 'sl-chatbg__line'
-    el.dataset.login = s.login
-    const name = document.createElement('b')
-    name.textContent = s.name
-    name.style.setProperty('--sl-name-h', String(hue(s.login)))
-    el.appendChild(name)
-    for (let i = 0, n = 1 + Math.floor(R() * 3.4); i < n; i++) {
-      const bar = document.createElement('s')
-      bar.style.width = `${Math.round(12 + R() * 44)}px`
-      el.appendChild(bar)
-    }
-    // A line carries an emote about as often as that channel's chat does; under reduced motion, none (no
-    // animated pictures, and nothing to download).
-    if (!reduced && R() < s.emoteShare * 0.6) {
-      const e = pickEmote()
-      if (e) el.appendChild(emoteImg(e, 19))
-    }
-    tone(el)
+    fill(el, line, e)
     return el
   }
 
@@ -164,6 +186,7 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
     const t = document.createElement('span')
     t.textContent = `${m.label} · ${m.name}`
     el.append(b, t)
+    tone(el)
     return el
   }
 
@@ -175,11 +198,9 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
   }
   if (sources.length) {
     for (const col of cols) {
-      for (let i = 0; i < visible; i++) {
-        const s = pickSource()
-        if (s) push(col, countedLine(s), false)
-      }
-      col.wait = R() / rate
+      for (let i = 0; i < visible; i++) push(col, chatLine(), false)
+      // The first new line comes within a second, so a visitor sees the chat move before they scroll on.
+      col.wait = Math.min(R() / rate, 0.3 + R() * 0.6)
     }
   }
 
@@ -199,10 +220,9 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
     tick(now, dt) {
       for (const col of cols) {
         if (!reduced && !col.paused && sources.length) {
-          col.wait -= dt * (query ? 1.6 : 1)
+          col.wait -= dt
           if (col.wait <= 0) {
-            const s = pickSource()
-            if (s) push(col, countedLine(s), true)
+            push(col, chatLine(), true)
             col.wait = (0.55 + R() * 0.9) / rate
           }
         }
@@ -245,11 +265,7 @@ export function mountChatColumns(host: HTMLElement, stage: HTMLElement, sources:
           hot.classList.add('is-hot')
           if (hot.dataset.at) {
             tip.show({ text: hot.dataset.name ?? '', small: feedAgo(Number(hot.dataset.at), Date.now()) })
-          } else {
-            const s = byLogin.get(hot.dataset.login ?? '')
-            if (s) tip.show({ text: s.name, small: `${formatHubInt(s.chatPerMin)} chat/min · ${formatHubInt(s.viewers)} watching` })
-            else tip.hide()
-          }
+          } else tip.show({ text: 'Made-up line', small: pace })
           placeTip()
         } else tip.hide()
       }

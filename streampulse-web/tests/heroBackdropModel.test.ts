@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { HubActivityPoint, HubLiveChannel, HubLivePulseMoment } from '../src/lib/publicHub'
 import { emoteDeck, findHeroEmote, HERO_EMOTES, heroEmoteUrl, isWideEmote } from '../src/ui/components/landing/heroEmotes'
-import { chatSources, heroMoments, perLine, ridgeRows, RIDGE_MIN_MINUTES } from '../src/ui/components/landing/heroBackdropModel'
+import { chatSources, heroMoments, MADE_UP_CHAT, perLine, ridgeRows, RIDGE_MIN_MINUTES } from '../src/ui/components/landing/heroBackdropModel'
 import { meshPerGap } from '../src/ui/components/landing/heroBackdrop/ridge'
 
 const T0 = Date.parse('2026-11-22T18:00:00Z')
@@ -69,6 +69,20 @@ describe('chat columns', () => {
     expect(perLine(60_000)).toBe(500)
     expect(perLine(200_000)).toBe(2500)
     for (const total of [1, 999, 12_345, 250_000, 3_000_000]) expect(total / perLine(total) / 120).toBeLessThanOrEqual(1)
+  })
+
+  it('writes made-up lines no Twitch account could have written, short and about nothing real', () => {
+    // More than two full columns hold at 1440 x 900 (38), so no line need show twice at once.
+    expect(MADE_UP_CHAT.length).toBeGreaterThanOrEqual(40)
+    expect(new Set(MADE_UP_CHAT.map((l) => l.user)).size).toBe(MADE_UP_CHAT.length)
+    for (const { user, text } of MADE_UP_CHAT) {
+      // A Twitch login is letters, digits and underscores only.
+      expect(user).toMatch(/[.-]/)
+      expect(user.length).toBeLessThanOrEqual(14)
+      expect(text.length).toBeLessThanOrEqual(24)
+      expect(`${user} ${text}`).not.toMatch(/pulse|extension|brainchat|kappa|pog/i)
+    }
+    expect(MADE_UP_CHAT.filter((l) => l.text).length).toBeGreaterThan(MADE_UP_CHAT.length * 0.8)
   })
 })
 

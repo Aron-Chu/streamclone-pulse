@@ -91,8 +91,9 @@
   pointer-events: none;
 }
 
-/* Counted chat: one line stands for a batch of counted messages in a channel, never its words or who wrote
-   them. The two columns lean back toward the headline like the walls of a hall. */
+/* The side chat: made-up lines (a name with a dot or a dash, a short reaction) at the network's real pace,
+   never real chat words or who wrote them. The two columns lean back toward the headline like the walls of a
+   hall. */
 .sl-chatbg {
   position: absolute;
   inset: 0;
@@ -106,13 +107,12 @@
   top: 4.625rem;
   /* Short columns: they end above the ridge. */
   bottom: 42%;
-  /* Live entirely in the gutter beside .sl-container (min(1120px, 100%)) so the ambient chat never runs
-     underneath the copy. Collapses to 0 as soon as the gutter is too narrow to hold it. */
-  width: max(0px, min(18rem, (100vw - var(--sl-shell, 1120px)) / 2 - 1.5rem));
+  /* Hidden (width 0, so chatColumns.ts mounts nothing) until the screen has room for it; see the 1408px rule. */
+  width: 0;
   overflow: hidden;
   mask-image:
     linear-gradient(180deg, transparent 0, rgb(0 0 0 / 1) 18%, rgb(0 0 0 / 1) 74%, transparent 100%),
-    linear-gradient(90deg, rgb(0 0 0 / 1) 58%, transparent 100%);
+    linear-gradient(90deg, rgb(0 0 0 / 1) 64%, transparent 100%);
   mask-composite: intersect;
 }
 
@@ -128,7 +128,14 @@
   transform: rotateY(-28deg);
   mask-image:
     linear-gradient(180deg, transparent 0, rgb(0 0 0 / 1) 18%, rgb(0 0 0 / 1) 74%, transparent 100%),
-    linear-gradient(270deg, rgb(0 0 0 / 1) 58%, transparent 100%);
+    linear-gradient(270deg, rgb(0 0 0 / 1) 64%, transparent 100%);
+}
+
+/* From 1408px, where the side chat has always shown: a line holds a name and a few words, so the columns take
+   the gutter beside the hero's copy (760px wide) rather than the narrower one beside .sl-container. In px, like
+   the copy and the lines' type, so a larger or smaller browser font never runs a column under the words. */
+@media (min-width: 1408px) {
+  .sl-chatbg__col { width: 288px; }
 }
 
 .sl-chatbg__inner {
@@ -157,16 +164,16 @@
 .sl-chatbg__line b {
   flex: none;
   font-weight: 700;
-  /* Each channel keeps one chat-name colour, set per line as a hue (chatColumns.ts), as Twitch chat does. */
+  /* Each name keeps one chat-name colour, set per line as a hue (chatColumns.ts), as Twitch chat does. */
   color: hsl(var(--sl-name-h, 220) 62% 72%);
 }
 
-.sl-chatbg__line s {
-  display: block;
-  flex: none;
-  height: 7px;
-  border-radius: 4px;
-  background: hsl(var(--sc-foreground) / 0.32);
+.sl-chatbg__msg {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: hsl(var(--sc-foreground) / 0.9);
 }
 
 .sl-chatbg__line img {
@@ -177,11 +184,6 @@
 }
 
 .sl-chatbg__line.is-hot { opacity: 1; }
-.sl-chatbg__line.is-hot s { background: hsl(var(--sc-foreground) / 0.6); }
-.sl-chatbg__line.is-match { opacity: 0.95; }
-.sl-chatbg__line.is-match b { color: hsl(var(--sc-chart-1)); }
-.sl-chatbg__line.is-match s { background: hsl(var(--sc-chart-1) / 0.42); }
-.sl-chatbg__line.is-dim { opacity: 0.1; }
 
 /* A live moment's own line, in the spike colour. */
 .sl-chatbg__line.is-moment {
@@ -200,6 +202,12 @@
 .sl-chatbg__line.is-moment b { color: hsl(var(--sc-chart-5)); font: 800 13px/1 var(--sc-font-mono); }
 .sl-chatbg__line.is-moment span { color: hsl(var(--sc-chart-5) / 0.85); }
 .sl-chatbg__line.is-moment.is-hot { opacity: 1; }
+
+/* The search names this moment's channel. */
+.sl-chatbg__line.is-moment.is-match {
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px hsl(var(--sc-chart-5) / 0.6);
+}
 
 .sl-chatbg__paused {
   position: absolute;

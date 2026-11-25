@@ -7,11 +7,11 @@ import { mountRidge } from './ridge'
 import type { Part, Pointer, SearchEvent } from './shared'
 
 /**
- * The front page's background (mix 03): counted chat columns, the emote rain and the chat ridge, on one
+ * The front page's background (mix 03): the side chat columns, the emote rain and the chat ridge, on one
  * animation loop. Loaded as its own chunk after the page is idle. The loop stops while the tab is hidden,
  * and the hero's layers stop while the hero is scrolled away.
  *
- * Its motion is slow (drops rise 15-32 px a second, the light takes 9 s across), so it draws 30 frames a
+ * Its motion is slow (drops rise 15-32 px a second, the light crosses a line in about 4.3 s, every 6 s), so it draws 30 frames a
  * second, 20 while the extension demo's 3D scene draws, and 60 (or the display's rate, when lower) only while
  * something quick is on: the pointer over the background, a live moment's burst, the lines rising (11-23: an idle hero
  * kept a laptop-class main thread 95 % busy). Between drawn frames it waits on a timer, not on the display: every
