@@ -164,3 +164,25 @@ describe('clip page continuation', () => {
     expect(accountBillingReturnPath(clip)).toBeNull()
   })
 })
+
+describe('Moment page continuation', () => {
+  afterEach(() => vi.unstubAllEnvs())
+  const moment = '/analytics/moments/123/20261114T2031Z'
+
+  it('sends a sign-in back to the Moment page, only in a build with it and its ratings and comments', () => {
+    expect(accountContinuationPath(moment)).toBeNull()
+    vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+    // The read-only page has nothing to sign in for.
+    expect(accountContinuationPath(moment)).toBeNull()
+    vi.stubEnv('VITE_PUBLIC_MOMENT_FEEDBACK', 'on')
+    expect(accountContinuationPath(moment)).toBe(moment)
+    rememberAccountBillingReturn(moment)
+    expect(consumeAccountBillingReturn()).toBe(moment)
+  })
+
+  it.each(['/analytics/moments/123/x', '/analytics/moments/123/20261114T2031Z?x=1', '/analytics/moments/123/20261114T2031Z#x', '/analytics/moments/123'])('rejects %s', value => {
+    vi.stubEnv('VITE_PUBLIC_MOMENT_PAGE', 'on')
+    vi.stubEnv('VITE_PUBLIC_MOMENT_FEEDBACK', 'on')
+    expect(accountContinuationPath(value)).toBeNull()
+  })
+})

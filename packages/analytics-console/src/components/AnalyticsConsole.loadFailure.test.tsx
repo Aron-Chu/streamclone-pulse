@@ -223,6 +223,89 @@ describe('AnalyticsConsole channel route load failures', () => {
   })
 })
 
+describe('AnalyticsConsole in one column while the first read is out', () => {
+  // Under 1280 px the streams list sits under the chart's reserved height. Rendered during the read, a short
+  // answer (no minute data) slid it hundreds of pixels up into view; it appears once the read answers.
+  const media = (matches: boolean) => () => ({ matches, addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  beforeEach(() => { vi.mocked(window.matchMedia).mockImplementation(media(true) as never) })
+  afterEach(() => { vi.mocked(window.matchMedia).mockImplementation(media(false) as never) })
+
+  it('shows the streams list once the live read answers, not under the loading chart', async () => {
+    let answer: (value: unknown) => void = () => undefined
+    api.getAnalyticsLive.mockImplementation(() => new Promise(resolve => { answer = resolve }))
+    renderConsole('/analytics/xqc')
+
+    await waitFor(() => expect(document.querySelector('[data-console-skeleton="chart"]')).not.toBeNull())
+    expect(document.querySelector('[data-analytics-stream-column]')).toBeNull()
+
+    await act(async () => {
+      answer({ channel: 'xqc', state: 'syncing', rollups: [], topEmotes: [], sources: [], updatedAt: 0 })
+    })
+    expect(await screen.findByText('No past streams indexed yet.')).toBeTruthy()
+    expect(document.querySelector('[data-console-skeleton="chart"]')).toBeNull()
+    expect(document.querySelector('[data-analytics-stream-column]')).not.toBeNull()
+  })
+
+  it('shows the failed list with its retry when the live read fails', async () => {
+    api.getAnalyticsLive.mockRejectedValue(serverError)
+    api.getAnalyticsStreams.mockRejectedValue(serverError)
+    renderConsole('/analytics/xqc')
+
+    const column = await waitFor(() => {
+      const el = document.querySelector('[data-analytics-stream-column]')
+      expect(el).not.toBeNull()
+      return el as HTMLElement
+    })
+    expect(await within(column).findByText("Couldn't load streams.")).toBeTruthy()
+  })
+
+  it('keeps the streams list, and the row just tapped, while the next stream reads', async () => {
+    const items = [
+      { streamId: '320567744986', login: 'xqc', startedAt, endedAt: '2026-07-11T20:00:00.000Z' },
+      { streamId: '320511112222', login: 'xqc', startedAt: '2026-07-10T18:00:00.000Z', endedAt: '2026-07-10T20:00:00.000Z' },
+    ]
+    api.getAnalyticsStreams.mockResolvedValue({ channel: 'xqc', items, sources: [], updatedAt: 0 })
+    api.getAnalyticsStream.mockImplementation((id: string) => (id === items[0].streamId
+      ? Promise.resolve({ channel: 'xqc', state: 'historical', stream: items[0], rollups: [], topEmotes: [], sources: [], updatedAt: 0 })
+      : new Promise(() => undefined)))
+    renderConsole(`/analytics/xqc/${items[0].streamId}`)
+
+    const next = await waitFor(() => {
+      const column = document.querySelector('[data-analytics-stream-column]')
+      expect(column).not.toBeNull()
+      const rows = [...column!.querySelectorAll('a')].filter(a => a.getAttribute('href')?.startsWith('/analytics/xqc/'))
+      const row = rows.find(a => a.getAttribute('aria-current') !== 'page')
+      expect(rows.some(a => a.getAttribute('aria-current') === 'page')).toBe(true)
+      expect(row).toBeTruthy()
+      return row as HTMLAnchorElement
+    })
+    fireEvent.click(next)
+
+    await waitFor(() => expect(api.getAnalyticsStream).toHaveBeenCalledWith(items[1].streamId, expect.anything()))
+    expect(document.querySelector('[data-console-skeleton="chart"]')).not.toBeNull()
+    expect(document.querySelector('[data-analytics-stream-column]')).not.toBeNull()
+    expect(next.isConnected).toBe(true)
+  })
+
+  it('holds the list again for another channel opened from outside it, after a click in it that opened nothing', async () => {
+    api.getAnalyticsLive.mockImplementation((login: string) => (login === 'xqc'
+      ? Promise.resolve({ channel: 'xqc', state: 'syncing', rollups: [], topEmotes: [], sources: [], updatedAt: 0 })
+      : new Promise(() => undefined)))
+    renderConsole('/analytics/xqc')
+    const column = await waitFor(() => {
+      const el = document.querySelector('[data-analytics-stream-column]')
+      expect(el).not.toBeNull()
+      return el as HTMLElement
+    })
+    fireEvent.click(await within(column).findByText('No past streams indexed yet.'))
+
+    act(() => navigateTo('/analytics/mock-chan.two'))
+    await waitFor(() => expect(api.getAnalyticsLive).toHaveBeenCalledWith('mock-chan.two'))
+    expect(document.querySelector('[data-console-skeleton="chart"]')).not.toBeNull()
+    expect(document.querySelector('[data-analytics-stream-column]')).toBeNull()
+  })
+})
+
 describe('AnalyticsConsole data quality chip without data', () => {
   const items = [{ streamId: '320567744986', login: 'xqc', startedAt, endedAt: '2026-07-11T20:00:00.000Z' }]
 
@@ -344,6 +427,13 @@ describe('AnalyticsConsole revisiting a failed session', () => {
       if (id !== '200') return Promise.reject(otherError)
       calls200 += 1
       return calls200 === 1 ? Promise.reject(serverError) : new Promise(() => undefined)
+    })
+    // A recorded channel: with nothing stored, a missing session shows the never-recorded panel instead.
+    api.getAnalyticsStreams.mockResolvedValue({
+      channel: 'xqc',
+      items: [{ streamId: '101', login: 'xqc', startedAt, endedAt: '2026-07-11T20:00:00.000Z', title: 'Stored broadcast' }],
+      sources: [],
+      updatedAt: 0,
     })
     renderConsole('/analytics/xqc/200')
 

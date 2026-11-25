@@ -69,9 +69,9 @@ describe("GameArt and Twitch's '?' cover (fix, 10-30, GP-8)", () => {
     expect(art()?.style.opacity).toBe('')
   })
 
-  it("leaves the backend's looked-up cover as it was: no CORS load and no check", async () => {
+  it("leaves the backend's looked-up cover unchecked (no CORS load) and asks for it at 144x192, the reel's size", async () => {
     render(<GamesPlayedStrip games={withArt} durationSeconds={600} headerless />)
-    expect(art()?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/509658_IGDB-210x280.jpg')
+    expect(art()?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/509658_IGDB-144x192.jpg')
     expect(art()?.hasAttribute('crossorigin')).toBe(false)
     expect(art()?.style.opacity).toBe('')
     await load(art())
@@ -81,11 +81,11 @@ describe("GameArt and Twitch's '?' cover (fix, 10-30, GP-8)", () => {
   it("checks the backend's id-built cover (its fallback when the name lookup fails) and moves to the IGDB one", async () => {
     placeholder.answer.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     render(<GamesPlayedStrip games={idBuilt} durationSeconds={600} headerless />)
-    expect(art()?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/1419480843-210x280.jpg')
+    expect(art()?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/1419480843-144x192.jpg')
     expect(art()?.getAttribute('crossorigin')).toBe('anonymous')
     expect(art()?.style.opacity).toBe('0')
     await load(art())
-    expect(art()?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/1419480843_IGDB-210x280.jpg')
+    expect(art()?.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/ttv-boxart/1419480843_IGDB-144x192.jpg')
     await load(art())
     expect(art()?.style.opacity).toBe('')
     expect(placeholder.answer).toHaveBeenCalledTimes(2)

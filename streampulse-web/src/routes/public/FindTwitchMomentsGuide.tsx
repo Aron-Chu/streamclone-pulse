@@ -25,7 +25,7 @@ export default function FindTwitchMomentsGuide() {
       <p>If the replay is pending or unavailable, keep that uncertainty. A chart can have valid measurements while Twitch has no accessible recording. Do not substitute a different broadcast merely because its date looks close.</p></section>
     <section id="save-context"><h2>3. Bookmark the useful part</h2>
       <p>Use the extension moment’s bookmark control to keep it in your browser. In a normal window, local bookmarks do not require an account. Private windows keep no device bookmarks. Keep the same browser profile; local storage is not a cross-device backup, and clearing browser data or uninstalling the extension can remove it.</p>
-      <p>When sharing, prefer the verified replay link. If you already know the correct time in an accessible Twitch VOD, the <Link to="/tools/twitch-vod-timestamp-link">timestamp link builder</Link> makes a clean link without uploading your input. Sharing a link does not preserve the video itself.</p></section>
+      <p>When sharing, prefer the verified replay link. If you already know the correct time in an accessible Twitch VOD, the <Link to="/guides/twitch-vod-timestamps">timestamp link builder</Link> makes a clean link without uploading your input. Sharing a link does not preserve the video itself.</p></section>
     <section id="editor-workflow"><h2>A practical editor or moderator pass</h2>
       <ol><li>Confirm the broadcast and measured window before selecting peaks.</li><li>Review a small shortlist of reactions in context instead of treating every spike as a finished highlight.</li><li>Write a brief human note for each useful moment: what happened and how much context it needs.</li><li>Test each replay link with the permissions your audience will have.</li><li>Recheck the link before publishing a timestamp thread or handing it to an editor.</li></ol>
       <p>StreamPulse helps with discovery and review. This workflow does not create an edited video, grant media rights, or bypass subscriber-only access.</p></section>
@@ -38,7 +38,7 @@ export default function FindTwitchMomentsGuide() {
       <p>History depends on which broadcasts and minutes StreamPulse measured. Coverage and gaps are shown with the data. A listed channel does not mean that every past stream was collected or that an accessible replay still exists.</p>
     </section>
     <StreamerChatStats />
-    <div className="public-document__actions"><InstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/docs#extension">Installation guide</Link></div>
-    <nav className="growth-guide__related" aria-label="Related tools and guides"><Link to="/tools/twitch-vod-timestamp-link">Build a Twitch timestamp link</Link><Link to="/guides/twitch-vod-timestamps">Why a VOD or timestamp may be unavailable</Link><Link to="/support">Get help with StreamPulse</Link></nav>
+    <div className="public-document__actions"><InstallCta className="btn btn-primary" /><Link className="btn btn-secondary" to="/help#install">Installation guide</Link></div>
+    <nav className="growth-guide__related" aria-label="Related tools and guides"><Link to="/guides/twitch-vod-timestamps">Build a Twitch timestamp link</Link><Link to="/help">Get help with StreamPulse</Link></nav>
   </article></PublicLayout>
 }

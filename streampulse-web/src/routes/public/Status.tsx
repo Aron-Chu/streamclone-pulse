@@ -3,7 +3,7 @@ import { measurementTimeMs } from '@streampulse/pulse-core'
 import { Link } from 'react-router-dom'
 import { apiClient, getBackendUrl } from '../../lib/apiClient'
 import { backendSourceCaption, resolveBackendSource } from '../../lib/backendSource'
-import { portalReleaseShort } from '../../lib/sentry'
+import { portalReleaseShort } from '../../lib/portalRelease'
 import { PublicLayout } from '../../ui/components/PublicLayout'
 
 interface PublicStatusPayload {
@@ -111,7 +111,7 @@ export default function Status() {
   const row = (label: string, state: State) => <div className="status-card">
     <div className="status-card__header"><span className="status-card__label">{label}</span><span className="status-card__indicator">
       <span className={`status-card__dot ${dotClass(state)}`} />
-      <span className={textClass(state)}>{stateLabel(state)}</span>
+      <span className={textClass(state)}>{loading ? 'Checking…' : stateLabel(state)}</span>
     </span></div>
   </div>
   const couldntCheck = !loading && probeFailures.some(probe => probe.unchecked)
@@ -123,7 +123,6 @@ export default function Status() {
         <span>{loading ? 'Checking systems…' : quietOnly ? QUIET_ONLY_LINE : stateLabel(overall)}</span>
       </div>
     </div></header>
-    {loading ? <div className="flex items-center gap-2.5 py-8 text-zinc-400"><span className="analytics-route-fallback__spinner" /><span>Probing StreamPulse services…</span></div> : null}
     {errors.length ? <div className="alert alert-error my-4" role="alert">Some checks could not be completed: {errors.join('; ')}</div> : null}
     {couldntCheck ? <button type="button" className="btn btn-secondary" onClick={() => { setLoading(true); setAttempt(value => value + 1) }}>Retry</button> : null}
     <div className="status-grid">
@@ -131,7 +130,9 @@ export default function Status() {
       {row('Live chat tracking', chatTrackingState)}
       {row('Twitch panel data', panelState)}
     </div>
-    {checkedAt ? <p className="mt-4 text-sm text-zinc-400" data-testid="status-checked">Checked {checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p> : null}
+    {/* The cards show from the start and the probe line holds the Checked line's place, so nothing moves when the checks answer. */}
+    {loading ? <p className="mt-4 flex items-center gap-2.5 text-sm text-zinc-400" data-testid="status-probing"><span className="analytics-route-fallback__spinner" aria-hidden="true" /><span>Probing StreamPulse services…</span></p>
+      : checkedAt ? <p className="mt-4 text-sm text-zinc-400" data-testid="status-checked">Checked {checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p> : null}
     {typeof statusProbe.data?.incident === 'string' && statusProbe.data.incident ? <div className="alert alert-warning mt-4"><strong>Active incident:</strong> {statusProbe.data.incident}</div> : null}
     <details className="mt-8 rounded-lg border border-white/[0.08] px-4 py-3" data-testid="status-details">
       <summary className="cursor-pointer font-semibold text-zinc-200">Details</summary>

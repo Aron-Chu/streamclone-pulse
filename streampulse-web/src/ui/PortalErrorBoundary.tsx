@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Sentry, sanitizePortalPath } from '../lib/sentry'
+import { reportPortalError } from '../lib/sentry'
 import { clearPublicHubCache, discardPublicHubCacheAfterError } from '../lib/publicHubCacheReset'
 
 type Props = {
@@ -26,7 +26,8 @@ export function reloadAfterPortalError(reload: () => void = () => window.locatio
 const reportedErrors = new WeakSet<object>()
 
 /**
- * Root error boundary — reports to Sentry when initialized, never attaches
+ * Root error boundary — reports to Sentry when initialized (the report waits
+ * while the SDK is still loading), never attaches
  * storage, beta keys, or route params. PageErrorBoundary mounts it again around
  * the routes and inside each layout, so one broken page keeps its navigation.
  */
@@ -45,13 +46,8 @@ export class PortalErrorBoundary extends Component<Props, State> {
       if (reportedErrors.has(error)) return
       reportedErrors.add(error)
     }
-    const route =
-      typeof window !== 'undefined' ? sanitizePortalPath(window.location.pathname) : 'unknown'
-    Sentry.withScope((scope) => {
-      scope.setTag('route', route)
-      scope.setTag('error_type', error.name || 'Error')
-      Sentry.captureException(error)
-    })
+    // Tagged with this page's route and the error's name, like any other report.
+    reportPortalError(error)
   }
 
   componentDidUpdate(prevProps: Props, prevState: State): void {

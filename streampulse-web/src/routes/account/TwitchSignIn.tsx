@@ -78,7 +78,7 @@ export function TwitchErrorNotice({ code, purpose, returnTo, page = false, onEma
       action = <button type="button" className="pulse-account-primary" disabled={busy} onClick={() => void signInAgain()}>{busy ? 'Signing out…' : 'Sign out and sign in again'}</button>
       break
     case 'support':
-      action = <Link className="pulse-account-button" to="/support">Contact support</Link>
+      action = <Link className="pulse-account-button" to="/help#ask">Contact support</Link>
       break
     case 'later': {
       const target = purpose === 'link' ? '/account/settings' : '/account/sign-in'

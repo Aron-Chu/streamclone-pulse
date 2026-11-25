@@ -8,12 +8,10 @@ import {
   BIG_WHEEL_PX,
   BIG_WHEEL_QUIET_MS,
   bigCardPos,
-  BIG_LIVE_PICTURE_MS,
   bigDragPx,
   bigFigure,
   bigIntoStream,
   bigLabel,
-  bigLivePicture,
   bigMeter,
   bigMomentCards,
   bigSlideLabel,
@@ -176,10 +174,4 @@ describe('Top moments today: today and a live picture (HUB-6, 11-02)', () => {
     expect(bigWhen(new Date(2026, 10, 2, 9, 5).getTime(), noon)).toMatch(/^9:05\sAM$/)
   })
 
-  it('shows a stream’s live picture only behind a moment under 10 minutes old', () => {
-    expect(BIG_LIVE_PICTURE_MS).toBe(10 * 60_000)
-    expect(bigLivePicture(now - 9 * 60_000, now)).toBe(true)
-    expect(bigLivePicture(now - 10 * 60_000, now)).toBe(false)
-    expect(bigLivePicture(now - 84 * 60_000, now)).toBe(false)
-  })
 })

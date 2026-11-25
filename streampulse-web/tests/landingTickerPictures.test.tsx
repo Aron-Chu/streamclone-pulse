@@ -78,4 +78,12 @@ describe('home ticker pictures', () => {
     expect(track.querySelector('img')).toBeNull()
     expect(track.querySelector('.sl-ticker__lead')?.textContent).toBe('A')
   })
+
+  it('keeps the moving strip out of screen readers and search-result snippets', () => {
+    const items: TickerItem[] = [{ lead: 'A', label: 'abc', value: '30/min', tone: 'up' }]
+    const { container } = render(<EmoteTicker variant="b" label="Trending" items={items} />)
+    const marquee = container.querySelector('.sl-ticker__marquee') as HTMLElement
+    expect(marquee.getAttribute('aria-hidden')).toBe('true')
+    expect(marquee.hasAttribute('data-nosnippet')).toBe(true)
+  })
 })

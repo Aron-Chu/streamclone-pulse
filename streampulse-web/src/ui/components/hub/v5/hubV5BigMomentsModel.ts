@@ -7,7 +7,8 @@
  * per moment (11-02: was one per channel, which left 3 cards from the hub's
  * ten). Since board 2A (11-02) a card may have no ×: a moment early in its
  * stream or one not compared shows its rate, and a "Busiest minute" fills in.
- * Pure functions; HubV5BigMoments draws them.
+ * Pure functions. The carousel that drew them was retired in H1 (11-19); Top
+ * moments today's rows still use bigWhen for their time.
  */
 import { formatLiftRatio } from '@streampulse/pulse-core'
 import { momentRowClock } from '../../../../lib/formatStreamOffset'
@@ -93,7 +94,10 @@ export function bigLabel(row: Pick<TopRowData, 'kind' | 'plain'> & Partial<Pick<
 /** A card's figure: "2.4×", else its rate ("1,204"; the card adds "chat/min"). With a ×, the card adds "more chat" (Z06, 11-13). */
 export const bigFigure = (row: Pick<TopRowData, 'x' | 'rate'>) => (row.x != null ? fx(row.x) : int(row.rate))
 
-/** A moment this young (ms) may show its stream's live picture; an older one never does (HUB-6). */
+/**
+ * A moment this young (ms) may show its stream's live picture; an older one never does (HUB-6).
+ * The carousel is gone (H1); the Moments stream cards use the same rule (11-22).
+ */
 export const BIG_LIVE_PICTURE_MS = 10 * 60_000
 export const bigLivePicture = (at: number, nowMs: number) => nowMs - at < BIG_LIVE_PICTURE_MS
 

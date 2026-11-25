@@ -8,11 +8,6 @@ import {
   wheelZoomChartViewport,
   zoomChartViewport,
 } from '../src/chartViewport.ts'
-import {
-  jumpViewportToOffset,
-  railGeometry,
-  resizeViewportEdge,
-} from '../src/ChartPositionRail.tsx'
 
 describe('chart viewport math', () => {
   it('keeps pointer-anchored zoom stable at the anchor', () => {
@@ -48,34 +43,6 @@ describe('chart viewport math', () => {
       undefined,
       1800,
     )).toEqual({ startSeconds: 1800, endSeconds: 3600 })
-  })
-
-  it('uses one full-stream coordinate model for the uncovered rail prefix', () => {
-    const geometry = railGeometry(
-      { startSeconds: 1800, endSeconds: 7200 },
-      7200,
-      100,
-      1800,
-    )
-
-    expect(geometry.thumbX).toBeCloseTo(25)
-    expect(geometry.thumbWidth).toBeCloseTo(75)
-  })
-
-  it('keeps edge resize inside coverage and enforces the minimum window', () => {
-    const viewport = { startSeconds: 2400, endSeconds: 3000 }
-    expect(resizeViewportEdge(viewport, 'start', -9999, 7200, 1800)).toEqual({
-      startSeconds: 1800,
-      endSeconds: 3000,
-    })
-    expect(resizeViewportEdge(viewport, 'end', -9999, 7200, 1800)).toEqual({
-      startSeconds: 2400,
-      endSeconds: 2700,
-    })
-    expect(resizeViewportEdge(viewport, 'end', 9999, 7200, 1800)).toEqual({
-      startSeconds: 2400,
-      endSeconds: 7200,
-    })
   })
 
   it('uses bounded wheel ratios and exposes useful long-stream presets', () => {
@@ -151,12 +118,5 @@ describe('PreviewNeverChangesViewportSelectionRevealsOnce', () => {
       viewport: manualPan,
       revealedOffsetSeconds: 1800,
     })
-
-    expect(jumpViewportToOffset(
-      manualPan,
-      1800,
-      3600,
-      600,
-    )).toEqual({ startSeconds: 1500, endSeconds: 2100 })
   })
 })

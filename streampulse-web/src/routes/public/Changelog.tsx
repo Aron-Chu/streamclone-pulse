@@ -112,8 +112,8 @@ export default function Changelog() {
         <section id="help" aria-labelledby="help-title" className="mt-8 border-t border-white/[0.08] pt-6">
           <h2 id="help-title">Need help?</h2>
           <p className="text-zinc-400">
-            Visit <Link to="/support" className="text-violet-400 hover:underline">StreamPulse Support</Link> or read
-            the <Link to="/docs" className="text-violet-400 hover:underline">setup guide</Link>.
+            See <Link to="/help" className="text-violet-400 hover:underline">Help</Link> to install StreamPulse, fix a
+            problem or ask us.
           </p>
         </section>
       </article>

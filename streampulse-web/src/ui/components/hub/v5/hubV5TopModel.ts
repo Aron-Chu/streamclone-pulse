@@ -24,10 +24,13 @@
 import { compareStreamEdgeLast, formatLiftRatio, streamEdgeLabel, type StreamEdgeKind } from '@streampulse/pulse-core'
 import { sanitizeEmoteImageUrl } from '../../../../lib/emoteAssetUrl'
 import { avatarImage, boxArtImage, checkMoment, clk, EARLY_STREAM_MIN, EARLY_STREAM_WORDS, earlyInStream, edgeFlag, emoteImage, feedStreamEnds, int, momentEdge, topBursts, TOP_BURST_MS, when, type CheckedMoment } from '../../../../lib/momentsChecked'
-import { momentsFeedFrom, type MomentsFeedCategoryFacet, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
-import type { MomentVodRef } from '../../../../lib/momentsFeedVod'
+import { momentsFeedFrom, type MomentsFeedCategoryFacet, type MomentsFeedItem, type MomentsFeedSnapshot } from '../../../../lib/momentsFeed'
 import type { HubLivePulseMoment, PublicHub } from '../../../../lib/publicHub'
 import { hubCategoryArt, momentHref, momentRowKey, momentRowsV5 } from './hubV5Model'
+import { momentPageHref } from '../../../../lib/momentPageFlag'
+
+/** What a VOD lookup needs of a moment: a Moments-list item, or a hub moment named the same way. */
+export type MomentVodRef = Pick<MomentsFeedItem, 'id' | 'login' | 'streamId' | 'offsetSeconds'>
 
 /** Rows the list shows. */
 export const TOP_ROWS = 20
@@ -142,7 +145,7 @@ function feedRow(m: CheckedMoment, ends: ReadonlyMap<string, number>): TopRowDat
     game: item.category?.name || null, art: boxArtImage(item) ?? null,
     emote: m.kind === 'emotes' ? emotes[0] ?? null : null, emotes,
     rate: item[m.kind].perMin, usual: m.kind === 'chat' ? m.baseC : m.baseE, viewers: item.viewers ?? null, live: item.streamLive,
-    href: `/analytics/moments?${new URLSearchParams({ m: item.id })}`, also: [], checked: m,
+    href: momentPageHref({ streamId: item.streamId, at: item.minuteStart }) ?? `/analytics/moments?${new URLSearchParams({ m: item.id })}`, also: [], checked: m,
     edge: momentEdge(item.offsetSeconds, item.streamEdge, ends.get(`${item.login.toLowerCase()}|${item.streamId}`)) ?? null,
   }
 }
@@ -363,5 +366,5 @@ export function topRowAria(row: TopRowData, rank: number, nowMs: number): string
   const x = topFigureWords(row)
   const t = `${when(row.at, nowMs)}${nowMs - row.at < 60 * 60_000 ? ` at ${clk(row.at)}` : ''}`
   return `${rank}. ${row.name}${row.emote ? `, ${row.emote.name}` : ''}, ${x}${row.game ? `, ${row.game}` : ''}`
-    + `${row.also.length ? `, the same emotes on ${row.also.join(', ')}` : ''}, ${t}. Open it in Top moments below.`
+    + `${row.also.length ? `, the same emotes on ${row.also.join(', ')}` : ''}, ${t}. Opens the moment.`
 }

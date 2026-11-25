@@ -6,7 +6,7 @@ import {
 } from "../../../lib/hubActivityHonesty";
 import type { FigmaMomentRow } from "../../../lib/figmaSessionAnalytics";
 import type { HubEmote, HubLiveChannel, PublicHub } from "../../../lib/publicHub";
-import type { HubActivityRangeControl } from "../hub/HubActivityChart";
+import type { HubActivityRangeControl } from "../hub/HubActivityChartV5";
 import { SystemStatusBadge } from "./primitives/SystemStatusBadge";
 import { compact } from "./hubFormat";
 // Keep this before hub.css: its readability floor overrides hub.css rules of the

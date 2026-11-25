@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test'
 import { installHubUxMock } from './helpers/hubUxMock'
+import { answerTwitchLivePictures } from './helpers/twitchLivePictures'
 import { installNewsroomMock } from './helpers/newsroomMock'
 
 test.beforeEach(async ({ page }) => {
+  await answerTwitchLivePictures(page)
   await page.setViewportSize({ width: 390, height: 844 })
   await installHubUxMock(page)
   await installNewsroomMock(page)

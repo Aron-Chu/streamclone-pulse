@@ -10,19 +10,29 @@ for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto('/')
-    await expect(page.locator('.sl-fx')).toHaveCount(1)
+    // The still background (chat ridge, and the chat columns on wide screens) mounts after load;
+    // the emote rain is never mounted under reduced motion.
+    await expect(page.locator('.sl-herobg')).toHaveCount(1)
     // landing.css hides the chat backdrop at 960px and below, so it is not mounted there.
     await expect(page.locator('.sl-chatbg')).toHaveCount(width >= 961 ? 1 : 0)
-    await expect(page.locator('.sl-fx')).toBeHidden()
+    await expect(page.locator('.sl-fx')).toHaveCount(0)
     await expect(page.locator('.sl-optional-demo')).toHaveCount(0)
     await page.keyboard.press('Tab')
     await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(page.locator('#landing-main')).toBeFocused()
     await page.locator('#demo').scrollIntoViewIfNeeded()
-    await expect(page.locator('.sl-xtour')).toBeVisible()
+    // The demo beside Twitch chat holds one still step, with the stream's picture, under reduced motion.
+    await expect(page.locator('.es-demo .es')).toBeVisible()
+    await expect(page.locator('.es-demo .es')).toHaveAttribute('data-beat', '3')
+    await expect(page.locator('.es-poster').first()).toBeVisible()
+    await expect(page.getByRole('region', { name: 'BrainChat' })).toBeVisible()
     await expect(page.locator('.lsg')).toHaveCount(0)
-    expect(await page.locator('.sl-header').evaluate(element => Math.abs(element.getBoundingClientRect().top))).toBeLessThanOrEqual(1)
+    await expect(page.locator('.sl-fx')).toHaveCount(0)
+    // The bar stays at the top from 720 px; on phones it scrolls away with the page (site-header.css).
+    const headerTop = await page.locator('.site-header').evaluate(element => element.getBoundingClientRect().top)
+    if (width >= 720) expect(Math.abs(headerTop)).toBeLessThanOrEqual(1)
+    else expect(headerTop).toBeLessThan(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.evaluate(() => scrollTo(0, 0))
     await page.screenshot({ path: testInfo.outputPath(`home-${width}.png`) })
@@ -35,7 +45,7 @@ for (const width of [390, 1440]) {
   })
 }
 
-test('the animated homepage shows the rain, the chat backdrop and the Pulse tab tour', async ({ page }, testInfo) => {
+test('the animated homepage shows the rain, the chat backdrop and the demo beside Twitch chat', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.goto('/')
@@ -43,7 +53,10 @@ test('the animated homepage shows the rain, the chat backdrop and the Pulse tab 
   await expect(page.locator('.sl-chatbg')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('home-animated.png') })
   await page.locator('#demo').scrollIntoViewIfNeeded()
-  await expect(page.locator('.sl-xtour')).toBeVisible()
+  const stage = page.locator('.es-demo .es')
+  await expect(stage).toBeVisible()
+  // It starts on its own once most of it shows: from the chat flood to Pulse marking the spike.
+  await expect(stage).toHaveAttribute('data-beat', '1', { timeout: 10_000 })
 })
 
 test.describe('without JavaScript', () => {
@@ -52,9 +65,11 @@ test.describe('without JavaScript', () => {
   test('the prerendered homepage stays readable with JavaScript disabled', async ({ page }) => {
     await page.goto('/')
     await expect(page.locator('#demo')).toContainText('JavaScript is available')
-    // The chat backdrop mounts after load on wide screens; it is not in the prerendered HTML.
-    await expect(page.locator('.sl-chatbg')).toHaveCount(0)
+    // The whole background mounts after load; none of it is in the prerendered HTML.
+    await expect(page.locator('.sl-herobg, .sl-chatbg, .sl-fx')).toHaveCount(0)
     await expect(page.locator('#roadmap, #analysis, .lsg')).toHaveCount(0)
+    // the Fastest chats band is gone (debloat board 11-24): the demo follows the hero
+    await expect(page.locator('.sl-cn')).toHaveCount(0)
   })
 })
 

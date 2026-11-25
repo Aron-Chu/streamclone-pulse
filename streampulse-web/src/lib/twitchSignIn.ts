@@ -1,5 +1,6 @@
 import { AccountError, accountRequest } from './accountApi'
 import { accountBillingReturnPath } from './accountBillingReturn'
+import { momentPageReturnPath } from './momentPageFlag'
 import { clipPageReturnPath } from './nativeClipsFlag'
 import { accountMomentsEnabled } from './accountMoments'
 import { isSandboxSiteBuild } from './backendSource'
@@ -86,7 +87,8 @@ class TwitchFlowError extends Error {
 /**
  * Where a finished flow may land: the Account page, account settings, My
  * Moments (with My Moments on; settings otherwise), a clip's own page (with
- * the Clips page in the build), or a
+ * the Clips page in the build), a Moment's own
+ * page (with the Moment page in the build), or a
  * billing continuation that accountBillingReturnPath already accepts. Anything
  * else (other origins, protocol-relative or encoded paths, extra queries) is
  * refused, so the callback can never become an open redirect.
@@ -95,7 +97,7 @@ export function twitchReturnPath(value: unknown): string | null {
   if (value === TWITCH_DEFAULT_RETURN) return signInLanding()
   if (value === TWITCH_LINK_RETURN) return value
   if (value === TWITCH_MOMENTS_RETURN) return accountMomentsEnabled() ? value : TWITCH_LINK_RETURN
-  return clipPageReturnPath(value) ?? accountBillingReturnPath(value)
+  return clipPageReturnPath(value) ?? momentPageReturnPath(value) ?? accountBillingReturnPath(value)
 }
 
 /**

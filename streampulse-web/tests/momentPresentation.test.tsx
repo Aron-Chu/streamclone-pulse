@@ -2,23 +2,10 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MomentSelect } from '../src/ui/components/moments/MomentSelect'
 import { MomentEvidenceBars } from '../src/ui/components/moments/MomentEvidenceBars'
-import { SessionMomentMap } from '../src/ui/components/moments/SessionMomentMap'
 import type { DiscoveryMoment } from '../src/lib/discoveryMoments'
 import { isMomentsFeedUnavailable, resolveMomentAvatarUrl } from '../src/routes/analytics/AnalyticsMomentsPage'
 
 afterEach(cleanup)
-describe('session reaction timestamps', () => {
-  it('opens the exact timestamp and refuses to combine different streams', () => {
-    const first = { key: 'first', login: 'creator', streamId: 'one', offsetSeconds: 60, label: 'Chat spike' } as DiscoveryMoment
-    const second = { ...first, key: 'second', offsetSeconds: 180 }
-    const select = vi.fn()
-    const { rerender } = render(<SessionMomentMap moments={[second, first]} onSelect={select} />)
-    fireEvent.click(screen.getByRole('button', { name: '0:03:00' }))
-    expect(select).toHaveBeenCalledWith(second)
-    rerender(<SessionMomentMap moments={[first, { ...second, streamId: 'another' }]} onSelect={select} />)
-    expect(screen.queryByRole('region')).toBeNull()
-  })
-})
 describe('moment avatar URL safety', () => {
   it('rejects arbitrary image URLs and preserves only the Twitch CDN allowlist', () => {
     expect(resolveMomentAvatarUrl('https://evil.example/avatar.png')).toBeUndefined()

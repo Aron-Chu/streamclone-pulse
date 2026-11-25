@@ -1,5 +1,11 @@
 import type { HubActivityPoint } from './publicHub'
-import type { HubTimeDomain } from './hubTimeScale'
+
+/** The chart's time span: first bucket start, end (exclusive) and bucket length, all in ms. */
+export interface HubTimeDomain {
+  start: number
+  endExclusive: number
+  bucketDurationMs: number
+}
 
 function hubActivityEmoteCount(point: HubActivityPoint): number {
   if (typeof point.emotes === 'number' && Number.isFinite(point.emotes)) {

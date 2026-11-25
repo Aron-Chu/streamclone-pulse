@@ -1,6 +1,7 @@
 import { expect, test } from './helpers/portalMockedTest'
 import { writeFile } from 'node:fs/promises'
 import { installHubUxMock } from './helpers/hubUxMock'
+import { openV5Hub } from './helpers/openV5Hub'
 import { buildMinutes, installPortalAcceptanceHarness, loadXqcGames, openAnalyticsSession } from './helpers/portalAcceptanceHarness'
 
 test.use({ hasTouch: true })
@@ -11,14 +12,14 @@ for (const width of [320, 390]) {
     await installHubUxMock(page)
     await page.goto('/analytics')
     await page.evaluate(() => document.fonts.ready)
-    const bar = page.locator('.analytics-topnav')
+    const bar = page.locator('.site-header')
     const search = bar.getByRole('button', { name: 'Search streamers or games' })
-    await expect(bar.getByRole('button', { name: 'Navigation menu' })).toBeVisible()
-    const discord = bar.locator('.analytics-topnav__discord')
+    await expect(bar.getByRole('button', { name: 'Menu', exact: true })).toBeVisible()
+    const discord = bar.locator('.site-header__discord')
     const hasDiscord = await discord.count() > 0
     if (process.env.PORTAL_EXPECT_DISCORD !== undefined) expect(hasDiscord).toBe(process.env.PORTAL_EXPECT_DISCORD === '1')
     testInfo.annotations.push({ type: 'real-build-Discord', description: hasDiscord ? 'configured' : 'unconfigured' })
-    const trigger = bar.getByRole('button', { name: 'Navigation menu' })
+    const trigger = bar.getByRole('button', { name: 'Menu', exact: true })
     await expect(search).toBeVisible()
     const controls = [search, ...(hasDiscord ? [discord] : []), trigger]
     const boxes = await Promise.all(controls.map(control => control.boundingBox()))
@@ -30,25 +31,28 @@ for (const width of [320, 390]) {
       expect(box.x + box.width).toBeLessThanOrEqual(width)
       expect(Math.abs(box.y - boxes[0]!.y)).toBeLessThanOrEqual(1)
     }
-    expect((await bar.boundingBox())!.height).toBeLessThanOrEqual(54)
-    await bar.locator('.analytics-topnav__brand').focus()
+    expect((await bar.boundingBox())!.height).toBeLessThanOrEqual(56)
+    await bar.locator('.site-header__brand').focus()
     for (const control of controls) { await page.keyboard.press('Tab'); await expect(control).toBeFocused() }
     await trigger.tap()
-    const menu = bar.locator('.analytics-topnav__more-links')
-    await expect(menu).toHaveCSS('opacity', '1')
+    // Menu opens a drawer from the right (site-header.css). It slides in over 200 ms: hit-test its links once
+    // it has settled.
+    const menu = page.getByRole('dialog', { name: 'StreamPulse' })
+    await expect(menu).toBeVisible()
+    await page.locator('.site-menu').evaluate(node => Promise.allSettled(node.getAnimations({ subtree: true }).map(animation => animation.finished)))
     const hits = await menu.locator('a:visible').evaluateAll(links => links.map(link => {
       const b = link.getBoundingClientRect()
       const hit = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)
       return { name: link.textContent, inViewport: b.left >= 0 && b.right <= innerWidth && b.top >= 0 && b.bottom <= innerHeight, receivesTap: !!hit && link.contains(hit) }
     }))
-    expect(hits.length).toBeGreaterThanOrEqual(11)
+    expect(hits.length).toBeGreaterThanOrEqual(7)
     for (const hit of hits) expect(hit, hit.name ?? 'menu link').toMatchObject({ inViewport: true, receivesTap: true })
     await writeFile(testInfo.outputPath('menu-hit-targets.json'), JSON.stringify({ width, realDiscordConfigured: hasDiscord, controls: boxes, links: hits }, null, 2))
     await page.screenshot({ path: testInfo.outputPath(`menu-${width}-discord-${hasDiscord}.png`) })
-    await menu.getByRole('link', { name: 'Analytics', exact: true }).tap()
+    await menu.getByRole('link', { name: 'Hub', exact: true }).tap()
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')
     await trigger.tap()
-    await menu.getByRole('link', { name: 'Home', exact: true }).focus()
+    await menu.getByRole('link', { name: 'Help', exact: true }).focus()
     await page.keyboard.press('Escape')
     await expect(trigger).toBeFocused()
   })
@@ -57,14 +61,14 @@ for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 })
     await installHubUxMock(page)
     await page.goto('/analytics')
-    const bar = page.locator('.analytics-topnav')
+    const bar = page.locator('.site-header')
     const search = bar.getByRole('button', { name: 'Search streamers or games' })
     await expect(search).toBeVisible()
     await page.mouse.move(2, 700)
     await page.mouse.wheel(0, 650)
     await expect.poll(async () => { const box = (await bar.boundingBox())!; return box.y + box.height }).toBeLessThan(0)
     await expect(search).toHaveAttribute('data-docked', '')
-    // The pinned button drops in over 320 ms (hv5-dock-drop). Mid-drop it carries a fractional translate, and
+    // The pinned button drops in over 320 ms (site-header-dock-drop). Mid-drop it carries a fractional translate, and
     // Playwright's boundingBox() maps the box through that transform in 32-bit floats, so the 44 px button reads
     // 43.999998 at 320 px. The CSS height is exactly 44: measure the tap target once it has settled.
     await search.evaluate(button => Promise.allSettled(button.getAnimations().map(animation => animation.finished)))
@@ -99,22 +103,20 @@ for (const width of [320, 390]) {
   })
 }
 
-test('at 1440px the capped Top today and next existing section share a row', async ({ page }, testInfo) => {
+test('at 1440px Busiest now takes the whole row, with no Top today beside it (2B, 11-22)', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await installHubUxMock(page)
-  await page.goto('/analytics')
-  const peek = page.locator('.hv5-f3-peek')
+  await openV5Hub(page)
   const busy = page.locator('.hv5-busiest')
-  await expect(peek).toBeVisible()
+  const chart = page.locator('.hv5-activity')
   await expect(busy).toBeVisible()
-  const left = (await peek.boundingBox())!, right = (await busy.boundingBox())!
-  expect(left.width).toBeLessThanOrEqual(720)
-  expect(right.width).toBeLessThanOrEqual(720)
-  expect(Math.abs(left.y - right.y)).toBeLessThanOrEqual(1)
-  expect(left.x + left.width).toBeLessThan(right.x)
-  expect(await peek.evaluate((node, nextClass) => Boolean(node.compareDocumentPosition(document.querySelector(nextClass)!) & Node.DOCUMENT_POSITION_FOLLOWING), '.hv5-busiest')).toBe(true)
+  await expect(page.locator('.hv5-f3-peek')).toHaveCount(0)
+  const row = (await busy.boundingBox())!, below = (await chart.boundingBox())!
+  expect(Math.abs(row.x - below.x)).toBeLessThanOrEqual(1)
+  expect(Math.abs(row.width - below.width)).toBeLessThanOrEqual(1)
+  // whole tiles only: the pager says what shows
+  await expect(busy.locator('.hv5-bzc-pos')).toHaveText(/^1–6 of \d+$/)
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
-  await page.screenshot({ path: testInfo.outputPath('adjacent-existing-hub-sections.png') })
+  await page.screenshot({ path: testInfo.outputPath('busiest-across.png') })
 })
 
 test('the narrow multi-game header shows the whole fixture title and every KPI', async ({ page }, testInfo) => {

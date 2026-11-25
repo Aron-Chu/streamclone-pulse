@@ -5,7 +5,7 @@ import {
 } from '../src/lib/hubChartActivityModel'
 import { normalizePublicHub } from '../src/lib/publicHub'
 import type { HubActivityPoint } from '../src/lib/publicHub'
-import type { HubActivityMomentMarker } from '../src/ui/components/hub/HubActivityChart'
+import type { HubActivityMomentMarker } from '../src/ui/components/hub/HubActivityChartV5'
 import * as hubActivitySummary from '../src/lib/hubActivitySummary'
 
 function fixtureHub(points: HubActivityPoint[]) {

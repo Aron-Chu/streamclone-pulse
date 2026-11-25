@@ -1,0 +1,312 @@
+/*
+ * Latest as one card per stream (B, 11-22; A+ and G1 of round 3). The card follows
+ * the Clips tab's card on this page (native-clips.css): a 16:9 picture whose corners
+ * tighten on hover, the game's cover and the channel's face beside the text, the
+ * grid's columns and gaps. Every rule sits under the grid at two classes or more,
+ * so the row rules and the workspace's element rules never win.
+ */
+.moments-result-list.moments-stream-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 28px 16px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+}
+
+/* The open moment's detail spans the grid, under the row of cards it opened from. */
+.moments-stream-grid > .moments-inline { grid-column: 1 / -1; border: 0; }
+.moments-stream-grid > .moments-inline.is-open { margin-top: -10px; }
+
+.moments-stream-grid .moments-result.moments-stream-card {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.moments-stream-grid .moments-stream-card:hover,
+.moments-stream-grid .moments-stream-card:focus-within,
+.moments-stream-grid .moments-stream-card.is-selected { background: none; box-shadow: none; }
+
+/* ---------- picture ---------- */
+
+.moments-stream-card .msc-picture {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 12px;
+  background: radial-gradient(120% 90% at 50% 15%, color-mix(in srgb, var(--fma-text) 6%, transparent), var(--sp-surface-1) 70%), var(--sp-surface-3);
+  transition: border-radius 200ms var(--sp-ease-out), box-shadow 200ms var(--sp-ease-out);
+}
+
+.moments-stream-card:hover .msc-picture { border-radius: 4px; }
+.moments-stream-card.is-selected .msc-picture { box-shadow: 0 0 0 2px var(--fma-accent-text); }
+
+/* A clip near the moment, or a young moment's live picture: the line runs along its bottom, over a scrim. */
+.moments-stream-card .msc-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Until it has loaded, the cover's wash shows through. */
+.moments-stream-card .msc-photo:not([data-ready]) { opacity: 0; }
+/* The live picture while it is checked: loaded, never shown. */
+.moments-stream-card .msc-probe { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.moments-stream-card .msc-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--fma-bg) 34%, transparent) 0%, transparent 26%, transparent 48%, color-mix(in srgb, var(--fma-bg) 82%, transparent) 100%);
+}
+
+/* No picture: the line fills the frame over the game's cover, blurred far back (the same small file as the body's cover). */
+.moments-stream-card .msc-wash { position: absolute; inset: 0; overflow: hidden; }
+.moments-stream-card .msc-wash img {
+  position: absolute;
+  top: -12%;
+  left: -12%;
+  width: 124%;
+  height: 124%;
+  max-width: none;
+  object-fit: cover;
+  filter: blur(22px) brightness(0.26) saturate(1.1);
+}
+.moments-stream-card .msc-wash span:not(.moments-card-artwork) { display: none; }
+.moments-stream-card .msc-wash .moments-card-artwork { position: absolute; inset: 0; width: auto; border-radius: 0; background: none; }
+.moments-stream-card .msc-wash .moments-card-artwork span { display: none; }
+.moments-stream-card .msc-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--fma-bg) 35%, transparent) 0%, transparent 40%, color-mix(in srgb, var(--fma-bg) 50%, transparent) 100%);
+}
+
+/* Top left, the time into the stream and where the picture came from; top right, Save. */
+.moments-stream-card .msc-chips {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 6px;
+  max-width: calc(100% - 84px);
+}
+
+.moments-stream-card .msc-at,
+.moments-stream-card .msc-source {
+  overflow: hidden;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fma-bg) 86%, transparent);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.moments-stream-card .msc-at { flex: none; color: var(--fma-text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.moments-stream-card .msc-about { color: var(--fma-sub); font-weight: 400; }
+.moments-stream-card .msc-source { color: var(--fma-sub); font-weight: 500; }
+
+/* Save is the card's last element (Tab order), placed over the picture's corner. */
+.moments-stream-card .msc-save { position: absolute; top: 8px; right: 8px; opacity: 0; transition: opacity 140ms var(--sp-ease-out); }
+.moments-stream-card:hover .msc-save,
+.moments-stream-card:focus-within .msc-save,
+.moments-stream-card .msc-save:has([aria-pressed='true']) { opacity: 1; }
+
+.moments-stream-card .msc-save button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: var(--sp-border-strong);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fma-bg) 86%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.moments-stream-card .msc-save button:hover:not(:disabled) { background: var(--fma-bg); }
+
+/* ---------- the activity line ---------- */
+
+.moments-stream-card .msc-activity { position: absolute; inset: 0; }
+.moments-stream-card .msc-activity svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.moments-stream-card .msc-surge { fill: var(--fma-accent); fill-opacity: 0.09; }
+.moments-stream-card .msc-usual { stroke: var(--fma-sub); stroke-opacity: 0.7; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+.moments-stream-card .msc-bars rect { fill: var(--fma-accent); fill-opacity: 0.6; }
+.moments-stream-card .msc-area { fill: color-mix(in srgb, var(--fma-text) 9%, transparent); }
+.moments-stream-card .msc-line { fill: none; stroke: var(--fma-text); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.moments-stream-card .msc-mark { stroke: var(--fma-text); stroke-opacity: 0.4; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
+.moments-stream-card .msc-dot { fill: var(--fma-text); }
+.moments-stream-card .msc-ping { fill: none; stroke: var(--fma-text); stroke-width: 1.5; opacity: 0; vector-effect: non-scaling-stroke; }
+.msc-picture[data-picture='photo'] .msc-area { fill: color-mix(in srgb, var(--fma-text) 14%, transparent); }
+
+/* The top emote above the moment's dot; a wide emote keeps its height and is held to a width. */
+.moments-stream-card .msc-emote {
+  position: absolute;
+  display: inline-flex;
+  translate: -50% calc(-100% - 8px);
+  filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--fma-bg) 70%, transparent));
+}
+
+.moments-stream-card .msc-emote img { width: auto; max-width: 48px; height: 32px; object-fit: contain; }
+
+/* With no minutes to draw: the moment's emotes, the top one large. */
+.moments-stream-card .msc-emotes { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; align-items: center; justify-content: center; gap: 8px 14px; padding: 0 12px; }
+.moments-stream-card .msc-emotes > span { display: inline-flex; min-width: 0; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--fma-bg) 60%, transparent)); }
+/* An emote with no picture is named, the top one larger, as the pictures are. */
+.moments-stream-card .msc-emote-name {
+  max-width: 9rem;
+  overflow: hidden;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fma-bg) 84%, transparent);
+  color: var(--fma-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.moments-stream-card .msc-emotes > span:first-child .msc-emote-name { font-size: 14px; }
+
+/* ---------- text ---------- */
+
+/* G1: the game's cover leads, the channel's face on its corner, the gap wide enough for the face's overhang. */
+.moments-stream-card .msc-body { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: start; gap: 14px; }
+.moments-stream-card .msc-lead { position: relative; width: 40px; }
+.moments-stream-card .msc-cover { display: grid; place-items: center; width: 40px; height: 53px; overflow: hidden; border-radius: 4px; background: var(--sp-surface-3); color: var(--fma-sub); font-size: 12px; font-weight: 600; }
+.moments-stream-card .msc-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.moments-stream-card .msc-lead[data-cover] .msc-face { position: absolute; right: -8px; bottom: -6px; }
+.moments-stream-card .msc-lead[data-cover] .msc-face .moments-avatar { width: 22px; height: 22px; border: 2px solid var(--fma-bg); font-size: 10px; }
+.moments-stream-card .msc-lead:not([data-cover]) .moments-avatar { width: 40px; height: 40px; font-size: 15px; }
+.moments-stream-card .msc-text { display: grid; gap: 3px; min-width: 0; }
+
+/* The clamp's box leaves room for the focus ring, which an overflow would cut. */
+.moments-stream-card h3.msc-title {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: -5px;
+  padding: 5px;
+  color: var(--fma-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.moments-stream-card .msc-title .moments-card-primary {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.moments-stream-card .msc-title .moments-card-primary:hover:not(:disabled) { background: none; }
+.moments-stream-card .msc-figure { color: var(--fma-sub); font-weight: 400; }
+.moments-stream-card .msc-figure::before { content: ' · '; }
+
+/* As the title: room inside the clip for the creator link's focus ring. */
+.moments-stream-card p.msc-sub {
+  overflow: hidden;
+  margin: -5px;
+  padding: 5px;
+  color: var(--fma-sub);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moments-stream-card .msc-sub .moments-creator-link { display: inline; min-height: 0; color: inherit; }
+.moments-stream-card .msc-sub .moments-creator-link:hover { color: var(--fma-text); text-decoration: underline; }
+
+.moments-stream-card .msc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; }
+
+.moments-stream-card .msc-actions a,
+.moments-stream-card .msc-actions .msc-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fma-sub);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+/* What the reader does next leads in the accent; the rest stay quiet. */
+.moments-stream-card .msc-actions .msc-go { color: var(--fma-accent-text); font-weight: 600; }
+.moments-stream-card .msc-actions .msc-go span[aria-hidden] { margin-left: 3px; }
+.moments-stream-card .msc-actions a:hover,
+.moments-stream-card .msc-actions .msc-more:hover:not(:disabled) { background: none; color: var(--fma-text); text-decoration: underline; }
+.moments-stream-card .msc-actions .msc-go:hover { color: var(--fma-accent-text); }
+
+/* ---------- narrower screens: the Clips grid's steps ---------- */
+
+@media (max-width: 1280px) {
+  .moments-result-list.moments-stream-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 980px) {
+  .moments-result-list.moments-stream-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Touch-sized links and buttons at the width the row list gives them 44px (moments-workspace.css). */
+@media (max-width: 850px) {
+  .moments-stream-card .msc-actions a,
+  .moments-stream-card .msc-actions .msc-more,
+  .moments-stream-card .msc-save button { min-height: 44px; }
+}
+
+@media (max-width: 560px) {
+  .moments-result-list.moments-stream-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+}
+
+@media (hover: none) {
+  .moments-stream-card .msc-save { opacity: 1; }
+}
+
+/* ---------- motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .moments-stream-card:hover .msc-picture { border-radius: 12px; }
+}
+
+/*
+ * The line draws in left to right as the card first shows, a row of cards one after
+ * another (--msc-d); the surge band sweeps in, the bars grow outward from the
+ * moment, and the dot and emote land when the line reaches them, easing to rest
+ * without overshoot. Once, never on a loop. The press keeps the site's bounce.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  /* The press dips the card, not when a link or button inside it is what is pressed. */
+  .moments-stream-grid .moments-stream-card:active:not(:has(:is(a, button:not(.moments-card-primary)):active)) { scale: .985; transition: scale 260ms cubic-bezier(.34, 1.56, .64, 1); }
+  .msc-picture[data-animate] .msc-photo { transition: opacity 360ms var(--sp-ease-out); }
+  .msc-picture[data-animate] .msc-draw { animation: msc-draw 900ms cubic-bezier(.33, 0, .2, 1) both; animation-delay: var(--msc-d, 0ms); }
+  .msc-picture[data-animate] .msc-area { animation: msc-fade 600ms ease-out both; animation-delay: calc(var(--msc-d, 0ms) + 300ms); }
+  .msc-picture[data-animate] .msc-surge { transform-box: fill-box; transform-origin: right; animation: msc-sweep 520ms var(--sp-ease-out) both; animation-delay: calc(var(--msc-d, 0ms) + 120ms); }
+  .msc-picture[data-animate] .msc-usual { animation: msc-fade 400ms ease-out both; animation-delay: var(--msc-d, 0ms); }
+  .msc-picture[data-animate] .msc-bars rect { transform-box: fill-box; transform-origin: 50% 100%; animation: msc-grow 380ms var(--sp-ease-out) both; animation-delay: calc(var(--msc-d, 0ms) + 280ms + var(--msc-delay, 0ms)); }
+  .msc-picture[data-animate] .msc-mark { animation: msc-fade 300ms ease-out both; animation-delay: calc(var(--msc-d, 0ms) + var(--msc-at)); }
+  .msc-picture[data-animate] .msc-dot { transform-box: fill-box; transform-origin: center; animation: msc-pop 340ms var(--sp-ease-out) both; animation-delay: calc(var(--msc-d, 0ms) + var(--msc-at)); }
+  .msc-picture[data-animate] .msc-ping { transform-box: fill-box; transform-origin: center; animation: msc-ping 900ms ease-out both; animation-delay: calc(var(--msc-d, 0ms) + var(--msc-at)); }
+  .msc-picture[data-animate] .msc-emote { animation: msc-drop 420ms var(--sp-ease-out) both; animation-delay: calc(var(--msc-d, 0ms) + var(--msc-at) + 80ms); }
+  .msc-picture[data-animate][data-picture='emotes'] .msc-emotes > span { animation: msc-rise 420ms var(--sp-ease-out) both; animation-delay: calc(var(--msc-d, 0ms) + var(--msc-i, 0) * 60ms); }
+}
+
+@keyframes msc-draw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes msc-fade { from { opacity: 0; } }
+@keyframes msc-sweep { from { opacity: 0; scale: 0 1; } }
+@keyframes msc-grow { from { scale: 1 0; } }
+@keyframes msc-pop { from { opacity: 0; scale: 0.4; } }
+@keyframes msc-ping { 0% { opacity: 0.7; scale: 1; } 100% { opacity: 0; scale: 3.4; } }
+@keyframes msc-drop { from { opacity: 0; translate: -50% calc(-100% - 18px); } }
+@keyframes msc-rise { from { opacity: 0; translate: 0 8px; } }

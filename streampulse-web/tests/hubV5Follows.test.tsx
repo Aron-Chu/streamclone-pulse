@@ -194,6 +194,8 @@ describe('Show my Twitch follows', () => {
 
   it('shows the pager only while some tiles are out of view', () => {
     window.sessionStorage.setItem(SAVED_KEY, JSON.stringify(FOLLOWS))
+    // the strip measures from its ResizeObserver, which a browser calls once on observe (the setup's stub never does)
+    vi.stubGlobal('ResizeObserver', class { constructor(private readonly cb: () => void) {} observe() { this.cb() } unobserve() {} disconnect() {} })
     // jsdom lays nothing out: the track is as wide as its tiles
     hub()
     expect(screen.queryByRole('button', { name: 'Next follows' })).toBeNull()

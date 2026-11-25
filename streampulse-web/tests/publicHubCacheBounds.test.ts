@@ -1,9 +1,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizePublicHub, type PublicHub } from '../src/lib/publicHub'
+import * as publicHubCache from '../src/lib/publicHubCache'
 import {
   clearPublicHubCacheForTests,
+  flushPublicHubCacheWritesForTests,
   PUBLIC_HUB_CACHE_HUB_STALE_MS,
   PUBLIC_HUB_CACHE_MAX_CHARS,
   PUBLIC_HUB_CACHE_STALE_MS,
@@ -14,6 +17,19 @@ import {
 } from '../src/lib/publicHubCache'
 import { isScreenerAtTwoTimesUsual, screenerUsual, screenerUsualTooltip } from '../src/lib/channelScreenerContract'
 import { hasFullChatWindow, rankBusiest, whereChatIs } from '../src/ui/components/hub/v5/hubV5Model'
+
+import { getBackendUrl } from '../src/lib/apiClient'
+import { usePublicHubData } from '../src/hooks/usePublicHubData'
+
+// Only the network read is replaced, for the polled-hub case; everything else is the real module.
+const fetchPublicHubBase = vi.fn()
+vi.mock('../src/lib/publicHub', async () => {
+  const actual = await vi.importActual<typeof import('../src/lib/publicHub')>('../src/lib/publicHub')
+  return {
+    ...actual,
+    fetchPublicHubBase: (...args: unknown[]) => fetchPublicHubBase(...args),
+  }
+})
 
 const origin = 'https://api.streampulse.stream'
 describe('bounded public hub persistence', () => {
@@ -200,10 +216,9 @@ function metricRow(currentPerMin: number, multiplier: number | null) {
 }
 
 /** 240 six-minute points with ten top emotes each and 500 live rows with screener v1 (the production shape). */
-function fullSizeHub(): PublicHub {
+function fullSizeHub(rows = 500, end = Math.floor(Date.now() / (6 * 60_000)) * 6 * 60_000): PublicHub {
   const generatedAt = new Date().toISOString()
   const bucketMs = 6 * 60_000
-  const end = Math.floor(Date.now() / bucketMs) * bucketMs
   return normalizePublicHub({
     generatedAt,
     poolSize: 500,
@@ -232,7 +247,7 @@ function fullSizeHub(): PublicHub {
         })),
       })),
     },
-    liveChannels: Array.from({ length: 500 }, (_, i) => {
+    liveChannels: Array.from({ length: rows }, (_, i) => {
       const chat = 3 + ((i * 53) % 420)
       return {
         streamId: `stream-${i}`,
@@ -241,7 +256,7 @@ function fullSizeHub(): PublicHub {
         title: `A live title for channel ${i} that runs a little long`,
         category: i % 4 ? 'Just Chatting' : 'Counter-Strike',
         profileImageUrl: `https://static-cdn.jtvnw.net/jtv_user_pictures/profile-${i}-300x300.png`,
-        viewers: 60_000 - i * 111,
+        viewers: i < 500 ? 60_000 - i * 111 : 4_000 - (i % 3_900),
         chatPerMin: chat,
         emotesPerMin: Math.round(chat / 4),
         seventvPerMin: Math.round(chat / 9),
@@ -390,6 +405,65 @@ describe('compact full-hub snapshot (plan §2.6)', () => {
     const cached = readPublicHubCache(origin, '24h')!.data
     expect(cached.liveChannels).toHaveLength(500)
     expect(cached.liveChannels.every(channel => channel.profileImageUrl === undefined)).toBe(true)
+  })
+
+  it.each([1_200, 2_500])('saves a trimmed copy of a %i-row body no whole copy fits: Busiest, the most watched, poolSize', (rows) => {
+    const hub = fullSizeHub(rows)
+    hub.poolSize = rows + 100
+    const size = publicHubCacheEntrySize(hub, '24h', origin)
+    expect(size?.version).toBe(2)
+    expect(size!.chars).toBeLessThanOrEqual(PUBLIC_HUB_CACHE_MAX_CHARS)
+    writePublicHubCache(origin, '24h', hub)
+    const cached = readPublicHubCache(origin, '24h')!.data
+    const kept = cached.liveChannels.map(channel => channel.login)
+    expect(kept.length).toBeGreaterThanOrEqual(24)
+    expect(kept.length).toBeLessThan(rows)
+    expect(cached.poolSize).toBe(rows + 100)
+    // Busiest ranks the same rows from the saved copy, with their 5-minute windows.
+    expect(rankBusiest(cached.liveChannels).rows.map(row => row.login)).toEqual(rankBusiest(hub.liveChannels).rows.map(row => row.login))
+    expect(cached.liveChannels.every(hasFullChatWindow)).toBe(true)
+    // Then the most watched, in the answer's order.
+    const keptSet = new Set(kept)
+    const byViewers = [...hub.liveChannels].sort((a, b) => b.viewers - a.viewers).map(channel => channel.login)
+    expect(byViewers.slice(0, kept.length - 24).every(login => keptSet.has(login))).toBe(true)
+    const order = new Map(hub.liveChannels.map((channel, i) => [channel.login, i]))
+    expect(kept.map(login => order.get(login)!)).toEqual(kept.map(login => order.get(login)!).sort((a, b) => a - b))
+    expect(cached.activity.points).toHaveLength(240)
+    expect(cached.livePulseMoments).toEqual(hub.livePulseMoments)
+  })
+
+  it('saves a 500-row body whole, never trimmed', () => {
+    const hub = fullSizeHub()
+    writePublicHubCache(origin, '24h', hub)
+    expect(readPublicHubCache(origin, '24h')!.data.liveChannels.map(channel => channel.login)).toEqual(hub.liveChannels.map(channel => channel.login))
+  })
+
+  it('does not prepare a body of a refused shape again until its shape changes', () => {
+    const tooBig = (rows: number) => {
+      const hub = fullSizeHub(rows)
+      hub.backendVersion = 'x'.repeat(PUBLIC_HUB_CACHE_MAX_CHARS)
+      return hub
+    }
+    writePublicHubCache(origin, '24h', tooBig(500))
+    expect(localStorage.getItem(publicHubCacheKey(origin, '24h'))).toBeNull()
+    const stringify = vi.spyOn(JSON, 'stringify')
+    // The next poll: a new body of the same shape.
+    writePublicHubCache(origin, '24h', tooBig(500))
+    expect(stringify).not.toHaveBeenCalled()
+    // One more live row: tried again.
+    writePublicHubCache(origin, '24h', tooBig(501))
+    expect(stringify).toHaveBeenCalled()
+    stringify.mockRestore()
+    // A body that fits is saved whatever was refused before.
+    writePublicHubCache(origin, '24h', fullSizeHub())
+    expect(readPublicHubCache(origin, '24h')).not.toBeNull()
+  })
+
+  it('does not throw on a partial body (a list left out)', () => {
+    const partial: Partial<ReturnType<typeof fullSizeHub>> = { ...fullSizeHub() }
+    delete partial.activity
+    delete partial.livePulseMoments
+    expect(() => writePublicHubCache(origin, '24h', partial as ReturnType<typeof fullSizeHub>)).not.toThrow()
   })
 
   it('projects a poll once, however often it is sized or written', () => {
@@ -552,5 +626,41 @@ describe.skipIf(!capture)('production hub capture', () => {
         measuredAt: new Date().toISOString(),
       }, null, 2) + '\n')
     }
+  })
+})
+
+describe('saving polled hubs', () => {
+  beforeEach(() => {
+    clearPublicHubCacheForTests()
+    localStorage.clear()
+    fetchPublicHubBase.mockReset()
+  })
+
+  it('does not prepare or write a poll that repeats the window and its last closed interval', async () => {
+    // One interval back, so the next one (end + 6 min) is never in the future: a chart point more than five
+    // minutes ahead of the clock is dropped as skew (measurementTimeMs), and the test would then fail in the
+    // first minute of every six.
+    const end = Math.floor(Date.now() / (6 * 60_000)) * 6 * 60_000 - 6 * 60_000
+    const answer = (hub: PublicHub) => ({ data: hub, loadSource: 'full' as const, hubEndpointOk: true, status: 200 })
+    const schedule = vi.spyOn(publicHubCache, 'schedulePublicHubCacheWrite')
+    fetchPublicHubBase.mockResolvedValue(answer(fullSizeHub(500, end)))
+    const { result } = renderHook(() => usePublicHubData({ pollMs: 0, activityWindow: '24h' }))
+    await waitFor(() => expect(result.current.pollSequence).toBe(1))
+    expect(schedule).toHaveBeenCalledTimes(1)
+    // The same closed intervals with new live numbers.
+    const repeat = fullSizeHub(500, end)
+    repeat.poolSize = 640
+    fetchPublicHubBase.mockResolvedValue(answer(repeat))
+    await act(async () => { result.current.refresh() })
+    await waitFor(() => expect(result.current.data?.poolSize).toBe(640))
+    expect(schedule).toHaveBeenCalledTimes(1)
+    // The next interval closes: saved.
+    fetchPublicHubBase.mockResolvedValue(answer(fullSizeHub(500, end + 6 * 60_000)))
+    await act(async () => { result.current.refresh() })
+    await waitFor(() => expect(result.current.pollSequence).toBe(3))
+    expect(schedule).toHaveBeenCalledTimes(2)
+    flushPublicHubCacheWritesForTests()
+    expect(readPublicHubCache(getBackendUrl(), '24h')?.data.activity.points.at(-1)?.t).toBe(end + 6 * 60_000)
+    schedule.mockRestore()
   })
 })

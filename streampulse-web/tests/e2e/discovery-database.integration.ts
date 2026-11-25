@@ -27,7 +27,7 @@ async function connectDatabase(page: Page) {
 
 test.beforeEach(async ({ page }) => { await connectDatabase(page) })
 
-test('exact stored category metadata reaches navigation without a source lookup', async ({ page, request }, info) => {
+test('exact stored category metadata reaches navigation without a repeated source lookup', async ({ page, request }, info) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   const response = await (await request.get(`${apiOrigin}/v1/public/discovery?month=${month}&login=fixturealpha&limit=100`)).json()
   const minecraft = response.items.filter((item: { category?: string }) => item.category === 'Minecraft')
@@ -41,8 +41,9 @@ test('exact stored category metadata reaches navigation without a source lookup'
   // Only the image bytes are intercepted; this is not real-art availability proof.
   await page.route(art, route => route.fulfill({ contentType: 'image/svg+xml', body:
     '<svg xmlns="http://www.w3.org/2000/svg" width="210" height="280"><rect width="210" height="280" fill="#222"/><text x="8" y="140" fill="#ddd">Synthetic category art</text></svg>' }))
-  let sourceChecks = 0
-  page.on('request', req => { if (/\/streams\/[^/]+/.test(new URL(req.url()).pathname)) sourceChecks++ })
+  // A row on screen reads its own stream once, for its picture; nothing reads a stream twice before a review.
+  const sourceReads: string[] = []
+  page.on('request', req => { const path = new URL(req.url()).pathname; if (/\/streams\/[^/]+/.test(path)) sourceReads.push(path) })
   await page.goto(`${entry}&creator=fixturealpha`)
   const category = page.getByRole('button', { name: /^Minecraft \d+ loaded moments?$/ })
   await expect(category).toBeVisible()
@@ -54,7 +55,7 @@ test('exact stored category metadata reaches navigation without a source lookup'
   await category.click()
   await expect(category).toHaveAttribute('aria-pressed', 'true')
   await expect(page).toHaveURL(/category=Minecraft/)
-  expect(sourceChecks).toBe(0)
+  expect(new Set(sourceReads).size).toBe(sourceReads.length)
   await expect(page.locator('iframe')).toHaveCount(0)
 })
 
@@ -67,21 +68,23 @@ test('stored artwork reaches initial cards without authorizing playback', async 
   await page.route('https://static-cdn.jtvnw.net/cf_vods/archive/thumb/test.jpg', route => route.fulfill({
     contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#222"/><text x="24" y="180" fill="#ddd">Synthetic archive artwork test</text></svg>',
   }))
-  let sourceChecks = 0
-  page.on('request', req => { if (/\/streams\/[^/]+/.test(new URL(req.url()).pathname)) sourceChecks++ })
+  // A row on screen reads its own stream once, for its picture; nothing reads a stream twice before a review.
+  const sourceReads: string[] = []
+  page.on('request', req => { const path = new URL(req.url()).pathname; if (/\/streams\/[^/]+/.test(path)) sourceReads.push(path) })
   await page.goto(`${entry}&creator=fixturealpha`)
   await expect(page.locator('.moments-card-artwork').first()).toBeVisible()
   await expect(page.locator('.moments-card-artwork img').first()).toHaveAttribute('loading', 'lazy')
   await page.locator('.moments-card-artwork').first().scrollIntoViewIfNeeded()
   await expect(page.locator('.moments-card-artwork img').first()).toHaveJSProperty('naturalWidth', 640)
   await page.screenshot({ path: info.outputPath('stored-artwork-gallery-1440.png'), fullPage: false })
-  expect(sourceChecks).toBe(0)
+  expect(new Set(sourceReads).size).toBe(sourceReads.length)
+  const rowReads = sourceReads.length
   await expect(page.locator('iframe')).toHaveCount(0)
   await page.locator('.moments-result').first().locator('[data-discovery-key]').click()
   await expect(page.getByRole('region', { name: /^Selected moment: / }).getByText('Replay lookup failed', { exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: /^Selected moment: / }).getByRole('link', { name: /Open VOD at/ })).toHaveCount(0)
   await expect(page.locator('iframe')).toHaveCount(0)
-  expect(sourceChecks).toBeGreaterThan(0)
+  expect(sourceReads.length).toBeGreaterThan(rowReads)
 })
 
 test('stored scorer results page beyond the live-feed cap and preserve totals', async ({ page, request }) => {

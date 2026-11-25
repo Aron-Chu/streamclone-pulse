@@ -1,8 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+// the offline check reads pixels; here every picture is a live one
+vi.mock('../../packages/analytics-console/src/utils/twitchBoxArt.ts', async (load) => ({
+  ...(await load<typeof import('../../packages/analytics-console/src/utils/twitchBoxArt.ts')>()),
+  isTwitchOfflinePreview: vi.fn(async () => false),
+}))
 import { HubV5BigMoments, type HubV5BigMomentsProps } from '../src/ui/components/hub/v5/HubV5BigMoments'
-import { bigFrontByEntry } from '../src/ui/components/hub/v5/hubV5BigMomentsModel'
+import { bigFrontByEntry, bigWhen } from '../src/ui/components/hub/v5/hubV5BigMomentsModel'
 import type { TopView } from '../src/ui/components/hub/v5/HubV5TopMoments'
 import type { TopGame, TopRowData } from '../src/ui/components/hub/v5/hubV5TopModel'
 
@@ -316,19 +322,52 @@ describe('Top moments today, the carousel (C1 11-01, M1 11-02)', () => {
     expect(watch.getAttribute('href')).toBe('https://www.twitch.tv/a')
     expect(watch.getAttribute('target')).toBe('_blank')
     expect(watch.getAttribute('rel')).toBe('noopener noreferrer')
-    expect(slide('a').querySelector('.hv5-bm-bg')!.getAttribute('src')).toBe('https://static-cdn.jtvnw.net/previews-ttv/live_user_a-640x360.jpg')
+    expect(slide('a').querySelector('.hv5-bm-bg')!.getAttribute('src')).toBe(`https://static-cdn.jtvnw.net/previews-ttv/live_user_a-640x360.jpg?t=${Math.floor(NOW / (5 * MIN))}`)
     expect(slide('b').querySelector('.hv5-bm-live, .hv5-bm-tw, .hv5-bm-bg')).toBeNull()
     expect(slide('b').querySelector('.hv5-bm-open')!.getAttribute('href')).toBe('/analytics/moments?m=m-b')
     rerender(ui(list([row('a'), row('b', { live: false })], NOW - 20 * MIN)))
     expect(slide('a').querySelector('.hv5-bm-live, .hv5-bm-tw, .hv5-bm-bg')).toBeNull()
   })
 
-  it('keeps the live badge and Watch live on an older moment, but not today’s live picture behind it (HUB-6)', () => {
+  it('shows the stream now behind an older live moment too, and says so once the picture proves live (Aron, 11-22)', async () => {
     render(ui(list([row('a', { at: NOW - 84 * MIN }), row('b', { at: NOW - 9 * MIN })])))
     expect(within(slide('a')).getByText('LIVE · 5.6K')).toBeTruthy()
     expect(slide('a').querySelector('.hv5-bm-tw')).toBeTruthy()
-    expect(slide('a').querySelector('.hv5-bm-bg')).toBeNull()
+    const pic = slide('a').querySelector<HTMLImageElement>('.hv5-bm-bg')!
+    expect(pic.getAttribute('crossorigin')).toBe('anonymous')
+    // hidden, with no shade and no words, until it proves not to be Twitch's offline picture
+    expect(pic.hasAttribute('data-ok')).toBe(false)
+    expect(slide('a').querySelector('.hv5-bm-shade, .hv5-bm-pn')).toBeNull()
+    await act(async () => { fireEvent.load(pic) })
+    expect(pic.hasAttribute('data-ok')).toBe(true)
+    expect(slide('a').querySelector('.hv5-bm-shade')).toBeTruthy()
+    expect(slide('a').querySelector('.hv5-bm-t')!.textContent).toBe(`${bigWhen(NOW - 84 * MIN, NOW)} · picture: stream now`)
     expect(slide('b').querySelector('.hv5-bm-bg')).toBeTruthy()
+  })
+
+  it('hides the shade and its words again until the next 5-minute picture proves live', async () => {
+    const shown = list([row('a', { at: NOW - 84 * MIN }), row('b')])
+    const at = (nowMs: number) => (
+      <MemoryRouter initialEntries={['/analytics']}><div className="hub-v5"><HubV5BigMoments top={top(shown)} nowMs={nowMs} /></div></MemoryRouter>
+    )
+    const { rerender } = render(at(NOW))
+    await act(async () => { fireEvent.load(slide('a').querySelector('.hv5-bm-bg')!) })
+    expect(slide('a').querySelector('.hv5-bm-pn')).toBeTruthy()
+    rerender(at(NOW + 5 * MIN))
+    const next = slide('a').querySelector<HTMLImageElement>('.hv5-bm-bg')!
+    expect(next.getAttribute('src')).toContain(`?t=${Math.floor((NOW + 5 * MIN) / (5 * MIN))}`)
+    // an offline picture could be loading under it: nothing says "stream now" until the check clears it
+    expect(next.hasAttribute('data-ok')).toBe(false)
+    expect(slide('a').querySelector('.hv5-bm-shade, .hv5-bm-pn')).toBeNull()
+    await act(async () => { fireEvent.load(next) })
+    expect(next.hasAttribute('data-ok')).toBe(true)
+    expect(slide('a').querySelector('.hv5-bm-pn')).toBeTruthy()
+  })
+
+  it('drops a picture that fails, and its words', async () => {
+    render(ui(list([row('a', { at: NOW - 84 * MIN }), row('b')])))
+    await act(async () => { fireEvent.error(slide('a').querySelector('.hv5-bm-bg')!) })
+    expect(slide('a').querySelector('.hv5-bm-bg, .hv5-bm-shade, .hv5-bm-pn')).toBeNull()
   })
 
   it('shows a card with no × as its reason and its rate a minute, with no meter (board 2A)', () => {

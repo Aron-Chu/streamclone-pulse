@@ -11,7 +11,7 @@
  */
 import type { HubLiveChannel, PublicHub } from '../../../../lib/publicHub'
 import { screenerMetricMultiplier } from '../../../../lib/channelScreenerContract'
-import { formatHubInt, hasFullChatWindow, hubClock, hubClockRange } from './hubV5Model'
+import { formatHubClockAt, formatHubInt, hasFullChatWindow, hubClock, hubClockRange } from './hubV5Model'
 
 export const FEED_UP_MIN = 1.5
 export const FEED_NOW_MIN = 30
@@ -40,7 +40,7 @@ export function screenerHot(c: HubLiveChannel | null | undefined): boolean {
 
 /** "4:25 PM", to the minute and never rounded up (the "as of" line). */
 export function feedClockFloor(t: number): string {
-  return new Date(Math.floor(t / 60_000) * 60_000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return formatHubClockAt(new Date(Math.floor(t / 60_000) * 60_000))
 }
 
 /** "just now", "12 min ago", else the clock time. */
@@ -90,6 +90,42 @@ function commonWindow(rows: readonly HubLiveChannel[]): string {
   const top = [...tally.values()].sort((x, y) => y.n - x.n)[0]
   return top ? hubClockRange(top.a, top.b) : ''
 }
+
+export interface FeedClimbRow {
+  login: string
+  name: string
+  cat: string | null
+  streamId: string
+  avatar: string | null
+  /** How much busier the last 5 minutes ran than the 5 before, in percent, as the backend sent it. */
+  pct: number
+}
+
+/**
+ * Climbing (11-21), while Picking up can't tell: the backend's own surge picks, the hub's `moments` of kind
+ * chat_spike or emote_spike. The backend picks a live channel whose chat and emotes over the last 5 minutes ran
+ * at least 60% above the 5 minutes before, with at least 30 chat messages (or 8 7TV emotes) a minute; the
+ * moment's magnitude is that rise (streampulse-backend hub_overview.go). Nothing is picked here: each pick is
+ * joined to its live row for the picture, game and stream link, biggest rise first.
+ */
+export function feedClimbing(hub: Pick<PublicHub, 'liveChannels' | 'moments'> | null | undefined): FeedClimbRow[] {
+  const live = new Map<string, HubLiveChannel>()
+  for (const c of hub?.liveChannels ?? []) live.set(c.login.toLowerCase(), c)
+  const seen = new Set<string>()
+  const rows: FeedClimbRow[] = []
+  for (const m of hub?.moments ?? []) {
+    if (m.kind !== 'chat_spike' && m.kind !== 'emote_spike') continue
+    const login = m.login?.toLowerCase()
+    const c = login ? live.get(login) : undefined
+    if (!login || !c || seen.has(login) || !finite(m.magnitude) || m.magnitude <= 0) continue
+    seen.add(login)
+    rows.push({ login, name: c.displayName || c.login, cat: c.category || null, streamId: c.streamId || '', avatar: c.profileImageUrl || null, pct: m.magnitude })
+  }
+  return rows.sort((a, b) => b.pct - a.pct)
+}
+
+/** "+93%": the rise, whole percent. */
+export const feedPct = (pct: number) => `+${formatHubInt(Math.round(pct))}%`
 
 /** Picking up: chat 1.5×+ usual with the floors above, strongest × first, then most more messages a minute. */
 export function feedUp(hub: Pick<PublicHub, 'liveChannels'> | null | undefined): FeedUp {

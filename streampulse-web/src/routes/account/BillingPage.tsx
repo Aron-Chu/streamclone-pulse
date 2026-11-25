@@ -374,7 +374,7 @@ export default function BillingPage() {
     state = watch === 'slow' ? 'confirming-slow' : 'confirming'
     title = watch === 'slow' ? 'Still confirming your payment' : 'Confirming your payment'
     body = watch === 'slow'
-      ? <p>Some payments take a few minutes to confirm. Don’t start another checkout; this page and your extension update once Stripe confirms. If nothing changes within an hour, <Link to="/support">contact support</Link>.</p>
+      ? <p>Some payments take a few minutes to confirm. Don’t start another checkout; this page and your extension update once Stripe confirms. If nothing changes within an hour, <Link to="/help#ask">contact support</Link>.</p>
       : <p className="pulse-account-waiting"><span className="pulse-account-spinner" aria-hidden="true" />Stripe has your payment details. This usually takes a few seconds, and you don’t need to pay again. Your extension updates by itself.</p>
     primary = refresh('Check again')
     // A pending membership already has a subscription: invoices and the
@@ -401,7 +401,7 @@ export default function BillingPage() {
     title = 'Membership needs review'
     body = <p>Supporter access is paused while a payment is reviewed, for example during an open dispute. Nothing is lost, and your free tools are unaffected.</p>
     primary = portal('Manage subscription')
-    secondary = <Link className="pulse-account-button" to="/support">Contact support</Link>
+    secondary = <Link className="pulse-account-button" to="/help#ask">Contact support</Link>
   } else if (status === 'expired') {
     state = 'expired'
     title = 'Supporter ended'
@@ -456,7 +456,7 @@ export default function BillingPage() {
       {status !== 'none' && load === 'ready' && !uncertain ? <p className="pulse-account-meta">Payment details, invoices and cancellation are in the Stripe Customer Portal. Cancellation takes effect at the end of the paid period.</p> : null}
       {!reauth && showRefresh ? <button className="pulse-account-text-button" type="button" disabled={readBusy} onClick={() => void checkAgain()}>{busy ? 'Checking…' : 'Refresh status'}</button> : null}
     </div>
-    <p className="pulse-account-links">{load !== 'signed_out' ? <><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span></> : null}<Link to={SUPPORTER_TERMS_PATH}>Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link>{supporterWithdrawalEnabled() ? <><span aria-hidden="true">·</span><Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link></> : null}<span aria-hidden="true">·</span><Link to="/support">Support</Link></p>
+    <p className="pulse-account-links">{load !== 'signed_out' ? <><Link to="/account/link-device">Connect your extension</Link><span aria-hidden="true">·</span></> : null}<Link to={SUPPORTER_TERMS_PATH}>Supporter terms</Link><span aria-hidden="true">·</span><Link to="/refunds">Cancellation and refunds</Link>{supporterWithdrawalEnabled() ? <><span aria-hidden="true">·</span><Link to={SUPPORTER_WITHDRAWAL_PATH}>Withdraw from contract here</Link></> : null}<span aria-hidden="true">·</span><Link to="/help">Help</Link></p>
     <AccountFooter current="billing" />
   </section></PublicLayout>
 }

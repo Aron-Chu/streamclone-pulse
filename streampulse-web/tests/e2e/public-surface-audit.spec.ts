@@ -55,10 +55,11 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
 const widths = [360, 390, 720, 768, 1024, 1440]
 const coldPages = [
   ['/', /Find the Twitch moments people actually reacted to/i],
-  ['/docs', /^Get started with Pulse$/i],
+  ['/help', /^Help$/],
   ['/privacy', /Privacy Policy/i],
-  ['/support', /Support & Troubleshooting/i],
-  ['/feedback', /^Send feedback$/i],
+  // An old address: it opens Help.
+  ['/support', /^Help$/],
+  ['/guides/twitch-vod-timestamps', /^Twitch VOD timestamp links$/],
   ['/status', /System Status/i],
 ] as const
 
@@ -80,10 +81,12 @@ test.describe('public surface audit', () => {
   test('cold route documents contain their own prerendered heading before hydration', async ({ request }) => {
     const expected = [
       ['/', 'Find the Twitch moments people'],
-      ['/docs', 'Get started with Pulse'],
+      ['/help', '>Help</h1>'],
+      ['/docs', '>Help</h1>'],
       ['/analytics', 'StreamPulse Analytics'],
-      ['/feedback', 'Send feedback</h1>'],
-      ['/feedback/', 'Send feedback</h1>'],
+      ['/feedback', '>Help</h1>'],
+      ['/feedback/', '>Help</h1>'],
+      ['/guides/twitch-vod-timestamps', '>Twitch VOD timestamp links</h1>'],
     ] as const
     for (const [route, heading] of expected) {
       const response = await request.get(route)
@@ -93,7 +96,7 @@ test.describe('public surface audit', () => {
   })
 
   test('cold route documents carry a large link preview with the shared card image', async ({ request }) => {
-    for (const route of ['/', '/docs', '/status', '/support', '/privacy']) {
+    for (const route of ['/', '/help', '/docs', '/status', '/support', '/privacy']) {
       const html = await (await request.get(route)).text()
       const meta = (attribute: string, key: string) =>
         new RegExp(`<meta ${attribute}="${key}" content="([^"]*)"`).exec(html)?.[1]
@@ -111,37 +114,33 @@ test.describe('public surface audit', () => {
     await installPublicMocks(page, [])
   })
 
-  test('/support links to the private /feedback page, which needs no account and labels public alternatives', async ({ page }) => {
+  test('old /support and /feedback links open Help, whose private form needs no account and labels public alternatives', async ({ page }) => {
     await page.goto('/support')
-    const card = page.getByTestId('support-feedback-link')
-    await expect(card).toHaveAttribute('id', 'send-feedback')
-    // "Send feedback" with a configured form; "See where to ask" before the form opens.
-    const cardLink = card.getByRole('link', { name: /^(Send feedback|See where to ask)$/ })
-    await expect(cardLink).toHaveAttribute('href', '/feedback')
-    await expect(page.getByRole('heading', { name: 'Extension not appearing on Twitch' })).toBeVisible()
-    await cardLink.click()
-    await expect(page).toHaveURL(/\/feedback$/)
-    await expect(page.getByRole('heading', { level: 1, name: 'Send feedback' })).toBeVisible()
-    const form = page.getByTestId('support-form')
-    const off = page.getByTestId('support-form-unavailable')
+    await expect(page).toHaveURL(/\/help#fix$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Help' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'The Chat / Pulse switch is missing' })).toBeVisible()
+    await page.goto('/feedback')
+    await expect(page).toHaveURL(/\/help#feedback$/)
+    const card = page.getByTestId('help-feedback')
+    await expect(card).toHaveAttribute('id', 'feedback')
+    const form = card.getByTestId('support-form')
+    const off = card.getByTestId('support-form-unavailable')
     await expect(form.or(off)).toBeVisible()
     if (await form.isVisible()) {
-      await expect(page.getByText('No account needed.')).toBeVisible()
+      await expect(page.getByTestId('help-feedback-sub')).toContainText('No account needed.')
       await expect(page.getByTestId('feedback-private-note')).toContainText('Only the StreamPulse team reads it')
     }
-    // The audit build has no Turnstile key, so the page says the private form
-    // opens soon and makes no private-delivery promise or invitation above it.
+    // The audit build has no Turnstile key, so the card says the private form
+    // opens soon and makes no private-delivery promise above it.
     if (await off.isVisible()) {
-      await expect(page.getByTestId('feedback-page-sub')).toHaveText('Our private form opens soon. Until then, you can ask in public.')
-      await expect(page.getByTestId('feedback-soon-badge')).toHaveText('Form opens soon')
-      await expect(page.getByTestId('feedback-private-badge')).toHaveCount(0)
+      await expect(page.getByTestId('help-feedback-sub')).toHaveText('Our private form opens soon. Until then, you can ask in public.')
       await expect(page.getByTestId('feedback-private-note')).toHaveCount(0)
-      await expect(page.getByTestId('support-discord-line')).toHaveCount(0)
       await expect(off.getByTestId('feedback-public-alternatives')).toContainText('Public alternatives. Anyone can read these')
       await expect(off.getByRole('link', { name: /Open a public issue on GitHub/ })).toBeVisible()
     }
     const footer = page.getByRole('navigation', { name: 'Footer' })
-    await expect(footer.getByRole('link', { name: 'Send feedback' })).toHaveAttribute('href', '/feedback')
+    await expect(footer.getByRole('link', { name: 'Help', exact: true })).toHaveAttribute('href', '/help')
+    await expect(footer.getByRole('link', { name: 'Send feedback' })).toHaveCount(0)
   })
 
   test('cold public entries load no analytics UI or optional demo and report actual font downloads', async ({ page, request }, testInfo) => {
@@ -199,38 +198,38 @@ test.describe('public surface audit', () => {
     const mutations: string[] = []
     await installPublicMocks(page, mutations)
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/docs')
+    await page.goto('/privacy')
     await page.keyboard.press('Tab')
     await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(page.locator('#public-main')).toBeFocused()
-    const menu = page.getByRole('button', { name: 'Menu' })
+    const menu = page.getByRole('button', { name: 'Menu', exact: true })
     await menu.click()
     await expect(menu).toHaveAttribute('aria-expanded', 'true')
     await page.keyboard.press('Escape')
     await expect(menu).toBeFocused()
     await expect(menu).toHaveAttribute('aria-expanded', 'false')
     await menu.click()
-    await page.getByRole('navigation', { name: 'Main Navigation' }).getByRole('link', { name: 'Privacy' }).click()
-    await expect(page).toHaveURL(/\/privacy$/)
+    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Help', exact: true }).click()
+    await expect(page).toHaveURL(/\/help$/)
     expect(mutations.filter((entry) => /collector|analytics\/.*\/watch/i.test(entry))).toEqual([])
   })
 
   test('landing menu traps focus, closes with Escape, exposes public routes, and labels samples', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/')
-    const menu = page.getByRole('button', { name: 'Menu' })
+    const menu = page.getByRole('button', { name: 'Menu', exact: true })
     await menu.click()
     const dialog = page.getByRole('dialog', { name: 'StreamPulse' })
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByRole('link', { name: 'Docs' })).toHaveAttribute('href', '/docs')
-    await expect(dialog.getByRole('link', { name: 'Status' })).toHaveAttribute('href', '/status')
-    await expect(dialog.getByRole('link', { name: 'Support' })).toHaveAttribute('href', '/support')
-    await expect(dialog.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
-    // The drawer's primary button once inherited the text-link colour (#eee on #fafafa, about 1.06:1).
-    const openAnalytics = dialog.getByRole('link', { name: 'Open the Hub' })
-    await expect(openAnalytics).toBeVisible()
-    const contrast = await openAnalytics.evaluate((element) => {
+    await expect(dialog.getByRole('link', { name: 'Hub', exact: true })).toHaveAttribute('href', '/analytics')
+    await expect(dialog.getByRole('link', { name: 'Moments', exact: true })).toHaveAttribute('href', '/analytics/moments')
+    await expect(dialog.getByRole('link', { name: 'Help', exact: true })).toHaveAttribute('href', '/help')
+    // The drawer's links are read on its own panel (a drawer button once inherited the text-link colour,
+    // #eee on #fafafa, about 1.06:1).
+    const hub = dialog.getByRole('link', { name: 'Hub', exact: true })
+    await expect(hub).toBeVisible()
+    const contrast = await hub.evaluate((element) => {
       const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number)
       const lum = (value: string) => {
         const [r, g, b] = rgb(value).map((channel) => {
@@ -239,8 +238,8 @@ test.describe('public surface audit', () => {
         })
         return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
       }
-      const style = getComputedStyle(element)
-      const [hi, lo] = [lum(style.color), lum(style.backgroundColor)].sort((x, y) => y - x)
+      const panel = element.closest('.site-menu__panel')!
+      const [hi, lo] = [lum(getComputedStyle(element).color), lum(getComputedStyle(panel).backgroundColor)].sort((x, y) => y - x)
       return (hi! + 0.05) / (lo! + 0.05)
     })
     expect(contrast).toBeGreaterThanOrEqual(4.5)
@@ -249,21 +248,22 @@ test.describe('public surface audit', () => {
     await expect(page.getByText(/Sample data · interactive demonstration/i)).toBeVisible()
     await expect(page.locator('details.sl-optional-demo')).toHaveCount(0)
     await page.locator('#demo .sl-container > div:nth-child(2)').scrollIntoViewIfNeeded()
-    await expect(page.locator('.sl-xtour')).toHaveAttribute('data-static', '')
-    await expect(page.getByRole('region', { name: 'StreamPulse Pulse sidebar preview' })).toBeVisible()
+    await expect(page.locator('.es-demo .es')).toBeVisible()
+    await expect(page.getByRole('group', { name: 'Demo steps' })).toBeVisible()
     await expectNoHorizontalOverflow(page)
   })
 
-  test('documentation sections are numbered in reading order', async ({ page }) => {
-    await page.goto('/docs')
-    const headings = await page.getByTestId('docs-page').locator('h2').allInnerTexts()
-    expect(headings.filter((text) => /^\d+\./.test(text)).map((text) => Number.parseInt(text, 10))).toEqual([1, 2, 3])
+  test('Help sections follow its table of contents', async ({ page }) => {
+    await page.goto('/help')
+    const toc = await page.getByRole('navigation', { name: 'On this page' }).getByRole('link').allInnerTexts()
+    const headings = await page.getByTestId('help-page').locator('h2').allInnerTexts()
+    expect(headings.slice(0, toc.length)).toEqual(toc)
   })
 
-  test('documentation aliases resolve while unknown documentation routes retain not-found metadata', async ({ page }) => {
+  test('old documentation addresses open Help while unknown documentation routes retain not-found metadata', async ({ page }) => {
     await page.goto('/docs/getting-started')
-    await expect(page).toHaveURL(/\/docs#extension$/)
-    await expect(page.getByRole('heading', { level: 1, name: /^Get started with Pulse$/i })).toBeVisible()
+    await expect(page).toHaveURL(/\/help#install$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Help' })).toBeVisible()
     await page.goto('/docs/unknown-audit-route')
     await expect(page.getByRole('heading', { level: 1, name: /Page not found/i })).toBeVisible()
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/i)

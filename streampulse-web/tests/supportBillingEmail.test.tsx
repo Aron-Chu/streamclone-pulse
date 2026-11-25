@@ -1,11 +1,11 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
-import Support from '../src/routes/public/Support'
+import Help from '../src/routes/public/Help'
 
 describe('billing email help', () => {
   it('gives signed-in and lost-browser routes without promising a cancellation', () => {
-    render(<MemoryRouter><Support /></MemoryRouter>)
+    render(<MemoryRouter><Help /></MemoryRouter>)
     const heading = screen.getByRole('heading', { name: "Can't get into your billing email?" })
     const section = heading.closest('section')!
     expect(section.id).toBe('billing-email')

@@ -8,7 +8,8 @@ import { discoveryAnalyticsHref, type DiscoveryMoment } from '../../../lib/disco
 import { broadcastTimelineHref } from '../../../lib/momentsNavigation'
 import { momentComparisonBadge } from '../../../lib/momentComparison'
 import type { ArchiveArtwork } from '../../../lib/archiveArtwork'
-import { MomentArchiveArtwork } from './MomentArchiveArtwork'
+import { handOverMoment, momentPageHref, momentPageWarmth } from '../../../lib/momentPageFlag'
+import { MomentRowPicture } from './MomentPreview'
 import { SaveMomentButton } from './SaveMomentButton'
 import { useMomentRelativeAge } from './useMomentRelativeAge'
 import { EmoteImg } from '../analytics/EmoteImg'
@@ -84,6 +85,8 @@ export function MomentRow({
   const early = earlyInStream(moment.offsetSeconds)
   const edge = momentEdge(moment.offsetSeconds, moment.streamEdge)
   const badge = early ? null : momentComparisonBadge(moment.comparison, moment.reactionSignal)
+  // The Moment's own page for this row's minute, when the build has the page.
+  const pagePath = momentPageHref({ streamId: moment.streamId, at: moment.at })
   return <article
     className={`moments-result${selected ? ' is-selected' : ''}`}
     data-arrival-key={moment.key}
@@ -97,8 +100,9 @@ export function MomentRow({
       onSelect(moment, event.currentTarget)
     }}
   >
-    {/* Every row keeps the 88 px slot, so titles, times and emotes line up (Z03, 11-13); it hides in a narrow list. */}
-    <div className="moments-card-slot" aria-hidden={artwork ? undefined : 'true'}>{artwork ? <MomentArchiveArtwork artwork={artwork} /> : null}</div>
+    {/* Every row keeps the 88 px slot, so titles, times and emotes line up (Z03, 11-13); it hides in a narrow list.
+        Its picture says what it is, and is asked for only once the row is near the screen. */}
+    <MomentRowPicture moment={moment} artwork={artwork} />
     {creator}
     <div className="moments-result-body">
       <p className="moments-result-title">
@@ -147,6 +151,8 @@ export function MomentRow({
     <div className="moments-actions">
       <Link aria-label={`Stream analytics for ${name} ${moment.label} at ${offset}`} to={discoveryAnalyticsHref(moment)}>Analytics</Link>
       <Link to={broadcastTimelineHref(moment.login, moment.streamId, location.pathname + location.search, moment.offsetSeconds)}>View stream timeline</Link>
+      {pagePath ? <Link aria-label={`Moment page for ${name} at ${offset}`} to={pagePath} state={{ from: 'moments', moment: handOverMoment(moment, moment.at) }}
+        {...momentPageWarmth({ streamId: moment.streamId, at: moment.at })}>Moment page</Link> : null}
       <SaveMomentButton moment={moment} />
     </div>
   </article>

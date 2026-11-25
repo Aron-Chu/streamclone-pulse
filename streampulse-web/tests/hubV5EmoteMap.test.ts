@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import type { HubActivityPoint, HubBucketEmote, HubLivePulseMoment } from '../src/lib/publicHub'
-import { hubClockRange } from '../src/ui/components/hub/v5/hubV5Model'
+import type { HubActivityPoint, HubBucketEmote, HubEmote, HubLivePulseMoment } from '../src/lib/publicHub'
+import { hubClock, hubClockRange } from '../src/ui/components/hub/v5/hubV5Model'
 import {
   EMOTE_FIELD_INSET,
   EMOTE_ZOOM_MAX,
   MAP_VIEW_1X,
   NO_TILE_FITS,
+  animatedFlags,
+  animatedFlagsFromKey,
+  animatedFlagsKey,
   clampMapView,
   conveyorEmotes,
   conveyorRng,
+  emoteAxisTicks,
+  emoteBarWords,
   emoteChange,
   emoteDrivers,
   emoteFlagKey,
@@ -23,8 +28,12 @@ import {
   emoteMapLayout,
   emoteMapMeta,
   emoteMapNext,
+  emoteMapSignature,
   emoteMapValue,
   emoteMomentRows,
+  emoteNiceTop,
+  emoteRateLabel,
+  emoteSpanWords,
   emoteSpike,
   emoteWindowFrom,
   emoteWindowLabel,
@@ -36,6 +45,7 @@ import {
   fieldMapView,
   fieldOf,
   findMapEmote,
+  keepEmoteMapData,
   mapRectOnScreen,
   mapViewShowing,
   nearestTile,
@@ -587,6 +597,45 @@ describe('the busiest interval in words (C1, 10-30)', () => {
     expect(emotePerMinute(100, 2190)).toBe('<0.1')
     expect(emotePerMinute(0, 6)).toBe('0')
   })
+
+  it('puts the chart’s top line on the first round rate at or above the busiest bar (4A, 11-22)', () => {
+    expect([463, 10, 9.8, 4.2, 1.67, 0.3, 0.12, 0].map(emoteNiceTop)).toEqual([500, 10, 10, 5, 2, 0.3, 0.15, 1])
+    expect([500, 10, 2.5, 0.15, 1204].map(emoteRateLabel)).toEqual(['500', '10', '2.5', '0.15', '1,204'])
+  })
+
+  it('names the bars and the span they cover (4A, 11-22)', () => {
+    expect([6, 42, 60, 120, 1440, 2190].map(emoteBarWords)).toEqual(['6-minute bars', '42-minute bars', '1-hour bars', '2-hour bars', '1-day bars', '36.5-hour bars'])
+    const a = new Date(2026, 10, 22, 8, 0).getTime()
+    const b = new Date(2026, 10, 22, 14, 0).getTime()
+    const c = new Date(2026, 10, 21, 14, 0).getTime()
+    expect(emoteSpanWords(a, b, 6)).toBe(`Nov 22, ${hubClock(a)} to ${hubClock(b)}`)
+    expect(emoteSpanWords(c, b, 6)).toBe(`Nov 21, ${hubClock(c)} to Nov 22, ${hubClock(b)}`)
+    expect(emoteSpanWords(new Date(2026, 9, 23).getTime(), new Date(2026, 10, 22).getTime(), 1440)).toBe('Oct 23 to Nov 21')
+  })
+
+  it('marks round local times under the chart, at most five, clear of the end label (4A, 11-22)', () => {
+    const end = new Date(2026, 10, 22, 14, 3).getTime()
+    const day = emoteAxisTicks(end - 1440 * MIN, end)
+    expect(day.length).toBeGreaterThanOrEqual(3)
+    expect(day.length).toBeLessThanOrEqual(5)
+    for (const t of day) {
+      const at = new Date(end - 1440 * MIN + t.x * 1440 * MIN)
+      expect(at.getMinutes()).toBe(0)
+      expect(at.getHours() % 6).toBe(0)
+      expect(t.label).toBe(hubClock(at.getTime()))
+      expect(t.x).toBeGreaterThanOrEqual(0)
+      expect(t.x).toBeLessThanOrEqual(0.86)
+    }
+    expect(day.map((t) => t.x)).toEqual([...day.map((t) => t.x)].sort((p, q) => p - q))
+    // an hour: every 15 minutes
+    const hour = emoteAxisTicks(end - 60 * MIN, end)
+    expect(hour.every((t) => new Date(end - 60 * MIN + t.x * 60 * MIN).getMinutes() % 15 === 0)).toBe(true)
+    // a month: days, by date
+    const month = emoteAxisTicks(end - 30 * 1440 * MIN, end)
+    expect(month.length).toBeLessThanOrEqual(5)
+    expect(month.every((t) => /^[A-Z][a-z]{2} \d{1,2}$/.test(t.label))).toBe(true)
+    expect(emoteAxisTicks(end, end)).toEqual([])
+  })
 })
 
 describe('who drove it (C1, 10-30)', () => {
@@ -888,5 +937,59 @@ describe('Find emote (3A, 11-02)', () => {
   it('keeps the whole map for a tile already that big, or no size', () => {
     expect(tileMapView({ x: 0, y: 0, w: 300, h: 200 }, W, H)).toEqual(MAP_VIEW_1X)
     expect(tileMapView({ x: 0, y: 0, w: 20, h: 20 }, 0, 0)).toEqual(MAP_VIEW_1X)
+  })
+})
+
+describe('the map data across polls', () => {
+  const pts = () => [
+    point(0, 6, [em('EmA', 'twitch', 30), em('EmB', 'seventv', 10)]),
+    point(1, 6, [em('EmB', 'seventv', 20)]),
+    point(2, 6, [em('EmA', 'twitch', 5)], { bucketComplete: false }),
+  ]
+
+  it('keeps the same data object for a poll that repeats the closed intervals', () => {
+    const a = keepEmoteMapData(null, pts(), 6)
+    expect(a.data).not.toBeNull()
+    // new point objects, the same closed intervals
+    const b = keepEmoteMapData(a, pts(), 6)
+    expect(b).toBe(a)
+    expect(b.data).toBe(a.data)
+    // the open live edge moving does not count
+    const edge = pts()
+    edge[2] = point(2, 6, [em('EmA', 'twitch', 50)], { bucketComplete: false })
+    expect(keepEmoteMapData(a, edge, 6).data).toBe(a.data)
+  })
+
+  it('changes it for a revised last interval, a newly closed one, or a new bucket length', () => {
+    const a = keepEmoteMapData(null, pts(), 6)
+    const revised = pts()
+    revised[1] = point(1, 6, [em('EmB', 'seventv', 21)])
+    const b = keepEmoteMapData(a, revised, 6)
+    expect(b.data).not.toBe(a.data)
+    expect(b.data!.emotes.find((e) => e.e.name === 'EmB')!.c24).toBe(31)
+    const closed = pts()
+    closed[2] = point(2, 6, [em('EmA', 'twitch', 5)])
+    expect(keepEmoteMapData(a, closed, 6).data).not.toBe(a.data)
+    expect(keepEmoteMapData(a, pts(), 5).data).not.toBe(a.data)
+    expect(keepEmoteMapData(a, pts().slice(1), 6).data).not.toBe(a.data)
+  })
+
+  it('signs the points in one pass, in any order', () => {
+    const p = pts()
+    expect(emoteMapSignature([p[2]!, p[1]!, p[0]!], 6)).toBe(emoteMapSignature(p, 6))
+    expect(emoteMapSignature([], 6)).toBe(emoteMapSignature([point(0, 6, [])], 6))
+  })
+})
+
+describe('animated flags', () => {
+  const top = (names: ReadonlyArray<[string, string, boolean]>) => names.map(([name, provider, animated]) => ({ name, provider, animated }) as HubEmote)
+
+  it('keys the hub top list by its animated emotes only, in any order', () => {
+    const key = animatedFlagsKey(top([['LOL', 'seventv', true], ['Kappa', 'twitch', false], ['catJAM', 'seventv', true]]))
+    expect(key).toBe(animatedFlagsKey(top([['catJAM', 'seventv', true], ['LOL', 'seventv', true]])))
+    expect([...animatedFlagsFromKey(key)].sort()).toEqual([emoteFlagKey('seventv', 'LOL'), emoteFlagKey('seventv', 'catJAM')].sort())
+    expect(animatedFlags(top([['LOL', 'seventv', true]])).has(emoteFlagKey('seventv', 'LOL'))).toBe(true)
+    expect(animatedFlagsKey(undefined)).toBe('')
+    expect(animatedFlagsFromKey('').size).toBe(0)
   })
 })

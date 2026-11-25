@@ -29,7 +29,6 @@ describe('analytics console component typography floor', () => {
     const offenders: string[] = []
     const files = [
       ...componentFiles(root),
-      resolve(process.cwd(), 'src/components/analytics/emoteTableLayout.ts'),
       resolve(process.cwd(), 'src/utils/momentListDisplay.tsx'),
     ]
     for (const file of files) {

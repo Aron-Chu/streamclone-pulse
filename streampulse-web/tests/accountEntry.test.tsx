@@ -5,7 +5,7 @@ import { AccountError, accountRequest } from '../src/lib/accountApi'
 import { accountHeaderEnabled } from '../src/lib/accountHeaderFlag'
 import { leaveAccountPagesAfterSignOut, resetAccountSessionForTests } from '../src/lib/accountSession'
 import { AccountEntry, AccountMenuButton } from '../src/ui/components/AccountEntry'
-import { AnalyticsTopNav } from '../src/ui/components/analytics/AnalyticsTopNav'
+import { SiteHeader } from '../src/ui/components/SiteHeader'
 import { PublicLayout } from '../src/ui/components/PublicLayout'
 
 vi.mock('../src/lib/accountApi', async importOriginal => ({ ...await importOriginal<typeof import('../src/lib/accountApi')>(), accountRequest: vi.fn() }))
@@ -152,25 +152,25 @@ describe('header account entry flag (VITE_ACCOUNT_HEADER)', () => {
     expect(accountHeaderEnabled()).toBe(true)
   })
 
-  it('leaves both headers as on master while off, even for a session cookie holder', async () => {
+  it('leaves the site header as on master while off, even for a session cookie holder', async () => {
     vi.stubEnv('VITE_ACCOUNT_HEADER', '')
     signedIn()
-    const items = [{ label: 'Home', to: '/analytics', end: true }]
     const publicView = render(<MemoryRouter initialEntries={['/docs']}><PublicLayout><h1>Docs</h1></PublicLayout></MemoryRouter>)
     await act(async () => { await Promise.resolve() })
     const publicHeader = screen.getByRole('banner')
-    expect(publicHeader.className).toBe('app-nav')
+    expect(publicHeader.className).toBe('site-header')
     expect(publicHeader.querySelector('.account-entry')).toBeNull()
     expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Account' })).toBeNull()
     publicView.unmount()
 
-    render(<MemoryRouter><AnalyticsTopNav items={items} /></MemoryRouter>)
+    render(<MemoryRouter><SiteHeader mainId="analytics-main" variant="analytics" /></MemoryRouter>)
     await act(async () => { await Promise.resolve() })
     const analyticsHeader = screen.getByRole('banner')
-    expect(analyticsHeader.className).toBe('analytics-topnav')
+    expect(analyticsHeader.className).toBe('site-header')
     expect(analyticsHeader.querySelector('.account-entry')).toBeNull()
-    const menu = document.getElementById(screen.getByRole('button', { name: 'Navigation menu' }).getAttribute('aria-controls')!)!
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    const menu = screen.getByRole('dialog')
     expect(menu.querySelector('a[href="/account/sign-in"]')).toBeNull()
     expect(menu.querySelector('a[href="/account/settings"]')).toBeNull()
     expect(accountRequest).not.toHaveBeenCalled()
@@ -183,23 +183,24 @@ describe('header placement (VITE_ACCOUNT_HEADER=1)', () => {
 
   it('adds the entry to the public layout header', async () => {
     render(<MemoryRouter initialEntries={['/docs']}><PublicLayout><h1>Docs</h1></PublicLayout></MemoryRouter>)
-    expect(screen.getByRole('banner').className).toBe('app-nav app-nav--account')
+    expect(screen.getByRole('banner').className).toBe('site-header site-header--account')
     expect((await screen.findByRole('link', { name: 'Sign in' })).getAttribute('href')).toBe('/account/sign-in')
     expect(screen.getByRole('banner').querySelector('[data-account-entry="signed-out"]')).toBeTruthy()
   })
 
-  it('sends the analytics menu account link where the current state needs it', async () => {
-    const items = [{ label: 'Home', to: '/analytics', end: true }]
-    const view = render(<MemoryRouter><AnalyticsTopNav items={items} /></MemoryRouter>)
-    const menu = () => document.getElementById(screen.getByRole('button', { name: 'Navigation menu' }).getAttribute('aria-controls')!)!
+  it('sends the phone menu account link where the current state needs it', async () => {
+    const view = render(<MemoryRouter><SiteHeader mainId="analytics-main" variant="analytics" /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    const menu = () => screen.getByRole('dialog')
     await waitFor(() => expect(menu().querySelector('a[href="/account/sign-in"]')?.textContent).toBe('Sign in'))
     expect(menu().querySelector('a[href="/account/settings"]')).toBeNull()
-    expect(screen.getByRole('banner').className).toBe('analytics-topnav analytics-topnav--account')
+    expect(screen.getByRole('banner').className).toBe('site-header site-header--account')
     view.unmount()
 
     resetAccountSessionForTests()
     signedIn()
-    render(<MemoryRouter><AnalyticsTopNav items={items} /></MemoryRouter>)
+    render(<MemoryRouter><SiteHeader mainId="analytics-main" variant="analytics" /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
     await waitFor(() => expect(menu().querySelector('a[href="/account/settings"]')?.textContent).toBe('Account & devices'))
     expect(menu().querySelector('a[href="/account/sign-in"]')).toBeNull()
     await waitFor(() => expect(screen.getByRole('banner').querySelector('[data-account-entry="signed-in"]')).toBeTruthy())

@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import TwitchTimestampTool from '../src/routes/public/TwitchTimestampTool'
 import FindTwitchMomentsGuide from '../src/routes/public/FindTwitchMomentsGuide'
 import TwitchVodTimestampsGuide from '../src/routes/public/TwitchVodTimestampsGuide'
 import { resolvePageMetadata } from '../src/lib/pageMetadata'
-import { GROWTH_PAGES } from '../src/lib/growthPages'
+import { GROWTH_PAGES, TIMESTAMP_TOOL_PATH } from '../src/lib/growthPages'
 import { captureTimestampLinkBuilt } from '../src/lib/productAnalytics'
 
 vi.mock('../src/lib/productAnalytics', async importOriginal => ({
@@ -15,7 +14,8 @@ vi.mock('../src/lib/productAnalytics', async importOriginal => ({
 vi.mock('../src/ui/components/TimestampToolFeedback', () => ({ TimestampToolFeedback: () => <span data-testid="feedback-invitation" /> }))
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.mocked(captureTimestampLinkBuilt).mockClear() })
-function tool() { render(<MemoryRouter><TwitchTimestampTool /></MemoryRouter>) }
+// The builder now opens the timestamps guide.
+function tool() { render(<MemoryRouter><TwitchVodTimestampsGuide /></MemoryRouter>) }
 function build() {
   fireEvent.change(screen.getByLabelText('Twitch VOD link or video ID'), { target: { value: '2916038039' } })
   fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '1:23:45' } })
@@ -73,18 +73,30 @@ describe('public growth page content and metadata', () => {
     expect(new Set(GROWTH_PAGES.map(page => page.title)).size).toBe(GROWTH_PAGES.length)
     expect(resolvePageMetadata('/tools/nonexistent').robots).toBe('noindex,nofollow')
   })
+  it('points the builder\'s old address at the guide it moved into', () => {
+    const guide = GROWTH_PAGES.find(page => page.canonicalPath === '/guides/twitch-vod-timestamps')!
+    expect(GROWTH_PAGES.map(page => page.canonicalPath as string)).not.toContain(TIMESTAMP_TOOL_PATH)
+    expect(resolvePageMetadata(TIMESTAMP_TOOL_PATH)).toMatchObject({ title: guide.title, canonicalPath: guide.canonicalPath, robots: 'noindex,nofollow' })
+  })
+  it('opens the timestamps guide with the builder, before the explanations', () => {
+    tool()
+    const builder = screen.getByRole('button', { name: 'Build timestamp link' })
+    const firstSection = screen.getAllByRole('heading', { level: 2 })[0]
+    expect(builder.compareDocumentPosition(firstSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(document.getElementById('builder')).toBeTruthy()
+  })
   it('keeps the tracked-stream and local-bookmark limitations visible in the workflow guide', () => {
     render(<MemoryRouter><FindTwitchMomentsGuide /></MemoryRouter>)
     expect(screen.getByText(/does not reconstruct missing history/)).toBeTruthy()
     expect(screen.getByText(/not a cross-device backup/)).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'timestamp link builder' }).getAttribute('href')).toBe('/tools/twitch-vod-timestamp-link')
+    expect(screen.getByRole('link', { name: 'timestamp link builder' }).getAttribute('href')).toBe('/guides/twitch-vod-timestamps')
   })
   it('explains retention, alignment and restrictions with official source links', () => {
     render(<MemoryRouter><TwitchVodTimestampsGuide /></MemoryRouter>)
-    expect(screen.getByText('7 days for other broadcasters.')).toBeTruthy()
+    expect(screen.getByText('7 days for most broadcasters.')).toBeTruthy()
     expect(screen.getByText('14 days for Affiliates.')).toBeTruthy()
     expect(screen.getByText('60 days for Partners, Prime and Turbo users.')).toBeTruthy()
-    expect(screen.getByText(/does not restore deleted VODs/)).toBeTruthy()
+    expect(screen.getByText(/doesn’t restore deleted replays/)).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Twitch’s on-demand content guide' }).getAttribute('href')).toBe('https://help.twitch.tv/s/article/video-on-demand')
   })
 })

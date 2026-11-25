@@ -18,3 +18,13 @@ describe('hub v5 "Analytics content" focus target', () => {
     expect(css).toMatch(/\n\.analytics-focus-target:focus \{[^}]*position: static;[^}]*width: auto;[^}]*height: auto;[^}]*clip-path: none;/)
   })
 })
+
+describe('the Top emotes chips’ focus ring (11-19)', () => {
+  it('is inset, as the hub’s other rows in a scroller have it, so the row’s overflow does not clip it', () => {
+    expect(css).toMatch(/\.hv5-emr-list \{[^}]*overflow-x: auto;/)
+    expect(css).toMatch(/\.hub-v5 \.hv5-emr button\.hv5-emr-c:focus-visible \{ outline: 2px solid var\(--sp-focus\); outline-offset: -2px; \}/)
+    for (const row of ['.hv5-feed .hv5-fd', '.hv5-games .hv5-gr', '.hv5-top .hv5-tm-row']) {
+      expect(css).toContain(`.hub-v5 ${row}:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: -2px; }`)
+    }
+  })
+})

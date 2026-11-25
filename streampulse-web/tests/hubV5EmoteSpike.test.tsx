@@ -73,6 +73,13 @@ function renderMap(
 }
 
 const pickPog = () => fireEvent.click(screen.getByRole('button', { name: /^#2 Pog/ }))
+
+/** The chart's bars: two shapes (one subpath a bar) and the busiest as its own rect (4A, 11-22). */
+function drawn(svg: Element) {
+  const subpaths = (sel: string) => (svg.querySelector(sel)?.getAttribute('d')?.match(/M/g) ?? []).length
+  const hi = svg.querySelectorAll('rect.hv5-es-hi').length
+  return { all: subpaths('path.hv5-es-b') + subpaths('path.hv5-es-gap') + hi, gaps: subpaths('path.hv5-es-gap'), hi }
+}
 const chips = () => [...screen.getByRole('group', { name: 'Emote map window' }).querySelectorAll('button')]
 
 beforeEach(() => {
@@ -87,20 +94,51 @@ afterEach(() => {
 })
 
 describe('a clicked emote (C1, 10-30)', () => {
-  it('draws its uses per interval with the busiest one marked', () => {
+  it('draws its uses a minute per interval on a scale, the busiest labelled where it stands (4A, 11-22)', () => {
     requestHubBucketMoments.mockReturnValue(new Promise(() => {}))
     const { container } = renderMap()
     pickPog()
     const bars = container.querySelector('svg.hv5-es-bars')!
-    expect(bars.querySelectorAll('rect')).toHaveLength(239)
-    expect(bars.querySelectorAll('rect.hv5-es-gap')).toHaveLength(237)
-    expect(bars.querySelectorAll('rect.hv5-es-hi')).toHaveLength(1)
+    expect(drawn(bars)).toEqual({ all: 239, gaps: 237, hi: 1 })
+    // top, middle and bottom lines; the busiest bar (10 a minute) reaches the top line at 10/min
+    expect(bars.querySelectorAll('.hv5-es-grid line')).toHaveLength(3)
+    expect(bars.querySelector('rect.hv5-es-hi')!.getAttribute('height')).toBe('100')
+    expect(container.querySelector('.hv5-es-top')!.textContent).toBe('top line 10/min')
     const busiest = hubClockRange(SPIKE, SPIKE + BM * MIN)
-    expect(bars.getAttribute('aria-label')).toBe(`Pog uses per interval, last 24 h, busiest ${busiest} at 10 a minute`)
-    expect(container.querySelector('.hv5-es-pk')!.textContent).toBe(`Busiest ${busiest} · 10 a minute`)
-    expect(container.querySelector('.hv5-es-ax')!.textContent).toMatch(/^24 h ago.*now$/)
+    const chart = screen.getByRole('group', { name: `Pog: uses a minute, 6-minute bars, last 24 h, busiest ${busiest} at 10 a minute. Arrow keys step through the bars.` })
+    expect(chart.getAttribute('tabindex')).toBe('0')
+    expect(container.querySelector('.hv5-es-pk')!.textContent).toBe(`10/min ${busiest}`)
+    // the busiest bar is 42% along: the label centres on it
+    expect(container.querySelector('.hv5-es-pk')!.classList.contains('hv5-es-pk-c')).toBe(true)
+    expect(container.querySelector('.hv5-es-ax')!.textContent).toMatch(/now$/)
+    expect(container.querySelector('.hv5-es-ax')!.querySelectorAll('span').length).toBeGreaterThan(2)
+    expect(container.querySelector('.hv5-es-read')!.textContent).toMatch(/^6-minute bars, /)
+    expect(container.querySelector('.hv5-es-key')!.textContent).toBe('not in that interval’s top 10, so not counted')
+    // the head: its uses in the window and its share of the map; the clear is one icon named Clear
+    expect(container.querySelector('.hv5-el-facts')!.textContent).toMatch(/^84 uses in the last 24 h · 0\.3\d% of the map$/)
+    expect(screen.getByRole('button', { name: 'Clear' }).textContent).toBe('Clear')
     // the read is on its way: grey rows, a spoken line
     expect(container.querySelector('[aria-busy="true"]')!.textContent).toContain('Loading the streams for that interval.')
+  })
+
+  it('reads one bar out from the keys, and says it (4A, 11-22)', () => {
+    requestHubBucketMoments.mockReturnValue(new Promise(() => {}))
+    const { container } = renderMap()
+    pickPog()
+    const chart = container.querySelector<HTMLElement>('.hv5-es-c')!
+    const read = () => container.querySelector('.hv5-es-read')!.textContent
+    const live = () => container.querySelector('.hv5-es [aria-live="polite"]')!.textContent
+    fireEvent.keyDown(chart, { key: 'Home' })
+    expect(read()).toMatch(/ · (not in that interval’s top 10|no list for that interval)$/)
+    expect(live()).toBe(read())
+    // step to the spike's bar: 60 uses over 6 minutes
+    const at = Math.floor(Number(container.querySelector('rect.hv5-es-hi')!.getAttribute('x')))
+    for (let i = 0; i < at; i += 1) fireEvent.keyDown(chart, { key: 'ArrowRight' })
+    expect(read()).toBe(`${hubClockRange(SPIKE, SPIKE + BM * MIN)} · 10/min`)
+    expect(live()).toBe(read())
+    expect(container.querySelectorAll('rect.hv5-es-on')).toHaveLength(1)
+    fireEvent.blur(chart)
+    expect(read()).toMatch(/^6-minute bars, /)
   })
 
   it('lists who drove it from one read of that interval, by provider and name, each row opening its minute in Moments', async () => {
@@ -114,10 +152,11 @@ describe('a clicked emote (C1, 10-30)', () => {
     await waitFor(() => expect(container.querySelectorAll('.hv5-es-rows a')).toHaveLength(2))
     expect(requestHubBucketMoments).toHaveBeenCalledTimes(1)
     expect(requestHubBucketMoments).toHaveBeenCalledWith(expect.objectContaining({ bucketT: SPIKE, activityWindow: '24h' }))
-    expect(container.textContent).toContain('Who drove it · streams in that interval with Pog in their top 3')
+    expect(container.textContent).toContain(`Who drove it · the busiest chats in ${hubClockRange(SPIKE, SPIKE + BM * MIN)} with Pog in their top 3`)
     expect(screen.getByText('2 streams in that interval had Pog in their top 3.').getAttribute('role')).toBe('status')
     const links = [...container.querySelectorAll('.hv5-es-rows a')]
-    expect(links.map((a) => a.querySelector('.hv5-es-uses')!.textContent)).toEqual(['41 uses', '12 uses'])
+    // one unit with the chart (4A): uses in its busiest minute
+    expect(links.map((a) => a.querySelector('.hv5-es-uses')!.textContent)).toEqual([`41/min at ${hubClock(SPIKE + 2 * MIN)}`, `12/min at ${hubClock(SPIKE + 3 * MIN)}`])
     expect(links[0]!.getAttribute('href')).toContain('login=xqc')
     expect(links[0]!.querySelector('.hv5-es-at')!.textContent).toBe(`▶ ${hubClock(SPIKE + 2 * MIN)}`)
     // The accessible name, from the hidden text: the visible parts are aria-hidden (WCAG 2.5.3).
@@ -147,7 +186,7 @@ describe('a clicked emote (C1, 10-30)', () => {
     requestHubBucketMoments.mockResolvedValueOnce(answer(SPIKE, [row('shroud', SPIKE, [['Pog', 'seventv', 99]])]))
     const none = renderMap()
     pickPog()
-    await waitFor(() => expect(none.container.textContent).toContain('None of the busiest chats in that interval had Pog in their top 3.'))
+    await waitFor(() => expect(none.container.textContent).toContain(`None of the busiest chats in ${hubClockRange(SPIKE, SPIKE + BM * MIN)} had Pog in their top 3.`))
     none.unmount()
 
     // while history is behind, an empty interval is one that isn't in yet
@@ -173,8 +212,7 @@ describe('a clicked emote (C1, 10-30)', () => {
     const { container } = renderMap({ intervalWindow: '24h' }, pts)
     pickPog()
     const bars = container.querySelector('svg.hv5-es-bars')!
-    expect(bars.querySelectorAll('rect')).toHaveLength(238)
-    expect(bars.querySelectorAll('rect.hv5-es-gap')).toHaveLength(236)
+    expect(drawn(bars)).toEqual({ all: 238, gaps: 236, hi: 1 })
   })
 
   it('asks for 7 days or less on longer pages, and reads nothing without a window', () => {
@@ -199,8 +237,8 @@ describe('the window chips (W1, 10-30)', () => {
     fireEvent.click(screen.getByRole('button', { name: '1h' }))
     expect(screen.getByRole('button', { name: '1h' }).getAttribute('aria-pressed')).toBe('true')
     const bars = container.querySelector('svg.hv5-es-bars')!
-    expect(bars.querySelectorAll('rect')).toHaveLength(10)
-    expect(bars.getAttribute('aria-label')).toBe(`Pog uses per interval, last hour, busiest ${hubClockRange(RECENT, RECENT + BM * MIN)} at 4 a minute`)
+    expect(drawn(bars).all).toBe(10)
+    expect(container.querySelector('.hv5-es-c')!.getAttribute('aria-label')).toBe(`Pog: uses a minute, 6-minute bars, last hour, busiest ${hubClockRange(RECENT, RECENT + BM * MIN)} at 4 a minute. Arrow keys step through the bars.`)
     await waitFor(() => expect(requestHubBucketMoments).toHaveBeenCalledWith(expect.objectContaining({ bucketT: RECENT, activityWindow: '24h' })))
     // Pog made no top 10 in the last 30 minutes: back to the list, without it
     fireEvent.click(screen.getByRole('button', { name: '30m' }))
