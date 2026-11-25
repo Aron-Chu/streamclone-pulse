@@ -680,6 +680,12 @@ export function AnalyticsConsole({
       if (!targetQueryStreamId || afterOffset < 0) return previous
       return accumulateMinutesTail(previous, await getStreamMinutesTail(targetQueryStreamId, afterOffset))
     },
+    // The session read carries every minute up to its read time, so an empty
+    // tail dated at that read waits for the poll instead of re-reading the
+    // newest minutes at once (one extra /minutes call on every live open). A
+    // read older than the stale time still asks right away.
+    initialData: null,
+    initialDataUpdatedAt: liveTailReadAt,
     enabled: Boolean(sessionIsLive && targetQueryStreamId && maxRollupOffsetSeconds(statusMerged) >= 0 && statusMerged),
     staleTime: 15_000,
     refetchInterval: sessionIsLive ? 30_000 : false,

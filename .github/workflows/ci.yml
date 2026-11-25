@@ -148,8 +148,13 @@ jobs:
           node-version: '22'
           cache: npm
 
+      # Dependency install scripts stay off in CI so a compromised package
+      # cannot run code at install time. esbuild, @sentry/cli and workerd ship
+      # their binaries as optional platform packages and work without them.
+      # Use the flag on each `npm ci`, not NPM_CONFIG_IGNORE_SCRIPTS: the env
+      # form also skips the portal's prebuild/pretypecheck hooks.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: npm audit (root lock) with high-severity disposition
         run: |
@@ -291,7 +296,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build in-repo packages
         run: npm run build:packages
@@ -420,10 +425,10 @@ jobs:
       - name: Install and build in-repo packages
         working-directory: ${{ github.workspace }}
         run: |
-          npm ci
+          npm ci --ignore-scripts
           bash scripts/ci-clean-checkout-proof.sh
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm test -- --pool=forks --maxWorkers=2 --no-file-parallelism
       - run: npm run check:analytics-overlap

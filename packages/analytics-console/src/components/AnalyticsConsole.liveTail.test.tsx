@@ -131,6 +131,8 @@ describe('AnalyticsConsole live tail (VOD-1)', () => {
       .mockResolvedValue(tail([minute(3480, 4, 0)]))
     const client = renderConsole('/analytics/xqc/202')
 
+    await screen.findByTestId('analytics-chart')
+    await pollTail(client)
     await waitFor(() => expect(api.getStreamMinutesTail).toHaveBeenCalledWith('202', 3360))
     await waitFor(() => expect(document.querySelector('[data-stat-label="Chat messages"]')?.textContent).toBe('40'))
     await pollTail(client)
@@ -138,6 +140,30 @@ describe('AnalyticsConsole live tail (VOD-1)', () => {
     await waitFor(() => expect(document.querySelector('[data-stat-label="Chat messages"]')?.textContent).toBe('69'))
     await pollTail(client)
     expect(api.getStreamMinutesTail).toHaveBeenLastCalledWith('202', 3480)
+  })
+
+  // A fresh session read already carries every minute up to its read time, so
+  // the first tail read waits for the poll instead of following it at once.
+  it('waits for the poll instead of re-reading the tail right after a fresh session read', async () => {
+    api.getAnalyticsStream.mockResolvedValue(liveDetail([minute(3300, 10), minute(3360, 20)]))
+    api.getStreamMinutesTail.mockResolvedValue(tail([minute(3360, 25)]))
+    const client = renderConsole('/analytics/xqc/202')
+
+    await screen.findByTestId('analytics-chart')
+    await waitFor(() => expect(document.querySelector('[data-stat-label="Chat messages"]')?.textContent).toBe('30'))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)))
+    expect(api.getStreamMinutesTail).not.toHaveBeenCalled()
+
+    await pollTail(client)
+    expect(api.getStreamMinutesTail).toHaveBeenCalledWith('202', 3360)
+  })
+
+  it('reads the tail at once when the session read is older than the tail stale time', async () => {
+    api.getAnalyticsStream.mockResolvedValue(liveDetail([minute(3300, 10), minute(3360, 20)], Date.now() - MINUTE))
+    api.getStreamMinutesTail.mockResolvedValue(tail([minute(3360, 25)]))
+    renderConsole('/analytics/xqc/202')
+
+    await waitFor(() => expect(api.getStreamMinutesTail).toHaveBeenCalledWith('202', 3360))
   })
 
   it('says "Updated" at the newest merged minute, not at the read time', async () => {
@@ -159,6 +185,8 @@ describe('AnalyticsConsole live tail (VOD-1)', () => {
     const client = renderConsole('/analytics/xqc')
 
     await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/analytics/xqc/202'))
+    await screen.findByTestId('analytics-chart')
+    await pollTail(client)
     await waitFor(() => expect(api.getStreamMinutesTail).toHaveBeenCalledWith('202', 3360))
     await pollTail(client)
     expect(api.getStreamMinutesTail).toHaveBeenLastCalledWith('202', 3420)

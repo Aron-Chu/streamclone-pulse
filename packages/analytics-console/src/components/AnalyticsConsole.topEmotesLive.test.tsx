@@ -88,7 +88,10 @@ function liveDetail() {
     momentRollups: sessionMinutes,
     topEmotes: [{ key: YD_ROW, name: 'YappingDuck', provider: 'twitch', count: 30 }],
     sources: [],
-    updatedAt: Date.now(),
+    // A read 20 s old, past the tail's 15 s stale time, so its tail is read at
+    // once and these tests keep their poll count. A fresh read waits for the
+    // first poll instead (AnalyticsConsole.liveTail.test.tsx).
+    updatedAt: Date.now() - 20_000,
   }
 }
 
