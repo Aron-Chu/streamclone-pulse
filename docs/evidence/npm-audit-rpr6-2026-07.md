@@ -2,9 +2,8 @@
 
 At the original disposition, portal (`streampulse-web`) and root workspace
 audits reported **two high** findings that resolved to the same advisory.
-The current build-only exception is the expiring picomatch disposition
-(2026-11-18) near the end of this file. The October 2 braces disposition is
-kept as history; its advisory was withdrawn.
+No build-only exception is active. The October 2 braces and November 18
+picomatch dispositions are kept as history; both advisories were withdrawn.
 
 | Package | Severity | Advisory |
 |---------|----------|----------|
@@ -29,8 +28,8 @@ kept as history; its advisory was withdrawn.
 4. **CI enforcement:** `scripts/ci-portal-npm-audit-disposition.mjs` is applied
     to both the root lock and `streampulse-web/package-lock.json`. It requires a
     valid npm v2 vulnerability schema, matching severity metadata, and the exact
-    Router advisory metadata. The original exception covers only these two
-    package names; the additional exact build-only graph is documented below.
+    Router advisory metadata. The exception covers only these two
+    package names.
     Any unreviewed high/critical finding or audit command/report error fails CI.
 5. **GitHub Dependabot:** alerts dismissed as `vulnerable_code_not_used` with
    this evidence (public security closeout).
@@ -49,7 +48,7 @@ exception. Re-run `npm audit` after lock refresh; do not list nanoid in
 
 **Retired 2026-11-18.** GitHub withdrew this advisory on 2026-10-23 and npm
 no longer reports it. Its five-node graph was removed from the gate; the same
-Tailwind packages are now covered only by the picomatch disposition below.
+Tailwind packages are no longer covered by any exception.
 
 [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
 was reviewed/updated on October 2 and caused the automatic post-merge portal
@@ -111,55 +110,60 @@ The portal also pins `postcss-selector-parser@7.1.6` for
 which otherwise adds unexpected advisory paths to the exact Tailwind graph.
 The existing five-node braces disposition remains unchanged.
 
-## Build-only disposition (2026-11-18, expires 2026-12-02): unpatched `picomatch` ReDoS
+## Build-only disposition (2026-11-18): `picomatch` ReDoS — retired 2026-11-22
 
+**Retired 2026-11-22. No exception is active.** GitHub withdrew
 [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
-(npm source `1247710`, high, range `<=4.0.7`) was updated on 2026-11-17 and
-failed both audit steps on every open pull request. An attacker who can
-**supply a glob pattern** such as `+(*)` can make picomatch backtrack
-exponentially. No patched release exists: `picomatch@4.0.7` and `2.3.2` are
-the latest on their lines.
+(npm source `1247710`, high, range `<=4.0.7`) on 2026-11-18 as "not a security
+issue", and picomatch's maintainer said the same: globs are regular expressions,
+so do not pass untrusted patterns. npm no longer reports it. On 2026-11-22
+`npm audit` on both locks showed no high or critical finding. The exception was
+merged the same day as the withdrawal and was set to expire 2026-12-02; once the
+advisory left the audit it excused nothing, and the expiry would not have turned
+CI red. No patched picomatch exists (4.0.7 is latest) and none is needed. Its
+exact graphs, expiry and the portal fixture were removed.
 
-**Disposition: development-only tools, repository-controlled patterns.**
-Every affected lock node is `dev: true`. The packages are Vite, Vitest, the
-React plugin, and (portal only) the Tailwind 3 CSS build. They match globs
-written in this checkout's configs against file paths; no request, account,
-payment, or analytics input becomes a glob pattern. The reviewed configs
-contain no extglob patterns and no `import.meta.glob` calls.
+**If it comes back.** A re-published advisory is no longer excused: the gate fails
+closed for every package it reaches. The selftest checks this against
+`scripts/fixtures/npm-audit-picomatch-republished.json`, a real root audit
+from while the advisory was live. Re-review reachability below before adding any
+new exception, and give it an expiry.
 
-| Lock | High packages for this one advisory |
-|---|---|
-| root (`streamclone-pulse`) | `picomatch@4.0.5`, `fdir`, `tinyglobby`, `vite` (3 nodes), `@vitejs/plugin-react`, `vitest` |
-| portal (`streampulse-web`) | `picomatch` (5 nodes: `2.3.2` and `4.0.5`), `anymatch`, `readdirp`, `micromatch`, `chokidar`, `fast-glob`, `fdir` (3 nodes), `tinyglobby`, `sucrase`, `tailwindcss`, `vite` (3 nodes), `@vitejs/plugin-react`, `vitest` |
+**Dependency path (both locks).** picomatch is pulled in only by development
+tools; every lock node is `dev: true`. It cannot be dropped without dropping
+Vite, Vitest or Tailwind 3, and no override helps while no patched release exists.
 
-`vitest` also carries two moderate advisories through `@vitest/mocker`; the
-gate ignores only edges below high and requires every high edge to be a
-reviewed parent.
+| Lock | picomatch | Pulled in by |
+|---|---|---|
+| root | `4.0.5` | `vite` (build), `tinyglobby` and `fdir` under it, `vitest` and its `vite` 7 copies |
+| portal | `2.3.2` | `tailwindcss` 3 through `micromatch`, `chokidar`, `anymatch`, `readdirp` |
+| portal | `4.0.5` (4 nested copies) | `vite`, `tinyglobby`, `vitest`, `vite-node` |
 
-**Gate.** `scripts/ci-portal-npm-audit-disposition.mjs` holds one exact graph
-per lock identity: each package's installed nodes, locked versions, `dev`
-flag and high parents, and the exact advisory metadata. The whole graph must
-match, even to clear one leaf. A second high advisory, changed version, extra
-or missing node, production node, unreviewed parent, or the other lock's graph
-fails CI. **From 2026-12-02T00:00Z the exception stops matching** and CI fails
-until it is patched, reviewed again, or removed.
+**Reachability (measured 2026-11-22 on master `aed30001`).** Every copy of
+picomatch's `parse` and `scan` was logged while running the full root build and
+test suite and the full portal build and test suite. Result: 300 calls and 62
+distinct patterns, all written by this repository's configs or by the tools'
+own defaults (Vite ignore and watch lists, Vitest include and exclude lists,
+Tailwind `content` paths, dependency names). No request, account, payment or
+analytics input reaches picomatch. Correction to the 2026-11-18 text: the
+configs have no extglobs, but Vitest's built-in default test filter does
+(`**/*.{test,spec}.?(c|m)[jt]s?(x)`). It is a fixed string with optional
+groups, not the repeated `+(` or `*(` form the advisory named, and nothing
+here can change it.
 
-**Browser output.** The portal build plugin now refuses any module of these
-packages in any emitted chunk, lazy routes included. Local proof on master
-`c21d5b37` plus this change: the portal build passed the plugin and its 72
-source maps name none of them; building all six extension configs with the
-same check recorded 390 modules (18 from `node_modules`) and none of them.
-The extension build has no permanent plugin; its lock `dev` flags and the
-expiry bound that gap.
+**Browser output.** The portal build passed the guard below, and a text search
+of the root `dist/` (23 files) and portal `dist/` (251 files) found no
+picomatch, tinyglobby or micromatch code.
 
-**Removal.** When picomatch publishes fixes, refresh the locks (or add
-`overrides`), rerun both audits, then delete the graphs, the two
-`npm-audit-build-only-picomatch-*` fixtures, and this section.
+**The guard stays.** `assertBuildOnlyAuditRuntimeBoundary` in the gate script,
+called by `streampulse-web/vite.config.ts`, still refuses any module of these
+build tools in any emitted browser chunk, lazy routes included. Its package list
+is unchanged by this retirement. The extension build has no such plugin; the
+search above is its only check.
 
 ## Owner follow-up (optional, separate program)
 
 - Schedule a dedicated React Router major upgrade when product-ready, then
   re-run `npm audit` until highs are zero or newly dispositioned with evidence.
   Do not use `npm audit fix --force` as a release disposition; the current
-  Router exception remains limited to the documented RSC-only case. The
-  separate unpatched build-only exception requires its complete reviewed graph.
+  Router exception remains limited to the documented RSC-only case.

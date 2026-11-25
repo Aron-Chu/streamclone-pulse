@@ -30,7 +30,7 @@ function publicEntryBoundaryPlugin(): Plugin {
     name: 'streampulse-public-entry-boundary',
     apply: 'build',
     generateBundle(_options, bundle) {
-      // The exact picomatch advisory disposition is limited to build tooling.
+      // Build tooling (Vite, Vitest, the Tailwind 3 glob chain) must never reach a browser chunk.
       // Cover every emitted chunk, including lazy routes, before publication.
       assertBuildOnlyAuditRuntimeBoundary(bundle)
       const visited = new Set<string>()
