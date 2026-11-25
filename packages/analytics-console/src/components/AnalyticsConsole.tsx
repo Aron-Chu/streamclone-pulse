@@ -1548,6 +1548,8 @@ export function AnalyticsConsole({
   // Expand (B2, 2026-10-21) moves the side columns under the chart, so there is no column to fill: off while it is on.
   const [chartExpanded, setChartExpanded] = useState(false)
   const oneColumnLayout = useOneColumnLayout()
+  // The page a stream row in the streams column was tapped to open, until a read answers.
+  const streamColumnTappedPath = useRef<string | null>(null)
   const columnFill = useSessionColumnFill(
     { center: centerColumnRef, right: rightColumnRef, momentsPanel: momentsPanelRef },
     {
@@ -1675,6 +1677,13 @@ export function AnalyticsConsole({
   const focusLayout = chartFocused || chartExpanded
   // Z01 (11-13, SESSION-MOMENTS-11): one column (under 1280 px) puts the Moments tabs right after the chart
   const momentsUnderChart = oneColumnLayout && !focusLayout
+  // In one column the streams list sits under the chart's reserved height. Rendered while the first read is
+  // out, a short answer (no minute data) slid it up to 900 px into view, a layout shift of 0.65 at 390 px.
+  // It appears once the read answers (a failed read ends the wait too). The page a row in the list was tapped
+  // to open keeps it, so the row just tapped keeps its place and focus.
+  const holdStreamColumn = momentsUnderChart && sessionReadPending
+    && streamColumnTappedPath.current !== location.pathname
+  if (!sessionReadPending) streamColumnTappedPath.current = null
   const consoleGridClassName = focusLayout
     ? 'grid grid-cols-1 gap-4'
     : streamsVisible
@@ -2186,11 +2195,17 @@ export function AnalyticsConsole({
             ) : null}
           </section>
 
-          {focusLayout || streamsVisible ? (
+          {(focusLayout || streamsVisible) && !holdStreamColumn ? (
             <StreamColumn
               id="analytics-console-streams"
               className={streamColumnClassName}
               data-analytics-stream-column
+              onClickCapture={(event) => {
+                const link = event.target instanceof Element ? event.target.closest('a[href]') : null
+                if (!(link instanceof HTMLAnchorElement) || event.button !== 0
+                  || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+                streamColumnTappedPath.current = link.pathname
+              }}
               {...(focusLayout
                 ? {
                     open: streamsVisible,

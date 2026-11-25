@@ -62,6 +62,37 @@ describe('local backend override respects the explicit dev opt-in', () => {
 })
 
 /**
+ * The tailnet dev machine counts as a local backend in dev builds only; production builds drop its name, so the
+ * shipped bundle does not carry it.
+ */
+describe('tailnet dev host', () => {
+  const tailnet = `http://${['laptop', 'worker'].join('')}:8081`
+
+  beforeEach(() => vi.resetModules())
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('is a local backend in a dev build', async () => {
+    vi.stubEnv('DEV', true)
+    const { isLocalDevBackendUrl } = await import('../src/lib/auth')
+    expect(isLocalDevBackendUrl(tailnet)).toBe(true)
+    expect(isLocalDevBackendUrl('http://127.0.0.1:8081')).toBe(true)
+  })
+
+  it('is not known to a production build', async () => {
+    vi.stubEnv('DEV', false)
+    const { isLocalDevBackendUrl } = await import('../src/lib/auth')
+    expect(isLocalDevBackendUrl(tailnet)).toBe(false)
+    expect(isLocalDevBackendUrl('http://127.0.0.1:8081')).toBe(true)
+    expect(isLocalDevBackendUrl('https://api.streampulse.stream')).toBe(false)
+  })
+
+  it('is written behind the dev flag, so the minifier drops it', () => {
+    const auth = readFileSync(resolve(process.cwd(), 'src/lib/auth.ts'), 'utf8')
+    expect(auth).toMatch(/const TAILNET_DEV_HOST: string \| null = import\.meta\.env\.DEV \? /)
+  })
+})
+
+/**
  * The removed beta-key login left `sp.betaKey` in site storage. Every site
  * load deletes it, production included, and leaves every other key alone.
  */

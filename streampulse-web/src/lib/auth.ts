@@ -6,21 +6,22 @@ const BACKEND_OVERRIDE_KEY = 'sp.backendUrlOverride'
 const REMOVED_SITE_KEYS = ['sp.betaKey', 'sp.hub.recentLogins'] as const
 
 export const DEFAULT_PRODUCTION_BACKEND_URL = 'https://api.streampulse.stream'
-const TAILNET_DEV_HOST_PARTS = ['laptop', 'worker'] as const
+/**
+ * The tailnet dev machine's host name, in dev builds only. Production builds fold `import.meta.env.DEV` to false
+ * and drop the name; they ignore local backends anyway.
+ */
+const TAILNET_DEV_HOST: string | null = import.meta.env.DEV ? ['laptop', 'worker'].join('') : null
 
-function tailnetDevHost(): string {
-  return TAILNET_DEV_HOST_PARTS.join('')
-}
-
-/** True for localhost / laptopworker StreamPulse backend dev — not used by default portal dev. */
+/** True for a localhost or tailnet dev StreamPulse backend; not used by default portal dev. */
 export function isLocalDevBackendUrl(url: string): boolean {
   const normalized = url.trim().replace(/\/+$/, '')
   if (!normalized) return false
   try {
     const host = new URL(normalized).hostname.toLowerCase()
-    return host === 'localhost' || host === '127.0.0.1' || host === tailnetDevHost()
+    return host === 'localhost' || host === '127.0.0.1' || (TAILNET_DEV_HOST !== null && host === TAILNET_DEV_HOST)
   } catch {
-    return /localhost|127\.0\.0\.1|:8081/i.test(normalized) || normalized.toLowerCase().includes(tailnetDevHost())
+    return /localhost|127\.0\.0\.1|:8081/i.test(normalized)
+      || (TAILNET_DEV_HOST !== null && normalized.toLowerCase().includes(TAILNET_DEV_HOST))
   }
 }
 
