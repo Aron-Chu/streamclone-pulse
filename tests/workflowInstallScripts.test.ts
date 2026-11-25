@@ -21,18 +21,36 @@ const INSTALLS = new Set(['ci', 'clean-install', 'cit', 'ic', 'install-clean', '
 // Options before the command that take a value, as in `npm --prefix web ci`.
 const VALUE_OPTIONS = new Set(['--prefix', '-C', '--workspace', '-w'])
 
+const bareLongOption = (arg: string | undefined) => arg !== undefined && arg.startsWith('--') && !arg.includes('=')
+
+/**
+ * The npm command among the words after `npm`. Any other `--option` may take its value
+ * in the next word, as in `npm --cache .npm ci`, so a word right after one counts as
+ * that value unless it is an install. That can only read too many words as installs,
+ * never too few.
+ */
 function npmCommand(args: string[]): string | undefined {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i]!
     if (VALUE_OPTIONS.has(arg)) i += 1
-    else if (!arg.startsWith('-')) return arg
+    else if (arg.startsWith('-')) continue
+    else if (INSTALLS.has(arg) || !bareLongOption(args[i - 1])) return arg
   }
   return undefined
 }
 
+/** Bash drops a backslash-newline before it reads a command, so a continued line joins the next. */
+const joinContinued = (lines: string[]) =>
+  lines.reduce<string[]>((joined, line) => {
+    const last = joined[joined.length - 1]
+    if (last !== undefined && last.endsWith('\\')) joined[joined.length - 1] = `${last.slice(0, -1)} ${line.trim()}`
+    else joined.push(line)
+    return joined
+  }, [])
+
 /** Every npm install in the lines, one per shell command: `npm ci && npm ci --ignore-scripts` is two. */
 const installCommands = (lines: string[]) =>
-  lines.flatMap((line) =>
+  joinContinued(lines).flatMap((line) =>
     line
       .replace(/\s#.*$/, '')
       .split(/&&|\|\||[;|]/)
@@ -84,8 +102,16 @@ describe('the install check itself', () => {
     expect(offenders(['run: npm ci --ignore-scripts=true', '- run: npm ci --ignore-scripts # pinned'])).toEqual([])
   })
 
+  it('reads a command continued over several lines as one', () => {
+    expect(offenders(['run: npm ci \\', '  --ignore-scripts'])).toEqual([])
+    expect(offenders(['run: npm \\', '  ci'])).toEqual(['npm ci'])
+  })
+
   it('finds installs behind options and leaves other commands alone', () => {
     expect(offenders(['run: npm --prefix streampulse-web ci'])).toEqual(['npm --prefix streampulse-web ci'])
+    expect(offenders(['run: npm --cache .npm ci'])).toEqual(['npm --cache .npm ci'])
+    expect(offenders(['run: npm --registry https://registry.npmjs.org/ ci --ignore-scripts'])).toEqual([])
+    expect(installCommands(['run: npm --silent run build'])).toEqual([])
     expect(offenders(['npm rebuild'])).toEqual(['npm rebuild'])
     expect(installCommands(['npx playwright install chromium --with-deps', 'run: npm run build', 'npm audit --json > out'])).toEqual([])
   })
