@@ -75,6 +75,47 @@ describe('public page metadata', () => {
   })
 })
 
+describe('account page metadata', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('titles a switched-off or unknown account address as not found', () => {
+    vi.stubEnv('VITE_ACCOUNT_MOMENTS', '')
+    vi.stubEnv('VITE_TWITCH_SIGNIN', '')
+    for (const path of ['/account/moments', '/account/twitch/callback', '/account/nope', '/account/billing/nope']) {
+      expect(resolvePageMetadata(path), path).toMatchObject({ title: 'Page not found — StreamPulse', canonicalPath: path, robots: 'noindex,nofollow' })
+    }
+  })
+
+  it('keeps the account titles for pages this build has', () => {
+    vi.stubEnv('VITE_ACCOUNT_MOMENTS', '')
+    vi.stubEnv('VITE_TWITCH_SIGNIN', '')
+    expect(resolvePageMetadata('/account/settings').title).toBe('Account & devices — StreamPulse')
+    expect(resolvePageMetadata('/account/sign-in/').title).toBe('Sign in — StreamPulse')
+    for (const path of ['/account/billing', '/account/billing/', '/account/billing/return', '/account/billing/return/']) expect(resolvePageMetadata(path).title, path).toBe('Your account — StreamPulse')
+  })
+
+  it('ignores case, as the router does', () => {
+    vi.stubEnv('VITE_ACCOUNT_MOMENTS', '')
+    vi.stubEnv('VITE_TWITCH_SIGNIN', '')
+    expect(resolvePageMetadata('/account/Settings').title).toBe('Account & devices — StreamPulse')
+    expect(resolvePageMetadata('/account/Billing/').title).toBe('Your account — StreamPulse')
+    expect(resolvePageMetadata('/account/Restore').title).toBe('Restore Supporter — StreamPulse')
+    expect(resolvePageMetadata('/account/Moments').title).toBe('Page not found — StreamPulse')
+    expect(resolvePageMetadata('/Account/settings').title).toBe('Account & devices — StreamPulse')
+    expect(resolvePageMetadata('/ACCOUNT/Restore').title).toBe('Restore Supporter — StreamPulse')
+    vi.stubEnv('VITE_ACCOUNT_MOMENTS', '1')
+    expect(resolvePageMetadata('/Account').title).toBe('Your account — StreamPulse')
+  })
+
+  it('titles My Moments and the Twitch return as the account once their switches are on', () => {
+    vi.stubEnv('VITE_ACCOUNT_MOMENTS', '1')
+    vi.stubEnv('VITE_TWITCH_SIGNIN', '1')
+    for (const path of ['/account', '/account/', '/account/moments', '/account/moments/', '/account/twitch/callback', '/account/twitch/callback/']) {
+      expect(resolvePageMetadata(path), path).toMatchObject({ title: 'Your account — StreamPulse', robots: 'noindex,nofollow' })
+    }
+  })
+})
+
 describe('clip page metadata', () => {
   afterEach(() => vi.unstubAllEnvs())
 
