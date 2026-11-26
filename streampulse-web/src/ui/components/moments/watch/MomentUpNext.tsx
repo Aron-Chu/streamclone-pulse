@@ -101,7 +101,7 @@ function UpNextThumb({ moment, offsetSeconds, minuteMs, live, liveFrameUrl, artw
  * pages. Shows nothing until the page's own Moment is known. Neither source says
  * whether another minute has a clip, so a row carries no clip line.
  */
-export function MomentUpNext({ moment, streamStartedAtMs, live, artwork, pictures = null, holdReads = false }: {
+export function MomentUpNext({ moment, streamStartedAtMs, live, artwork, pictures = null, holdReads = false, onSettled }: {
   moment: DiscoveryMoment | null
   streamStartedAtMs: number
   live: boolean
@@ -114,6 +114,8 @@ export function MomentUpNext({ moment, streamStartedAtMs, live, artwork, picture
    * done, so its frame is not queued behind theirs. Their clip ranges still join the channel's one read.
    */
   holdReads?: boolean
+  /** Called once the rows (or the line saying there are none) are shown: what the page adds below waits for it. */
+  onSettled?: () => void
 }) {
   const [read, setRead] = useState<Read>({ status: 'loading' })
   const streamId = moment?.streamId
@@ -127,6 +129,8 @@ export function MomentUpNext({ moment, streamStartedAtMs, live, artwork, picture
     )
     return () => controller.abort()
   }, [streamId, live])
+  const settled = read.status !== 'loading'
+  useEffect(() => { if (settled) onSettled?.() }, [settled, onSettled])
 
   const skeleton = (
     <div className="nc-rows" aria-busy="true">

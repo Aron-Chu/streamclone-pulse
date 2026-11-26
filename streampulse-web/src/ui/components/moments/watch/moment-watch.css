@@ -177,3 +177,11 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
 }
 .nc-library.nc-watch .mw-up-row .nc-thumb .mw-picture-label { top: 5px; bottom: auto; left: 5px; max-width: calc(100% - 10px); }
+
+/*
+ * More from this channel and this game: sections below this stream's list (24 px apart, the grid's own
+ * gap), the same rows with a muted line under the title. The line ellipsizes, never wraps.
+ */
+.nc-watch .mw-more { display: grid; gap: 12px; min-width: 0; margin-top: 12px; }
+.nc-watch .mw-up-text { display: grid; gap: 2px; min-width: 0; }
+.nc-watch .mw-up-note { overflow: hidden; font-size: 12.5px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }

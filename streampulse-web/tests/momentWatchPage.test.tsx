@@ -5,6 +5,8 @@ import MomentWatchPage from '../src/routes/analytics/MomentWatchPage'
 import { resetAccountSessionForTests } from '../src/lib/accountSession'
 import { setMomentNowForTests } from '../src/lib/momentCommentSpan'
 import { loadMomentStream, resetMomentReads } from '../src/lib/momentReads'
+import { resetMomentMoreReads } from '../src/lib/momentMoreReads'
+import { clearPublicHubCacheForTests } from '../src/lib/publicHubCache'
 import { resetCategoryArtwork } from '../src/lib/momentCategoryArtwork'
 import { resetChannelLookups } from '../src/lib/channelLookup'
 import { resetMomentClipCache } from '@streampulse/analytics-console/moment-previews'
@@ -63,7 +65,7 @@ function serve(feedbackAnswer: Answer | ((path: string) => Answer), extra: {
     const send = (a: Answer) => Response.json(a.body ?? {}, { status: a.status ?? 200 })
     if (url.pathname.endsWith('/feedback')) return send(typeof feedbackAnswer === 'function' ? feedbackAnswer(url.pathname) : feedbackAnswer)
     if (url.pathname === `/v1/portal/analytics/streams/${STREAM}`) return send(extra.stream ?? { body: extra.source ?? source() })
-    if (url.pathname.endsWith('/recap')) return send(extra.recap ?? { body: { login: 'fakechan01', streamId: STREAM, topMoments: [{ offsetSeconds: 2430 }] } })
+    if (url.pathname.endsWith('/recap')) return send(extra.more?.[url.pathname] ?? extra.recap ?? { body: { login: 'fakechan01', streamId: STREAM, topMoments: [{ offsetSeconds: 2430 }] } })
     if (url.pathname === '/v1/public/moments') {
       const id = url.searchParams.get('id') ?? ''
       if (id) feedIds.push(id)
@@ -103,6 +105,8 @@ beforeEach(() => {
   resetAccountSessionForTests()
   // The stream and recap are read once per stream and kept, and so are frames and clips; each test starts with none read.
   resetMomentReads()
+  resetMomentMoreReads()
+  clearPublicHubCacheForTests()
   resetVodFrameCache()
   resetMomentClipCache()
   resetCategoryArtwork()
@@ -1612,5 +1616,91 @@ describe('Moment watch page channel picture', () => {
     await new Promise(resolve => setTimeout(resolve, 1500))
     expect(container.querySelector('.nc-watch-channel img.nc-avatar')?.getAttribute('src')).toContain('fake-answer-profile_image')
     expect(calls).not.toContain(PROFILE_PATH)
+  })
+})
+
+describe('Moment watch page: more from the channel and the game', () => {
+  const STREAMS_PATH = '/v1/portal/analytics/channels/fakechan01/streams'
+  const HUB_PATH = '/v1/public/hub'
+  const OTHER = '9000002'
+  const GAME_ID = '1867279146'
+  const channelStreams = { [STREAMS_PATH]: { body: { items: [
+    { streamId: STREAM, startedAt: '2026-11-14T09:59:30Z', displayName: 'fakechan01' },
+    { streamId: OTHER, startedAt: '2026-11-12T18:00:00Z', displayName: 'fakechan01', category: 'Fake Game' },
+  ] } } }
+  // The other stream's recap: its first five minutes are never a Moment.
+  const otherRecap = { [`/v1/portal/analytics/streams/${OTHER}/recap`]: { body: { login: 'fakechan01', streamId: OTHER, topMoments: [{ offsetSeconds: 1200 }, { offsetSeconds: 100 }, { offsetSeconds: 3000 }] } } }
+  const AT = Date.parse('2026-11-14T10:30:00Z')
+  const live = (login: string, streamId: string, at: number, extra: Record<string, unknown> = {}) => ({
+    login, streamId, offsetSeconds: 1800, at, label: 'Chat spike', kind: 'chat_spike', score: 1, category: 'Fake Game', categoryId: GAME_ID, ...extra,
+  })
+  const hub = { [HUB_PATH]: { body: {
+    generatedAt: '2026-11-14T10:45:00Z', poolSize: 3,
+    corpus: { streamsTracked: 3, momentsDetected: 3, chatMessagesProcessed: 1, emotesIndexed: 1, vodsAnalyzed: 0 },
+    coverage: { databaseOk: true, state: 'ok' }, activity: { points: [], channelCount: 3, windowMinutes: 30 },
+    liveChannels: [], moments: [], topEmotes: [], topMovers: [], livePulseMomentsStatus: 'ready',
+    livePulseMoments: [
+      live('fakechan01', '9000003', AT),
+      live('fakechan02', '9100002', AT - 60_000),
+      live('fakechan03', '9100003', AT - 120_000, { category: 'Other Fake Game', categoryId: '1000001' }),
+      live('fakechan04', '9100004', AT - 180_000),
+    ],
+  } } }
+  // The page's channel lookup asks the same route for its newest stream (limit=1); these sections ask for the channel page's list.
+  const urls = () => vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input), 'http://localhost'))
+  const listReads = () => urls().filter(url => url.pathname === STREAMS_PATH && url.searchParams.get('limit') === '24').length
+  const hubReads = () => urls().filter(url => url.pathname === HUB_PATH).length
+  const moreHeadings = () => screen.queryAllByRole('heading', { level: 2 }).map(h => h.textContent).filter(t => t?.startsWith('More ') && t !== 'More Moments from this stream')
+
+  it('adds the channel’s other streams and the game’s other channels below this stream’s Moments, once the page is idle', async () => {
+    vi.stubEnv('VITE_PUBLIC_MOMENT_FEEDBACK', '')
+    serve({ body: feedback() }, { source: endedSource(), more: { ...games(), ...channelStreams, ...otherRecap, ...hub } })
+    renderPage()
+    await screen.findByRole('heading', { level: 1, name: 'Moment at 0:40:30' })
+    expect([listReads(), hubReads()]).toEqual([0, 0])
+    const channel = await screen.findByRole('region', { name: 'More from fakechan01' }, { timeout: 4000 })
+    expect(within(channel).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual([
+      `/analytics/moments/${OTHER}/20261112T1820Z`, `/analytics/moments/${OTHER}/20261112T1850Z`,
+    ])
+    const game = await screen.findByRole('region', { name: 'More Fake Game Moments' }, { timeout: 4000 })
+    // Never this channel, never another game: one row per other channel.
+    expect(within(game).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual([
+      '/analytics/moments/9100002/20261114T1029Z', '/analytics/moments/9100004/20261114T1027Z',
+    ])
+    expect(within(game).getByText('fakechan02')).toBeTruthy()
+    // Below "More Moments from this stream", in that order.
+    expect(moreHeadings()).toEqual(['More from fakechan01', 'More Fake Game Moments'])
+    expect([listReads(), hubReads()]).toEqual([1, 1])
+  })
+
+  it('reads nothing more and shows no section for a Moment its channel hid', async () => {
+    // Only the feedback read says a Moment is hidden (the switch is on here).
+    serve({ body: feedback({ hidden: true }) }, { source: endedSource(), more: { ...games(), ...channelStreams, ...otherRecap, ...hub } })
+    renderPage()
+    await screen.findByRole('heading', { level: 1 })
+    await new Promise(resolve => setTimeout(resolve, 2500))
+    expect([listReads(), hubReads()]).toEqual([0, 0])
+    expect(moreHeadings()).toEqual([])
+  })
+
+  it('leaves both sections out when their reads fail, with no message', async () => {
+    vi.stubEnv('VITE_PUBLIC_MOMENT_FEEDBACK', '')
+    serve({ body: feedback() }, { source: endedSource(), more: { ...games(), [STREAMS_PATH]: { status: 404 }, [HUB_PATH]: { status: 404 } } })
+    const { container } = renderPage()
+    await waitFor(() => expect([listReads(), hubReads()]).toEqual([1, 1]), { timeout: 4000 })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(moreHeadings()).toEqual([])
+    expect(container.querySelector('.mw-more')).toBeNull()
+  })
+
+  it('leaves a section out when it has nothing to list', async () => {
+    vi.stubEnv('VITE_PUBLIC_MOMENT_FEEDBACK', '')
+    const onlyThis = { [STREAMS_PATH]: { body: { items: [{ streamId: STREAM, startedAt: '2026-11-14T09:59:30Z' }] } } }
+    serve({ body: feedback() }, { source: endedSource(), more: { ...games(), ...onlyThis, ...hub } })
+    renderPage()
+    await screen.findByRole('region', { name: 'More Fake Game Moments' }, { timeout: 4000 })
+    expect(moreHeadings()).toEqual(['More Fake Game Moments'])
+    // Only this stream: no recap besides its own is read.
+    expect(calls.filter(path => path.endsWith('/recap') && !path.includes(STREAM))).toEqual([])
   })
 })
