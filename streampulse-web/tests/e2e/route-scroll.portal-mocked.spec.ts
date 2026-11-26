@@ -145,6 +145,7 @@ test.describe('in-app navigation scroll', () => {
     await page.goto('/support#billing-email')
     await expect(page).toHaveURL(/\/help#billing-email$/)
     await expect.poll(() => topOf(page, '#billing-email')).toBeLessThanOrEqual(100)
+    expect(await topOf(page, '#billing-email')).toBeGreaterThanOrEqual(90)
   })
 
   // On the live site Pages 301s /support to /help?from=support and the browser keeps the anchor.
@@ -152,12 +153,14 @@ test.describe('in-app navigation scroll', () => {
     await page.goto('/help?from=support#billing-email')
     await expect(page).toHaveURL(/\/help#billing-email$/)
     await expect.poll(() => topOf(page, '#billing-email')).toBeLessThanOrEqual(100)
+    expect(await topOf(page, '#billing-email')).toBeGreaterThanOrEqual(90)
   })
 
   test('the edge redirect for /support opens Help at Fix problems', async ({ page }) => {
     await page.goto('/help?from=support')
     await expect(page).toHaveURL(/\/help#fix$/)
     await expect.poll(() => topOf(page, '#fix')).toBeLessThanOrEqual(100)
+    expect(await topOf(page, '#fix')).toBeGreaterThanOrEqual(90)
   })
 
   test('an old /docs link opens Help at Install', async ({ page }) => {
