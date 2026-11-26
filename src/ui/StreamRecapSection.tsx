@@ -757,9 +757,11 @@ export function StreamRecapSection({
   followVod,
   archiveVodId = null,
 }: StreamRecapSectionProps) {
+  // Every hook goes above the live return: Overlay keeps this section mounted while its stream
+  // flips live ↔ ended, and a hook below the return would change the hook count and throw.
+  const catalog = useMemo(() => buildRecapEmoteCatalog(payload), [payload])
   if (isLive) return null
 
-  const catalog = useMemo(() => buildRecapEmoteCatalog(payload), [payload])
   const recap = payload.recap
   const title = recap ? 'Stream Recap' : 'Last Stream Recap'
   const recapDurationSeconds = recapStreamDurationSeconds(payload)
