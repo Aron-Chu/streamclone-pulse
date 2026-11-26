@@ -19,11 +19,12 @@ describe('Privacy: Twitch player on session pages', () => {
     expect(twitch).toContain("StreamPulse's servers are not involved.")
   })
 
-  it('says when the front page loads a channel chat from Twitch', () => {
+  // The front page's chat band, which loaded a channel's chat from Twitch, was cut on 11-25 (#294). The hero's side
+  // chat is made-up lines, so the page names no front-page Twitch load.
+  it('names no Twitch chat on the front page', () => {
     render(<MemoryRouter><Privacy /></MemoryRouter>)
     const twitch = (screen.getByTestId('privacy-third-party-twitch').textContent ?? '').replace(/\s+/g, ' ')
-    expect(twitch).toContain(
-      "On the front page, pointing at a chat on a larger screen with a mouse or trackpad loads that channel's chat from Twitch, unless data saver is on.",
-    )
+    expect(twitch).not.toContain('On the front page')
+    expect(twitch).not.toContain("chat from Twitch")
   })
 })
