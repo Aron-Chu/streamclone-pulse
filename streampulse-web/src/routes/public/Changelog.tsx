@@ -77,7 +77,8 @@ export default function Changelog() {
                   <ul className="!my-0">
                     {release.preview!.slice(0, 3).map((item, index) => <li key={index}>{item}</li>)}
                   </ul>
-                  <a href={`#${changesId}`} className="mt-4 inline-block text-sm font-semibold text-violet-300 hover:underline">See all changes ↓</a>
+                  {/* The padding makes a 28 px tap area; the margins keep the text where it was. */}
+                  <a href={`#${changesId}`} className="-mb-1 mt-3 inline-block py-1 text-sm font-semibold text-violet-300 hover:underline">See all changes ↓</a>
                 </div>
               ) : (
                 <>

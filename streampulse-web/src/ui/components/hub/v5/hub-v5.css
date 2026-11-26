@@ -1477,7 +1477,10 @@
 }
 
 /* ---------- 3. The rail's frame, chips and Picking up (from the live feed v3, hub-live.css: R5-10 rail, R5-20 v2, v3) ---------- */
-.hub-v5 .hv5-mo-all { font-weight: 500; white-space: nowrap; }
+.hub-v5 .hv5-mo-all { position: relative; font-weight: 500; white-space: nowrap; }
+/* An 18 px line of text, given a 26 px tall tap area by an ::after, the way the (i) and zoom buttons
+   grow theirs. It grows upward only: on a phone the first Top moments row starts right under the link. */
+.hub-v5 .hv5-mo-all::after { content: ''; position: absolute; inset: -8px 0 0; }
 /* F2's picked game names the link ("Elden Ring moments →"): the name takes the room the age line leaves, then ellipses */
 .hv5-feed .hv5-rh .hv5-end { flex: 1 1 0; justify-content: flex-end; }
 .hv5-mo-all.hv5-mo-game { display: grid; grid-template-columns: minmax(0, max-content) auto; min-width: 0; }
