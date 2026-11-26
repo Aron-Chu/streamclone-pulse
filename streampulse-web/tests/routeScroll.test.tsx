@@ -784,4 +784,24 @@ describe('replaced pages (path-changing REPLACE)', () => {
     expect(scrollTo).not.toHaveBeenCalled()
     expect(scrolledElements()).toEqual([document.getElementById('coverage')])
   })
+
+  // Pages 301s /support to /help?from=support and the browser keeps the link's #billing-email.
+  // Help then drops ?from= and keeps the same #target: that replace must still land it.
+  it('lands the #target an edge redirect carried over once Help drops its from', async () => {
+    renderApp('/help?from=support#billing-email')
+    await settleMicrotasks()
+    runFrames(5)
+    expect(scrolledElements()).toContain(document.getElementById('billing-email'))
+  })
+
+  it('still leaves a same-#target query change that does not say top to the reader', async () => {
+    renderApp('/help?from=support#billing-email')
+    await settleMicrotasks()
+    runFrames(120)
+    scrollIntoView.mockClear()
+    act(() => { navigate('/help?q=refund#billing-email', { replace: true }) })
+    await settleMicrotasks()
+    runFrames(5)
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
 })

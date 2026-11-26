@@ -150,6 +150,21 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     expect(redirects.filter(line => /^\/\S+ \/docs[#\s]/.test(line))).toEqual([])
   })
 
+  it('moves the old Help pages and the timestamp builder for good at the edge', () => {
+    const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8').split(/\r?\n/)
+    for (const [path, target] of [
+      ['/docs', '/help?from=docs'],
+      ['/support', '/help?from=support'],
+      ['/feedback', '/help#feedback'],
+      ['/tools/twitch-vod-timestamp-link', '/guides/twitch-vod-timestamps'],
+    ]) {
+      expect(redirects).toContain(`${path} ${target} 301`)
+      expect(redirects).toContain(`${path}/ ${target} 301`)
+      expect(firstRewrite(redirects, path), path).toBe(target)
+      expect(firstRewrite(redirects, `${path}/`), `${path}/`).toBe(target)
+    }
+  })
+
   it('rewrites every account deep link to its account shell', () => {
     const redirects = readFileSync(resolve(webRoot, 'public/_redirects'), 'utf8')
     for (const path of ['/account/sign-in', '/account/confirm', '/account/restore', '/account/link-device', '/account/settings', '/account/billing', '/account/billing/return']) {

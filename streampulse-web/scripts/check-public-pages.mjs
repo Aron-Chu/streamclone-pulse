@@ -118,10 +118,17 @@ for (const [relativePath, title, robots, canonical] of expected) {
   if (actualTitle !== title) failures.push(`${relativePath}: incorrect title`)
   if (!html.includes(`<meta name="robots" content="${robots}" />`)) failures.push(`${relativePath}: incorrect robots policy`)
   if (canonical ? !html.includes(`<link rel="canonical" href="${canonical}" />`) : /<link\s+rel="canonical"/i.test(html)) failures.push(`${relativePath}: incorrect canonical URL`)
-  // A prerendered page's trailing-slash twin redirects to it (scripts/prerender.mjs slashRedirects).
+  // A prerendered page's trailing-slash twin redirects to it (scripts/prerender.mjs slashRedirects),
+  // or, where the edge 301s the page itself elsewhere (an old help address), to the same place.
   const page = /^(?!_recap-pages\/|analytics-fallback\/|analytics-console-fallback\/|account-fallback\/)(.+?)(?:\/index)?\.html$/.exec(relativePath)?.[1]
   const folder = page === 'index' || page === '404' ? undefined : page
-  if (folder && existsSync(join(dist, '_redirects')) && !readFileSync(join(dist, '_redirects'), 'utf8').split(/\r?\n/).includes(`/${folder}/ /${folder} 301`)) failures.push(`${relativePath}: /${folder}/ does not redirect to /${folder}`)
+  if (folder && existsSync(join(dist, '_redirects'))) {
+    const rules = readFileSync(join(dist, '_redirects'), 'utf8').split(/\r?\n/)
+    const ruleFor = (source) => rules.find((line) => line.startsWith(`${source} `))?.slice(source.length + 1)
+    const bare = ruleFor(`/${folder}`)
+    const wanted = bare?.endsWith(' 301') ? bare : `/${folder} 301`
+    if (ruleFor(`/${folder}/`) !== wanted) failures.push(`${relativePath}: /${folder}/ does not redirect to ${wanted.split(' ')[0]}`)
+  }
   failures.push(...linkPreviewFailures(relativePath, html, title, canonical))
   if (!textContainsHostedApiOrigin(html)) failures.push(`${relativePath}: hosted API CSP missing`)
   if (!relativePath.startsWith('account-fallback/') && !/<div id="root"[^>]*>[\s\S]*?<h1\b/.test(html)) failures.push(`${relativePath}: missing meaningful prerendered heading`)

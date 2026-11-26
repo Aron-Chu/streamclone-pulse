@@ -14,6 +14,7 @@ import NotFound from './public/NotFound'
 import { PageErrorBoundary } from '../ui/PortalErrorBoundary'
 import { PublicLayout } from '../ui/components/PublicLayout'
 import { retiredExplorerPath } from '../lib/momentsNavigation'
+import { routeScrollState } from '../lib/routeScroll'
 import { twitchSignInEnabled } from '../lib/twitchSignInFlag'
 import { accountMomentsEnabled } from '../lib/accountMoments'
 import { warmMomentPage } from '../lib/momentPageFlag'
@@ -176,12 +177,38 @@ function AnalyticsAliasRedirect() {
  */
 function HelpRedirect({ section, anchors = {} }: { section: string; anchors?: Record<string, string> }) {
   const { search, hash } = useLocation()
+  return <Navigate to={`/help${search}#${helpSection(hash, section, anchors)}`} replace />
+}
+
+function helpSection(hash: string, section: string, anchors: Record<string, string>) {
   const anchor = hash.slice(1)
-  return <Navigate to={`/help${search}#${anchors[anchor] ?? section}`} replace />
+  return Object.prototype.hasOwnProperty.call(anchors, anchor) ? anchors[anchor] : section
 }
 
 const DOCS_ANCHORS = { extension: 'install', analytics: 'hub', coverage: 'coverage', api: 'api', help: 'ask' }
 const SUPPORT_ANCHORS = { install: 'install', 'send-feedback': 'feedback', 'billing-email': 'billing-email', contact: 'contact', security: 'security' }
+
+/**
+ * The edge 301s /docs and /support to /help?from=docs and ?from=support
+ * (public/_redirects). The browser carries the link's anchor over, and Help
+ * maps it as HelpRedirect does, then drops the from.
+ */
+const EDGE_HELP_ALIASES: Record<string, { section: string; anchors: Record<string, string> }> = {
+  docs: { section: 'install', anchors: DOCS_ANCHORS },
+  support: { section: 'fix', anchors: SUPPORT_ANCHORS },
+}
+
+function HelpEntry() {
+  const { search, hash } = useLocation()
+  const params = new URLSearchParams(search)
+  const from = params.get('from') ?? ''
+  if (!Object.prototype.hasOwnProperty.call(EDGE_HELP_ALIASES, from)) return <Help />
+  const { section, anchors } = EDGE_HELP_ALIASES[from]
+  params.delete('from')
+  const rest = params.toString()
+  // `top`: the #target may be the one the first address named, and dropping the from must still land it.
+  return <Navigate to={`/help${rest ? `?${rest}` : ''}#${helpSection(hash, section, anchors)}`} replace state={routeScrollState('top')} />
+}
 
 function TimestampToolRedirect() {
   const { search } = useLocation()
@@ -234,7 +261,7 @@ function PortalRoutes() {
         <Route path="/guides/find-twitch-moments" element={<FindTwitchMomentsGuide />} />
         <Route path="/guides/twitch-vod-timestamps" element={<TwitchVodTimestampsGuide />} />
         <Route path="/recaps" element={<Recaps />} />
-        <Route path="/help" element={<Help />} />
+        <Route path="/help" element={<HelpEntry />} />
         {/* Install, the docs, Support and Feedback are sections of Help. */}
         <Route path="/docs" element={<HelpRedirect section="install" anchors={DOCS_ANCHORS} />} />
         <Route path="/install" element={<HelpRedirect section="install" />} />

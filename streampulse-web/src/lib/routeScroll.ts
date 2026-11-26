@@ -24,7 +24,8 @@ const holds = new Set<symbol>()
  * How a navigation treats the reader's place, sent as its location state. A
  * pushed page opens at the top unless it keeps the reader's context on screen
  * (`keep`); a replaced page keeps the reader's place unless it is another page
- * the reader did not choose (`top`).
+ * the reader did not choose (`top`). A `top` navigation that keeps the page and
+ * its #target, such as a redirect tidying the query, still lands that target.
  */
 export type RouteScrollIntent = 'top' | 'keep'
 
