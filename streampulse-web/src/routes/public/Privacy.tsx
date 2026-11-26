@@ -25,7 +25,7 @@ export default function Privacy() {
         <header className="mb-6 border-b border-white/[0.08] pb-6">
           <h1>Privacy Policy</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: November 25, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
+            Last updated: November 26, 2026 · Applies to <code className="font-mono text-zinc-300">streampulse.stream</code> and the StreamPulse browser extension (Chrome, Brave, Edge and Firefox).
           </p>
         </header>
 
@@ -544,9 +544,7 @@ export default function Privacy() {
             to Twitch's sign-in page and reads your follows from Twitch's API with the token Twitch
             gave the tab; StreamPulse's servers are not involved. On a session page, picking a minute
             on a larger screen with a mouse or trackpad loads Twitch's player from Twitch, paused,
-            unless data saver is on. Otherwise it loads only when you press Play. On the front page, pointing
-            at a chat on a larger screen with a mouse or trackpad loads that channel's chat from Twitch,
-            unless data saver is on.
+            unless data saver is on. Otherwise it loads only when you press Play.
             {supporterChatBadgesEnabled() ? <> {PRIVACY_TWITCH_THIRD_PARTY_SEEN_IN_CHAT}</> : null}
           </li>
           <li>
