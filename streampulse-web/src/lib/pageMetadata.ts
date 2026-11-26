@@ -26,9 +26,11 @@ function channelTitle(pathname: string): string | null {
 }
 
 function resolveBasePageMetadata(pathname: string): PageMetadata {
-  if (pathname.replace(/\/+$/, '') === '/account/restore') return { title: 'Restore Supporter — StreamPulse', description: 'Confirm a requested Supporter restore for your extension.', canonicalPath: '/account/restore', robots: 'noindex,nofollow' }
+  // The router matches /Account/Settings as /account/settings, so the account checks ignore case too.
+  const lowerPath = pathname.toLowerCase()
+  if (lowerPath.replace(/\/+$/, '') === '/account/restore') return { title: 'Restore Supporter — StreamPulse', description: 'Confirm a requested Supporter restore for your extension.', canonicalPath: '/account/restore', robots: 'noindex,nofollow' }
   // The Account page itself (/account) exists only with My Moments on (VITE_ACCOUNT_MOMENTS=1).
-  if (pathname.startsWith('/account/') || (import.meta.env.VITE_ACCOUNT_MOMENTS === '1' && pathname.replace(/\/+$/, '') === '/account')) {
+  if (lowerPath.startsWith('/account/') || (import.meta.env.VITE_ACCOUNT_MOMENTS === '1' && lowerPath.replace(/\/+$/, '') === '/account')) {
     const accountPath = pathname.split(/[?#]/)[0]
     const accountTitles: Record<string, string> = {
       '/account/sign-in': 'Sign in',
@@ -36,7 +38,17 @@ function resolveBasePageMetadata(pathname: string): PageMetadata {
       '/account/link-device': 'Link extension',
       '/account/settings': 'Account & devices',
     }
-    const accountTitle = accountTitles[accountPath.replace(/\/+$/, '')]
+    const page = accountPath.replace(/\/+$/, '')
+    const key = page.toLowerCase()
+    const accountTitle = accountTitles[key]
+    // Pages this build has with no title of their own. Any other account address is the ordinary 404
+    // (/account/moments with My Moments off, say), so it is titled that way, as a clip address is with clips off.
+    const untitled = ['/account/billing', '/account/billing/return']
+    if (import.meta.env.VITE_TWITCH_SIGNIN === '1') untitled.push('/account/twitch/callback')
+    if (import.meta.env.VITE_ACCOUNT_MOMENTS === '1') untitled.push('/account', '/account/moments')
+    if (!accountTitle && !untitled.includes(key)) {
+      return { title: 'Page not found — StreamPulse', description: DEFAULT_DESCRIPTION, canonicalPath: page, robots: 'noindex,nofollow' }
+    }
     return { title: accountTitle ? `${accountTitle} — StreamPulse` : 'Your account — StreamPulse', description: 'Manage your StreamPulse account and connected extension.', canonicalPath: accountPath, robots: 'noindex,nofollow' }
   }
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname
