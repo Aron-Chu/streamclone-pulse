@@ -200,6 +200,9 @@ if (viteSentryDsn) {
 
 console.log(`Building with VITE_BACKEND_URL=${backendUrl}`)
 console.log(`Portal release ${portalRelease}`)
+// What `npm run build` gets from its prebuild hook, which a direct `npx vite build` skips:
+// the recap manifests, refreshed so a recap whose review has expired stays out of the bundle.
+run('node', ['scripts/prepare-recap-pilot.mjs'])
 run('npx', ['vite', 'build'], buildEnv)
 run('node', ['scripts/prerender.mjs'])
 run('node', ['scripts/check-public-pages.mjs'])
