@@ -42,6 +42,11 @@ function stream(isLive: boolean, vodStatus?: string): PulsePayload {
   } as PulsePayload
 }
 
+const RECAP = {
+  streamId: 'stream-jerma', login: 'jerma985', durationSeconds: 7_200, totalMessages: 4_800,
+  peakChatPerMin: 40, topMoments: [], topEmotes: [], clipCandidates: [],
+} satisfies PulsePayload['recap']
+
 describe('the ended-stream VOD check', () => {
   let node: HTMLDivElement
   let root: Root
@@ -56,6 +61,11 @@ describe('the ended-stream VOD check', () => {
   }
   const checks = () => vi.mocked(sendBackgroundMessage).mock.calls
     .filter(([request]) => (request as { type: string }).type === 'HEALTH').length
+  const fullRequests = () => vi.mocked(sendBackgroundMessage).mock.calls
+    .filter(([request]) => {
+      const { type, window } = request as { type: string; window?: string }
+      return type === 'GET_PULSE' && window === 'full'
+    }).length
 
   async function flush(): Promise<void> {
     for (let i = 0; i < 10; i++) await act(async () => { await Promise.resolve() })
@@ -119,6 +129,28 @@ describe('the ended-stream VOD check', () => {
     await flush()
     await wait(5 * 60_000)
     expect(checks()).toBe(1)
+    await act(async () => { release?.() })
+    await flush()
+    await wait(60 * 60_000)
+    expect(checks()).toBe(ENDED_VOD_POLL_MAX_CHECKS)
+  })
+
+  it('a Full stream request during a check does not stop the checks', async () => {
+    // The Full request replaces the running check, which then skips its own
+    // busy reset. The flag stayed set, so every later tick was skipped.
+    let release: (() => void) | null = null
+    vi.mocked(sendBackgroundMessage).mockImplementation(async (request) => {
+      if ((request as { type: string }).type === 'HEALTH' && !release) {
+        await new Promise<void>((resolve) => { release = resolve })
+      }
+      return { ok: false }
+    })
+    await liveThenEnded()
+    expect(checks()).toBe(1)
+    // The recap shows up while the check waits, and its chart asks for the Full stream.
+    await act(async () => { root.render(<Overlay {...props} payload={{ ...stream(false), recap: RECAP }} />) })
+    await flush()
+    expect(fullRequests()).toBeGreaterThan(0)
     await act(async () => { release?.() })
     await flush()
     await wait(60 * 60_000)

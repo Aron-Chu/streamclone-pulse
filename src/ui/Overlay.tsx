@@ -1713,6 +1713,9 @@ function OverlayMain({
       return { ok: false, reason: 'activation_unavailable' }
     }
     const token = backfillOpsRef.current.begin(activation)
+    // begin() just cancelled any VOD check, and a cancelled check never clears
+    // its own busy flag. This request doesn't hold the flag, so clear it here.
+    setMissedBusy(false)
     try {
       const { response } = await fetchPulseTransport(true)
       if (!tokenIsLive(token)) return { ok: false, reason: 'activation_changed' }
