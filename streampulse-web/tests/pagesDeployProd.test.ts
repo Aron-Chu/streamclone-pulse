@@ -44,6 +44,15 @@ describe('Cloudflare Pages production deployment hygiene', () => {
     expect(deploymentScript).toContain('scripts/check-backend-url.mjs')
   })
 
+  // `npx vite build` skips npm's prebuild hook, which drops a recap whose review has expired.
+  // Without its own refresh the deploy bundled the committed manifests, expired pages included.
+  it('refreshes the recap manifests after the clean-tree check and before the production build', () => {
+    const prepare = deploymentScript.indexOf("run('node', ['scripts/prepare-recap-pilot.mjs'])")
+    const build = deploymentScript.indexOf("run('npx', ['vite', 'build'], buildEnv)")
+    expect(prepare).toBeGreaterThan(deploymentScript.indexOf('\nassertCleanGitTree()\n'))
+    expect(build).toBeGreaterThan(prepare)
+  })
+
   it('verifies hosted analytics and account routes after Pages deploy', () => {
     expect(deploymentScript).toContain("from './hosted-analytics-route-smoke.mjs'")
     expect(deploymentScript).toContain('verifyHostedAnalyticsRoutes')
