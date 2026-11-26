@@ -63,6 +63,22 @@
 /docs/coverage/ /help#coverage 301
 /docs/api /help#api 301
 /docs/api/ /help#api 301
+# The old Docs, Support and Feedback pages are Help now, and the extension links
+# /support, /support#billing-email and /feedback. A browser keeps a link's
+# #anchor over a 301 whose target has none, but Pages never sees it, so /docs
+# and /support name themselves in ?from= and Help maps the anchor, or opens
+# their old section when there is none (HelpEntry in src/routes/index.tsx).
+# That query replaces the request's own, which no shipped link carries.
+/docs /help?from=docs 301
+/docs/ /help?from=docs 301
+/support /help?from=support 301
+/support/ /help?from=support 301
+/feedback /help#feedback 301
+/feedback/ /help#feedback 301
+
+# The timestamp builder sits at the top of its guide now. Pages passes the query on.
+/tools/twitch-vod-timestamp-link /guides/twitch-vod-timestamps 301
+/tools/twitch-vod-timestamp-link/ /guides/twitch-vod-timestamps 301
 
 # Pulse Explorer is retired into Moments. Pages passes the request's query to a
 # 301 target unless the target has its own, so ?view=recent (the Latest view)

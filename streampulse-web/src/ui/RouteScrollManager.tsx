@@ -99,10 +99,13 @@ export function RouteScrollManager() {
     const hashCleared = from !== null && navigationType === NavigationType.Push && !pathChanged
       && from.search === location.search && hashTargetId(from.hash) !== null && location.hash === ''
     if ((pathChanged && toTop) || hashCleared) window.scrollTo(0, 0)
-    // A search-only update is in-page state (filters, ranges): keep the reader's place.
-    if (from && !pathChanged && from.hash === location.hash) return
+    // A search-only update is in-page state (filters, ranges): keep the reader's place. One that
+    // says `top` opens the page instead, as Help does when it drops an edge redirect's ?from= and
+    // keeps the #target the link named: the landing the first address started still has to happen.
+    const opened = intent === 'top'
+    if (from && !pathChanged && from.hash === location.hash && !opened) return
     if (!id) return
-    return scrollToHashTarget(id, { smooth: from !== null && !pathChanged })
+    return scrollToHashTarget(id, { smooth: from !== null && !pathChanged && !opened })
   }, [location.key, location.pathname, location.search, location.hash, navigationType, intent])
 
   return null

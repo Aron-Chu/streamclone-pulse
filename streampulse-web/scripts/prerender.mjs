@@ -145,8 +145,9 @@ try {
 }
 
 // The help pages that became sections of /help, and the timestamp builder's old
-// address. Each still answers, since the extension and other sites link them,
-// and opens the new page; search is pointed there and they stay out of the sitemap.
+// address. The edge 301s each to its new place (public/_redirects), so these
+// pages serve a local preview, which has no edge rules, and the link checks
+// that read this list. Search is pointed at the new page and they stay out of the sitemap.
 const helpPage = {
   title: 'Help — StreamPulse',
   description: 'Install the free StreamPulse extension, fix common problems, or ask us on Discord, on GitHub or with the private feedback form.',

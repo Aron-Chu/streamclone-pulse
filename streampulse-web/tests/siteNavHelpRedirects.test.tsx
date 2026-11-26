@@ -94,6 +94,14 @@ describe('old help addresses', () => {
     ['/support#contact', '/help#contact'],
     ['/support#security', '/help#security'],
     ['/feedback', '/help#feedback'],
+    ['/support#constructor', '/help#fix'],
+    // Where the edge sends /docs and /support, with the anchor the browser carried over.
+    ['/help?from=docs', '/help#install'],
+    ['/help?from=docs#analytics', '/help#hub'],
+    ['/help?from=support', '/help#fix'],
+    ['/help?from=support#billing-email', '/help#billing-email'],
+    ['/help?from=support#send-feedback', '/help#feedback'],
+    ['/help?from=support&utm_source=store', '/help?utm_source=store#fix'],
   ])('opens %s at %s', async (from, to) => {
     render(<MemoryRouter initialEntries={[from]}><Where /><AppRoutes /></MemoryRouter>)
     expect(await screen.findByTestId('help-page')).toBeTruthy()
@@ -101,13 +109,34 @@ describe('old help addresses', () => {
     expect(document.getElementById(to.split('#')[1]), to).toBeTruthy()
   })
 
+  it('leaves Help as it is for a from it does not know', async () => {
+    render(<MemoryRouter initialEntries={['/help?from=constructor#api']}><Where /><AppRoutes /></MemoryRouter>)
+    expect(await screen.findByTestId('help-page')).toBeTruthy()
+    expect(screen.getByTestId('where').textContent).toBe('/help?from=constructor#api')
+  })
+
+  const edgeTargets = () => readFileSync(resolve(process.cwd(), 'public/_redirects'), 'utf8').split(/\r?\n/)
+    .filter((line) => line.trim() && !line.startsWith('#'))
+    .map((line) => line.trim().split(/\s+/)[1])
+
+  it('lands each edge redirect that names its old page on a section of Help', async () => {
+    const targets = edgeTargets().filter((target) => target.startsWith('/help?from='))
+    // /docs and /support, with and without the slash.
+    expect(targets).toHaveLength(4)
+    for (const target of new Set(targets)) {
+      const view = render(<MemoryRouter initialEntries={[target]}><Where /><AppRoutes /></MemoryRouter>)
+      expect(await screen.findByTestId('help-page')).toBeTruthy()
+      const where = screen.getByTestId('where').textContent ?? ''
+      expect(where, target).toMatch(/^\/help#[a-z-]+$/)
+      expect(document.getElementById(where.split('#')[1]), target).toBeTruthy()
+      view.unmount()
+    }
+  })
+
   it('sends each edge redirect into Help to a section the page has', async () => {
-    const targets = readFileSync(resolve(process.cwd(), 'public/_redirects'), 'utf8').split(/\r?\n/)
-      .filter((line) => line.trim() && !line.startsWith('#'))
-      .map((line) => line.trim().split(/\s+/)[1])
-      .filter((target) => target.startsWith('/help#'))
-    // /install, /docs/getting-started, /docs/coverage and /docs/api, with and without the slash.
-    expect(targets).toHaveLength(8)
+    const targets = edgeTargets().filter((target) => target.startsWith('/help#'))
+    // /install, /docs/getting-started, /docs/coverage, /docs/api and /feedback, with and without the slash.
+    expect(targets).toHaveLength(10)
     render(<MemoryRouter initialEntries={['/help']}><AppRoutes /></MemoryRouter>)
     expect(await screen.findByTestId('help-page')).toBeTruthy()
     for (const anchor of new Set(targets.map((target) => target.slice('/help#'.length)))) {
