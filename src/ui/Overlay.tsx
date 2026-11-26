@@ -1504,7 +1504,21 @@ function OverlayMain({
     hostedBackend,
   ])
 
+  /** Starts a VOD check unless one is already running; says whether it started. */
+  function startVodCheck(): boolean {
+    if (!payload?.streamId || missedBusy) return false
+    void refreshVodStatus()
+    return true
+  }
+  // The ended poll's interval outlives renders, so it calls the latest startVodCheck and sees
+  // the current busy flag and payload, not the ones from when the interval began.
+  const startVodCheckRef = useRef(startVodCheck)
+  startVodCheckRef.current = startVodCheck
+
   // After live→ended, poll VOD linkage at least 30s apart until linked / terminal / leave.
+  // A channel with VODs off never links, so the checks stop after ENDED_VOD_POLL_MAX_CHECKS
+  // per stream. A hidden tab or a check still running skips a tick, and a skipped tick doesn't count.
+  const endedVodChecksRef = useRef<{ streamId: string; checks: number } | null>(null)
   useEffect(() => {
     if (!sawLiveRef.current) return
     if (uiIsLive) return
@@ -1513,10 +1527,19 @@ function OverlayMain({
     const vodStatus = String(payload.coverage?.vodStatus ?? '').trim().toLowerCase()
     if (terminal.has(vodStatus)) return
 
-    void refreshVodStatus()
-    const timer = window.setInterval(() => {
-      void refreshVodStatus()
-    }, 30_000)
+    if (endedVodChecksRef.current?.streamId !== payload.streamId) {
+      endedVodChecksRef.current = { streamId: payload.streamId, checks: 0 }
+    }
+    const budget = endedVodChecksRef.current
+    if (budget.checks >= ENDED_VOD_POLL_MAX_CHECKS) return
+    let timer = 0
+    const check = () => {
+      if (document.hidden || !startVodCheckRef.current()) return
+      budget.checks += 1
+      if (budget.checks >= ENDED_VOD_POLL_MAX_CHECKS) window.clearInterval(timer)
+    }
+    timer = window.setInterval(check, 30_000)
+    check()
     return () => window.clearInterval(timer)
   }, [
     uiIsLive,
@@ -1690,6 +1713,9 @@ function OverlayMain({
       return { ok: false, reason: 'activation_unavailable' }
     }
     const token = backfillOpsRef.current.begin(activation)
+    // begin() just cancelled any VOD check, and a cancelled check never clears
+    // its own busy flag. This request doesn't hold the flag, so clear it here.
+    setMissedBusy(false)
     try {
       const { response } = await fetchPulseTransport(true)
       if (!tokenIsLive(token)) return { ok: false, reason: 'activation_changed' }
@@ -2383,6 +2409,9 @@ function StreamPulseHeader({
 
 /** Answers that retrying cannot change. */
 const PERMANENT_VOD_STATES = new Set(['stream_not_collected', 'duration_implausible'])
+
+/** After a stream ends, how many 30 s VOD checks it gets (about 5 visible minutes). */
+export const ENDED_VOD_POLL_MAX_CHECKS = 10
 
 /**
  * "Oct 7 · 8h 25m": the replay's own stream, never the live one. No game: the
