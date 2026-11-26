@@ -25,7 +25,7 @@ export default function Terms() {
         <header className="mb-6 border-b border-white/[0.08] pb-6">
           <h1>Terms of Use</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 26, 2026 · Applies to{' '}
+            Last updated: November 5, 2026 · Applies to{' '}
             <code className="font-mono text-zinc-300">streampulse.stream</code>, the StreamPulse
             browser extension (Chrome, Brave, Edge and Firefox), and the Pulse Supporter subscription.
           </p>

@@ -27,7 +27,7 @@ export default function Refunds() {
         <header className="mb-6 border-b border-white/[0.08] pb-6">
           <h1>Cancellation &amp; Refunds</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Last updated: October 13, 2026 · Applies to the Pulse Supporter subscription.
+            Last updated: November 5, 2026 · Applies to the Pulse Supporter subscription.
           </p>
         </header>
 
