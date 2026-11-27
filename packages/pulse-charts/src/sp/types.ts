@@ -144,9 +144,14 @@ export interface SpLane {
   /** Head chip, values as passed; left out: the peak is the lane's plotted maximum; false: no chip. */
   caption?: SpCaption | false
   lines?: readonly SpLaneLine[]
+  /**
+   * The y-scale leaves out a few minutes far above the rest (laneScaleMax): those bars and lines run past the
+   * lane top, the lane clips them and a "▲ 1.0K" mark over each run says the real figure.
+   */
+  capOutliers?: boolean
 }
 
-/** A lane's box: a value panel plus its key. */
+/** A lane's box: a value panel plus its key. raw is the tallest value in view, which may stand over max when capped. */
 export interface SpLaneBox extends SpValuePanel { key: string; raw: number }
 
 /** The sliding selection band (prod's useSmoothedScalar on x and width). */

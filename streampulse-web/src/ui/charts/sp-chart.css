@@ -210,6 +210,19 @@ div.spc-layer {
   white-space: nowrap;
 }
 
+/* capOutliers: the real figure over a bar or line that runs past its lane's top (a .spc-chip, centred on the run) */
+.spc-over {
+  transform: translateX(-50%);
+}
+
+.spc-over[data-edge='end'] {
+  transform: translateX(-100%);
+}
+
+.spc-over[data-edge='start'] {
+  transform: none;
+}
+
 .spc-avg-sw {
   display: inline-block;
   width: 14px;
@@ -327,7 +340,8 @@ div.spc-layer {
   color: var(--sp-text-1, #ededef);
 }
 
-.spc-lcap .spc-n {
+.spc-lcap .spc-n,
+.spc-over .spc-n {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
