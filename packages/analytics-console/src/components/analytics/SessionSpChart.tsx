@@ -75,7 +75,9 @@ const OVERLAY_RULE = 'rgb(148 163 184 / .18)'
  * - The plotted emotes: one trace each in prod's per-emote palette, in a shorter
  *   bottom lane with no caption (F24). It shows while `overlays` is non-empty
  *   (the caller passes them with All and Emotes only).
- * Each lane's scale follows the view frame by frame as it zooms and pans (laneFit).
+ * Each lane's scale follows the view frame by frame as it zooms and pans (laneFit). Chat, Emotes and the plotted
+ * emotes cap outliers: a few minutes far above the rest in an hour or more of view (a stream's goodbye emote wave)
+ * run past the lane top under a "▲ 1.0K" chip instead of flattening the lane (laneScaleMax).
  * The series segment picks the lanes. Captions: a lane's peak is its busiest
  * measured minute, the viewers peak the header's when given (D5); the avg joins
  * only with Show on chart's Averages (`showAvg`; viewers use the header's avg).
@@ -105,21 +107,21 @@ export function sessionLanes(
   if (o.series.chat !== false) {
     lanes.push({
       key: 'chat', label: 'Chat', kind: 'bars', color: T.chat.color, unit: '/min', gap: 8, barOpacity: T.chat.whisperBar, minBarPx: 1,
-      trend: { opacity: T.chat.lineOpacity, width: SP_LANE_WIDTH }, bg: BAND, baseline: false, caption: rate(model.captions.chat),
+      trend: { opacity: T.chat.lineOpacity, width: SP_LANE_WIDTH }, bg: BAND, baseline: false, caption: rate(model.captions.chat), capOutliers: true,
     })
   }
   if (o.series.emotes !== false) {
     lanes.push({
       key: 'emotes', label: 'Emotes', kind: 'bars', color: T.emote.color, unit: '/min', gap: 0, barOpacity: T.emote.bar,
       spikeOpacity: T.emote.barSpike, spikeAbs: model.emoteSpike ?? undefined, minBarPx: 1,
-      trend: { opacity: T.emote.line, width: SP_LANE_WIDTH }, bg: BAND, baseline: false, caption: rate(model.captions.emotes),
+      trend: { opacity: T.emote.line, width: SP_LANE_WIDTH }, bg: BAND, baseline: false, caption: rate(model.captions.emotes), capOutliers: true,
     })
   }
   if (o.overlays.length) {
     lanes.push({
       key: 'overlay', label: 'Emote overlays', kind: 'line', color: o.overlays[0]!.color, unit: '/min', weight: 0.55, caption: false, gap: 0,
       lines: o.overlays.map(l => ({ key: l.key, color: l.color, values: l.values })),
-      lineOpacity: 0.95, width: [1.15, 1.7], bridge: false, bg: [BAND, OVERLAY_WASH], topLine: OVERLAY_RULE, baseline: false,
+      lineOpacity: 0.95, width: [1.15, 1.7], bridge: false, bg: [BAND, OVERLAY_WASH], topLine: OVERLAY_RULE, baseline: false, capOutliers: true,
     })
   }
   return lanes

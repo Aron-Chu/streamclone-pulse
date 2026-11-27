@@ -46,6 +46,67 @@ export function laneRawMax(d: SpChartData, L: SpLane, a = 0, b = Infinity): numb
   return m
 }
 
+/** capOutliers: views shorter than this many samples (an hour of minutes) always show the tallest value. */
+export const SP_LANE_CAP_MIN_SAMPLES = 60
+/** capOutliers: the cap starts when the tallest value in view is over this many times the 99th percentile. */
+export const SP_LANE_CAP_RATIO = 4
+/** capOutliers: a capped lane's scale reaches this many times the 99th percentile. */
+export const SP_LANE_CAP_REACH = 1.6
+
+/**
+ * The value a lane's y-scale fits: laneRawMax, unless the lane sets capOutliers and a few samples in a view of
+ * SP_LANE_CAP_MIN_SAMPLES or more stand over SP_LANE_CAP_RATIO times the 99th percentile of every measured value in
+ * view. A stream's goodbye wave is the case: 1,032 emotes a minute where 99 % of minutes stay at 112 or under, which
+ * flattened 11 hours into the floor. Then the scale reaches SP_LANE_CAP_REACH times that percentile, so the busiest
+ * ordinary minutes still fill the lane. Zoomed in to under an hour, the lane always fits its tallest value.
+ */
+export function laneScaleMax(d: SpChartData, L: SpLane, a = 0, b = Infinity): number {
+  const raw = laneRawMax(d, L, a, b)
+  if (!L.capOutliers || !(raw > 0)) return raw
+  const all = L.lines ? L.lines.map(l => l.values) : [laneSeries(d, L)]
+  const i0 = Math.max(0, Math.floor(a))
+  const buf: number[] = []
+  for (const v of all) {
+    if (!v) continue
+    for (let i = i0, e = Math.min(v.length - 1, Math.ceil(b)); i <= e; i += 1) if (d.coverage[i] !== 2 && fin(v[i]!)) buf.push(v[i]!)
+  }
+  if (buf.length < SP_LANE_CAP_MIN_SAMPLES) return raw
+  const sorted = Float64Array.from(buf).sort()
+  const p99 = sorted[Math.floor(0.99 * (sorted.length - 1))]!
+  return p99 > 0 && raw > SP_LANE_CAP_RATIO * p99 ? SP_LANE_CAP_REACH * p99 : raw
+}
+
+/** A value over a capped lane's top: the run's tallest sample (index, value) and its line's colour. */
+export interface SpLaneOver { key: string; i: number; v: number; color: string }
+
+/**
+ * The runs of samples in [a, b] over a lane's drawn max, one mark per run at its tallest sample. Runs closer than
+ * `minGap` samples join, so the marks never crowd. Only for lanes whose tallest value in view passes their max.
+ */
+export function laneOverMarks(d: SpChartData, L: SpLane, box: SpLaneBox, a: number, b: number, minGap: number): SpLaneOver[] {
+  if (!L.capOutliers || !(box.raw > box.max)) return []
+  const src = L.lines ?? [{ key: L.key, color: L.color, values: laneSeries(d, L) }]
+  const out: SpLaneOver[] = []
+  let cur: SpLaneOver | null = null, lastOver = -Infinity
+  for (let i = Math.max(0, Math.floor(a)), e = Math.min(d.coverage.length - 1, Math.ceil(b)); i <= e; i += 1) {
+    if (d.coverage[i] === 2) continue
+    let v = -Infinity, color = L.color
+    for (const s of src) {
+      const x = s.values ? s.values[i]! : NaN
+      if (fin(x) && x > v) {
+        v = x
+        color = s.color
+      }
+    }
+    if (!(v > box.max)) continue
+    if (cur && i - lastOver <= minGap) {
+      if (v > cur.v) Object.assign(cur, { i, v, color })
+    } else out.push((cur = { key: L.key + ':' + i, i, v, color }))
+    lastOver = i
+  }
+  return out
+}
+
 /** laneFit headroom: the tallest value in view stands at 1 / 1.1 of the lane's data height or lower. */
 export const SP_LANE_FIT_HEADROOM = 1.1
 
@@ -66,6 +127,8 @@ export interface SpLaneLayoutInput {
   lanes: readonly SpLane[]
   /** laneRawMax per lane. */
   raw: readonly number[]
+  /** laneScaleMax per lane, when it differs from raw (capOutliers); the scale follows it. */
+  scale?: readonly number[] | null
   /** laneFit: a lane's max is laneFitMax(raw), not the nice tick at or above raw. */
   fit?: boolean
 }
@@ -88,7 +151,8 @@ export function laneLayout(i: SpLaneLayoutInput): SpLayout {
     y += gapOf(L, k)
     const h = k === i.lanes.length - 1 ? Math.max(0, H - y) : Math.round((avail * wt(L)) / sum)
     const raw = i.raw[k] ?? 0
-    const ticks = i.fit ? [0, laneFitMax(raw)] : niceTicks(raw, 4)
+    const fitTo = i.scale?.[k] ?? raw
+    const ticks = i.fit ? [0, laneFitMax(fitTo)] : niceTicks(fitTo, 4)
     const box = { key: L.key, raw, x: 0, y, width: plotWidth, height: h, dataTop: y + Math.min(SP_LANE_HEAD, Math.round(h * 0.4)), max: ticks[ticks.length - 1]! || 1, ticks }
     y += h
     return box

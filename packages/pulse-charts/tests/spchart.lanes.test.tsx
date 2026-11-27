@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { barWidthPx } from '../src/sp/bars.ts'
-import { laneFigure, laneFitMax, laneLayout, laneRawMax, laneTick, laneWidth, snapToSlots } from '../src/sp/lanes.ts'
+import { laneFigure, laneFitMax, laneLayout, laneOverMarks, laneRawMax, laneScaleMax, laneTick, laneWidth, snapToSlots } from '../src/sp/lanes.ts'
 import { SpChart } from '../src/sp/SpChart.tsx'
 import { createSpViewportStore } from '../src/sp/viewportStore.ts'
 import type { SpChartData, SpChartHandle, SpChartProps, SpLane } from '../src/sp/types.ts'
@@ -421,5 +421,123 @@ describe('no-lanes parity capture', () => {
     }
     if (process.env.SPC_PARITY_OUT) writeFileSync(process.env.SPC_PARITY_OUT, out.join('\n\n'))
     expect(out.every(s => s.includes('data-bench-plot') && !s.includes('spc-lane') && !s.includes('spc-selband'))).toBe(true)
+  })
+})
+
+/** An 11-hour stream: ~16 emotes a minute with ordinary peaks up to 136, then a goodbye wave of 377, 1,032, 856, 574. */
+function goodbyeWave(): SpChartData {
+  const n = 686
+  const d = data(n, [])
+  for (let i = 0; i < n; i += 1) d.emotes[i] = 8 + ((i * 13) % 17)
+  for (const [i, v] of [[100, 112], [300, 128], [301, 136], [500, 112], [600, 90]] as const) d.emotes[i] = v
+  ;[377, 1032, 856, 574].forEach((v, k) => void (d.emotes[676 + k] = v))
+  return d
+}
+const capped = (L: SpLane): SpLane => ({ ...L, capOutliers: true })
+
+describe('capOutliers: a goodbye wave does not flatten the lane', () => {
+  it('scales to 1.6x the 99th percentile when the tallest value is over 4x it, in an hour or more of view', () => {
+    const d = goodbyeWave()
+    const em = capped(sessionLanes(d)[2]!)
+    expect(laneRawMax(d, em)).toBe(1032)
+    // 99th percentile of 686 minutes is the 7th tallest (index 678): 112; reach 1.6x = 179.2
+    expect(laneScaleMax(d, em)).toBeCloseTo(179.2)
+    expect(laneTick(laneFitMax(laneScaleMax(d, em)))).toBe('200')
+    // the ordinary peak (136) stands at 68 % of the lane instead of 12 %
+    expect(136 / laneFitMax(laneScaleMax(d, em))).toBeGreaterThan(0.6)
+  })
+
+  it('leaves a real peak alone: under 4x the 99th percentile the lane fits its tallest value', () => {
+    const d = goodbyeWave()
+    // like LUL on that stream: 57 against a 99th percentile of 15
+    for (let i = 0; i < 686; i += 1) d.emotes[i] = i % 50 === 0 ? 15 : i % 3
+    d.emotes[400] = 57
+    const em = capped(sessionLanes(d)[2]!)
+    expect(laneScaleMax(d, em)).toBe(57)
+  })
+
+  it('never caps a lane that did not ask, a view under an hour, or a lane of zeros', () => {
+    const d = goodbyeWave()
+    const [, , em] = sessionLanes(d)
+    expect(laneScaleMax(d, em!)).toBe(1032)
+    // zoomed to the last 15 minutes the wave is the shape
+    expect(laneScaleMax(d, capped(em!), 671, 685)).toBe(1032)
+    const z = data(120, [])
+    z.emotes.fill(0)
+    z.emotes[60] = 4
+    expect(laneScaleMax(z, capped(sessionLanes(z)[2]!))).toBe(4)
+  })
+
+  it('caps a line lane over every line, and marks one run per wave at its tallest sample', () => {
+    const d = goodbyeWave()
+    const lanes = sessionLanes(d)
+    const ov = new Float64Array(686).map((_, i) => (i >= 676 && i < 680 ? [120, 468, 300, 200][i - 676]! : 1 + (i % 19)))
+    const line = capped({ ...lanes[3]!, lines: [{ key: 'xqcL', color: '#f43f5e', values: ov }, { key: 'LUL', color: '#fb7185', values: new Float64Array(686).fill(2) }] })
+    expect(laneScaleMax(d, line)).toBeCloseTo(1.6 * 19)
+    const box = { key: 'overlay', raw: 468, x: 0, y: 0, width: 800, height: 60, dataTop: 20, max: laneFitMax(laneScaleMax(d, line)), ticks: [] }
+    expect(laneOverMarks(d, line, box, 0, 685, 10)).toEqual([{ key: 'overlay:676', i: 677, v: 468, color: '#f43f5e' }])
+    // an uncapped box has no marks
+    expect(laneOverMarks(d, line, { ...box, max: 520 }, 0, 685, 10)).toEqual([])
+  })
+})
+
+describe('capOutliers in SpChart', () => {
+  let root: Root | null = null
+  let container: HTMLDivElement
+  beforeEach(() => {
+    vi.stubGlobal('requestAnimationFrame', () => 0)
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+  afterEach(() => {
+    act(() => root?.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  })
+  const mount = (lanes: SpLane[], d: SpChartData, initial?: { startIndex: number; endIndex: number }) => {
+    const ref = createRef<SpChartHandle>()
+    act(() =>
+      root!.render(
+        <SpChart ref={ref} data={d} viewport={store(d.chat.length, initial)} plotHeight={440} width={1456} barOptions={{ minSlotPx: 1.05, tolerance: 0.85, rule: 'prod', maxRects: 1500 }} lanes={lanes} minHatchPx={6} laneFit />,
+      ),
+    )
+    return ref
+  }
+
+  it('fits the emote lane to the stream, keeps the true raw, and puts one ▲ chip over the wave', () => {
+    const d = goodbyeWave()
+    const lanes = sessionLanes(d).map((L, k) => (k === 2 ? capped(L) : L))
+    const ref = mount(lanes, d)
+    const em = ref.current!.layout()!.lanes![2]!
+    expect([em.raw, laneTick(em.max)]).toEqual([1032, '200'])
+    expect(container.querySelector('text.spc-tk[data-lane="emotes"]')?.textContent).toBe('200')
+    const chips = [...container.querySelectorAll('.spc-over')]
+    expect(chips.map(c => c.textContent?.replace(/\s+/g, ' ').trim())).toEqual(['▲ 1.0K'])
+    expect(chips[0]!.getAttribute('data-chart-lane-over')).toBe('emotes')
+    // a settle layer (hidden while the view moves), at the lane's data top (under its caption), near the plot's right end
+    expect(chips[0]!.hasAttribute('data-spc-settle')).toBe(true)
+    expect((chips[0] as HTMLElement).style.top).toBe(em.dataTop + 'px')
+    expect(chips[0]!.getAttribute('data-edge')).toBe('end')
+    // a .spc-chip like the captions: the series colour on the ▲ only, the figure in .spc-n
+    expect(chips[0]!.classList.contains('spc-chip')).toBe(true)
+    expect((chips[0] as HTMLElement).style.color).toBe('')
+    expect((chips[0]!.querySelector('.spc-over-up') as HTMLElement).style.color).not.toBe('')
+    expect(text(chips[0]!.querySelector('.spc-n'))).toBe('1.0K')
+  })
+
+  it('shows the wave at its own scale when zoomed to it, with no chip', () => {
+    const d = goodbyeWave()
+    const lanes = sessionLanes(d).map((L, k) => (k === 2 ? capped(L) : L))
+    const ref = mount(lanes, d, { startIndex: 671, endIndex: 685 })
+    expect(ref.current!.layout()!.lanes![2]!.max).toBe(laneFitMax(1032))
+    expect(container.querySelectorAll('.spc-over')).toHaveLength(0)
+  })
+
+  it('draws no chip for lanes without capOutliers', () => {
+    const d = goodbyeWave()
+    const ref = mount(sessionLanes(d), d)
+    expect(ref.current!.layout()!.lanes![2]!.max).toBe(laneFitMax(1032))
+    expect(container.querySelectorAll('.spc-over')).toHaveLength(0)
   })
 })

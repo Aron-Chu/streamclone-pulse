@@ -39,9 +39,11 @@ import {
   laneFigure,
   laneFitMax,
   laneLayout,
+  laneOverMarks,
   lanePaths,
   laneRawMax,
   laneRuns,
+  laneScaleMax,
   laneSeries,
   laneSlots,
   laneTick,
@@ -219,19 +221,26 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
   if (!view.moving) fitRef.current = view.range
   const fitA = p.laneFit ? fitRef.current.startIndex : 0, fitB = p.laneFit ? fitRef.current.endIndex : Infinity
   const laneRawNow = useMemo(() => (d && lanesIn ? lanesIn.map(L => laneRawMax(d, L, fitA, fitB)) : null), [d, lanesIn, fitA, fitB])
-  const rawKey = laneRawNow?.join() ?? ''
+  // capOutliers: the scale may leave out a stream-end wave (laneScaleMax); raw stays the tallest value in view
+  const laneScaleNow = useMemo(
+    () => (d && lanesIn && lanesIn.some(L => L.capOutliers) ? lanesIn.map(L => laneScaleMax(d, L, fitA, fitB)) : null),
+    [d, lanesIn, fitA, fitB],
+  )
+  const rawKey = (laneRawNow?.join() ?? '') + '|' + (laneScaleNow?.join() ?? '')
   // the same maxima keep the layout (and every lane path) as it is
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const laneRaw = useMemo(() => laneRawNow, [rawKey, lanesIn])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const laneScale = useMemo(() => laneScaleNow, [rawKey, lanesIn])
   const laneGap = p.laneGap ?? SP_LANE_GAP
   const layout = useMemo(
     () =>
       W > 0
         ? lanesIn
-          ? laneLayout({ width: W, height: H, tickColumn: tickCol, band: p.band ?? !hub, topPx, gap: laneGap, lanes: lanesIn, raw: laneRaw ?? [], fit: p.laneFit })
+          ? laneLayout({ width: W, height: H, tickColumn: tickCol, band: p.band ?? !hub, topPx, gap: laneGap, lanes: lanesIn, raw: laneRaw ?? [], scale: laneScale, fit: p.laneFit })
           : spLayout({ width: W, height: H, tickColumn: tickCol, band: p.band ?? !hub, topPx, rates: showRates, viewers: sV, viewersCaption: !!caps?.viewers, ratesMax, viewersMax: maxes[3]! })
         : null,
-    [W, H, tickCol, p.band, hub, topPx, showRates, sV, !!caps?.viewers, ratesMax, maxes, lanesIn, laneRaw, laneGap, p.laneFit],
+    [W, H, tickCol, p.band, hub, topPx, showRates, sV, !!caps?.viewers, ratesMax, maxes, lanesIn, laneRaw, laneScale, laneGap, p.laneFit],
   )
   const LB = layout?.lanes ?? null
   const PW = layout?.plotWidth ?? 0
@@ -338,6 +347,37 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lanesIn, LB, level, win, d, alignMs, sxS, barRule, selS?.[0], selS?.[1]])
+
+  // capOutliers: a "▲ 1.0K" chip over each run past a capped lane's top, at its tallest sample. Plot px at the
+  // settled view; a settle layer, so it hides while the view moves. Runs within 48 px join. It wears .spc-chip
+  // like the lane captions; the series colour sits on the ▲ only (as a caption's swatch), and its top is the data
+  // top, under the caption. aria-hidden: Chat and Emotes captions already read "peak …"; the overlay lane has no
+  // text for any of its values.
+  const overMarks = useMemo(() => {
+    if (!lanesIn || !LB || !d || !(sxS > 0) || !lanesIn.some(L => L.capOutliers)) return null
+    const out: ReactNode[] = []
+    lanesIn.forEach((L, k) => {
+      const b = LB[k]!
+      for (const o of laneOverMarks(d, L, b, range.startIndex, range.endIndex, Math.ceil(48 / sxS))) {
+        const x = offS + sxS * (o.i + 0.5)
+        if (x < 0 || x > PW) continue
+        out.push(
+          <span
+            key={o.key}
+            className="spc-chip spc-over"
+            data-spc-settle=""
+            data-chart-lane-over={L.key}
+            data-edge={x > PW - 40 ? 'end' : x < 40 ? 'start' : undefined}
+            aria-hidden="true"
+            style={{ left: r1(x), top: b.dataTop }}
+          >
+            <span className="spc-over-up" style={{ color: o.color }}>▲</span> <span className="spc-n">{laneFigure(o.v)}</span>
+          </span>,
+        )
+      }
+    })
+    return out.length ? out : null
+  }, [lanesIn, LB, d, sxS, offS, PW, range.startIndex, range.endIndex])
 
   // lanes: trend, area and line paths at the line level (per data, level and settled zoom)
   const minLU = minHatch > 0 && sxS > 0 ? minHatch / sxS : 0
@@ -556,7 +596,7 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
     if (at === fit.at && dd === fit.d && lanes === fit.lanes) return
     Object.assign(fit, { at, d: dd, lanes })
     fit.t.clear()
-    for (const ln of lanes) fit.t.set(ln.key, Math.log(laneFitMax(laneRawMax(dd, ln, a, b))))
+    for (const ln of lanes) fit.t.set(ln.key, Math.log(laneFitMax(laneScaleMax(dd, ln, a, b))))
     // a lane that left forgets its spring
     for (const key of [...fit.x.keys()]) if (!fit.t.has(key)) fit.x.delete(key)
   }
@@ -939,6 +979,7 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
               {!LB && caps?.rates && R && caption(caps.rates, R.y + 4, caps.rates.unit ?? '', '')}
               {!LB && caps?.viewers && V && caption(caps.viewers, V.y + 1, caps.viewers.unit ?? 'viewers', 'viewers-')}
               {LB && lanesIn && LB.map((b, k) => laneCaption(lanesIn[k]!, b))}
+              {overMarks}
               {le && (
                 <span ref={dotRef} className={le.stale ? 'spc-live spc-live-hollow' : 'spc-live'} data-chart-live-edge="" data-chart-live-edge-tone={le.tone}>
                   {/* one ring per new poll value: the keyed span remounts and its CSS animation runs once */}
