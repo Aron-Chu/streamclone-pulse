@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { barWidthPx } from '../src/sp/bars.ts'
 import { SpChart } from '../src/sp/SpChart.tsx'
 import { createSpViewportStore } from '../src/sp/viewportStore.ts'
+import { laneBarsOf } from './laneBarsDom.ts'
 import type { SpChartData, SpChartProps, SpLane } from '../src/sp/types.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -84,11 +85,11 @@ describe('rendered bars under the prod rule', () => {
     it(`draws ${pitch} px slots as ${barWidthPx(pitch, 'prod')} px bars centred in each minute (lanes)`, () => {
       render(n, PW, { lanes: LANES })
       expect(container.querySelector('svg[data-bench-plot]')!.getAttribute('data-activity-bucket-minutes')).toBe('1')
-      const rs = rects('g.spc-lane-bars[data-lane="chat"] rect.spc-bar')
+      const rs = laneBarsOf(container, 'chat')
       expect(rs).toHaveLength(n)
       const sx = PW / n
       rs.forEach((r, i) => {
-        const x = Number(r.getAttribute('x')), w = Number(r.getAttribute('width'))
+        const x = r.x, w = r.width
         expect(w * sx).toBeCloseTo(barWidthPx(pitch, 'prod'), 2)
         expect(x + w / 2).toBeCloseTo(i + 0.5, 3)
       })

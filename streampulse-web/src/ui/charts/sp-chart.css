@@ -301,15 +301,10 @@ div.spc-layer {
 }
 
 /* ---- lanes mode (session-original): lane colours and opacities come from the lane config ---- */
-.spc-lane-bars .spc-bar {
-  fill: inherit;
-}
-
-/* laneFit: a bar's width follows the zoom between settles (--spc-bw, set by the chart per frame), about its centre */
-[data-lane-fit] > .spc-lane-bars > .spc-bar {
-  transform-box: fill-box;
-  transform-origin: center;
-  transform: scaleX(var(--spc-bw, 1));
+/* a lane's bars: one vertical segment per bar, stroked at the bar's width (laneFit writes the width per frame) */
+.spc-lane-bars .spc-barline {
+  fill: none;
+  stroke-linecap: butt;
 }
 
 /* a lane's max tick mark in the value column (4 x 1 px boxes) */

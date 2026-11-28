@@ -199,6 +199,25 @@ export function laneBars(o: SpLaneBarArgs): SpLaneBar[] {
   return out
 }
 
+/**
+ * Lane bars as stroked paths: one vertical segment per bar (butt caps, stroke width = bar width), one path per
+ * (opacity, width, partial) group. Same geometry as a rect per bar, but a few elements to restyle: with laneFit the
+ * chart writes each path's stroke-width per frame so the bars follow the zoom between settles.
+ */
+export interface SpLaneBarPath { key: string; d: string; w: number; op: number; partial: boolean; count: number }
+
+export function laneBarPaths(bars: readonly SpLaneBar[]): SpLaneBarPath[] {
+  const by = new Map<string, SpLaneBarPath>()
+  for (const b of bars) {
+    const key = b.op + '|' + b.w + (b.partial ? '|p' : '')
+    let g = by.get(key)
+    if (!g) by.set(key, (g = { key, d: '', w: b.w, op: b.op, partial: b.partial, count: 0 }))
+    g.d += 'M' + Math.round((b.x + b.w / 2) * 1e4) / 1e4 + ' ' + b.y + 'V' + r1(b.y + b.h)
+    g.count += 1
+  }
+  return [...by.values()]
+}
+
 /** Slot centres and averages over the whole data at a step (NaN = no value). */
 export function laneSlots(values: ArrayLike<number>, coverage: ArrayLike<number>, step: number, phase: number) {
   const x: number[] = [], x0: number[] = [], x1: number[] = [], v: number[] = []

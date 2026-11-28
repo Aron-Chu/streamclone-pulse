@@ -1,4 +1,5 @@
 import { expect, test, type Route } from '@playwright/test'
+import { laneBarCount } from './helpers/laneBars'
 
 // Twitch logins are [a-z0-9_]: a hyphen routes to Page not found.
 const LOGIN = 'cashapp_fixture'
@@ -96,9 +97,9 @@ test('a short limited session draws per-minute bars and the hover readout follow
   await expect(chart).toBeVisible()
   await expect(chart).toHaveAttribute('data-activity-bucket-minutes', '1')
   // Bars draw in two lanes (U12): count the chat lane's, one per measured minute at most.
-  const bars = chart.locator('g[data-lane="chat"] rect.spc-bar')
-  await expect.poll(() => bars.count()).toBeGreaterThan(0)
-  expect(await bars.count()).toBeLessThanOrEqual(minutes.length)
+  const bars = chart.locator('g[data-lane="chat"] path.spc-barline')
+  await expect.poll(() => laneBarCount(bars)).toBeGreaterThan(0)
+  expect(await laneBarCount(bars)).toBeLessThanOrEqual(minutes.length)
   await expect(chart.locator('[data-activity-bar-peak]')).toHaveCount(0)
 
   const readout = page.locator('[data-session-readout]')

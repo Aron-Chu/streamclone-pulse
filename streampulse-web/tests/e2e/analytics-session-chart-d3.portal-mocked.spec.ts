@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from './helpers/portalMockedTest'
 import { buildMinutes, installPortalAcceptanceHarness, openAnalyticsSession } from './helpers/portalAcceptanceHarness'
+import { LANE_BAR_PATHS, laneBarCount } from './helpers/laneBars'
 
 // U8 (plan §1.2, §3 A2-A6): the session page's chart part is d3's (toolbar,
 // pins, band, plot, axis, navigator) inside one wheel card with the Games
@@ -205,7 +206,7 @@ test.describe('session chart part (d3) at 1440', () => {
     expect((await pageBox(bands.first())).h).toBe(18)
 
     await expect(page.locator('[data-activity-bar-peak]')).toHaveCount(0)
-    const bars = await page.locator(`${PLOT} rect.spc-bar`).count()
+    const bars = await laneBarCount(page.locator(`${PLOT} ${LANE_BAR_PATHS}`))
     expect(bars).toBeGreaterThan(0)
     // two bar lanes (chat, emotes), each capped at 600 rects or one per minute up to ~1057 minutes
     expect(bars).toBeLessThanOrEqual(1500)

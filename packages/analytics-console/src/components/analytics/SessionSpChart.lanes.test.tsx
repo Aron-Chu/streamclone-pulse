@@ -7,7 +7,7 @@ import AnalyticsChart from './AnalyticsChart.tsx'
 import { SESSION_EXPAND_CHROME_PX, SessionSpChart, sessionLanes, sessionPlotHeight, type SessionSpChartProps } from './SessionSpChart.tsx'
 import type { SessionPin } from './SessionChartPins.tsx'
 import { buildSessionChartModel } from './sessionSpChartModel.ts'
-import { HARNESS_STARTED_AT, harnessDetail, holdFrames, setStackWidth, type HeldFrames } from './__fixtures__/sessionChartHarness.ts'
+import { HARNESS_STARTED_AT, harnessDetail, holdFrames, laneBarsOf, setStackWidth, type HeldFrames } from './__fixtures__/sessionChartHarness.ts'
 
 const motion = vi.hoisted(() => ({ enabled: false }))
 vi.mock('../../hooks/useConsoleMotion.ts', () => ({ useConsoleMotion: () => ({ motionEnabled: motion.enabled }) }))
@@ -95,10 +95,10 @@ describe('session lanes (d3-v2 session-original)', () => {
 
   it('lights emote bars over the spike threshold at .72, the rest at .4', () => {
     const { container } = renderChart()
-    const rects = [...container.querySelectorAll('g.spc-lane-bars[data-lane="emotes"] rect.spc-bar')]
+    const rects = laneBarsOf(container, 'emotes')
     expect(rects).toHaveLength(180)
     // emotes at minute i are 2 + i % 9: 7..10 are over 6.05
-    rects.forEach((r, i) => expect(r.getAttribute('fill-opacity')).toBe(2 + (i % 9) > 6.05 ? '0.72' : '0.4'))
+    rects.forEach((r, i) => expect(r.opacity).toBe(2 + (i % 9) > 6.05 ? '0.72' : '0.4'))
   })
 
   it('draws the selected minute as a band through every lane, and slides it to the next selection', () => {

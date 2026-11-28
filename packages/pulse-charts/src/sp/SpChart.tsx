@@ -35,6 +35,7 @@ import { createSpHoverStore } from './hoverStore.ts'
 import { createSpFrame, layerNodes, type SpLayerBase, type SpLayerSlot } from './layers.ts'
 import { panelY, SP_TICK_COLUMN, spLayout } from './layout.ts'
 import {
+  laneBarPaths,
   laneBars,
   laneFigure,
   laneFitMax,
@@ -245,7 +246,7 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
   const span = range.endIndex + 1 - range.startIndex
   // mutable state that never renders
   const m = useRef({
-    view, step: 0, pw: 0, tick: [] as string[], attr: '', bw: '', rewin: false, settling: false, reported: false,
+    view, step: 0, pw: 0, tick: [] as string[], attr: '', rewin: false, settling: false, reported: false,
     px: null as number | null, down: null as { x: number; y: number; t: string } | null, seq: undefined as number | undefined,
     live: null as unknown as Live,
     /** The visual range as of the last frame. */
@@ -303,10 +304,10 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
   // laneFit: each lane clips to its box, and a group inside the clip takes the lane's y-scale (fitApply)
   const fitOn = !!p.laneFit
   const fitEls = useRef(new Map<SVGGElement, string>()).current
-  const barEls = useRef(new Set<SVGGElement>()).current
+  const barEls = useRef(new Set<SVGPathElement>()).current
   const tkEls = useRef(new Map<SVGTextElement, string>()).current
   const avgRef = useRef<SVGPathElement>(null)
-  const regBars = (g: SVGGElement | null) => void (g && fitOn && barEls.add(g))
+  const regBars = (el: SVGPathElement | null) => void (el && fitOn && barEls.add(el))
   const regTk = (key: string) => (el: SVGTextElement | null) => void (el && fitOn && tkEls.set(el, key))
   const fitLane = (key: string, node: ReactNode) =>
     fitOn ? (
@@ -319,19 +320,29 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
       node
     )
 
-  // lanes: bars per bar lane over the bar window (one commit per settle, none per frame)
+  // lanes: bars per bar lane over the bar window (one commit per settle, none per frame). Each lane's bars are a few
+  // stroked paths, one per opacity group (lanes.ts laneBarPaths): a frame restyles those, not a rect per bar.
   const laneRects = useMemo(() => {
     if (!lanesIn || !LB || !level || !win || !d) return null
     const ph = slotPhase(d, alignMs, level.step)
     return lanesIn.map((L, k) => {
       const v = L.kind === 'bars' ? laneSeries(d, L) : null
       if (!v) return null
-      const rects = laneBars({ values: v, coverage: d.coverage, box: LB[k]!, lane: L, step: level.step, phase: ph, a: win.u0, b: win.u1, sx: sxS, rule: barRule, sel: selS })
+      const bars = laneBars({ values: v, coverage: d.coverage, box: LB[k]!, lane: L, step: level.step, phase: ph, a: win.u0, b: win.u1, sx: sxS, rule: barRule, sel: selS })
       return fitLane(
         L.key,
-        <g key={L.key} ref={regBars} className="spc-lane-bars" data-lane={L.key} fill={L.color}>
-          {rects.map(b => (
-            <rect key={b.i} className="spc-bar" x={b.x} y={b.y} width={b.w} height={b.h} fillOpacity={b.op < 1 ? b.op : undefined} data-lane-partial={b.partial ? '' : undefined} />
+        <g key={L.key} className="spc-lane-bars" data-lane={L.key} stroke={L.color}>
+          {laneBarPaths(bars).map(g => (
+            <path
+              key={g.key}
+              ref={regBars}
+              className="spc-barline"
+              d={g.d}
+              strokeWidth={g.w}
+              strokeOpacity={g.op < 1 ? g.op : undefined}
+              data-lane-partial={g.partial ? '' : undefined}
+              data-bar-count={g.count}
+            />
           ))}
         </g>,
       )
@@ -483,13 +494,9 @@ export const SpChart = forwardRef<SpChartHandle, SpChartProps>(function SpChart(
       laneW.forEach((w, el) => (el.isConnected ? el.setAttribute('stroke-width', String(r2(laneWidth(w, vis, L.n)))) : laneW.delete(el)))
     }
     if (barEls.size && L.level && L.p.barOptions?.rule === 'prod') {
-      // laneFit: a bar's width follows the zoom about its centre (sp-chart.css), as the next settle draws it
-      const st = L.level.step, f = r4(barWidthPx(st * sx, 'prod') / sx / (barWidthPx(st * L.sx, 'prod') / L.sx))
-      const bw = f === 1 ? '' : String(f)
-      if (bw !== m.bw) {
-        m.bw = bw
-        barEls.forEach(g => (g.isConnected ? g.style.setProperty('--spc-bw', bw) : barEls.delete(g)))
-      }
+      // laneFit: a bar's width follows the zoom about its centre (the stroke of its segment), as the next settle draws it
+      const bw = String(r4(barWidthPx(L.level.step * sx, 'prod') / sx))
+      barEls.forEach(el => (!el.isConnected ? barEls.delete(el) : el.getAttribute('stroke-width') !== bw && el.setAttribute('stroke-width', bw)))
     }
     patRef.current?.setAttribute('patternTransform', 'scale(' + 1 / sx + ' 1) rotate(45)')
     const dot = dotRef.current, edge = L.p.liveEdge

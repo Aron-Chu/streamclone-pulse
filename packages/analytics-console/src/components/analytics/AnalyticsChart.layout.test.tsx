@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
-import { setStackWidth } from './__fixtures__/sessionChartHarness.ts'
+import { laneBarsOf, setStackWidth } from './__fixtures__/sessionChartHarness.ts'
 
 vi.mock('../../hooks/useConsoleMotion.ts', () => ({
   useConsoleMotion: () => ({ motionEnabled: false }),
@@ -192,7 +192,7 @@ describe('AnalyticsChart stable regions', () => {
     // average joins it only with Show on chart's Averages (off on every load).
     expect(caption('viewers').textContent?.replace(/\s+/g, ' ')).toContain('peak 200')
     // No peak caps (F3): bars only, no tick marks above them.
-    expect(container.querySelectorAll('rect.spc-bar').length).toBeGreaterThan(0)
+    expect(laneBarsOf(container).length).toBeGreaterThan(0)
     expect(container.querySelector('[data-activity-peak-cap], .spc-cap')).toBeNull()
   })
 
