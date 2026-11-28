@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
 import { resetChartWheelGuard } from './ChartNavigator.tsx'
-import { scrollZoomToggle } from './__fixtures__/sessionChartHarness.ts'
+import { laneBarsOf, scrollZoomToggle } from './__fixtures__/sessionChartHarness.ts'
 import {
   sessionNavigatorIndexForOffset,
   sessionNavigatorPointCount,
@@ -486,7 +486,7 @@ describe('AnalyticsChart range controls and navigator', () => {
     const { container } = renderChart(748)
     flush()
     const caps = () => container.querySelectorAll('[data-activity-bar-peak], .spc-cap, .spc-peak')
-    expect(container.querySelectorAll('rect.spc-bar').length).toBeGreaterThan(0)
+    expect(laneBarsOf(container).length).toBeGreaterThan(0)
     expect(caps()).toHaveLength(0)
     for (let click = 0; click < 5; click += 1) {
       fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))

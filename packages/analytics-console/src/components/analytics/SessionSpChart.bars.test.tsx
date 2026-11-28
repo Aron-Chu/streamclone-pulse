@@ -6,6 +6,7 @@ import { SESSION_BAR_OPTIONS } from './SessionSpChart.tsx'
 import {
   barMinutes,
   harnessDetail,
+  laneBarsOf,
   holdFrames,
   setStackWidth,
   type HeldFrames,
@@ -47,8 +48,7 @@ const zoomIn = () => {
   fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
   frames!.flush()
 }
-const laneRects = (container: HTMLElement, lane: 'chat' | 'emotes') =>
-  [...container.querySelectorAll(`g.spc-lane-bars[data-lane="${lane}"] rect.spc-bar`)]
+const laneRects = (container: HTMLElement, lane: 'chat' | 'emotes') => laneBarsOf(container, lane)
 
 describe('SessionSpChart bars (F21: prod one-minute bars in lanes)', () => {
   it('uses prod bars: one per minute down to 1.05 px a minute, centred thin widths, a 1500-rect cap per lane', () => {
@@ -64,7 +64,7 @@ describe('SessionSpChart bars (F21: prod one-minute bars in lanes)', () => {
     // prod's rule at 1344 / 195 = 6.9 px a minute: 6.9 - 1.5 = 5.4 px, centred in the minute
     const sx = 1344 / 195
     const r = laneRects(container, 'chat')[10]!
-    const x = Number(r.getAttribute('x')), w = Number(r.getAttribute('width'))
+    const x = r.x, w = r.width
     expect(w * sx).toBeCloseTo(barWidthPx(sx, 'prod'), 2)
     expect(x + w / 2).toBeCloseTo(10.5, 3)
   })
@@ -100,12 +100,12 @@ describe('SessionSpChart bars (F21: prod one-minute bars in lanes)', () => {
     // Minute 52 was never measured: at 2-minute bars the 0:52-0:54 bar is partial.
     const { container } = renderAt(748, 700, [52])
     expect(barMinutes(container)).toBe('2')
-    const partial = container.querySelectorAll('g.spc-lane-bars[data-lane="chat"] rect.spc-bar[data-lane-partial]')
+    const partial = laneRects(container, 'chat').filter(b => b.partial)
     expect(partial).toHaveLength(1)
-    expect(Number(partial[0]!.getAttribute('x'))).toBeGreaterThan(52)
-    expect(Number(partial[0]!.getAttribute('x'))).toBeLessThan(54)
+    expect(partial[0]!.x).toBeGreaterThan(52)
+    expect(partial[0]!.x).toBeLessThan(54)
     // chat bars at .12, the partial one at half that
-    expect(partial[0]!.getAttribute('fill-opacity')).toBe('0.06')
+    expect(partial[0]!.opacity).toBe('0.06')
 
     const svg = container.querySelector<SVGSVGElement>('[data-bench-plot]')!
     vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 644, top: 0, bottom: 440, width: 644, height: 440, x: 0, y: 0 } as DOMRect)
@@ -121,14 +121,15 @@ describe('SessionSpChart bars (F21: prod one-minute bars in lanes)', () => {
     const { container } = renderAt(748, 1400)
     const scaled = () => container.querySelector('g[data-spc-scaled]')!
     const before = scaled().getAttribute('transform')
-    const firstRect = laneRects(container, 'chat')[0]
-    const firstX = firstRect!.getAttribute('x')
+    const barPath = () => container.querySelector('g.spc-lane-bars[data-lane="chat"] path.spc-barline')
+    const firstPath = barPath()
+    const firstD = firstPath!.getAttribute('d')
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
     frames!.step(40)
-    // Mid-ease: same rect nodes and attributes, new transform.
+    // Mid-ease: same bar path and geometry, new transform.
     expect(scaled().getAttribute('transform')).not.toBe(before)
-    expect(laneRects(container, 'chat')[0]).toBe(firstRect)
-    expect(firstRect!.getAttribute('x')).toBe(firstX)
+    expect(barPath()).toBe(firstPath)
+    expect(firstPath!.getAttribute('d')).toBe(firstD)
     frames!.flush()
     expect(frames!.pending()).toBe(0)
   })

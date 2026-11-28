@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from './helpers/portalMockedTest'
+import { laneBarCount } from './helpers/laneBars'
 import {
   assertEmotePlotLines,
   assertNoUnexpected,
@@ -89,7 +90,7 @@ test.describe('portal responsive visuals (mocked)', () => {
         const chart = page.getByRole('region', { name: 'Session activity chart' })
         await expect(chart.locator('svg[aria-label="Analytics timeline chart"]')).toBeVisible({ timeout: 25_000 })
         // The chat lane: one bar per measured minute.
-        await expect(chart.locator('g[data-lane="chat"] rect.spc-bar')).toHaveCount(24)
+        await expect.poll(() => laneBarCount(chart.locator('g[data-lane="chat"] path.spc-barline'))).toBe(24)
         await assertNonBlankScreenshot(page, `portal-live-${viewport.name}.png`)
         if (viewport.name === 'narrow') {
           await assertScenarioRegionScreenshot(

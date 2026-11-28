@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import AnalyticsChart from './AnalyticsChart.tsx'
+import { laneBarsOf } from './__fixtures__/sessionChartHarness.ts'
 
 vi.mock('../../hooks/useConsoleMotion.ts', () => ({
   useConsoleMotion: () => ({ motionEnabled: false }),
@@ -100,8 +101,7 @@ function geometry(container: HTMLElement) {
   // the viewers lane's line (session-original lanes), not its fill
   const viewerEnd = px(maxPathX([...container.querySelectorAll('g[data-lane="viewers"] path:not(.spc-lane-fill)')].map(p => p.getAttribute('d'))))
   // session-original lanes centre each bar in its slot (prod's width rule)
-  const bars = [...container.querySelectorAll('rect.spc-bar')]
-    .map(bar => px(Number(bar.getAttribute('x')) + Number(bar.getAttribute('width')) / 2))
+  const bars = laneBarsOf(container).map(bar => px(bar.x + bar.width / 2))
   const slotMinutes = Number(container.querySelector('[data-bench-plot]')?.getAttribute('data-activity-bucket-minutes')) || 1
   return {
     plotEnd,

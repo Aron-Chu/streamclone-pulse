@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { barWidthPx } from '../src/sp/bars.ts'
 import { laneFigure, laneFitMax, laneLayout, laneRawMax, laneTick, laneWidth, snapToSlots } from '../src/sp/lanes.ts'
 import { SpChart } from '../src/sp/SpChart.tsx'
+import { laneBarsOf } from './laneBarsDom.ts'
 import { createSpViewportStore } from '../src/sp/viewportStore.ts'
 import type { SpChartData, SpChartHandle, SpChartProps, SpLane } from '../src/sp/types.ts'
 
@@ -138,8 +139,10 @@ describe('SpChart lanes mode', () => {
     const d = data(675, [])
     show({ data: d })
     expect(q('svg[data-bench-plot]')!.getAttribute('data-activity-bucket-minutes')).toBe('1')
-    expect(qa('g.spc-lane-bars[data-lane="chat"] rect.spc-bar')).toHaveLength(675)
-    expect(qa('g.spc-lane-bars[data-lane="emotes"] rect.spc-bar')).toHaveLength(675)
+    expect(laneBarsOf(container, 'chat')).toHaveLength(675)
+    expect(laneBarsOf(container, 'emotes')).toHaveLength(675)
+    // one path per opacity group, not an element per bar
+    expect(qa('g.spc-lane-bars path.spc-barline').length).toBeLessThanOrEqual(8)
     expect(qa('g.spc-lane-trend path')).toHaveLength(2)
     expect(q('.spc-grid')!.getAttribute('d')).toBe('')
     expect(qa('[data-activity-bar-peak], .spc-cap, .spc-peak')).toHaveLength(0)
@@ -164,14 +167,14 @@ describe('SpChart lanes mode', () => {
     const ref = show({ data: d })
     const lanes = ref.current!.layout()!.lanes!
     const em = lanes[2]!, floor = em.y + em.height
-    const rects = qa('g.spc-lane-bars[data-lane="emotes"] rect')
-    for (const r of rects) expect(Number(r.getAttribute('y')) + Number(r.getAttribute('height'))).toBeCloseTo(floor, 0)
-    const ops = new Set(rects.map(r => r.getAttribute('fill-opacity')))
+    const rects = laneBarsOf(container, 'emotes')
+    for (const r of rects) expect(r.y + r.height).toBeCloseTo(floor, 0)
+    const ops = new Set(rects.map(r => r.opacity))
     // 0.4 bars, 0.72 spikes (emotes over 9), the half-lit partial minute is not a bar here (1-min bars)
     expect(ops).toEqual(new Set(['0.4', '0.72']))
-    expect(q('g.spc-lane-bars[data-lane="emotes"]')!.getAttribute('fill')).toBe('#34d399')
+    expect(q('g.spc-lane-bars[data-lane="emotes"]')!.getAttribute('stroke')).toBe('#34d399')
     // chat lane: bars at .12 under the trend, min 1 px tall
-    expect(new Set(qa('g.spc-lane-bars[data-lane="chat"] rect').map(r => r.getAttribute('fill-opacity')))).toEqual(new Set(['0.12']))
+    expect(new Set(laneBarsOf(container, 'chat').map(r => r.opacity))).toEqual(new Set(['0.12']))
   })
 
   it('draws each lane at the fit of the settled view with laneFit, clipped to its box', () => {
@@ -184,7 +187,7 @@ describe('SpChart lanes mode', () => {
     expect(chat.max).toBe(laneFitMax(20))
     expect(text(q('text.spc-tk[data-lane="chat"]'))).toBe('22')
     // a bar past the view runs over the lane top, and the lane's clip cuts it there
-    expect(qa('g.spc-lane-bars[data-lane="chat"] rect').some(r => Number(r.getAttribute('y')) < chat.y)).toBe(true)
+    expect(laneBarsOf(container, 'chat').some(r => r.y < chat.y)).toBe(true)
     const wrap = q('g.spc-lane-bars[data-lane="chat"]')!.parentElement!.parentElement!
     const id = /^url\(#(.+)\)$/.exec(wrap.getAttribute('clip-path')!)![1]!
     const clip = container.querySelector('clipPath[id="' + id + '"] rect')!
@@ -263,16 +266,25 @@ describe('SpChart lanes mode', () => {
         <SpChart data={d} viewport={vp} plotHeight={440} width={1456} barOptions={{ minSlotPx: 1.05, tolerance: 0.85, rule: 'prod', maxRects: 1500 }} lanes={sessionLanes(d)} minHatchPx={6} laneFit />,
       ),
     )
-    const bw = () => (q('g.spc-lane-bars[data-lane="chat"]') as SVGGElement).style.getPropertyValue('--spc-bw')
-    expect(bw()).toBe('')
-    act(() => vp.setTarget({ startIndex: 0, endIndex: 99 }))
-    // drawn at 1400 / 600 px a minute (1 px bars), shown at 14 px a minute (72 %)
+    // a bar is its path's segment, stroked at the bar's width (data units)
     const at = (sx: number) => barWidthPx(sx, 'prod') / sx
-    expect(Number(bw())).toBeCloseTo(at(14) / at(1400 / 600), 3)
+    const widths = () => qa('g.spc-lane-bars path.spc-barline').map(p => Number(p.getAttribute('stroke-width')))
+    const centre = () => {
+      const b = laneBarsOf(container, 'chat')[10]!
+      return b.x + b.width / 2
+    }
+    expect(widths().every(w => Math.abs(w - at(1400 / 600)) < 1e-3)).toBe(true)
+    expect(centre()).toBeCloseTo(10.5, 3)
+    act(() => vp.setTarget({ startIndex: 0, endIndex: 99 }))
+    // drawn at 1400 / 600 px a minute (1 px bars), shown at 14 px a minute (72 %): every bar lane's paths follow
+    expect(widths().every(w => Math.abs(w - at(14)) < 1e-3)).toBe(true)
+    expect(centre()).toBeCloseTo(10.5, 3)
     act(() => {
       while (frames.length) frames.shift()!(0)
     })
-    expect(bw()).toBe('')
+    // the settle draws the bars at the width the gesture showed: no jump
+    expect(widths().every(w => Math.abs(w - at(14)) < 1e-3)).toBe(true)
+    expect(centre()).toBeCloseTo(10.5, 3)
   })
 
   it('marks each lane with one max tick: in the column, or inside the lane head with no column', () => {
@@ -343,21 +355,21 @@ describe('SpChart lanes mode', () => {
     show({ data: d, barOptions: { minSlotPx: 1.05, tolerance: 0.85, rule: 'prod', maxRects: 300 } })
     const minutes = Number(q('svg[data-bench-plot]')!.getAttribute('data-activity-bucket-minutes'))
     expect(minutes).toBeGreaterThan(1)
-    for (const k of ['chat', 'emotes']) expect(qa(`g.spc-lane-bars[data-lane="${k}"] rect`).length).toBeLessThanOrEqual(300)
+    for (const k of ['chat', 'emotes']) expect(laneBarsOf(container, k).length).toBeLessThanOrEqual(300)
     // default cap (600) also holds in lanes mode
     show({ data: d, barOptions: { minSlotPx: 1.05, tolerance: 0.85, rule: 'prod' } })
-    for (const k of ['chat', 'emotes']) expect(qa(`g.spc-lane-bars[data-lane="${k}"] rect`).length).toBeLessThanOrEqual(600)
+    for (const k of ['chat', 'emotes']) expect(laneBarsOf(container, k).length).toBeLessThanOrEqual(600)
   })
 
   it('dims bars outside a selection to 0.4 of their opacity and lines to 0.65, snapped to the bar level', () => {
     const d = data(195)
     show({ data: d, selected: { startMs: START + 120 * MIN, endMs: START + 121 * MIN, kind: 'minute' } })
-    const chat = qa('g.spc-lane-bars[data-lane="chat"] rect')
-    const lit = chat.filter(r => r.getAttribute('fill-opacity') === '0.12')
+    const chat = laneBarsOf(container, 'chat')
+    const lit = chat.filter(r => r.opacity === '0.12')
     expect(lit).toHaveLength(1)
-    expect(Number(lit[0]!.getAttribute('x'))).toBeGreaterThan(120)
-    expect(Number(lit[0]!.getAttribute('x'))).toBeLessThan(121)
-    expect(chat.filter(r => r.getAttribute('fill-opacity') === '0.048').length).toBe(chat.length - 1)
+    expect(lit[0]!.x).toBeGreaterThan(120)
+    expect(lit[0]!.x).toBeLessThan(121)
+    expect(chat.filter(r => r.opacity === '0.048').length).toBe(chat.length - 1)
     expect(q('g.spc-lane-trend path')!.getAttribute('stroke-opacity')).toBe('0.546')
     // the outline runs through every lane (no selSlide)
     expect(q('path.spc-sel')!.getAttribute('d')).toBe('M120 22H121V440H120Z')

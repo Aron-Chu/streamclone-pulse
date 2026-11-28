@@ -4,7 +4,7 @@ import { useState } from 'react'
 import type { AnalyticsStreamDetail } from '../../api.ts'
 import type { AnalyticsViewMode } from './AnalyticsChart.tsx'
 import AnalyticsChart from './AnalyticsChart.tsx'
-import { scrollZoomToggle } from './__fixtures__/sessionChartHarness.ts'
+import { laneBarsOf, scrollZoomToggle } from './__fixtures__/sessionChartHarness.ts'
 
 vi.mock('../../hooks/useConsoleMotion.ts', () => ({
   useConsoleMotion: () => ({ motionEnabled: false }),
@@ -79,18 +79,18 @@ describe('AnalyticsChart session toolbar', () => {
     expect(buttons.map(b => b.textContent)).toEqual(['All', 'Viewers', 'Chat/min', 'Emotes/min'])
     const pressed = () => buttons.filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.textContent)
     expect(pressed()).toEqual(['All'])
-    expect(container.querySelectorAll('rect.spc-bar').length).toBeGreaterThan(0)
+    expect(laneBarsOf(container).length).toBeGreaterThan(0)
 
     fireEvent.click(buttons[1]!)
     expect(pressed()).toEqual(['Viewers'])
     expect(screen.getByTestId('harness').getAttribute('data-mode')).toBe('viewers')
     // Viewers only: the chat bars and the emotes line leave the plot.
-    expect(container.querySelectorAll('rect.spc-bar')).toHaveLength(0)
+    expect(laneBarsOf(container)).toHaveLength(0)
     expect(container.querySelector('.spc-line-emotes')).toBeNull()
 
     fireEvent.click(buttons[2]!)
     expect(pressed()).toEqual(['Chat/min'])
-    expect(container.querySelectorAll('rect.spc-bar').length).toBeGreaterThan(0)
+    expect(laneBarsOf(container).length).toBeGreaterThan(0)
 
     fireEvent.click(buttons[0]!)
     expect(pressed()).toEqual(['All'])

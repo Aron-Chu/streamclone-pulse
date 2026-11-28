@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './helpers/portalMockedTest'
+import { laneBarsOnScreen } from './helpers/laneBars'
 import {
   assertNoUnexpected,
   buildMinutes,
@@ -180,8 +181,7 @@ for (const viewport of VIEWPORTS) {
       expect(bucketMinutes).toBeGreaterThanOrEqual(1)
       await expect(page.locator('[data-chart-bar-bucket-minutes]')).toHaveText(`${bucketMinutes}-min bars`)
       // The chat lane's bars (the emotes lane draws the same slots).
-      const bars = await page.locator(`${CHART} g[data-lane="chat"] rect.spc-bar`).evaluateAll(nodes =>
-        nodes.map(node => { const r = node.getBoundingClientRect(); return { x: r.x + r.width / 2, width: r.width } }))
+      const bars = await laneBarsOnScreen(page.locator(`${CHART} g[data-lane="chat"] path.spc-barline`))
       expect(bars.length).toBeGreaterThan(20)
       expect(bars.length).toBeLessThanOrEqual(Math.ceil(LONG_STREAM_MINUTES / bucketMinutes))
       // The prod rule never draws a bar under 1 px, and no two bars sit closer than the slot floor.
@@ -351,7 +351,7 @@ test.describe('session chart bars follow the zoom (768px)', () => {
     const level = Number(await chart.getAttribute('data-activity-bucket-minutes'))
     expect(level).toBeGreaterThan(1)
     await expect(page.locator(`${CHART} [data-activity-bar-peak]`)).toHaveCount(0)
-    expect(await page.locator(`${CHART} rect.spc-bar[data-lane-partial]`).count()).toBeGreaterThanOrEqual(1)
+    expect(await page.locator(`${CHART} path.spc-barline[data-lane-partial]`).count()).toBeGreaterThanOrEqual(1)
 
     // Hover the slot that holds minutes 101-102: the readout says how much of it was measured.
     const slotStart = Math.floor(101 / level) * level
